@@ -1,0 +1,77 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createStore, createCache } from '../www/js/store.js';
+
+function mk() {
+  const m = new Map();
+  const storage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+  return { store: createStore({ storage, cache: createCache('t' + Math.random()) }), m };
+}
+
+test('kaynak ekle, etkin kaynak, sil', () => {
+  const { store } = mk();
+  assert.equal(store.activeSource(), null);
+  const a = store.saveSource({ name: 'A', type: 'm3u', url: 'http://a' });
+  const b = store.saveSource({ name: 'B', type: 'xtream', server: 'h', user: 'u', pass: 'p' });
+  assert.notEqual(a.id, b.id);
+  assert.equal(store.activeId(), a.id);
+  store.setActive(b.id);
+  assert.equal(store.activeSource().name, 'B');
+  store.saveSource({ ...b, name: 'B2' });
+  assert.equal(store.sources().length, 2);
+  assert.equal(store.activeSource().name, 'B2');
+  store.toggleFav(b.id, { id: 'x1', kind: 'live', name: 'K' });
+  store.removeSource(b.id);
+  assert.equal(store.sources().length, 1);
+  assert.equal(store.activeId(), a.id);
+  assert.deepEqual(store.favs(b.id), []);
+});
+
+test('favoriler: ekle, kaldır, sıra', () => {
+  const { store } = mk();
+  assert.equal(store.toggleFav('s', { id: '1', kind: 'live', name: 'A' }), true);
+  assert.equal(store.toggleFav('s', { id: '2', kind: 'movie', name: 'B' }), true);
+  assert.deepEqual(store.favs('s').map((f) => f.id), ['2', '1']);
+  assert.equal(store.isFav('s', '1'), true);
+  assert.equal(store.toggleFav('s', { id: '1' }), false);
+  assert.equal(store.isFav('s', '1'), false);
+});
+
+test('son izlenenler: tekrar yok, en yeni başta, en fazla 40', () => {
+  const { store } = mk();
+  for (let i = 0; i < 50; i++) store.pushRecent('s', { id: 'k' + i, kind: 'live', name: 'K' + i });
+  store.pushRecent('s', { id: 'k10', kind: 'live', name: 'K10' });
+  const r = store.recents('s');
+  assert.equal(r.length, 40);
+  assert.equal(r[0].id, 'k10');
+  assert.equal(new Set(r.map((x) => x.id)).size, 40);
+});
+
+test('izleme ilerlemesi: kısa izleme yok sayılır, bitince silinir, devam listesi', () => {
+  const { store } = mk();
+  const e = { id: 'f1', kind: 'movie', name: 'Film' };
+  store.setProgress('s', e, 5000, 600000);
+  assert.equal(store.progress('s', 'f1'), null);
+  store.setProgress('s', e, 120000, 600000);
+  assert.equal(store.progress('s', 'f1').pos, 120000);
+  assert.equal(store.continueWatching('s').length, 1);
+  store.setProgress('s', e, 580000, 600000);
+  assert.equal(store.progress('s', 'f1'), null);
+  assert.equal(store.continueWatching('s').length, 0);
+});
+
+test('bozuk depolama verisi çökertmez', () => {
+  const storage = { getItem: () => '{bozuk', setItem() { throw new Error('dolu'); }, removeItem() {} };
+  const store = createStore({ storage, cache: createCache('t' + Math.random()) });
+  assert.deepEqual(store.sources(), []);
+  assert.doesNotThrow(() => store.toggleFav('s', { id: 'a' }));
+});
+
+test('önbellek: bellek yedeği', async () => {
+  const c = createCache('t' + Math.random());
+  assert.equal(await c.get('a'), null);
+  await c.set('a', { x: 1 });
+  assert.deepEqual(await c.get('a'), { x: 1 });
+  await c.del('a');
+  assert.equal(await c.get('a'), null);
+});

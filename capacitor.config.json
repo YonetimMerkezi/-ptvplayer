@@ -1,0 +1,14 @@
+{
+  "appId": "com.koruk.iptv",
+  "appName": "IPTV Oynatıcı",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#000000"
+  }
+}
