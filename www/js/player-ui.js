@@ -3,6 +3,8 @@ import { esc, fmtDuration, fmtClock } from './util.js';
 import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
 import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta } from './gestures.js';
+import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
+import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
 const HIDE_MS = 2500;
@@ -177,6 +179,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   function title(st) {
     if (st.ep) return { name: st.item.name, sub: st.ep.label || st.ep.title };
+    if (st.item.kind === 'live' && ctx && ctx.items.length > 1) return { name: st.item.name, sub: 'Kanal ' + channelNumber(st.item, ctx.index) };
     return { name: st.item.name, sub: '' };
   }
 
@@ -229,6 +232,8 @@ export function createPlayerUI({ engine, player, env }) {
     const hasNav = !!ctx && ctx.items.length > 1;
     q('#pl-prev').hidden = !hasNav;
     q('#pl-next').hidden = !hasNav;
+    q('#pl-last').hidden = !(live && lastIndex() >= 0);
+    renderSleepLabel();
 
     const s = q('#pl-status');
     if (st.status === 'loading' || st.status === 'buffering') {
@@ -292,6 +297,85 @@ export function createPlayerUI({ engine, player, env }) {
     if (i < 0 || i >= ctx.items.length) return;
     ctx.index = i;
     ctx.play(ctx.items[i], i);
+  }
+
+  // ---- son kanal / rakamla kanal ----
+  // Tam ekran ya da önizlemede oynayan son iki canlı kanal hatırlanır; "Son kanal" ikisi arasında geçiş yapar.
+  let curLive = null;
+  let prevLive = null;
+  player.on((st) => {
+    if (st.item && st.item.kind === 'live' && (!curLive || curLive.id !== st.item.id)) {
+      prevLive = curLive;
+      curLive = st.item;
+    }
+  });
+  const lastIndex = () => (ctx && prevLive ? ctx.items.findIndex((x) => x.id === prevLive.id) : -1);
+
+  function lastChannel() {
+    const i = lastIndex();
+    if (i < 0) return hud('info', 'Son kanal yok');
+    ctx.index = i;
+    ctx.play(ctx.items[i], i);
+  }
+
+  const numEl = q('#pl-num');
+  let numHide = 0;
+  function showNum(html, ms) {
+    numEl.innerHTML = html;
+    numEl.hidden = !html;
+    clearTimeout(numHide);
+    if (html && ms) numHide = setTimeout(() => (numEl.hidden = true), ms);
+  }
+  const num = createChannelNumber({
+    onChange: (buf) => showNum(buf ? esc(buf) : ''),
+    onCommit: (n) => {
+      const i = ctx ? resolveChannel(ctx.items, n) : -1;
+      if (i < 0) return showNum(`${n}<small>Böyle bir kanal yok</small>`, 1400);
+      showNum(`${n}<small>${esc(ctx.items[i].name)}</small>`, 1200);
+      if (i === ctx.index) return;
+      ctx.index = i;
+      ctx.play(ctx.items[i], i);
+    },
+    onLast: lastChannel,
+  });
+
+  // ---- uyku zamanlayıcısı ----
+  const sleep = createSleepTimer({
+    onWarn: () => toast('30 saniye sonra oynatma duracak'),
+    onFire: () => {
+      toast('Uyku zamanlayıcısı: oynatma durduruldu');
+      if (open) popLayer('player');
+      renderSleepLabel();
+    },
+  });
+  let sleepLabel = '';
+  function renderSleepLabel() {
+    const t = sleep.active() ? fmtRemaining(sleep.remaining()) : 'Uyku';
+    if (t === sleepLabel) return;
+    sleepLabel = t;
+    q('#pl-sleep-l').textContent = t;
+  }
+
+  function sleepSheet() {
+    const cur = sleep.minutes();
+    const rows = SLEEP_OPTIONS.map(
+      ([m, label]) => `<button class="list-item" data-m="${m}"><span class="t">${esc(label)}</span>${m === cur ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`,
+    ).join('');
+    const hint = sleep.active() ? `<p class="hint">Kalan süre: ${fmtRemaining(sleep.remaining())}. Süre dolunca oynatma durur.</p>` : '<p class="hint">Süre dolunca oynatma durur ve uygulama listeye döner.</p>';
+    const sh = openSheet({
+      title: 'Uyku zamanlayıcısı',
+      html: hint + rows,
+      mount: (body) =>
+        body.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-m]');
+          if (!b) return;
+          const m = Number(b.dataset.m);
+          sleep.set(m);
+          renderSleepLabel();
+          sh.close();
+          toast(m ? `Uyku zamanlayıcısı: ${b.querySelector('.t').textContent}` : 'Uyku zamanlayıcısı kapatıldı');
+        }),
+    });
   }
 
   // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
@@ -397,6 +481,9 @@ export function createPlayerUI({ engine, player, env }) {
     open = false;
     layerOpen = false;
     clearTimeout(hideTimer);
+    num.cancel();
+    sleep.cancel();
+    renderSleepLabel();
     root.hidden = true;
     document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
@@ -454,6 +541,11 @@ export function createPlayerUI({ engine, player, env }) {
     render(st);
   });
   q('#pl-epg').addEventListener('click', () => env.onEpgSheet(player.state().item));
+  q('#pl-last').addEventListener('click', () => {
+    lastChannel();
+    showUi(false);
+  });
+  q('#pl-sleep').addEventListener('click', () => sleepSheet());
   q('#pl-audio').addEventListener('click', () => trackSheet('audio'));
   q('#pl-text').addEventListener('click', () => trackSheet('text'));
   q('#pl-aspect').addEventListener('click', async () => {
@@ -498,6 +590,25 @@ export function createPlayerUI({ engine, player, env }) {
       const step = k === 'ChannelUp' || k === 'MediaTrackNext' ? 1 : k === 'ChannelDown' || k === 'MediaTrackPrevious' ? -1 : 0;
       if (step) {
         if (env.onPreviewStep) env.onPreviewStep(step);
+        e.preventDefault();
+        return;
+      }
+    }
+    if (open && live && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (/^[0-9]$/.test(k)) {
+        num.digit(k);
+        showUi(false);
+        e.preventDefault();
+        return;
+      }
+      if (k === 'Enter' && num.active()) {
+        num.commit();
+        e.preventDefault();
+        return;
+      }
+      if (k === 'LastChannel') {
+        lastChannel();
+        showUi(false);
         e.preventDefault();
         return;
       }

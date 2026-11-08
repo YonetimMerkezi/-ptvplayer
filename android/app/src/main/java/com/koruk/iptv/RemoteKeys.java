@@ -24,6 +24,7 @@ final class RemoteKeys {
         switch (keyCode) {
             case KeyEvent.KEYCODE_CHANNEL_UP: return "ChannelUp";
             case KeyEvent.KEYCODE_CHANNEL_DOWN: return "ChannelDown";
+            case KeyEvent.KEYCODE_LAST_CHANNEL: return "LastChannel";
             case KeyEvent.KEYCODE_MEDIA_PLAY: return "MediaPlay";
             case KeyEvent.KEYCODE_MEDIA_PAUSE: return "MediaPause";
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: return "MediaPlayPause";

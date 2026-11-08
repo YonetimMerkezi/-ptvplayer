@@ -200,6 +200,8 @@ html.tv body.on-home #btn-home { display: none; }
 /* oynatıcı */
 #player { position: fixed; inset: 0; z-index: 60; background: #000; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .pl-hud { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 12px; min-width: 150px; padding: 12px 18px; border-radius: 16px; background: rgba(0, 0, 0, 0.7); color: #fff; pointer-events: none; font-weight: 600; }
+.pl-num { position: absolute; right: max(5%, env(safe-area-inset-right)); top: 12%; z-index: 6; min-width: 96px; padding: 10px 22px; border-radius: 14px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 2.75rem; font-weight: 700; letter-spacing: 0.08em; text-align: center; pointer-events: none; font-variant-numeric: tabular-nums; }
+.pl-num small { display: block; margin-top: 2px; font-size: 0.875rem; font-weight: 600; letter-spacing: 0; opacity: 0.85; }
 .pl-hud .ic { width: 28px; height: 28px; }
 .pl-hud .hud-t { white-space: nowrap; }
 .pl-hud .hud-bar { width: 84px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
@@ -364,7 +366,7 @@ html.native-preview .sp-slot { background: transparent; }
 
 /* canlı TV önizleme penceresi: oynatıcı katmanı küçülüp önizleme yuvasına oturur */
 body #player.preview { inset: auto; z-index: 5; background: #000; touch-action: manipulation; }
-body #player.preview #pl-ui, body #player.preview #pl-hud, body #player.preview #pl-status { display: none; }
+body #player.preview #pl-ui, body #player.preview #pl-hud, body #player.preview #pl-num, body #player.preview #pl-status { display: none; }
 body #player.preview #vid { inset: 0; }
 html.native-preview #player { display: none; }
 

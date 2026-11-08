@@ -136,6 +136,7 @@ export class M3UParser {
       group,
       tvgId: a['tvg-id'] || '',
       tvgName: a['tvg-name'] || '',
+      chno: parseInt(a['tvg-chno'] || a['channel-number'] || '', 10) || 0,
       kind: classify(url, name, group),
       headers,
     });
