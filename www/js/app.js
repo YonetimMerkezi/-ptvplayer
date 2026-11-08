@@ -1448,7 +1448,15 @@ function holeRects() {
 }
 
 function syncHole() {
-  $('#bgfill').style.clipPath = holeClip(holeRects());
+  const rects = holeRects();
+  $('#bgfill').style.clipPath = holeClip(rects);
+
+  // Küçük oynatıcı, yerel Android video yüzeyinin WebView arkasında çizilmesini kullanır.
+  // Yalnız #bgfill'i kesmek yetmez: #app içindeki film kartları ve gezinme çubuğu da
+  // videonun üstünde kalır. Küçük oynatıcı dikdörtgenini tüm uygulama katmanından çıkar.
+  // mini-player-overlay body altında, #app dışında olduğundan genişlet/kapat denetimleri görünür kalır.
+  const mini = S.miniplayer && pui.isPreviewing() ? previewRect() : null;
+  $('#app').style.clipPath = mini && mini.w > 0 && mini.h > 0 ? holeClip([mini]) : '';
 }
 
 function layoutPreview() {
