@@ -228,3 +228,18 @@ test('ses senkronu: yöntem köprüde, yalnız ana oynatıcıda ses işlemcisi, 
   assert.match(islemci, /C\.ENCODING_PCM_16BIT\) return AudioProcessor\.AudioFormat\.NOT_SET/, 'PCM 16 bit dışında ses olduğu gibi geçmeli');
   assert.match(islemci, /protected void onFlush\(\)[\s\S]*?core\.reset\(/, 'değer her sarmada yeniden okunmalı');
 });
+
+test('veri eşitleme: sunucu /sync yolu yalnız eşleşmiş telefondan, büyük gövde yalnız /sync için; uygulama yanıtı beklenir', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const server = readFileSync(join(here, '../android/app/src/main/java/com/koruk/iptv/CastServer.java'), 'utf8');
+  const plugin = kaynak;
+  const bridge = readFileSync(join(here, '../www/js/bridge.js'), 'utf8');
+  assert.match(server, /case "POST \/sync": \{\s*if \(!authed\) return response\(401/, '/sync token ister');
+  assert.match(server, /"\/sync"\.equals\(r\.path\) && tk != null && tokens\.containsKey\(tk\)/, 'büyük gövde yalnız eşleşmiş telefondan');
+  assert.match(server, /len > \(bigOk \? MAX_SYNC_BODY : MAX_BODY\)/);
+  assert.match(plugin, /q\.poll\(25, TimeUnit\.SECONDS\)/, 'yanıt zaman aşımıyla beklenir');
+  assert.match(plugin, /notifyListeners\("castSync", o\)/);
+  assert.match(plugin, /syncWaiting\.remove\(id\)/, 'bekleyen kayıt her durumda temizlenir');
+  assert.match(plugin, /Math\.min\(30000, d\.optInt\("timeoutMs", 4000\)\)/, 'eşitleme isteği için uzun zaman aşımı');
+  assert.match(bridge, /castSyncReply: call\('castSyncReply'\)/);
+});

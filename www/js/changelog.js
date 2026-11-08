@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 10,
+    title: 'TV ile eşitleme',
+    items: [
+      'Telefondan Ayarlar › Genel › Yedekle / geri yükle › “TV ile eşitle”: kaynak, favori, son izlenen, izleme ilerlemesi ve kategori düzeni iki cihazda birbirini tamamlar',
+      'İki cihazda var olan hiçbir şey değişmez ya da silinmez; her cihaz yalnız eksik olanı alır',
+      'Ayarlar eşitlenmez; TV’de uygulama açık ve aynı Wi‑Fi’de olmalı',
+    ],
+  },
+  {
     id: 9,
     title: 'Ses senkronu',
     items: [

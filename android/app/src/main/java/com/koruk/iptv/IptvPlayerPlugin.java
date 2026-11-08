@@ -76,8 +76,13 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * IPTV oynatıcı eklentisi.
@@ -112,6 +117,9 @@ public class IptvPlayerPlugin extends Plugin {
     private volatile long castDur = -1;
     private volatile String castTitle = "";
     private volatile String castKind = "";
+    // Veri eşitleme: telefondan gelen istek uygulamaya (JS) iletilir, yanıt castSyncReply ile dönene kadar beklenir.
+    private final ConcurrentHashMap<String, BlockingQueue<String[]>> syncWaiting = new ConcurrentHashMap<>();
+    private final AtomicInteger syncSeq = new AtomicInteger();
     private volatile boolean foreground = true;
     private WifiManager.MulticastLock castLock; // bazı cihazlar uyku/ekran kapalıyken yayın paketlerini (UDP) süzer; TV'nin bulunması için tutulur
     private boolean ticking = false;
@@ -1361,6 +1369,29 @@ public class IptvPlayerPlugin extends Plugin {
         public void onTokens(Map<String, String> tokens) {
             castSaveTokens(tokens);
         }
+
+        @Override
+        public CastServer.Reply onSync(final String body) {
+            final String id = Integer.toHexString(syncSeq.incrementAndGet()) + Long.toHexString(System.nanoTime());
+            final BlockingQueue<String[]> q = new ArrayBlockingQueue<>(1);
+            syncWaiting.put(id, q);
+            try {
+                main.post(() -> {
+                    JSObject o = new JSObject();
+                    o.put("id", id);
+                    o.put("body", body);
+                    notifyListeners("castSync", o);
+                });
+                String[] r = q.poll(25, TimeUnit.SECONDS);
+                if (r == null) return new CastServer.Reply(504, "{\"error\":\"TV yanıt vermedi. TV’de uygulamanın açık olduğundan emin olun\"}");
+                return new CastServer.Reply("1".equals(r[0]) ? 200 : 422, r[1]);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return new CastServer.Reply(504, "{\"error\":\"Eşitleme kesildi\"}");
+            } finally {
+                syncWaiting.remove(id);
+            }
+        }
     };
 
     private void holdMulticast(boolean on) {
@@ -1520,6 +1551,14 @@ public class IptvPlayerPlugin extends Plugin {
         call.resolve();
     }
 
+    // Uygulamanın (JS) eşitleme yanıtı: bekleyen telefon isteğine iletilir.
+    @PluginMethod
+    public void castSyncReply(final PluginCall call) {
+        BlockingQueue<String[]> q = syncWaiting.get(call.getData().optString("id", ""));
+        if (q != null) q.offer(new String[] {call.getData().optBoolean("ok", false) ? "1" : "0", call.getData().optString("body", "{}")});
+        call.resolve();
+    }
+
     // Ağdaki TV alıcılarını arar.
     @PluginMethod
     public void castDiscover(final PluginCall call) {
@@ -1566,7 +1605,7 @@ public class IptvPlayerPlugin extends Plugin {
                     // ad gönderilmez
                 }
             }
-            CastClient.Response r = CastClient.request(d.optString("host", ""), d.optInt("port", CastServer.PORT), d.optString("method", "GET"), d.optString("path", "/"), h, d.optString("body", ""), Math.max(500, Math.min(10000, d.optInt("timeoutMs", 4000))));
+            CastClient.Response r = CastClient.request(d.optString("host", ""), d.optInt("port", CastServer.PORT), d.optString("method", "GET"), d.optString("path", "/"), h, d.optString("body", ""), Math.max(500, Math.min(30000, d.optInt("timeoutMs", 4000))));
             JSObject o = new JSObject();
             o.put("status", r.status);
             o.put("body", r.body);

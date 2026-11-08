@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, viewOf, createRemote, parseJson } from '../www/js/cast.js';
+import { buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, viewOf, createRemote, parseJson } from '../www/js/cast.js';
 
 const T = [{ url: 'http://a/x.m3u8', mime: 'hls' }, { url: 'http://b/x.m3u8', alt: 'Yedek', headers: { 'User-Agent': 'U' } }];
 
@@ -218,4 +218,20 @@ test('uzaktan kumanda: komut gönderir, sonucu döner, ardından durumu hızla y
   assert.equal(f.pending().length, 0);
   const bad = createRemote({ request: async () => ({ status: 0 }), setT: f.setT, clearT: f.clearT });
   assert.match((await bad.send({ a: 'play' })).msg, /ulaşılamadı/);
+});
+
+test('syncResult: başarı, eşleşme kaldırılmış, TV hatası/zaman aşımı, ulaşılamadı, bozuk yanıt', () => {
+  const snap = { app: 'iptv-oynatici-sync', v: 1, sources: [], data: {} };
+  const ok = syncResult({ status: 200, body: JSON.stringify({ ok: true, added: { favs: 2 }, snapshot: snap }) });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.added, { favs: 2 });
+  assert.deepEqual(ok.snapshot, snap);
+  assert.equal(syncResult({ status: 200, body: '{"ok":true}' }).ok, false, 'veri yoksa geçersiz');
+  assert.equal(syncResult({ status: 200, body: 'bozuk' }).ok, false);
+  assert.equal(syncResult({ status: 401, body: '' }).unpaired, true);
+  assert.equal(syncResult({ status: 422, body: '{"error":"Diğer cihazdaki uygulama daha yeni"}' }).msg, 'Diğer cihazdaki uygulama daha yeni');
+  assert.match(syncResult({ status: 504, body: '{"error":"TV yanıt vermedi"}' }).msg, /yanıt vermedi/);
+  assert.equal(syncResult({ status: 422, body: '' }).msg, 'Eşitleme yapılamadı');
+  assert.equal(syncResult({ status: 0, body: '' }).msg, 'TV’ye ulaşılamadı');
+  assert.equal(syncResult(null).ok, false);
 });

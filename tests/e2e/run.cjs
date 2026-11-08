@@ -952,9 +952,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           else if (c.a === 'stop') tv.state = { active: false };
           return { status: 200, body: '{"ok":true}' };
         }
+        if (a.path === '/sync') {
+          tv.synced = JSON.parse(a.body);
+          const snap = window.__tvSnap;
+          if (!snap) return { status: 422, body: '{"error":"Diğer cihazdaki uygulama daha yeni"}' };
+          return { status: 200, body: JSON.stringify({ ok: true, added: window.__tvAdded || {}, snapshot: snap }) };
+        }
         if (a.path === '/state') return { status: 200, body: JSON.stringify(tv.state) };
         if (a.path === '/unpair') return { status: 200, body: '{"ok":true}' };
         return { status: 404, body: '{}' };
+      },
+      castSyncReply: async (a) => {
+        window.__calls.push(['castSyncReply', a.id, a.ok, a.body]);
       },
       downloadApk: async ({ url }) => {
         window.__calls.push(['downloadApk', url]);
@@ -1453,6 +1462,95 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(((await page.evaluate(() => window.__iptv.store.pref('cast.tvs', []))).length) === 0, 'TV eşleşmeyi kaldırmışsa telefon da unutur ve yeniden eşleştirmeyi ister');
   await ctx.close();
 
+  // veri eşitleme: telefon başlatır, iki cihaz birbirinin eksiklerini alır, var olan değişmez
+  console.log('Telefon ↔ TV veri eşitleme');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    const sid = S.source.id;
+    store.setPref('cast.tvs', [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765, token: 'tok123' }]);
+    window.__found = [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765 }];
+    store.toggleFav(sid, { id: 'pf1', kind: 'live', name: 'Telefon Favori' });
+    store.setProgress(sid, { id: 'm1', kind: 'movie', name: 'Ortak Film', logo: '' }, 50000, 600000);
+    store.setPref('set.buffer', 'max');
+    window.__tvSnap = {
+      app: 'iptv-oynatici-sync',
+      v: 1,
+      at: 1,
+      sources: [
+        { id: 'srcTV', type: 'm3u', url: S.source.url, name: 'TV listesi' },
+        { id: 'srcX', type: 'xtream', server: 'http://tv.example:8080', user: 'ali', pass: 'gizli', name: 'TV hesabı' },
+      ],
+      data: {
+        'fav.srcTV': [{ id: 'tf1', kind: 'live', name: 'TV Favori', logo: '' }],
+        'prog.srcTV': {
+          m1: { id: 'm1', kind: 'movie', name: 'Ortak Film', logo: '', parent: null, pos: 400000, dur: 600000, at: 5 },
+          m2: { id: 'm2', kind: 'movie', name: 'Yalnız TV’de', logo: '', parent: null, pos: 30000, dur: 600000, at: 6 },
+        },
+        'fav.srcX': [{ id: 'xf', kind: 'live', name: 'Xtream Favori', logo: '' }],
+      },
+    };
+    window.__tvAdded = { sources: 0, favs: 1, recents: 0, progress: 0, folders: 0 };
+  });
+  const closeSheets = async () => {
+    for (let i = 0; i < 6 && (await page.$$('.sheet-back')).length; i++) {
+      await page.locator('.sheet-back [data-close]').last().click();
+      await sleep(150);
+    }
+  };
+  const openSync = async () => {
+    await page.click('#tabs [data-tab=sources]');
+    await page.click('[data-set=general]');
+    await page.click('#g-bk');
+    await page.waitForSelector('#bk-sync');
+    await page.click('#bk-sync');
+    await page.waitForSelector('.cast-row-d');
+    await page.click('.cast-row-d [data-i="0"]');
+  };
+  await openSync();
+  await page.waitForFunction(() => /Telefona eklenen/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
+  const smsg = await page.textContent('#toast');
+  ok(/TV’ye eklenen: 1 favori\./.test(smsg) && /Telefona eklenen: 1 kaynak, 2 favori, 1 ilerleme\./.test(smsg), 'sonuç iletisi iki yönü de söylüyor: ' + smsg.trim());
+  const posted = await page.evaluate(() => window.__tv.synced);
+  ok(posted && posted.app === 'iptv-oynatici-sync' && posted.sources.length === 1 && Object.keys(posted.data).some((k) => k.startsWith('fav.')), 'telefonun kaynak ve favorileri TV’ye gönderildi');
+  ok(!JSON.stringify(posted).includes('buffer') && !JSON.stringify(posted).includes('lock'), 'ayarlar ve uygulama şifresi gönderilmedi');
+  const got = await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    const sid = S.source.id;
+    return { sources: store.sources().map((x) => [x.type, x.pass || '']), favs: store.favs(sid).map((f) => f.id), m1: store.progress(sid, 'm1').pos, m2: !!store.progress(sid, 'm2'), buf: store.pref('set.buffer', ''), xf: store.favs(store.sources()[1].id).map((f) => f.id) };
+  });
+  ok(got.sources.length === 2 && got.sources[1][0] === 'xtream' && got.sources[1][1] === 'gizli', 'TV’deki yeni kaynak telefona eklendi (bilgileriyle)');
+  ok(JSON.stringify(got.favs) === JSON.stringify(['pf1', 'tf1']) && got.xf[0] === 'xf', 'TV’nin favorileri telefona eklendi, telefondaki sıra bozulmadı');
+  ok(got.m1 === 50000 && got.m2, 'ortak filmin telefondaki ilerlemesi korundu, yalnız TV’deki eklendi');
+  ok(got.buf === 'max', 'telefonun ayarı değişmedi');
+  // aynı veriyle ikinci kez: değişiklik yok
+  await page.evaluate(() => {
+    window.__tvAdded = {};
+    const { store } = window.__iptv;
+    window.__tvSnap.sources = window.__tvSnap.sources.map((x) => x);
+    window.__tvSnap.data['fav.srcTV'] = [{ id: 'tf1', kind: 'live', name: 'TV Favori', logo: '' }, { id: 'pf1', kind: 'live', name: 'Telefon Favori', logo: '' }];
+    window.__keep = store.sources().length;
+  });
+  await closeSheets();
+  await openSync();
+  await page.waitForFunction(() => /Zaten eşit/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
+  ok(await page.evaluate(() => window.__iptv.store.sources().length === window.__keep), 'ikinci eşitlemede yeni bir şey eklenmedi');
+  // eşleşme kaldırılmışsa
+  await page.evaluate(() => {
+    window.__tv.token = 'baska';
+  });
+  await closeSheets();
+  await openSync();
+  await page.waitForFunction(() => /eşleşmesi kaldırılmış/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
+  ok(true, 'TV eşleşmeyi kaldırmışsa eşitleme bunu söyler');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
   // TV tarafı (alıcı)
   ({ page, ctx, errs } = await newPage({ width: 915, height: 412 }, nativeInit));
   await page.waitForSelector('#f');
@@ -1469,6 +1567,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => window.__emit('castPlay', { title: 'Evdeki Film', kind: 'vod', startMs: 65000, targets: [{ url: 'file:///etc/passwd' }] }));
   await sleep(300);
   ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'play'))), 'geçersiz (dosya adresli) istek oynatılmadı');
+  // telefondan veri eşitleme isteği: birleştirilir, birleşmiş veri telefona yanıt olur
+  const tvSid = await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    store.toggleFav(S.source.id, { id: 'tvf', kind: 'live', name: 'TV’nin favorisi' });
+    return S.source.id;
+  });
+  await page.evaluate((sid) => {
+    const { S } = window.__iptv;
+    window.__emit('castSync', {
+      id: 'sy1',
+      body: JSON.stringify({ app: 'iptv-oynatici-sync', v: 1, at: 1, sources: [{ id: 'srcPh', type: 'm3u', url: S.source.url, name: 'Telefon' }], data: { 'fav.srcPh': [{ id: 'phf', kind: 'live', name: 'Telefon favorisi', logo: '' }, { id: 'tvf', kind: 'live', name: 'Aynı', logo: '' }] } }),
+    });
+  }, tvSid);
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castSyncReply' && c[1] === 'sy1'), null, { timeout: 5000 });
+  const sr = await page.evaluate(() => {
+    const c = window.__calls.find((x) => x[0] === 'castSyncReply' && x[1] === 'sy1');
+    return { ok: c[2], body: JSON.parse(c[3]), favs: window.__iptv.store.favs(window.__iptv.S.source.id).map((f) => f.id) };
+  });
+  ok(sr.ok === true && sr.body.added.favs === 1 && sr.body.snapshot.sources.length === 1, 'TV: gelen eşitleme birleştirildi ve telefona birleşmiş veri döndü');
+  ok(JSON.stringify(sr.favs) === JSON.stringify(['tvf', 'phf']), 'TV’deki favori sırası korundu, telefonun eksik favorisi eklendi');
+  ok(/Telefonla eşitlendi: 1 favori/.test(await page.textContent('#toast')), 'TV ekranında bilgi verildi');
+  await page.evaluate(() => window.__emit('castSync', { id: 'sy2', body: 'bozuk' }));
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castSyncReply' && c[1] === 'sy2'), null, { timeout: 5000 });
+  ok(await page.evaluate(() => { const c = window.__calls.find((x) => x[0] === 'castSyncReply' && x[1] === 'sy2'); return c[2] === false && /Geçersiz/.test(JSON.parse(c[3]).error); }), 'TV: bozuk eşitleme verisi reddedildi, telefona hata döndü');
   await page.evaluate(() => window.__emit('castPlay', { title: 'Evdeki Film', kind: 'vod', startMs: 65000, targets: [{ url: 'http://192.168.1.50/m/film.mp4', mime: 'auto' }] }));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'), null, { timeout: 5000 });
   const tp = await page.evaluate(() => window.__calls.find((c) => c[0] === 'play'));

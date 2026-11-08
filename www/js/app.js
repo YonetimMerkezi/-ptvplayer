@@ -2299,8 +2299,15 @@ async function saveBackupFile() {
 function backupSheet() {
   const sh = openSheet({
     title: 'Yedekle / geri yükle',
-    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button><label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
+    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori, izleme geçmişi ve kategori düzenini karşılıklı tamamlar; iki cihazda var olan hiçbir şey değişmez</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
     mount: (body) => {
+      const syncBtn = $('#bk-sync', body);
+      if (syncBtn) {
+        syncBtn.addEventListener('click', () => {
+          sh.close();
+          castUi.syncWithTv();
+        });
+      }
       $('#bk-save', body).addEventListener('click', async () => {
         if (!(await backupGuard())) return;
         try {
@@ -2360,7 +2367,20 @@ const castUi = createCastUI({
   stopCast: () => {
     if (pui.isOpen()) pui.close();
   },
+  guard: () => backupGuard(),
+  onSynced: () => afterSync(),
 });
+
+// Eşitlemeden sonra ekran yeni veriyle tazelenir (kaynak hiç yoktuysa uygulama yenilenir, yedek geri yüklemedeki gibi).
+function afterSync() {
+  if (!S.source && store.sources().length) {
+    toast('Veriler eşitlendi, uygulama yenileniyor…', 2500);
+    setTimeout(() => location.reload(), 700);
+    return;
+  }
+  if (S.source) S.prog = store.progressAll(S.source.id);
+  renderTab();
+}
 
 function castItem(item, ep, { startMs = 0, ctx = null, closePlayer = false } = {}) {
   const targets = targetsOf(item, ep);
@@ -2376,7 +2396,6 @@ function castItem(item, ep, { startMs = 0, ctx = null, closePlayer = false } = {
     onSent: async () => {
       if (!closePlayer || !pui.isOpen()) return;
       pui.close();
-      for (let i = 0; i < 50 && pui.isOpen(); i++) await new Promise((r) => setTimeout(r, 20)); // geri gidiş bitmeden yeni sayfa açılırsa o da kapanır
     },
     onProgress: live ? null : (pos, dur) => saveProgress(item, ep, pos, dur),
     // canlıda telefondan kanal değiştirme: bulunduğumuz listede bir önceki/sonraki kanal

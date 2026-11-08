@@ -1,8 +1,9 @@
 // Telefondan TV'ye oynatma: ekranlar. Telefonda "TV'de oynat" seçici + uzaktan kumanda sayfası,
 // TV'de Ayarlar › Telefondan oynat (eşleştirme kodu) ve gelen oynatma isteğinin karşılanması.
-import { CAST_PORT, CODE_LEN, buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, createRemote } from './cast.js';
+import { CAST_PORT, CODE_LEN, buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, createRemote } from './cast.js';
+import { makeSnapshot, parseSnapshot, applySnapshot, emptyAdded, addedTotal, describeAdded, syncMessage } from './sync.js';
 
-// deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast() }
+// deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast(), guard()?, onSynced() }
 export function createCastUI(deps) {
   const { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration } = deps;
   const devices = createDevices(store);
@@ -35,7 +36,7 @@ export function createCastUI(deps) {
   }
 
   // TV seçtirir: kayıtlı TV'ler hemen, ağdakiler arama bitince listelenir. Seçilen eşleşmemişse kod istenir. → cihaz | null
-  function chooseTv() {
+  function chooseTv(title = 'TV’de oynat') {
     return new Promise((resolve) => {
       let done = false;
       let list = [];
@@ -48,7 +49,7 @@ export function createCastUI(deps) {
         resolve(v);
       };
       const sh = openSheet({
-        title: 'TV’de oynat',
+        title,
         html: '<div id="cs-list"></div><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="TV’nin IP adresi (örn. 192.168.1.20)" autocomplete="off"><button class="btn" id="cs-ipgo">Ekle</button></div><p class="hint">Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı eşleştirme kodunu gösterir.</p>',
         mount: (body, api) => {
           const box = body.querySelector('#cs-list');
@@ -172,6 +173,26 @@ export function createCastUI(deps) {
     if (!res.ok) return toast(res.msg, 4000);
     if (args.onSent) await args.onSent();
     remoteScreen(dev, payload, args);
+  }
+
+  // Veri eşitleme (telefon başlatır): kaynaklar, favoriler, son izlenenler, ilerleme, kategori düzeni karşılıklı birleştirilir.
+  // Hiçbir cihazda var olan değer değişmez; her biri yalnız diğerinde olup kendinde olmayanları alır.
+  async function syncWithTv() {
+    if (!plugin) return toast('TV ile eşitleme yalnız Android uygulamasında çalışır');
+    if (deps.guard && !(await deps.guard())) return; // veriler kullanıcı adı/parola içerir
+    const dev = await chooseTv('TV ile eşitle');
+    if (!dev) return;
+    toast('Eşitleniyor…', 15000);
+    const res = syncResult(await request(dev, '/sync', 'POST', JSON.stringify(makeSnapshot(store)), { timeoutMs: 30000 }));
+    if (res.unpaired) {
+      devices.forget(dev.id);
+      return toast(res.msg, 4000);
+    }
+    if (!res.ok) return toast(res.msg, 4000);
+    const parsed = parseSnapshot(res.snapshot);
+    const mine = parsed.ok ? applySnapshot(store, parsed.snap) : emptyAdded();
+    if (deps.onSynced) deps.onSynced();
+    toast(syncMessage({ ...emptyAdded(), ...res.added }, mine), 7000);
   }
 
   function remoteScreen(dev, sent, args) {
@@ -303,6 +324,23 @@ export function createCastUI(deps) {
       if (r) deps.playCast(r);
     }).catch(() => {});
     plugin.addListener('castStop', () => deps.stopCast()).catch(() => {});
+    // Telefondan veri eşitleme: gelen veri bu TV'nin verisiyle birleştirilir, birleşmiş veri telefona yanıt olur.
+    plugin.addListener('castSync', (e) => {
+      let reply;
+      try {
+        const parsed = parseSnapshot(e && e.body);
+        if (!parsed.ok) reply = { ok: false, body: JSON.stringify({ error: parsed.error }) };
+        else {
+          const added = applySnapshot(store, parsed.snap);
+          if (deps.onSynced) deps.onSynced();
+          if (addedTotal(added)) toast('Telefonla eşitlendi: ' + describeAdded(added), 5000);
+          reply = { ok: true, body: JSON.stringify({ ok: true, added, snapshot: makeSnapshot(store) }) };
+        }
+      } catch {
+        reply = { ok: false, body: JSON.stringify({ error: 'TV eşitlemeyi uygulayamadı' }) };
+      }
+      plugin.castSyncReply({ id: e && e.id, ok: reply.ok, body: reply.body }).catch(() => {});
+    }).catch(() => {});
   }
 
   // Oynatıcıdan gelen durumla "şu an çalan"ı eklentiye bildirir (telefon kumandası başlığı gösterir).
@@ -415,5 +453,5 @@ export function createCastUI(deps) {
     });
   }
 
-  return { sendToTv, receiverSheet, startReceiver, listen, nowPlaying, devices };
+  return { sendToTv, syncWithTv, receiverSheet, startReceiver, listen, nowPlaying, devices };
 }

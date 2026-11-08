@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Telefondan TV'ye oynatma: TV tarafındaki küçük alıcı sunucu (yalnızca yerel ağ).
- * - TCP/HTTP: /hello, /pair, /play, /cmd, /state, /unpair. Eşleşmiş telefon X-Token başlığıyla gelir.
+ * - TCP/HTTP: /hello, /pair, /play, /cmd, /state, /sync, /unpair. Eşleşmiş telefon X-Token başlığıyla gelir.
  * - UDP (aynı port numarası): "IPTVPRO?" yayınına "IPTVPRO!{hello}" yanıtı verir; telefon TV'yi böyle bulur.
  * Eşleştirme: TV ekranındaki 6 haneli kod bir kez girilir; geçerlilik süresi ve deneme sayısı sınırlıdır.
  * Android'e bağlı değildir (düz Java); oynatıcıyla konuşma Host arayüzü üzerinden yapılır.
@@ -44,6 +44,8 @@ final class CastServer {
     static final String A = "IPTVPRO!";
     static final int MAX_HEADER = 16 * 1024;
     static final int MAX_BODY = 64 * 1024;
+    // Eşitleme verisi (kaynaklar, favoriler, ilerleme) daha büyük olabilir; yalnız eşleşmiş telefon bu kadar gönderebilir.
+    static final int MAX_SYNC_BODY = 4 * 1024 * 1024;
     static final int MAX_PAIR_FAILS = 5;
 
     interface Host {
@@ -56,8 +58,22 @@ final class CastServer {
         /** Şu anki oynatma durumu (JSON nesnesi). */
         String state();
 
+        /** Veri eşitleme (JSON gövde): birleştirmeyi uygulama yapar, yanıtı (durum kodu + JSON) döndürür. */
+        Reply onSync(String bodyJson);
+
         /** Eşleşmiş cihazlar değişti (token → telefon adı): kalıcı olarak saklanmalı. */
         void onTokens(Map<String, String> tokens);
+    }
+
+    /** Eşitleme yanıtı: HTTP durum kodu ve JSON gövde. */
+    static final class Reply {
+        final int status;
+        final String json;
+
+        Reply(int status, String json) {
+            this.status = status;
+            this.json = json;
+        }
     }
 
     private final Host host;
@@ -294,7 +310,7 @@ final class CastServer {
         }
     }
 
-    private static Req readRequest(InputStream in) throws IOException {
+    private Req readRequest(InputStream in) throws IOException {
         ByteArrayOutputStream head = new ByteArrayOutputStream();
         int state = 0; // \r\n\r\n arama
         int c;
@@ -328,7 +344,9 @@ final class CastServer {
                 return null;
             }
         }
-        if (len < 0 || len > MAX_BODY) return null;
+        String tk = r.h.get("x-token");
+        boolean bigOk = "/sync".equals(r.path) && tk != null && tokens.containsKey(tk); // büyük gövde yalnız eşleşmiş telefondan
+        if (len < 0 || len > (bigOk ? MAX_SYNC_BODY : MAX_BODY)) return null;
         byte[] body = new byte[len];
         int got = 0;
         while (got < len) {
@@ -362,6 +380,11 @@ final class CastServer {
                     if (!authed) return response(401, "{\"error\":\"auth\"}");
                     String err = host.onCommand(r.body);
                     return err == null ? response(200, "{\"ok\":true}") : response(422, "{\"error\":" + q(err) + "}");
+                }
+                case "POST /sync": {
+                    if (!authed) return response(401, "{\"error\":\"auth\"}");
+                    Reply rep = host.onSync(r.body);
+                    return response(rep.status, rep.json);
                 }
                 case "POST /unpair":
                     if (!authed) return response(401, "{\"error\":\"auth\"}");
@@ -411,7 +434,7 @@ final class CastServer {
 
     private static byte[] response(int code, String json) {
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
-        String text = code == 200 ? "OK" : code == 400 ? "Bad Request" : code == 401 ? "Unauthorized" : code == 403 ? "Forbidden" : code == 404 ? "Not Found" : code == 422 ? "Unprocessable" : "Error";
+        String text = code == 200 ? "OK" : code == 400 ? "Bad Request" : code == 401 ? "Unauthorized" : code == 403 ? "Forbidden" : code == 404 ? "Not Found" : code == 413 ? "Payload Too Large" : code == 422 ? "Unprocessable" : code == 504 ? "Gateway Timeout" : "Error";
         String head = "HTTP/1.1 " + code + " " + text + "\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: " + body.length + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
         byte[] h = head.getBytes(StandardCharsets.ISO_8859_1);
         byte[] out = new byte[h.length + body.length];

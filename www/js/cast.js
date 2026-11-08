@@ -135,6 +135,21 @@ export function sendResult(r) {
   return { ok: false, msg: 'TV’ye ulaşılamadı' };
 }
 
+// Eşitleme yanıtı: TV'nin eklediği sayılar ve birleştirme sonrası kendi verisi.
+export function syncResult(r) {
+  if (r && r.status === 200) {
+    const j = parseJson(r.body);
+    if (j && j.ok && j.snapshot && typeof j.snapshot === 'object') return { ok: true, added: j.added && typeof j.added === 'object' ? j.added : {}, snapshot: j.snapshot };
+    return { ok: false, msg: 'TV’den geçersiz yanıt geldi' };
+  }
+  if (r && r.status === 401) return { ok: false, unpaired: true, msg: 'Bu telefonun TV ile eşleşmesi kaldırılmış. Yeniden eşleştirin.' };
+  if (r && (r.status === 422 || r.status === 504)) {
+    const j = parseJson(r.body) || {};
+    return { ok: false, msg: j.error ? String(j.error) : 'Eşitleme yapılamadı' };
+  }
+  return { ok: false, msg: 'TV’ye ulaşılamadı' };
+}
+
 // ---- uzaktan kumanda ekranı için durum ----
 
 const STATE_TEXT = { playing: 'Oynatılıyor', paused: 'Duraklatıldı', buffering: 'Yükleniyor…', ended: 'Bitti', idle: 'Hazırlanıyor…' };
