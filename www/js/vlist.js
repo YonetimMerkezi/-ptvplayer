@@ -24,11 +24,13 @@ export class VirtualList {
     el.addEventListener('scroll', this._onScroll, { passive: true });
     this._ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.layout()) : null;
     if (this._ro) this._ro.observe(el);
-    el.addEventListener('keydown', (ev) => this._key(ev));
-    el.addEventListener('click', (ev) => {
+    this._onKey = (ev) => this._key(ev);
+    this._onClick = (ev) => {
       const t = ev.target.closest('[data-i]');
       if (t && this.el.contains(t)) this.o.onTap(Number(t.dataset.i), ev, t);
-    });
+    };
+    el.addEventListener('keydown', this._onKey);
+    el.addEventListener('click', this._onClick);
   }
 
   setItems(items, keepScroll = false) {
@@ -118,6 +120,10 @@ export class VirtualList {
 
   destroy() {
     this.el.removeEventListener('scroll', this._onScroll);
+    this.el.removeEventListener('keydown', this._onKey);
+    this.el.removeEventListener('click', this._onClick);
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = 0;
     if (this._ro) this._ro.disconnect();
   }
 }

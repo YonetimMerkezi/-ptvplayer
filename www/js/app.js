@@ -11,7 +11,7 @@ import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
 import { VirtualList } from './vlist.js';
-import { initNav } from './nav.js';
+import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, fmtAgo } from './ui.js';
 
@@ -35,7 +35,11 @@ const S = {
   epg: new EpgView(null),
   epgInfo: null,
   tab: store.pref('tab', 'live'),
+  // Kategori ekranı: null = kategori listesi, '__all' / '__recent' / '__cont' = özel listeler, aksi hâlde grup adı
   group: { live: null, movie: null, series: null },
+  catFilter: '',
+  cats: [],
+  listMode: null,
   favKind: 'live',
   query: '',
   items: [],
@@ -43,6 +47,9 @@ const S = {
   loading: false,
   prog: {},
 };
+
+let groupLayer = 0; // açık "kategori içi" geri tuşu katmanının kimliği (0 = yok)
+let layerSeq = 0;
 
 let player;
 let engine;
@@ -74,12 +81,9 @@ player.onProgress((pos, dur, st) => {
 
 // Oynatıcı kapanınca "Devam et" çipi ve ilerleme çubukları güncellensin.
 player.on((st) => {
-  if (st.status !== 'idle' || !S.list || !$('#chips')) return;
-  const kind = TAB_KIND[S.tab];
-  if (kind) {
-    drawChips(kind);
-    S.list.refreshRows();
-  }
+  if (st.status !== 'idle' || !S.list || !TAB_KIND[S.tab] || !$('#list')) return;
+  if (S.listMode === 'cats') refreshList(true);
+  else S.list.refreshRows();
 });
 
 // ------------------------------------------------------------------ yardımcılar
@@ -106,7 +110,7 @@ function setCatalog(cat) {
     series: new Map(cat.series.map((i) => [i.id, i])),
   };
   S.groups = { live: groupList(cat.live), movie: groupList(cat.movies), series: groupList(cat.series) };
-  S.group = { live: null, movie: null, series: null };
+  pruneGroups();
 }
 
 function resolve(entry, kind) {
@@ -144,6 +148,7 @@ async function activate(id, { force = false } = {}) {
   S.epgInfo = null;
   const raw = await store.cache.get('cat:' + id);
   const cached = catalogFromStorable(raw);
+  resetGroups();
   setCatalog(cached || emptyCatalog());
   S.epg = new EpgView(await store.cache.get('epg:' + id));
   renderTop();
@@ -207,6 +212,7 @@ function setTab(tab) {
   S.tab = tab;
   store.setPref('tab', tab);
   closeSearch(true);
+  resetGroups();
   renderTab();
 }
 
@@ -243,9 +249,13 @@ function currentItems(kind) {
   const all = S.cat[CAT_KEY[kind]];
   if (S.query) return search(all, S.query);
   const g = S.group[kind];
-  if (g === '__recent') return store.recents(sid()).filter((r) => r.kind === kind).map((r) => resolve(r, kind)).filter(Boolean);
+  if (g === '__recent') return recentItems(kind);
   if (g === '__cont') return continueItems(kind);
-  return g ? inGroup(all, g) : all;
+  return g && g !== '__all' ? inGroup(all, g) : all;
+}
+
+function recentItems(kind) {
+  return store.recents(sid()).filter((r) => r.kind === kind).map((r) => resolve(r, kind)).filter(Boolean);
 }
 
 function continueItems(kind) {
@@ -263,50 +273,113 @@ function continueItems(kind) {
   return out;
 }
 
-const MAX_CHIPS = 14;
+// Kategori ekranı: her sekme önce kategorileri gösterir, bir kategoriye dokununca içeriği açılır.
 
-function drawChips(kind) {
-  const el = $('#chips');
-  const groups = S.groups[kind];
-  const cur = S.group[kind];
-  const chip = (val, label, n) =>
-    `<button class="chip ${cur === val ? 'on' : ''}" data-g="${esc(val ?? '')}">${esc(label)}${n != null ? `<small>${n}</small>` : ''}</button>`;
-  const total = S.cat[CAT_KEY[kind]].length;
-  const parts = [chip(null, 'Tümü', total)];
-  if (kind === 'live') parts.push(chip('__recent', 'Son izlenen', null));
-  else {
-    const n = continueItems(kind).length;
-    if (n) parts.push(chip('__cont', 'Devam et', n));
-  }
-  const shown = groups.slice(0, MAX_CHIPS);
-  if (cur && !cur.startsWith('__') && !shown.some((g) => g.name === cur)) {
-    const g = groups.find((x) => x.name === cur);
-    if (g) parts.push(chip(g.name, g.name, g.count));
-  }
-  for (const g of shown) parts.push(chip(g.name, g.name, g.count));
-  if (groups.length > MAX_CHIPS) parts.push('<button class="chip" data-all>Tüm gruplar ▾</button>');
-  el.innerHTML = parts.join('');
+function groupTitle(g) {
+  return { __all: 'Tümü', __recent: 'Son izlenen', __cont: 'Devam et' }[g] || g;
 }
 
-function renderBrowse(v, kind) {
-  v.innerHTML = '<div class="chips" id="chips"></div><div id="list"></div><div id="empty" hidden></div>';
-  $('#chips').addEventListener('click', (e) => {
-    if (e.target.closest('[data-all]')) return groupSheet(kind);
-    const b = e.target.closest('[data-g]');
-    if (!b) return;
-    S.group[kind] = b.dataset.g === '' ? null : b.dataset.g;
-    closeSearch(true);
-    drawChips(kind);
-    refreshList();
-  });
-  drawChips(kind);
-  mountList(kind);
+function browseMode(kind) {
+  return !S.query && S.group[kind] == null ? 'cats' : 'items';
+}
+
+function categoryRows(kind) {
+  const rows = [{ key: '__all', name: 'Tümü', count: S.cat[CAT_KEY[kind]].length, special: true }];
+  if (kind === 'live') rows.push({ key: '__recent', name: 'Son izlenen', count: recentItems(kind).length, special: true });
+  else {
+    const n = continueItems(kind).length;
+    if (n) rows.push({ key: '__cont', name: 'Devam et', count: n, special: true });
+  }
+  for (const g of S.groups[kind]) rows.push({ key: g.name, name: g.name, count: g.count });
+  const f = fold(S.catFilter);
+  return f ? rows.filter((r) => fold(r.name).includes(f)) : rows;
+}
+
+function catRow(c, i) {
+  return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm">${esc(c.name)}</div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
+}
+
+// Kategoriye gir: Android geri tuşu bir adım geri (kategori listesine) döner.
+function enterGroup(kind, g) {
+  closeSearch(true);
+  S.group[kind] = g;
+  if (!groupLayer) {
+    const id = ++layerSeq;
+    groupLayer = id;
+    pushLayer('group', () => {
+      if (groupLayer !== id) return;
+      groupLayer = 0;
+      const k = TAB_KIND[S.tab];
+      if (k && S.group[k] != null) {
+        S.group[k] = null;
+        refreshList();
+      }
+    });
+  }
   refreshList();
 }
 
-function mountList(kind) {
+function leaveGroup(kind) {
+  if (groupLayer) return popLayer('group');
+  S.group[kind] = null;
+  refreshList();
+}
+
+function dropGroupLayer() {
+  if (!groupLayer) return;
+  groupLayer = 0; // eski katmanın onClose'u artık etkisiz
+  if (topLayer() === 'group') popLayer('group'); // üstte alt sayfa/oynatıcı varsa onlara dokunma
+}
+
+function resetGroups() {
+  S.group = { live: null, movie: null, series: null };
+  S.catFilter = '';
+  dropGroupLayer();
+}
+
+// Liste yenilenince, artık var olmayan kategoriden çık.
+function pruneGroups() {
+  for (const k of Object.keys(S.group)) {
+    const g = S.group[k];
+    if (g && !g.startsWith('__') && !S.groups[k].some((x) => x.name === g)) S.group[k] = null;
+  }
+  if (!Object.values(S.group).some((g) => g != null)) dropGroupLayer();
+}
+
+function drawCrumb(kind) {
+  const g = S.group[kind];
+  const inGroupView = !S.query && g != null;
+  $('#crumb').hidden = !inGroupView;
+  if (inGroupView) {
+    $('#crumb-t').textContent = groupTitle(g);
+    $('#crumb-n').textContent = S.items.length;
+  }
+}
+
+function renderBrowse(v, kind) {
+  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small></div><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><div id="list"></div><div id="empty" hidden></div>`;
+  $('#crumb-back').addEventListener('click', () => leaveGroup(kind));
+  $('#cat-q').value = S.catFilter;
+  $('#cat-q').addEventListener(
+    'input',
+    debounce((e) => {
+      S.catFilter = e.target.value.trim();
+      refreshList();
+    }, 120),
+  );
+  refreshList();
+}
+
+function mountList(kind, mode = 'items') {
   const el = $('#list');
-  if (kind === 'live') {
+  S.listMode = mode;
+  if (mode === 'cats') {
+    S.list = new VirtualList(el, {
+      rowH: 56,
+      render: (c, i) => catRow(c, i),
+      onTap: (i) => S.cats[i] && enterGroup(kind, S.cats[i].key),
+    });
+  } else if (kind === 'live') {
     S.list = new VirtualList(el, {
       rowH: 64,
       render: (it, i) => liveRow(it, i),
@@ -329,26 +402,36 @@ function mountList(kind) {
   }
 }
 
-function refreshList() {
-  if (!S.list) return;
-  if (S.tab === 'favs') return refreshFavs();
+function refreshList(keepScroll = false) {
+  if (S.tab === 'favs') return S.list ? refreshFavs() : undefined;
   const kind = TAB_KIND[S.tab];
-  if (!kind) return;
-  S.items = currentItems(kind);
-  S.list.setItems(S.items);
+  if (!kind || !$('#list')) return;
+  const mode = browseMode(kind);
+  if (!S.list || S.listMode !== mode) {
+    if (S.list) S.list.destroy();
+    mountList(kind, mode);
+    keepScroll = false;
+  }
+  const all = S.cat[CAT_KEY[kind]].length;
+  S.items = mode === 'cats' ? [] : currentItems(kind);
+  S.cats = mode === 'cats' ? categoryRows(kind) : [];
+  const rows = mode === 'cats' ? S.cats : S.items;
+  S.list.setItems(rows, keepScroll);
+  drawCrumb(kind);
   const empty = $('#empty');
-  const none = !S.items.length;
+  const none = mode === 'cats' ? !all || !rows.length : !rows.length;
+  $('#catq').hidden = !(mode === 'cats' && all && (S.groups[kind].length > 8 || S.catFilter));
   $('#list').hidden = none;
   empty.hidden = !none;
   if (none) {
-    const all = S.cat[CAT_KEY[kind]].length;
     const label = { live: 'kanal', movie: 'film', series: 'dizi' }[kind];
     if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${label} bulunamadı.`);
     else if (!all && S.loading) empty.innerHTML = emptyHtml('Yükleniyor…', 'Liste indiriliyor, birazdan hazır olur.');
     else if (!all) empty.innerHTML = emptyHtml(`Bu kaynakta ${label} yok`, 'Listeyi yenilemeyi ya da başka bir kaynak seçmeyi deneyin.', '<button class="btn" id="e-refresh">Listeyi yenile</button>');
+    else if (mode === 'cats') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
     else if (S.group[kind] === '__recent') empty.innerHTML = emptyHtml('Henüz izlemediniz', 'İzlediğiniz kanallar burada görünür.');
     else if (S.group[kind] === '__cont') empty.innerHTML = emptyHtml('Yarım kalan yok', 'Yarıda bıraktığınız içerikler burada görünür.');
-    else empty.innerHTML = emptyHtml('Bu grupta öğe yok', '');
+    else empty.innerHTML = emptyHtml('Bu kategoride öğe yok', '');
     const b = $('#e-refresh');
     if (b) b.addEventListener('click', () => refreshCatalog());
   }
@@ -367,35 +450,6 @@ function card(it, i) {
   const ph = esc(it.name.slice(0, 2).toUpperCase());
   const img = it.logo ? `<img src="${esc(it.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">` : '';
   return `<div class="card" role="button" tabindex="0" data-i="${i}"><div class="poster"><div class="ph">${ph}</div>${img}${isFav(it) ? `<span class="fav">${icon('star-on')}</span>` : ''}${pct ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}</div><div class="cap">${esc(it.name)}</div></div>`;
-}
-
-function groupSheet(kind) {
-  const groups = S.groups[kind];
-  const sh = openSheet({
-    title: 'Gruplar',
-    html: '<label class="field"><input id="g-q" type="search" placeholder="Grup ara…" autocomplete="off"></label><div id="g-list"></div>',
-    mount: (body) => {
-      const draw = () => {
-        const f = fold($('#g-q', body).value);
-        const rows = groups
-          .filter((g) => !f || fold(g.name).includes(f))
-          .slice(0, 400)
-          .map((g) => `<button class="list-item" data-g="${esc(g.name)}"><span class="t">${esc(g.name)}<small>${g.count}</small></span>${S.group[kind] === g.name ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`);
-        $('#g-list', body).innerHTML = rows.join('') || '<p class="empty">Eşleşen grup yok</p>';
-      };
-      draw();
-      $('#g-q', body).addEventListener('input', debounce(draw, 120));
-      body.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-g]');
-        if (!b) return;
-        S.group[kind] = b.dataset.g;
-        sh.close();
-        closeSearch(true);
-        drawChips(kind);
-        refreshList();
-      });
-    },
-  });
 }
 
 // arama
