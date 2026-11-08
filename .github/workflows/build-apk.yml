@@ -74,7 +74,7 @@ jobs:
           cat version.json
           TITLE="Son sürüm 1.0.${{ github.run_number }}"
           CHANGE_NOTES="$(cat notes.txt 2>/dev/null || echo "Bu sürümde hata düzeltmeleri ve iyileştirmeler yapıldı.")"
-          NOTES="$(printf '%s\\n\\nDerleme %s (%s). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur.' "$CHANGE_NOTES" "${{ github.run_number }}" "${GITHUB_SHA::7}")"
+          NOTES="$(printf '%s\n\nDerleme %s (%s). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur.' "$CHANGE_NOTES" "${{ github.run_number }}" "${GITHUB_SHA::7}")"
           # Draft release kayıtları /releases/tags/latest uç noktasında görünmeyebilir.
           # Tüm release kayıtları içinde tag_name=latest olan kaydı bul.
           RELEASE_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.tag_name == "latest") | .id' | head -n 1)"
