@@ -84,7 +84,4 @@ jobs:
           else
             gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
               --title "$TITLE" --notes "$NOTES"
-          fie
-            gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
-              --title "$TITLE" --notes "$NOTES"
           fi
