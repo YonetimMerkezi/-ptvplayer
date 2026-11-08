@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">IPTV Oynatıcı</string>
-    <string name="title_activity_main">IPTV Oynatıcı</string>
+    <string name="app_name">Iptv Player Pro</string>
+    <string name="title_activity_main">Iptv Player Pro</string>
     <string name="package_name">com.koruk.iptv</string>
     <string name="custom_url_scheme">com.koruk.iptv</string>
 </resources>

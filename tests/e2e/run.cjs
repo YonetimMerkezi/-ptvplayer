@@ -41,6 +41,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const errs = [];
     page.on('pageerror', (e) => errs.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text()) && errs.push(m.text()));
+    // Yenilikler penceresi testleri bozmasın: görüldü sayılır (Yenilikler bölümü __news ile bunu kapatır)
+    await page.addInitScript(() => {
+      try {
+        if (localStorage.getItem('__news') !== '1') localStorage.setItem('iptv.pref.seen.changelog', '999');
+      } catch {
+        /* depolama yok */
+      }
+    });
     if (init) await page.addInitScript(init);
     await page.goto(base);
     return { page, ctx, errs };
@@ -676,6 +684,110 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
+  // ---------------------------------------------------------------- 7d. yedekle / geri yükle
+  console.log('Yedekle / geri yükle');
+  ({ page, ctx, errs } = await newPage());
+  await page.waitForSelector('#f');
+  await page.click('.sheet [data-close]');
+  await page.click('#ob-add');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.fill('input[name=name]', 'Yedeklenecek');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.evaluate(() => {
+    const st = window.__iptv.store;
+    const sid = st.activeId();
+    st.toggleFav(sid, { id: 'fav1', kind: 'live', name: 'Favori Kanal' });
+    st.setPref('set.buffer', 'max');
+  });
+  await page.evaluate(async () => {
+    const { makeRecord } = await import('/js/lock.js');
+    window.__iptv.store.setPref('lock.pin', await makeRecord('1234'));
+  });
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('#g-bk');
+  await page.click('#g-bk');
+  await page.waitForSelector('#bk-save');
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    (async () => {
+      await page.click('#bk-save');
+      await page.waitForSelector('#lock');
+      ok(true, 'uygulama şifresi açıkken yedek almak şifre istiyor');
+      await tapPin('1234');
+    })(),
+  ]);
+  ok(/^iptv-yedek-\d{4}-\d{2}-\d{2}\.json$/.test(dl.suggestedFilename()), 'yedek tarihli dosya adıyla iniyor: ' + dl.suggestedFilename());
+  const bkText = fs.readFileSync(await dl.path(), 'utf8');
+  const bk = JSON.parse(bkText);
+  ok(bk.app === 'iptv-oynatici' && bk.data.sources.length === 1 && bk.data.sources[0].url.endsWith('/list.m3u'), 'yedekte kaynak adresi var');
+  ok(Object.keys(bk.data).some((k) => k.startsWith('fav.')) && bk.data['pref.set.buffer'] === 'max', 'yedekte favori ve ayar var');
+  ok(!bkText.includes('"hash"'), 'uygulama şifresi özeti yedeğe girmedi');
+  // veriyi boz, sonra yedekten dön
+  await page.evaluate(() => {
+    const st = window.__iptv.store;
+    st.setPref('set.buffer', 'normal');
+    const sid = st.activeId();
+    st.toggleFav(sid, { id: 'fav1', kind: 'live', name: 'Favori Kanal' });
+    st.saveSource({ name: 'Fazladan', type: 'm3u', url: 'http://x/y.m3u' });
+  });
+  await page.setInputFiles('#bk-file', { name: 'yedek.json', mimeType: 'application/json', buffer: Buffer.from('{bozuk') });
+  await page.waitForSelector('#bk-sum .err-text');
+  ok(/geçerli bir yedek değil/.test(await page.textContent('#bk-sum')), 'bozuk dosya anlaşılır hatayla reddedildi');
+  await page.setInputFiles('#bk-file', { name: 'yedek.json', mimeType: 'application/json', buffer: Buffer.from(bkText) });
+  await page.waitForSelector('#bk-go');
+  ok(/1 kaynak · 1 favori/.test(await page.textContent('#bk-sum')), 'geri yüklemeden önce özet gösteriliyor: ' + (await page.textContent('#bk-sum')).split('Şu anki')[0].trim());
+  await page.click('#bk-go');
+  await page.waitForSelector('#lock');
+  await tapPin('1234');
+  await page.waitForSelector('#lock', { state: 'detached' });
+  await page.waitForSelector('#lock', { timeout: 15000 }); // yeniden yüklenince uygulama şifresi yine soruluyor
+  await tapPin('1234');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  const after = await page.evaluate(() => {
+    const st = window.__iptv.store;
+    return { src: st.sources().map((x) => x.name), favs: st.favs(st.activeId()).map((f) => f.id), buf: st.pref('set.buffer', null), pin: st.pref('lock.pin', null) };
+  });
+  ok(after.src.length === 1 && after.src[0] === 'Yedeklenecek', 'yedekte olmayan kaynak gitti, yedektekiler geri geldi: ' + after.src.join(','));
+  ok(after.favs.join() === 'fav1' && after.buf === 'max', 'favori ve ayar yedektekine döndü');
+  ok(after.pin && after.pin.len === 4, 'geri yüklemede uygulama şifresi korundu');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 7e. yenilikler
+  console.log('Yenilikler');
+  ({ page, ctx, errs } = await newPage());
+  await page.waitForSelector('#f');
+  await page.click('.sheet [data-close]');
+  await page.click('#ob-add');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.fill('input[name=name]', 'Yenilik');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.evaluate(() => {
+    localStorage.setItem('__news', '1');
+    localStorage.removeItem('iptv.pref.seen.changelog');
+  });
+  await page.reload();
+  await page.waitForSelector('.sheet:has-text("Yenilikler")', { timeout: 10000 });
+  ok((await page.$$('.sheet .wn')).length >= 5, 'güncellemeden sonra görülmemiş yenilikler bir kez gösterildi');
+  ok(/Yedekle \/ geri yükle/.test(await page.textContent('.sheet')), 'en yeni yenilik listede');
+  await page.click('.sheet [data-close]');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.reload();
+  await page.waitForSelector('.tile.t-live');
+  await sleep(2600);
+  ok((await page.$$('.sheet-back')).length === 0, 'aynı yenilikler ikinci açılışta tekrar gösterilmedi');
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('[data-set=news]');
+  await page.waitForSelector('.sheet:has-text("Yenilikler")');
+  ok(true, 'Ayarlar › Yenilikler her zaman açılıyor');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
   // ---------------------------------------------------------------- 8. get.php bağlantısı otomatik Xtream
   console.log('get.php bağlantısı');
   ({ page, ctx, errs } = await newPage());
@@ -777,6 +889,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const r = { active: false, id: 'a.ts', url: 'file:///rec/a.ts', name: 'Kanal', durationMs: 65000, bytes: 1000, startedAt: Date.now() };
         setTimeout(() => listeners.recording && listeners.recording(r), 20);
         return r;
+      },
+      saveText: async (a) => {
+        window.__calls.push(['saveText', a.name, a.text.length]);
+        return { where: 'İndirilenler/Iptv Player Pro' };
       },
       recordList: async () => ({ items: window.__recs || [], freeBytes: 5e9, usedBytes: 4e7 }),
       recordDelete: async ({ id }) => {
@@ -918,6 +1034,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(await page.evaluate(() => !document.documentElement.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
+  // Yedeği yerel eklentiyle kaydetme
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('[data-set=general]');
+  await page.click('#g-bk');
+  await page.click('#bk-save');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'saveText'));
+  const sv = await page.evaluate(() => window.__calls.find((c) => c[0] === 'saveText'));
+  ok(/^iptv-yedek-.*\.json$/.test(sv[1]) && sv[2] > 50, 'yedek yerel eklentiyle İndirilenler klasörüne kaydedildi');
+  ok(/İndirilenler/.test(await page.textContent('#toast')), 'kaydedilen yer ekranda bildirildi');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   // Kayıtlar ekranı
   await page.evaluate(() => {
     window.__recs = [{ id: 'a.ts', url: 'file:///rec/a.ts', name: 'Deneme Kanal', startedAt: Date.now(), durationMs: 65000, size: 20 * 1024 * 1024, active: false }];
@@ -1321,7 +1448,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // ayarlar kutuları
   await page.click('#h-set');
   await page.waitForSelector('.set-grid');
-  ok((await page.$$('.set-tile')).length === 4, 'ayarlarda dört kutu (genel, EPG, otomasyon, güncelleme)');
+  ok((await page.$$('.set-tile')).length === 5, 'ayarlarda beş kutu (genel, EPG, otomasyon, yenilikler, güncelleme)');
   await page.click('[data-set=general]');
   await page.waitForSelector('.chk');
   ok((await page.$$('.chk.on')).length === 3, 'genel ayarlarda üç seçenek açık');

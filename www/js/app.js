@@ -10,7 +10,9 @@ import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
-import { fmtBytes, recItem, recEndMessage, recSub } from './rec.js';
+import { fmtBytes, recItem, recEndMessage, recSub, fmtRecDate } from './rec.js';
+import { makeBackup, parseBackup, applyBackup, backupFileName } from './backup.js';
+import { CHANGELOG, LATEST_ID, unseenEntries } from './changelog.js';
 import { VirtualList } from './vlist.js';
 import { sortItems, SORTS, isSortMode } from './sort.js';
 import {
@@ -301,7 +303,7 @@ async function maybeRefreshEpg(force = false) {
 // ------------------------------------------------------------------ üst çubuk ve sekmeler
 
 function renderTop() {
-  $('#src-name').textContent = S.source ? S.source.name : 'IPTV Oynatıcı';
+  $('#src-name').textContent = S.source ? S.source.name : 'Iptv Player Pro';
 }
 
 // Ana ekran dışındaki sayfalar bir geçmiş katmanı açar: Android geri tuşu önce ana ekrana döner.
@@ -1110,8 +1112,8 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
-  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
 
@@ -1122,6 +1124,7 @@ function onSourcesClick(e) {
     if (k === 'general') return generalSheet();
     if (k === 'epg') return epgSettingsSheet();
     if (k === 'auto') return autoSheet();
+    if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
     if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
   }
@@ -1308,7 +1311,7 @@ function renderHome(v) {
   const chip = upd && upd.status === 'available' ? `<button class="btn sm" id="h-upd-chip">${icon('refresh')}Yeni sürüm</button>` : '';
   const catN = S.groups.live.length + S.groups.movie.length + S.groups.series.length;
   v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="brand">${icon('tv')}<b>IPTV</b><span>Oynatıcı</span></div>${chip}<div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div>${chip}<div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
     <div class="hero"><div class="hero-t"><small>Hoş Geldiniz</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
     <div class="tiles">
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
@@ -2000,6 +2003,7 @@ function generalSheet() {
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
+      `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
     mount: (body) => {
       body.addEventListener('click', (e) => {
@@ -2028,6 +2032,7 @@ function generalSheet() {
         applyTvMode();
       });
       $('#g-lock', body).addEventListener('click', () => lockSheet());
+      $('#g-bk', body).addEventListener('click', () => backupSheet());
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
@@ -2100,7 +2105,7 @@ function updateSheet(info) {
   let busy = false;
   openSheet({
     title: 'Yeni sürüm hazır',
-    html: `<p>Sürüm <b>${esc(info.name)}</b> yayında (şu an ${esc(VERSION)}).${info.size ? ` Boyut: ${fmtMB(info.size)}.` : ''}</p>${info.notes ? `<p class="hint">${esc(info.notes)}</p>` : ''}<div id="up-bar" hidden style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:10px 0"><i style="display:block;height:100%;width:0;background:var(--accent)"></i></div><p id="up-msg" class="hint"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="up-go">${icon('refresh')}Şimdi güncelle</button><button class="btn ghost" id="up-later">Sonra</button></div><p class="hint" style="margin-top:12px">Güncelleme mevcut uygulamanın üstüne kurulur; kaynaklarınız ve favorileriniz korunur.</p>`,
+    html: `<p>Sürüm <b>${esc(info.name)}</b> yayında (şu an ${esc(VERSION)}).${info.size ? ` Boyut: ${fmtMB(info.size)}.` : ''}</p>${info.notes ? `<p class="hint" style="white-space:pre-line">${esc(info.notes)}</p>` : ''}<div id="up-bar" hidden style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:10px 0"><i style="display:block;height:100%;width:0;background:var(--accent)"></i></div><p id="up-msg" class="hint"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="up-go">${icon('refresh')}Şimdi güncelle</button><button class="btn ghost" id="up-later">Sonra</button></div><p class="hint" style="margin-top:12px">Güncelleme mevcut uygulamanın üstüne kurulur; kaynaklarınız ve favorileriniz korunur.</p>`,
     mount: (body, api) => {
       const go = $('#up-go', body);
       const bar = $('#up-bar', body);
@@ -2234,6 +2239,91 @@ function deleteRecSheet(r, after) {
   });
 }
 
+// ------------------------------------------------------------------ yenilikler
+
+// Güncellemeden sonra görülmemiş yenilikleri bir kez gösterir (all: son kayıtların hepsini, elle açılışta).
+function whatsNewSheet(all = false) {
+  const list = all ? CHANGELOG.slice(0, 6) : unseenEntries(store.pref('seen.changelog', null), store.sources().length > 0);
+  store.setPref('seen.changelog', LATEST_ID);
+  if (!list.length) return all ? toast('Gösterilecek yenilik yok') : undefined;
+  openSheet({
+    title: 'Yenilikler',
+    html: list.map((e) => `<div class="wn"><b>${esc(e.title)}</b><ul>${e.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join(''),
+  });
+}
+
+// Açılışta (şifre ekranı, oynatıcı ya da başka pencere yokken) yenilikleri göster.
+function maybeWhatsNew() {
+  if (pad.isOpen() || pui.isOpen() || pui.isPreviewing() || document.querySelector('.sheet-back, .pg')) return;
+  if (store.pref('seen.changelog', null) === LATEST_ID) return;
+  whatsNewSheet();
+}
+
+// ------------------------------------------------------------------ yedekle / geri yükle
+
+// Yedek dosyasında kullanıcı adı/parola bulunur: uygulama şifresi açıksa hem kaydetmek hem geri yüklemek şifre ister.
+async function backupGuard() {
+  return !lockEnabled() || askPin('Şifre', 'Yedekleme için uygulama şifrenizi girin');
+}
+
+async function saveBackupFile() {
+  const text = JSON.stringify(makeBackup(store), null, 1);
+  const name = backupFileName();
+  if (nativePlugin) {
+    const r = await nativePlugin.saveText({ name, text, mime: 'application/json' });
+    return toast('Yedek kaydedildi: ' + ((r && r.where) || 'cihaz'), 4000);
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast('Yedek indirildi', 3000);
+}
+
+function backupSheet() {
+  const sh = openSheet({
+    title: 'Yedekle / geri yükle',
+    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button><label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
+    mount: (body) => {
+      $('#bk-save', body).addEventListener('click', async () => {
+        if (!(await backupGuard())) return;
+        try {
+          await saveBackupFile();
+        } catch (err) {
+          toast('Yedek kaydedilemedi: ' + String((err && err.message) || err), 4000);
+        }
+      });
+      $('#bk-file', body).addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        const box = $('#bk-sum', body);
+        box.innerHTML = '';
+        if (!file) return;
+        let parsed;
+        try {
+          parsed = parseBackup(await file.text());
+        } catch {
+          parsed = { ok: false, error: 'Dosya okunamadı' };
+        }
+        if (!parsed.ok) {
+          box.innerHTML = `<p class="err-text">${esc(parsed.error)}</p>`;
+          return;
+        }
+        const m = parsed.summary;
+        box.innerHTML = `<p>${m.sources} kaynak · ${m.favs} favori · ${m.folders} klasör · ${m.prefs} ayar${m.at ? ` (${esc(fmtRecDate(m.at))})` : ''}</p><p class="hint">Şu anki kaynaklar, favoriler, kategori düzeni ve ayarlar bunlarla değiştirilir.</p><button class="btn danger" id="bk-go">Geri yükle</button>`;
+        $('#bk-go', box).addEventListener('click', async () => {
+          if (!(await backupGuard())) return;
+          applyBackup(store, parsed.backup);
+          sh.close();
+          toast('Yedek geri yüklendi, uygulama yenileniyor…', 2500);
+          setTimeout(() => location.reload(), 700);
+        });
+      });
+    },
+  });
+}
+
 // ------------------------------------------------------------------ uygulama şifresi
 
 const pad = createPinPad();
@@ -2283,6 +2373,7 @@ async function lockApp() {
   S.hiddenAt = null;
   if (!pui.isOpen()) multiResume();
   if (S.source) refreshList(true);
+  setTimeout(() => maybeWhatsNew(), 600);
 }
 
 // Kilitli kategoriye girmeden önce (oturumda bir kez) şifre sorar.
@@ -2430,5 +2521,6 @@ window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ay�
     return sourceForm();
   }
   setTimeout(() => checkForUpdate(), 4000); // açılışta sessizce yeni sürüm var mı bak
+  setTimeout(() => maybeWhatsNew(), 1800);
   await activate(src.id);
 })();

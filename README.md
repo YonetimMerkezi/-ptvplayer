@@ -1,4 +1,4 @@
-# IPTV Oynatıcı
+# Iptv Player Pro
 
 Android için IPTV oynatıcı. **M3U/M3U8 liste bağlantısı** ya da **Xtream Codes hesabı** ile çalışır.
 

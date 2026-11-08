@@ -13,3 +13,4 @@ android/capacitor-cordova-android-plugins/
 .DS_Store
 mock/media/
 tests/e2e/shots/
+notes.txt

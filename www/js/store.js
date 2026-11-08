@@ -190,5 +190,29 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   api.pref = (k, d) => read('pref.' + k, d);
   api.setPref = (k, v) => write('pref.' + k, v);
 
+  // ---- ham erişim (yedekle / geri yükle): 'iptv.' önekinden sonraki anahtar adlarıyla ----
+  api.keys = () => {
+    const out = [];
+    try {
+      const n = storage.length | 0;
+      for (let i = 0; i < n; i++) {
+        const k = storage.key(i);
+        if (k && k.startsWith(P)) out.push(k.slice(P.length));
+      }
+    } catch {
+      /* sayılamayan depolamada yalnız bilinen anahtarlar kullanılır */
+    }
+    return out;
+  };
+  api.get = (k) => read(k, undefined);
+  api.put = (k, v) => write(k, v);
+  api.drop = (k) => {
+    try {
+      storage.removeItem(P + k);
+    } catch {
+      /* yok say */
+    }
+  };
+
   return api;
 }

@@ -19,3 +19,7 @@ console.log('hls.min.js -> www/vendor');
 const run = process.env.GITHUB_RUN_NUMBER;
 writeFileSync(join(kok, 'www', 'js', 'version.js'), `export const VERSION = ${JSON.stringify(run ? `1.0.${run}` : 'geliştirme')};\n`);
 console.log('sürüm:', run ? `1.0.${run}` : 'geliştirme');
+
+// Güncelleme penceresindeki not (CI, version.json'a bu dosyayı yazar): www/js/changelog.js'teki en yeni kayıt.
+const { latestNotes } = await import('../www/js/changelog.js');
+writeFileSync(join(kok, 'notes.txt'), latestNotes());

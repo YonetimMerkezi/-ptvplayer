@@ -2,6 +2,7 @@ package com.koruk.iptv;
 
 import android.app.Activity;
 import android.app.UiModeManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -14,6 +15,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Environment;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -1109,6 +1111,54 @@ public class IptvPlayerPlugin extends Plugin {
                 os.write(buf, 0, n);
             }
         }
+    }
+
+    // Metni dosya olarak kaydeder (yedek). Android 10+: İndirilenler/Iptv Player Pro; daha eskide paylaşım menüsü açılır.
+    @PluginMethod
+    public void saveText(final PluginCall call) {
+        final String name = call.getData().optString("name", "yedek.json").replaceAll("[^A-Za-z0-9._-]", "_");
+        final String text = call.getData().optString("text", "");
+        final String mime = call.getData().optString("mime", "application/json");
+        io.execute(() -> {
+            try {
+                Context ctx = getContext();
+                byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                JSObject res = new JSObject();
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                    v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                    v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Iptv Player Pro");
+                    Uri uri = ctx.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) throw new IOException("Dosya oluşturulamadı");
+                    try (OutputStream os = ctx.getContentResolver().openOutputStream(uri)) {
+                        if (os == null) throw new IOException("Dosya açılamadı");
+                        os.write(bytes);
+                    }
+                    res.put("where", "İndirilenler/Iptv Player Pro");
+                } else {
+                    File dir = new File(ctx.getCacheDir(), "yedek");
+                    //noinspection ResultOfMethodCallIgnored
+                    dir.mkdirs();
+                    File f = new File(dir, name);
+                    try (OutputStream os = new FileOutputStream(f)) {
+                        os.write(bytes);
+                    }
+                    Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", f);
+                    Intent send = new Intent(Intent.ACTION_SEND);
+                    send.setType(mime);
+                    send.putExtra(Intent.EXTRA_STREAM, uri);
+                    send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    Intent chooser = Intent.createChooser(send, "Yedeği kaydet");
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(chooser);
+                    res.put("where", "paylaşım menüsü");
+                }
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            }
+        });
     }
 
     @PluginMethod
