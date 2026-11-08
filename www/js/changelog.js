@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 16,
+    title: 'Küçük oynatıcı görüntüsü düzeltildi',
+    items: [
+      'Küçük oynatıcı açıkken arka plandaki film kartlarının videoyu örtmesi giderildi',
+      'Video alanı uygulama arayüzünden ayrılır; büyütme ve kapatma düğmeleri çalışmaya devam eder',
+    ],
+  },
+
+  {
     id: 15,
     title: 'Harici oynatıcı desteği',
     items: [
