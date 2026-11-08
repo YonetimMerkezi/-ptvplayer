@@ -25,7 +25,7 @@ import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
-import { checkUpdate, fmtMB, shouldAutoCheck, versionCodeOf } from './update.js';
+import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -1699,6 +1699,7 @@ function renderMulti(v) {
   // Dokunuş bittikten sonra göster: basarken görünürlerse altındaki düğmenin üstünü örter ve tıklama kaybolur.
   $('.mp').addEventListener('click', showChips, true);
   $('.mp').addEventListener('keydown', showChips, true);
+  $('.mp').addEventListener('focusin', showChips); // kumandayla odak alt düğmelere geçince görünür kalsın
   $('#mp-back').addEventListener('click', () => setTab('home'));
   $('#mp-fit').addEventListener('click', () => {
     M.fill = !M.fill;
@@ -2013,7 +2014,7 @@ async function checkForUpdate({ manual = false } = {}) {
       if (manual || (!busy && store.pref('upd.skip', 0) !== r.code)) updateSheet(r);
     } else if (manual) toast(`Uygulama güncel (sürüm ${r.name})`);
   } catch (e) {
-    if (manual) toast('Güncelleme denetlenemedi: ' + e.message, 4000);
+    if (manual) toast('Güncelleme denetlenemedi: ' + explainError(e), 4500);
   } finally {
     updBusy = false;
   }
@@ -2060,9 +2061,9 @@ function updateSheet(info) {
             bar.firstElementChild.style.width = Math.round(f * 100) + '%';
             msg.textContent = `İndiriliyor… ${e.total > 0 ? Math.round(f * 100) + '% · ' : ''}${fmtMB(e.loaded)}`;
           });
-          path = (await nativePlugin.downloadApk({ url: info.apkUrl })).path;
+          path = (await retry(() => nativePlugin.downloadApk({ url: info.apkUrl }))).path;
         } catch (e) {
-          msg.textContent = 'İndirilemedi: ' + e.message;
+          msg.textContent = 'İndirilemedi: ' + explainError(e);
           go.disabled = false;
           go.textContent = 'Yeniden dene';
           busy = false;

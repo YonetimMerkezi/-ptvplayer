@@ -67,3 +67,36 @@ test('liste ile yan panel: sağa basınca listeden sağdaki panele geçilir', ()
   assert.equal(pickNext(rows[1], list, 'right'), 4);
   assert.equal(pickNext(slot, list, 'left'), 2, 'panelden sola: merkezi en hizalı satır (üçüncü)');
 });
+
+test('üst çubuk: sağa basınca aynı satırdaki uzak düğme, altındaki yakın arama alanına tercih edilir', () => {
+  const source = R(88, 16, 110, 44); // kaynak seçici (sol üst)
+  const search = R(834, 16, 44, 44); // arama düğmesi (sağ üst, çok uzak)
+  const field = R(38, 112, 359, 38); // altta, yakın ve ortadan taşan arama alanı
+  const list = [source, search, field];
+  assert.equal(pickNext(source, list, 'right'), 1);
+  assert.equal(pickNext(source, list, 'down'), 2, 'aşağı yine alandaki alana gider');
+  assert.equal(pickNext(search, list, 'left'), 0);
+});
+
+test('satır dışı adaylar yalnız aynı satırda aday yoksa seçilir', () => {
+  const cur = R(0, 0, 100, 50);
+  const below = R(120, 80, 100, 50); // sağda ama bir satır aşağıda
+  assert.equal(pickNext(cur, [below], 'right'), 0, 'tek aday satır dışı: yine de gidilir');
+  const far = R(500, 0, 100, 50); // aynı satır, uzak
+  assert.equal(pickNext(cur, [below, far], 'right'), 1);
+});
+
+test('kapsayıcı içindeki düğmelere geçilir (çoklu ekran hücresi, kart, satır)', () => {
+  const cell = R(0, 0, 400, 300);
+  const list = R(300, 10, 30, 30); // hücrenin sağ üstündeki düğmeler
+  const full = R(335, 10, 30, 30);
+  const close = R(370, 10, 20, 30);
+  const next = R(402, 0, 400, 300); // yandaki hücre
+  const all = [cell, list, full, close, next];
+  assert.equal(pickNext(cell, all, 'up'), 1, 'hücreden yukarı: üstteki düğmelerden merkeze en yakın');
+  assert.equal(pickNext(list, all, 'right'), 2, 'düğmeden sağa: yandaki düğme');
+  assert.equal(pickNext(close, all, 'right'), 4, 'son düğmeden sağa: yandaki hücre');
+  assert.equal(pickNext(full, all, 'left'), 1);
+  assert.equal(pickNext(full, all, 'down'), 0, 'düğmeden aşağı: kendi hücresine döner');
+  assert.equal(pickNext(cell, all, 'right'), 4, 'hücreden sağa: yandaki hücre (iç düğmeler değil)');
+});

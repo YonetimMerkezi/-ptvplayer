@@ -5,7 +5,11 @@ export const FOCUSABLE = 'button, [role="button"], [role="radio"], [tabindex], i
 const DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 // cur ve rects: { l, t, r, b } (piksel). Yönde en uygun adayın indeksini verir; yoksa -1.
-// Aday, yön doğrultusunda bulunmalı; puan = yön eksenindeki boşluk + dik eksendeki boşluk (ağırlıklı) + merkez kayması.
+// Kurallar (Android'in odak bulucusuna benzer):
+//  - Aday yön doğrultusunda olmalı; kapsayıcının içindeki aday, kapsayıcıdan yalnız merkez karşılaştırmasıyla seçilir
+//    (içinde düğmeleri olan kutu/kart/hücreden o düğmelere geçilebilsin).
+//  - Sağ/sol: aynı satırdaki (dikeyde örtüşen) aday, daha yakın ama satır dışındaki adaya her zaman tercih edilir.
+//  - Yukarı/aşağı ve satır dışı adaylar: yön eksenindeki boşluk + dik eksendeki boşluk (ağırlıklı) + merkez kayması.
 export function pickNext(cur, rects, dir) {
   const cx = (cur.l + cur.r) / 2;
   const cy = (cur.t + cur.b) / 2;
@@ -16,31 +20,33 @@ export function pickNext(cur, rects, dir) {
     if (r === cur) continue;
     const rx = (r.l + r.r) / 2;
     const ry = (r.t + r.b) / 2;
+    const inside = r.l >= cur.l && r.r <= cur.r && r.t >= cur.t && r.b <= cur.b;
     let prim;
     let gap;
     let off;
     if (dir === 'right') {
-      if (!(rx > cx && r.r > cur.r)) continue;
+      if (!(rx > cx && (inside || r.r > cur.r))) continue;
       prim = Math.max(0, r.l - cur.r);
       gap = Math.max(0, Math.max(cur.t, r.t) - Math.min(cur.b, r.b));
       off = Math.abs(ry - cy);
     } else if (dir === 'left') {
-      if (!(rx < cx && r.l < cur.l)) continue;
+      if (!(rx < cx && (inside || r.l < cur.l))) continue;
       prim = Math.max(0, cur.l - r.r);
       gap = Math.max(0, Math.max(cur.t, r.t) - Math.min(cur.b, r.b));
       off = Math.abs(ry - cy);
     } else if (dir === 'down') {
-      if (!(ry > cy && r.b > cur.b)) continue;
+      if (!(ry > cy && (inside || r.b > cur.b))) continue;
       prim = Math.max(0, r.t - cur.b);
       gap = Math.max(0, Math.max(cur.l, r.l) - Math.min(cur.r, r.r));
       off = Math.abs(rx - cx);
     } else {
-      if (!(ry < cy && r.t < cur.t)) continue;
+      if (!(ry < cy && (inside || r.t < cur.t))) continue;
       prim = Math.max(0, cur.t - r.b);
       gap = Math.max(0, Math.max(cur.l, r.l) - Math.min(cur.r, r.r));
       off = Math.abs(rx - cx);
     }
-    const score = prim + gap * 3 + off * 0.35;
+    const horizontal = dir === 'left' || dir === 'right';
+    const score = (horizontal && gap > 0 ? 1e6 : 0) + prim + gap * 3 + off * 0.35;
     if (score < bestScore) {
       bestScore = score;
       best = i;

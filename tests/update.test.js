@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { versionCodeOf, parseManifest, isNewer, checkUpdate, fmtMB, shouldAutoCheck, AUTO_CHECK_MS, UPDATE_BASE } from '../www/js/update.js';
+import { versionCodeOf, parseManifest, isNewer, checkUpdate, fmtMB, shouldAutoCheck, AUTO_CHECK_MS, UPDATE_BASE, UPDATE_FALLBACKS, isTransient, explainError, retry } from '../www/js/update.js';
 
 test('sürüm numarası "1.0.N" biçiminden çıkarılır, tanınmayan 0 olur', () => {
   assert.equal(versionCodeOf('1.0.57'), 57);
@@ -35,7 +35,7 @@ test('yalnız daha büyük sürüm güncelleme sayılır; yerel sürüm bilinmiy
 });
 
 test('checkUpdate: yeni sürümü, güncel durumu ve desteklenmeyen sürümü ayırt eder', async () => {
-  const net = (j) => ({ json: async (url) => (assert.equal(url, UPDATE_BASE + 'version.json'), j) });
+  const net = (j) => ({ json: async (url) => (assert.ok(url.endsWith('version.json')), j) });
   const a = await checkUpdate({ net: net({ versionCode: 60, versionName: '1.0.60', size: 31457280, notes: 'Yeni' }), localVersion: '1.0.57' });
   assert.equal(a.status, 'available');
   assert.equal(a.name, '1.0.60');
@@ -45,7 +45,7 @@ test('checkUpdate: yeni sürümü, güncel durumu ve desteklenmeyen sürümü ay
   assert.equal(c.status, 'current');
   const u = await checkUpdate({ net: net({ versionCode: 99 }), localVersion: 'geliştirme' });
   assert.deepEqual(u, { status: 'unsupported' });
-  await assert.rejects(() => checkUpdate({ net: net({ bozuk: true }), localVersion: '1.0.57' }), /okunamadı/);
+  await assert.rejects(() => checkUpdate({ net: net({ bozuk: true }), localVersion: '1.0.57', sleep: async () => assert.fail('bozuk dosya için beklenmez') }), /okunamadı/);
 });
 
 test('ağ hatası checkUpdate dışına yayılır (arayüz yakalayıp bildirir)', async () => {
@@ -57,4 +57,68 @@ test('boyut biçimi ve otomatik denetim sıklığı', () => {
   assert.equal(shouldAutoCheck(0), true);
   assert.equal(shouldAutoCheck(1000, 1000 + AUTO_CHECK_MS - 1), false);
   assert.equal(shouldAutoCheck(1000, 1000 + AUTO_CHECK_MS + 1), true);
+});
+
+const noSleep = () => {
+  const waits = [];
+  const fn = async (ms) => { waits.push(ms); };
+  fn.waits = waits;
+  return fn;
+};
+const err = (m) => new Error(m);
+
+test('geçici hata (504) tekrar denenir ve sonunda başarılı olursa güncelleme bulunur', async () => {
+  let n = 0;
+  const sleep = noSleep();
+  const net = { json: async () => { if (++n < 3) throw err('HTTP 504'); return { versionCode: 20 }; } };
+  const r = await checkUpdate({ net, localVersion: '1.0.11', sleep });
+  assert.equal(r.status, 'available');
+  assert.equal(r.code, 20);
+  assert.ok(n >= 3, 'üçüncü turda başarılı');
+  assert.ok(sleep.waits.length >= 1 && sleep.waits.every((w) => w > 0), 'denemeler arasında bekleme var');
+});
+
+test('ana adres sürekli 504 verirse yedek adres denenir ve APK adresi yedekten türer', async () => {
+  const seen = [];
+  const net = { json: async (u) => { seen.push(u); if (u.startsWith(UPDATE_BASE)) throw err('HTTP 504'); return { versionCode: 20 }; } };
+  const r = await checkUpdate({ net, localVersion: '1.0.11', sleep: noSleep() });
+  assert.equal(r.status, 'available');
+  assert.equal(seen[0], UPDATE_BASE + 'version.json');
+  assert.equal(seen[1], UPDATE_FALLBACKS[0] + 'version.json');
+  assert.equal(r.apkUrl, UPDATE_FALLBACKS[0] + 'iptv-oynatici.apk');
+});
+
+test('tüm adresler geçici hata verirse 3 tur sonra hata yayılır; kalıcı hata (404) beklemeden', async () => {
+  let n = 0;
+  const sleep = noSleep();
+  await assert.rejects(() => checkUpdate({ net: { json: async () => { n++; throw err('HTTP 502'); } }, localVersion: '1.0.11', sleep }), /502/);
+  assert.equal(n, 3 * (1 + UPDATE_FALLBACKS.length));
+  assert.equal(sleep.waits.length, 2);
+  let m = 0;
+  const s2 = noSleep();
+  await assert.rejects(() => checkUpdate({ net: { json: async () => { m++; throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: s2 }), /404/);
+  assert.equal(m, 1 + UPDATE_FALLBACKS.length, '404: tek tur');
+  assert.equal(s2.waits.length, 0);
+});
+
+test('özel base verilirse yedek adres kullanılmaz', async () => {
+  const seen = [];
+  await assert.rejects(() => checkUpdate({ base: 'https://x.test/r/', net: { json: async (u) => { seen.push(u); throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: noSleep() }), /404/);
+  assert.deepEqual(seen, ['https://x.test/r/version.json']);
+});
+
+test('isTransient / explainError / retry', async () => {
+  for (const m of ['HTTP 500', 'HTTP 503', 'HTTP 504', 'HTTP 429', 'HTTP 408', 'Sunucu zamanında yanıt vermedi', 'Failed to fetch']) assert.equal(isTransient(err(m)), true, m);
+  for (const m of ['HTTP 404', 'HTTP 403', 'HTTP 401']) assert.equal(isTransient(err(m)), false, m);
+  assert.match(explainError(err('HTTP 504')), /yanıt vermiyor.*504.*yeniden deneyin/);
+  assert.match(explainError(err('HTTP 404')), /bulunamadı/);
+  assert.equal(explainError(err('Sunucu zamanında yanıt vermedi')), 'Sunucu zamanında yanıt vermedi');
+  let n = 0;
+  assert.equal(await retry(async () => { if (++n < 2) throw err('HTTP 503'); return 'ok'; }, { sleep: noSleep() }), 'ok');
+  let k = 0;
+  await assert.rejects(() => retry(async () => { k++; throw err('HTTP 404'); }, { sleep: noSleep() }), /404/);
+  assert.equal(k, 1);
+  let j = 0;
+  await assert.rejects(() => retry(async () => { j++; throw err('HTTP 500'); }, { tries: 2, sleep: noSleep() }), /500/);
+  assert.equal(j, 2);
 });

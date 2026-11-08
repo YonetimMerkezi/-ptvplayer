@@ -339,6 +339,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.row.cat:has-text("Tümü")');
   await page.waitForSelector('.card');
   ok((await page.$$eval('.card', (e) => e.length)) === 6, 'M3U’daki 6 film kart olarak listeleniyor');
+  // oklarla kartlar arasında gezerken liste DOM'u yeniden kurulmaz (posterler yeniden yüklenip titremez)
+  await page.evaluate(() => {
+    document.querySelectorAll('#list .card').forEach((c) => { c.__keep = 1; });
+    window.__vlMut = 0;
+    new MutationObserver((m) => { window.__vlMut += m.length; }).observe(document.querySelector('#list .vl-win'), { childList: true, subtree: true });
+  });
+  await page.focus('#list .card[data-i="0"]');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  await sleep(250);
+  ok((await page.evaluate(() => document.activeElement.dataset.i)) === '4', 'oklar kartlar arasında gezdi (sağ, aşağı)');
+  ok(await page.evaluate(() => [...document.querySelectorAll('#list .card')].length === 6 && [...document.querySelectorAll('#list .card')].every((c) => c.__keep) && window.__vlMut === 0), 'gezinirken kartlar yeniden çizilmedi (DOM aynı kaldı)');
   await page.screenshot({ path: path.join(SHOTS, '06-film-izgara.png') });
   await page.click('.card');
   await page.waitForSelector('#mv-play');
@@ -540,6 +552,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       download: async ({ url }) => {
         window.__calls.push(['download', url]);
         const r = await fetch(url);
+        if (!r.ok) throw new Error('HTTP ' + r.status); // gerçek eklenti de HTTP hatasında bu iletiyle reddeder
         const blob = URL.createObjectURL(await r.blob());
         const p = '/cache/iptvdl' + files.size + '.tmp';
         files.set('file://' + p, blob);
@@ -774,6 +787,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   await page.waitForFunction(() => !document.querySelector('.mp-cell[data-c="0"] .mp-st'));
   ok(true, 'kutu yeniden oynayınca bilgi kalktı');
+  // kumanda: kutudan yukarı → sağ üstteki düğmeler; odak düğmeye gelince denetimler görünür kalır
+  await page.focus('.mp-cell[data-c="0"]');
+  await page.keyboard.press('ArrowUp');
+  ok((await page.evaluate(() => document.activeElement.dataset.act)) === 'swap', 'kumanda: kutudan yukarı ok sağ üstteki düğmelere geçti');
+  await page.keyboard.press('ArrowRight');
+  ok((await page.evaluate(() => document.activeElement.dataset.act)) === 'full', 'sağ ok bir sonraki düğmeye (tam ekran) gitti');
+  await page.keyboard.press('ArrowRight');
+  ok((await page.evaluate(() => document.activeElement.dataset.act)) === 'rm', 'sağ ok kaldır düğmesine ulaştı');
+  await page.evaluate(() => document.querySelector('#mp-chips').classList.add('idle'));
+  await page.focus('#mp-back');
+  ok(await page.$eval('#mp-chips', (e) => !e.classList.contains('idle')), 'odak alt düğmelere gelince gizlenmiş denetimler yeniden göründü');
   // kutudan tam ekran
   n0 = await nPlay();
   const stops0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiStopAll').length);
@@ -815,7 +839,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.reload();
   await page.waitForSelector('.tile', { timeout: 15000 });
   let manifest = { versionCode: 9, versionName: '1.0.9', size: 3145728, apk: 'iptv-oynatici.apk', notes: 'Yeni arayüz ve sarma düzeltmeleri' };
-  await page.route('**/releases/download/latest/version.json', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(manifest) }));
+  let mainDown = false;
+  let fallbackDown = false;
+  const cors = { 'access-control-allow-origin': '*' };
+  await page.route('**/releases/download/latest/version.json', (r) => (mainDown ? r.fulfill({ status: 504, headers: cors, body: 'gateway timeout' }) : r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(manifest) })));
+  await page.route('**/releases/latest/download/version.json', (r) => (fallbackDown ? r.fulfill({ status: 504, headers: cors, body: 'gateway timeout' }) : r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(manifest) })));
   await page.evaluate(() => { window.__iptv.store.setPref('upd.at', Date.now()); window.__iptv.setVersion('1.0.5'); }); // otomatik denetim araya girmesin
   await page.click('#tabs [data-tab=sources]');
   await page.waitForSelector('.set-grid');
@@ -853,6 +881,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-set=update]');
   await page.waitForFunction(() => /güncel \(sürüm 1\.0\.9\)/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
   ok((await page.$('#up-go')) === null, 'sürüm güncelse “Uygulama güncel” bilgisi veriliyor, pencere açılmıyor');
+  // ana adres 504 verirse yedek adresten bulunur; ikisi de kapalıysa anlaşılır bir hata çıkar
+  mainDown = true;
+  manifest = { ...manifest, versionCode: 10, versionName: '1.0.10' };
+  await page.click('[data-set=update]');
+  await page.waitForSelector('#up-go', { timeout: 10000 });
+  ok(/1\.0\.10/.test(await page.textContent('.sheet')), 'ana adres 504 verince yedek adresten yeni sürüm bulundu');
+  const dl0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'downloadApk').length);
+  await page.click('#up-go');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'downloadApk').length > n, dl0, { timeout: 8000 });
+  ok(/\/releases\/latest\/download\/iptv-oynatici\.apk$/.test(await page.evaluate(() => window.__calls.filter((c) => c[0] === 'downloadApk').pop()[1])), 'APK de yedek adresten indirildi');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  fallbackDown = true;
+  await page.reload(); // bilinen “yeni sürüm” durumu sıfırlansın: denetim yeniden ağa gitsin
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => { window.__iptv.store.setPref('upd.at', Date.now()); window.__iptv.setVersion('1.0.9'); });
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('[data-set=update]');
+  await page.waitForFunction(() => /yanıt vermiyor.*504/.test(document.querySelector('#toast').textContent), null, { timeout: 12000 });
+  ok(!/^Güncelleme denetlenemedi: HTTP/.test(await page.textContent('#toast')), 'sunucu hatası ham “HTTP 504” yerine anlaşılır metinle bildirildi');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
@@ -1172,6 +1220,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.fill('#sp-q', '');
   await page.waitForFunction(() => window.__iptv.S.items.length === 120);
   ok(true, 'arama silinince tüm kanallar geri geldi');
+  // üst çubuk: sağ ok aynı satırdaki düğmelere gider (alttaki arama alanına inmez)
+  await page.focus('#btn-source');
+  await page.keyboard.press('ArrowRight');
+  ok((await focused()) === 'btn-search', 'üst çubuk: kaynak seçiciden sağ ok arama düğmesine gitti: ' + (await focused()));
+  await page.keyboard.press('ArrowRight');
+  ok((await focused()) === 'btn-refresh', 'sağ ok sağ üstteki yenile düğmesine ulaştı: ' + (await focused()));
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  ok((await focused()) === 'btn-source', 'sol ok geri döndü');
   await page.click('#split .row:not(.cat)');
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
   await sleep(300);

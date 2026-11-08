@@ -17,12 +17,18 @@ export class VirtualList {
     this.items = [];
     this.cols = 1;
     this._raf = 0;
+    this._rows = new Map(); // satır no → { el, sig, cells } — DOM yeniden kullanılır, yalnız değişen parça güncellenir
+    this._tw = 0; // yumuşak kaydırma çerçevesi
+    this._goal = 0;
     el.classList.add('vl');
     el.innerHTML = '<div class="vl-sizer"></div><div class="vl-win"></div>';
     this.sizer = el.firstChild;
     this.win = el.lastChild;
     this._onScroll = () => this._schedule();
     el.addEventListener('scroll', this._onScroll, { passive: true });
+    this._onUser = () => this._stopTween();
+    el.addEventListener('wheel', this._onUser, { passive: true });
+    el.addEventListener('touchstart', this._onUser, { passive: true });
     this._ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.layout()) : null;
     if (this._ro) this._ro.observe(el);
     this._onKey = (ev) => this._key(ev);
@@ -93,14 +99,26 @@ export class VirtualList {
     });
   }
 
+  // Yalnız görünen aralığı günceller: aynı satır/hücre HTML'i değişmediyse DOM'a dokunulmaz (görsel yeniden yüklenmez,
+  // odak ve yer korunur); kaydırınca yalnız giren satırlar eklenir, çıkanlar silinir. Titreme/yanıp sönme böylece olmaz.
   draw() {
     const v = visibleRows({ scrollTop: this.el.scrollTop, viewH: this.el.clientHeight || 600, rowH: this.rowH, count: this.items.length, cols: this.cols });
     this.sizer.style.height = v.total + 'px';
     if (!this.items.length) {
-      this.win.innerHTML = '';
+      this.win.textContent = '';
+      this._rows.clear();
       return;
     }
-    const parts = [];
+    const act = document.activeElement;
+    const focused = this.win.contains(act) && act.dataset ? act.dataset.i : null;
+    let changed = false;
+    for (const [r, o] of this._rows) {
+      if (r >= v.first && r <= v.last) continue;
+      o.el.remove();
+      this._rows.delete(r);
+      changed = true;
+    }
+    const grid = !!this.o.minCellW;
     for (let r = v.first; r <= v.last; r++) {
       const cells = [];
       for (let c = 0; c < this.cols; c++) {
@@ -108,20 +126,42 @@ export class VirtualList {
         if (i >= this.items.length) break;
         cells.push(this.o.render(this.items[i], i));
       }
-      const style = `top:${r * this.rowH}px;height:${this.rowH - this.o.gap}px`;
-      parts.push(
-        this.o.minCellW
-          ? `<div class="vl-row vl-grid" style="${style};grid-template-columns:repeat(${this.cols},1fr);gap:${this.o.gap}px">${cells.join('')}</div>`
-          : `<div class="vl-row" style="${style}">${cells.join('')}</div>`,
-      );
+      const style = `top:${r * this.rowH}px;height:${this.rowH - this.o.gap}px` + (grid ? `;grid-template-columns:repeat(${this.cols},1fr);gap:${this.o.gap}px` : '');
+      const old = this._rows.get(r);
+      if (old && old.sig === style && old.cells.length === cells.length) {
+        // aynı satır: yalnız değişen hücreleri değiştir
+        for (let c = 0; c < cells.length; c++) {
+          if (old.cells[c] === cells[c]) continue;
+          const t = document.createElement('template');
+          t.innerHTML = cells[c];
+          if (t.content.children.length !== 1 || old.el.children.length !== cells.length) {
+            old.sig = ''; // beklenmedik yapı: satırı baştan kur
+            break;
+          }
+          old.el.children[c].replaceWith(t.content.firstElementChild);
+          old.cells[c] = cells[c];
+          changed = true;
+        }
+        if (old.sig === style) continue;
+      }
+      const el = document.createElement('div');
+      el.className = grid ? 'vl-row vl-grid' : 'vl-row';
+      el.setAttribute('style', style);
+      el.innerHTML = cells.join('');
+      if (old) old.el.replaceWith(el);
+      else {
+        let next = null;
+        for (let q = r + 1; q <= v.last && !next; q++) next = this._rows.has(q) ? this._rows.get(q).el : null;
+        this.win.insertBefore(el, next);
+      }
+      this._rows.set(r, { el, sig: style, cells });
+      changed = true;
     }
-    const focused = this.win.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.i : null;
-    this.win.innerHTML = parts.join('');
-    if (focused != null) {
+    if (focused != null && !this.win.contains(document.activeElement)) {
       const t = this.win.querySelector(`[data-i="${focused}"]`);
       if (t) t.focus({ preventScroll: true });
     }
-    this.win.dispatchEvent(new CustomEvent('vl-draw', { bubbles: true }));
+    if (changed) this.win.dispatchEvent(new CustomEvent('vl-draw', { bubbles: true }));
   }
 
   // Kumanda/klavye: oklarla satırlar arasında gezinme (görünmeyen satırı önce çizer).
@@ -142,14 +182,53 @@ export class VirtualList {
     this.focusIndex(n);
   }
 
+  // Odağı n. öğeye taşır; satır görünümün dışına çıkıyorsa yalnız gerektiği kadar (komşu satır görünür kalacak biçimde)
+  // ve yumuşakça kaydırır. Uzak atlamada doğrudan konumlanır.
   focusIndex(n) {
+    const h = this.el.clientHeight || 600;
     const top = Math.floor(n / this.cols) * this.rowH;
-    if (top < this.el.scrollTop || top + this.rowH > this.el.scrollTop + this.el.clientHeight) {
-      this.el.scrollTop = Math.max(0, top - this.el.clientHeight / 2 + this.rowH / 2);
-    }
+    const cur = this._tw ? this._goal : this.el.scrollTop;
+    const m = Math.min(this.rowH, h / 4);
+    let to = cur;
+    if (top - m < cur) to = top - m;
+    else if (top + this.rowH + m > cur + h) to = top + this.rowH + m - h;
+    const max = Math.max(0, Math.ceil(this.items.length / this.cols) * this.rowH - h);
+    to = Math.min(max, Math.max(0, to));
+    const find = () => this.win.querySelector(`[data-i="${n}"]`);
     this.draw();
-    const t = this.win.querySelector(`[data-i="${n}"]`);
+    let t = find();
+    if (!t || Math.abs(to - this.el.scrollTop) > h) {
+      this._stopTween();
+      this.el.scrollTop = to;
+      this.draw();
+      t = find();
+    } else if (to !== cur) {
+      this._tweenTo(to);
+    }
     if (t) t.focus({ preventScroll: true });
+  }
+
+  _stopTween() {
+    if (this._tw) cancelAnimationFrame(this._tw);
+    this._tw = 0;
+  }
+
+  _tweenTo(y) {
+    this._stopTween();
+    const from = this.el.scrollTop;
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || typeof requestAnimationFrame !== 'function' || Math.abs(y - from) < 1) {
+      this.el.scrollTop = y;
+      return;
+    }
+    this._goal = y;
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / 150);
+      this.el.scrollTop = from + (y - from) * (1 - Math.pow(1 - k, 3));
+      this._tw = k < 1 ? requestAnimationFrame(step) : 0;
+    };
+    this._tw = requestAnimationFrame(step);
   }
 
   refreshRows() {
@@ -157,11 +236,15 @@ export class VirtualList {
   }
 
   scrollToIndex(i) {
+    this._stopTween();
     const row = Math.floor(i / this.cols);
     this.el.scrollTop = Math.max(0, row * this.rowH - this.el.clientHeight / 2 + this.rowH / 2);
   }
 
   destroy() {
+    this._stopTween();
+    this.el.removeEventListener('wheel', this._onUser);
+    this.el.removeEventListener('touchstart', this._onUser);
     this.el.removeEventListener('scroll', this._onScroll);
     this.el.removeEventListener('keydown', this._onKey);
     this.el.removeEventListener('click', this._onClick);
