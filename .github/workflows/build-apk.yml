@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# Aynı sabit 'latest' sürümünü iki workflow'un eşzamanlı yayımlamasını önle.
+concurrency:
+  group: iptv-latest-release
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -67,7 +72,13 @@ jobs:
             --argjson size "$(stat -c %s iptv-oynatici.apk)" --arg notes "$(cat notes.txt 2>/dev/null || echo "Derleme ${{ github.run_number }} (${GITHUB_SHA::7})")" \
             '{versionCode:$code, versionName:$name, size:$size, apk:"iptv-oynatici.apk", notes:$notes}' > version.json
           cat version.json
-          gh release delete latest --cleanup-tag --yes || true
-          gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
-            --title "Son sürüm 1.0.${{ github.run_number }}" \
-            --notes "Derleme ${{ github.run_number }} (${GITHUB_SHA::7}). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur."
+          TITLE="Son sürüm 1.0.${{ github.run_number }}"
+          NOTES="Derleme ${{ github.run_number }} (${GITHUB_SHA::7}). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur."
+          # 'latest' sürümü varsa silmeye çalışma; var olan release'i ve sabit etiketi güncelle.
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --tag latest --target "${{ github.sha }}" --title "$TITLE" --notes "$NOTES" --latest
+            gh release upload latest iptv-oynatici.apk version.json --clobber
+          else
+            gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
+              --title "$TITLE" --notes "$NOTES"
+          fi
