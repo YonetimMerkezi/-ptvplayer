@@ -1825,12 +1825,12 @@ function renderMulti(v) {
     const root = $('.mp');
     chips.classList.remove('idle');
     root.classList.remove('controls-idle');
-    $('.mp-top', root).forEach((el) => { el.classList.remove('mp-hidden'); });
+    $( '.mp-top', root).forEach((el) => { el.classList.remove('mp-hidden'); });
     clearTimeout(M.hideTimer);
     M.hideTimer = setTimeout(() => {
       chips.classList.add('idle');
       root.classList.add('controls-idle');
-      $('.mp-top', root).forEach((el) => { el.classList.add('mp-hidden'); });
+      $( '.mp-top', root).forEach((el) => { el.classList.add('mp-hidden'); });
     }, 2000);
   };
   showChips();
