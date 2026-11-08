@@ -81,6 +81,8 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
 
   // Şu an etkin kapsam: en üstteki alt sayfa/sayfa, tam ekran oynatıcının açık denetimleri ya da uygulama kabuğu.
   function scopeEl() {
+    const lock = doc.getElementById('lock'); // şifre ekranı her şeyin üstünde: odak yalnız onun içinde gezer
+    if (lock) return lock;
     const layers = doc.querySelectorAll('#sheets > .sheet-back, #sheets > .pg');
     if (layers.length) {
       const top = layers[layers.length - 1];

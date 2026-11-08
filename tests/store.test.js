@@ -79,14 +79,14 @@ test('önbellek: bellek yedeği', async () => {
 test('kategori düzeni: kaynak ve tür başına saklanır, bozuk kayıt toparlanır, kaynak silinince gider', () => {
   const { store, m } = mk();
   const a = store.saveSource({ name: 'A', type: 'm3u', url: 'http://a' });
-  assert.deepEqual(store.catPrefs(a.id, 'live'), { order: [], hidden: [], folders: [] });
+  assert.deepEqual(store.catPrefs(a.id, 'live'), { order: [], hidden: [], locked: [], folders: [] });
   store.setCatPrefs(a.id, 'live', { order: ['g:Spor'], hidden: ['g:Haber'], folders: [{ id: 'k1', name: 'Çocuk', items: ['c1'] }] });
   store.setCatPrefs(a.id, 'movie', { order: [], hidden: ['g:Korku'], folders: [] });
   assert.deepEqual(store.catPrefs(a.id, 'live').folders[0].items, ['c1']);
   assert.deepEqual(store.catPrefs(a.id, 'movie').hidden, ['g:Korku']);
-  assert.deepEqual(store.catPrefs(a.id, 'series'), { order: [], hidden: [], folders: [] });
+  assert.deepEqual(store.catPrefs(a.id, 'series'), { order: [], hidden: [], locked: [], folders: [] });
   m.set('iptv.cats.' + a.id, '{bozuk');
-  assert.deepEqual(store.catPrefs(a.id, 'live'), { order: [], hidden: [], folders: [] });
+  assert.deepEqual(store.catPrefs(a.id, 'live'), { order: [], hidden: [], locked: [], folders: [] });
   store.setCatPrefs(a.id, 'live', { order: ['g:A'], hidden: [], folders: [] });
   store.removeSource(a.id);
   assert.equal(m.has('iptv.cats.' + a.id), false);

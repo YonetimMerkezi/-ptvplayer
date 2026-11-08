@@ -486,3 +486,24 @@ html.native-preview .mp-vid { background: transparent; }
 .swatch { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; padding: 8px 6px; border-radius: 12px; border: 2px solid transparent; font-size: 0.75rem; color: var(--muted); }
 .swatch i { width: 34px; height: 34px; border-radius: 50%; background: var(--sw); box-shadow: 0 0 0 2px var(--line), 0 4px 12px rgba(0, 0, 0, 0.4); }
 .swatch.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+
+/* ---- uygulama şifresi (tam ekran örtü; arkadaki video/arayüz tamamen kapanır) ---- */
+.lock { position: fixed; inset: 0; z-index: 400; display: grid; place-items: center; background: var(--bg-grad) no-repeat, var(--bg); background-attachment: fixed; padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l); overflow: auto; }
+.lk-box { width: min(92vw, 340px); display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 0; }
+.lk-t { font-size: 1.25rem; font-weight: 700; text-align: center; }
+.lk-h { min-height: 1.3em; color: var(--muted); font-size: 0.9375rem; text-align: center; }
+.lk-dots { display: flex; gap: 12px; min-height: 18px; }
+.lk-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); }
+.lk-dots i.on { background: var(--accent); border-color: var(--accent); }
+.lk-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+.lk-k { height: 62px; border-radius: 14px; background: var(--raised); color: var(--text); font-size: 1.5rem; font-weight: 600; }
+.lk-k.fn { font-size: 1.25rem; color: var(--muted); }
+.lk-k.ok { background: var(--accent); color: var(--accent-ink); }
+.lk-k:active { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--raised); }
+.lk-x { margin-top: 4px; padding: 10px 18px; border-radius: 22px; color: var(--muted); }
+.lock.shake .lk-dots { animation: lk-shake 0.35s; }
+@keyframes lk-shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+html.tv .lk-box { width: min(60vh, 420px); }
+html.tv .lk-k { height: 56px; }
+html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 3px var(--accent), 0 0 20px var(--accent-soft); }
+@media (orientation: landscape) and (max-height: 520px) { .lk-box { gap: 6px; } .lk-k { height: 44px; font-size: 1.25rem; } .lk-pad { gap: 6px; } }

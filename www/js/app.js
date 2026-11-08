@@ -14,7 +14,7 @@ import { VirtualList } from './vlist.js';
 import { sortItems, SORTS, isSortMode } from './sort.js';
 import {
   arrange, toggleHidden, move, resetOrderAndHidden, hiddenGroupNames, addFolder, renameFolder, deleteFolder,
-  toggleInFolder, folderOf, groupKey, folderKey,
+  toggleInFolder, folderOf, groupKey, folderKey, isLocked, toggleLocked, lockedGroupNames,
 } from './cats.js';
 import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
@@ -25,6 +25,8 @@ import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
+import { createPinPad } from './lockui.js';
+import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 
@@ -70,6 +72,8 @@ const S = {
   pv: null, // önizlemede oynayan kanal
   // Kategori ekranı: null = kategori listesi, '__all' / '__recent' / '__cont' = özel listeler, aksi hâlde grup adı
   group: { live: null, movie: null, series: null },
+  unlocked: new Set(), // şifresi girilmiş kilitli kategoriler (oturum boyunca)
+  hiddenAt: null, // uygulama arka plana en son ne zaman gitti
   sort: Object.fromEntries(['live', 'movie', 'series'].map((k) => [k, isSortMode(store.pref('sort.' + k, 'default')) ? store.pref('sort.' + k, 'default') : 'default'])), // kategori içi sıralama (türe göre kalıcı)
   catFilter: '',
   catEdit: false, // kategori düzenleme kipi (sırala / gizle / klasör)
@@ -370,7 +374,10 @@ const savePrefs = (kind, prefs) => store.setCatPrefs(sid(), kind, prefs);
 // Gizlenen kategorilerdeki öğeler "Tümü"nde ve aramada görünmez.
 function visibleAll(kind) {
   const all = S.cat[CAT_KEY[kind]];
-  const hid = hiddenGroupNames(prefsOf(kind));
+  const prefs = prefsOf(kind);
+  const hid = hiddenGroupNames(prefs);
+  // Kilitli kategoriler, şifre girilene kadar (oturum boyunca) gizli gibi davranır.
+  if (lockEnabled()) for (const n of lockedGroupNames(prefs)) if (!S.unlocked.has(catKey(kind, groupKey(n)))) hid.add(n);
   return hid.size ? all.filter((it) => !hid.has(it.group || 'Diğer')) : all;
 }
 
@@ -428,7 +435,7 @@ function categoryRows(kind) {
     const n = continueItems(kind).length;
     if (n) specials.push({ id: '__cont', name: 'Devam et', count: n, special: true });
   }
-  let rows = arrange(categoryBase(kind), prefs).map((r) => ({ ...r, hidden: prefs.hidden.includes(r.id) }));
+  let rows = arrange(categoryBase(kind), prefs).map((r) => ({ ...r, hidden: prefs.hidden.includes(r.id), lockSet: isLocked(prefs, r.id), locked: lockEnabled() && isLocked(prefs, r.id) }));
   if (!S.catEdit) rows = rows.filter((r) => !r.hidden);
   const f = fold(S.catFilter);
   const match = (r) => fold(r.name).includes(f);
@@ -437,21 +444,23 @@ function categoryRows(kind) {
 
 function catRow(c, i) {
   const folderIc = c.folder ? icon('folder') : '';
+  const lockIc = c.locked ? icon('lock') : '';
   if (!S.catEdit || c.special) {
-    return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
+    return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${lockIc}${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
   }
   const move_ = S.catFilter
     ? ''
     : `<button class="act" data-act="top" aria-label="En üste al">${icon('top')}</button><button class="act" data-act="up" aria-label="Yukarı">${icon('up')}</button><button class="act" data-act="down" aria-label="Aşağı">${icon('down')}</button>`;
-  return `<div class="row cat edit${c.hidden ? ' hid' : ''}" role="button" tabindex="0" data-i="${i}"><button class="act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><div class="meta"><div class="nm"><span class="mq-i">${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span>${move_}</div>`;
+  return `<div class="row cat edit${c.hidden ? ' hid' : ''}" role="button" tabindex="0" data-i="${i}"><button class="act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><button class="act" data-act="lock" aria-label="${c.lockSet ? 'Kilidi kaldır' : 'Şifreyle kilitle'}">${icon(c.lockSet ? 'lock' : 'lock-open')}</button><div class="meta"><div class="nm"><span class="mq-i">${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span>${move_}</div>`;
 }
 
 function onCatTap(kind, i, ev) {
   const c = S.cats[i];
   if (!c) return;
-  if (!S.catEdit || c.special) return enterGroup(kind, c.id);
+  if (!S.catEdit || c.special) return c.locked ? ensureUnlocked(kind, c.id).then((ok) => ok && enterGroup(kind, c.id)) : enterGroup(kind, c.id);
   const act = ev.target.closest('[data-act]');
   if (act) {
+    if (act.dataset.act === 'lock') return toggleCatLock(kind, c.id);
     const prefs = prefsOf(kind);
     const next = act.dataset.act === 'eye'
       ? toggleHidden(prefs, c.id)
@@ -651,9 +660,10 @@ function fillEmpty(empty, kind, mode, all) {
 // Sıralama seçimi (A→Z, Z→A, eklenme zamanı)
 function sortSheet(kind) {
   const hint = S.source && S.source.type === 'xtream' ? '' : '<p class="hint">Bu listede eklenme tarihi bulunmuyor; “eklenme” seçenekleri listedeki sıraya göre çalışır (sona eklenen yeni sayılır).</p>';
+  const rated = kind !== 'live' && (S.cat[CAT_KEY[kind]] || []).some((i) => Number(i.rating) > 0); // puan yalnız film/dizide ve listede puan varsa
   const sh = openSheet({
     title: 'Sırala',
-    html: SORTS.map(([k, label]) => `<button class="list-item" data-s="${k}"><span class="t">${esc(label)}</span>${S.sort[kind] === k ? tick() : ''}</button>`).join('') + hint,
+    html: SORTS.filter(([k]) => k !== 'rate' || rated).map(([k, label]) => `<button class="list-item" data-s="${k}"><span class="t">${esc(label)}</span>${S.sort[kind] === k ? tick() : ''}</button>`).join('') + hint,
     mount: (body) =>
       body.addEventListener('click', (e) => {
         const b = e.target.closest('[data-s]');
@@ -829,7 +839,7 @@ $('#btn-search').addEventListener('click', () => {
   if (k && !S.split && S.group[k] != null) return openSearch();
   globalSearch();
 });
-$('#crumb-sort').addEventListener('click', () => sortSheet(TAB_KIND[S.tab]));
+$('#crumb-sort').addEventListener('click', () => sortSheet(S.tab === 'favs' ? S.favKind : TAB_KIND[S.tab]));
 $('#q-clear').addEventListener('click', () => closeSearch());
 qEl.addEventListener(
   'input',
@@ -1021,7 +1031,9 @@ function mountFavList() {
 
 function refreshFavs() {
   const kind = S.favKind;
-  S.items = store.favs(sid()).filter((f) => f.kind === kind).map((f) => resolve(f, kind)).filter(Boolean);
+  S.items = sortItems(store.favs(sid()).filter((f) => f.kind === kind).map((f) => resolve(f, kind)).filter(Boolean), S.sort[kind]);
+  $('#crumb-sort').hidden = false; // favorilerde de üst çubuktaki sırala düğmesi çalışır
+  $('#crumb-sort').classList.toggle('on', S.sort[kind] !== 'default');
   S.list.setItems(S.items);
   const none = !S.items.length;
   $('#list').hidden = none;
@@ -1328,9 +1340,10 @@ function renderSplit(v) {
   S.catFilter = '';
   S.catEdit = false;
   // Canlı TV her açılışta kategorilerle başlar (S.group.live null); kategoriye girince kanallar sol bölmede listelenir.
-  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button></div><div class="sp-search"><input id="sp-q" type="search" placeholder="Kanal ara…" aria-label="Kanal ara" autocomplete="off" enterkeyhint="search"></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
+  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button><button class="icon-btn" id="sp-sort" aria-label="Sırala" hidden>${icon('sort')}</button></div><div class="sp-search"><input id="sp-q" type="search" placeholder="Kanal ara…" aria-label="Kanal ara" autocomplete="off" enterkeyhint="search"></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
   $('#sp-prev').addEventListener('click', () => cycleCat(-1));
   $('#sp-next').addEventListener('click', () => cycleCat(1));
+  $('#sp-sort').addEventListener('click', () => sortSheet('live'));
   $('#sp-name').addEventListener('click', () => S.group.live != null && leaveGroup('live'));
   $('#sp-slot').addEventListener('click', onSlotTap);
   // Kalıcı kanal arama alanı: yazdıkça tüm canlı kanallarda (kategori seçiliyse onun içinde) arar
@@ -1383,6 +1396,9 @@ function refreshSplit(keepScroll = false) {
   const rows = cats ? S.cats : S.items;
   S.list.setItems(rows, keepScroll);
   $('#sp-prev').hidden = $('#sp-next').hidden = cats;
+  const gl = S.group.live;
+  $('#sp-sort').hidden = cats || !!S.query || gl === '__recent' || gl === '__cont'; // sıralama: yalnız kategori içinde, aramada ve özel listelerde değil
+  $('#sp-sort').classList.toggle('on', S.sort.live !== 'default');
   $('#sp-name').disabled = cats;
   $('#sp-name').setAttribute('aria-label', cats ? 'Kategoriler' : 'Kategorilere dön');
   $('#sp-name-t').textContent = cats ? 'Kategoriler' : groupTitle('live', S.group.live);
@@ -1507,7 +1523,7 @@ function channelInfoSheet(it) {
 
 // Kategori geçişi: ‹ › okları komşu kategoriye atlar; ortadaki ada dokununca kategori listesine dönülür.
 function cycleCat(d) {
-  const rows = categoryRows('live').filter((r) => !r.special || r.id !== '__recent' || r.count);
+  const rows = categoryRows('live').filter((r) => (!r.special || r.id !== '__recent' || r.count) && (!r.locked || S.unlocked.has(catKey('live', r.id))));
   if (!rows.length || S.group.live == null) return;
   let i = rows.findIndex((r) => r.id === S.group.live);
   i = (i + d + rows.length) % rows.length;
@@ -1936,6 +1952,7 @@ function generalSheet() {
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
+      `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
     mount: (body) => {
       body.addEventListener('click', (e) => {
@@ -1963,6 +1980,7 @@ function generalSheet() {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));
         applyTvMode();
       });
+      $('#g-lock', body).addEventListener('click', () => lockSheet());
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
@@ -2090,6 +2108,112 @@ function updateSheet(info) {
   });
 }
 
+// ------------------------------------------------------------------ uygulama şifresi
+
+const pad = createPinPad();
+const pinRec = () => store.pref('lock.pin', null);
+const lockEnabled = () => !!(pinRec() && pinRec().hash);
+const catKey = (kind, id) => kind + '|' + id;
+
+// Şifre denemesi: art arda yanlışta bekleme süresi (yeniden başlatınca da sürer).
+async function pinCheck(pin) {
+  const st = store.pref('lock.fail', emptyFail());
+  const w = waitMs(st);
+  if (w > 0) return { ok: false, msg: `Çok fazla yanlış deneme. ${fmtWait(w)} sonra deneyin.` };
+  if (await checkPin(pin, pinRec())) {
+    store.setPref('lock.fail', emptyFail());
+    return { ok: true };
+  }
+  const next = registerFail(st);
+  store.setPref('lock.fail', next);
+  const w2 = waitMs(next);
+  return { ok: false, msg: w2 > 0 ? `Çok fazla yanlış deneme. ${fmtWait(w2)} sonra deneyin.` : `Yanlış şifre (${5 - (next.n % 5)} deneme hakkı kaldı)` };
+}
+
+// Mevcut şifreyi sorar; doğru girilirse true.
+const askPin = (title, hint, cancelable = true) => pad.prompt({ title, hint, len: pinRec().len, cancelable, check: pinCheck }).then((p) => p != null);
+
+// Yeni şifre: iki kez girilir. Kaydedildiyse true.
+async function createPin() {
+  const a = await pad.prompt({ title: 'Yeni şifre', hint: `${MIN_LEN}–6 rakam girin, sonra ✓ tuşuna basın`, check: (p) => (isValidPin(p) ? { ok: true } : { ok: false, msg: `En az ${MIN_LEN} rakam girin` }) });
+  if (a == null) return false;
+  const b = await pad.prompt({ title: 'Şifreyi tekrar girin', hint: 'Aynı şifreyi yeniden yazın, sonra ✓', check: (p) => (p === a ? { ok: true } : { ok: false, msg: 'Şifreler uyuşmuyor, yeniden deneyin' }) });
+  if (b == null) return false;
+  store.setPref('lock.pin', await makeRecord(a));
+  store.setPref('lock.fail', emptyFail());
+  return true;
+}
+
+let appLocked = false;
+// Uygulamayı kilitler: oynatıcı kapanır, şifre girilene kadar hiçbir şey görünmez.
+async function lockApp() {
+  if (appLocked || !lockEnabled()) return;
+  appLocked = true;
+  if (pui.isOpen()) pui.close();
+  multiSuspend();
+  S.unlocked.clear();
+  await askPin('Şifre', 'Uygulama şifrenizi girin', false);
+  appLocked = false;
+  S.hiddenAt = null;
+  if (!pui.isOpen()) multiResume();
+  if (S.source) refreshList(true);
+}
+
+// Kilitli kategoriye girmeden önce (oturumda bir kez) şifre sorar.
+async function ensureUnlocked(kind, id) {
+  if (!lockEnabled() || !isLocked(prefsOf(kind), id) || S.unlocked.has(catKey(kind, id))) return true;
+  const ok = await askPin('Kilitli kategori', 'Açmak için uygulama şifresini girin');
+  if (ok) S.unlocked.add(catKey(kind, id));
+  return ok;
+}
+
+// Düzenle kipinde kilit düğmesi: şifre yoksa önce şifre oluşturulur; kilidi kaldırmak şifre ister.
+async function toggleCatLock(kind, id) {
+  const prefs = prefsOf(kind);
+  if (isLocked(prefs, id)) {
+    if (lockEnabled() && !(await askPin('Kilidi kaldır', 'Kategorinin kilidini kaldırmak için şifreyi girin'))) return;
+  } else if (!lockEnabled() && !(await createPin())) return;
+  const wasLocked = isLocked(prefs, id);
+  savePrefs(kind, toggleLocked(prefs, id));
+  if (!wasLocked) S.unlocked.delete(catKey(kind, id));
+  refreshList(true);
+}
+
+function lockSheet() {
+  const on = lockEnabled();
+  const sh = openSheet({
+    title: 'Uygulama şifresi',
+    html: on
+      ? `<p class="hint">Uygulama açılırken ve arka plandan dönünce şifre istenir. Kategorileri kilitlemek için Ayarlar yerine kategori listesinde “Düzenle”yi kullanın. Şifreyi unutursanız uygulama verilerini Android ayarlarından silmeniz gerekir.</p><div class="sel-row"><span>Şifre isteme zamanı</span><select id="lk-after">${optionsHtml(AFTER_OPTIONS, normalizeAfter(store.pref('lock.after', DEFAULT_AFTER)))}</select></div><button class="list-item" id="lk-change"><span class="t">Şifreyi değiştir</span></button><button class="list-item" id="lk-off"><span class="t">Şifreyi kaldır</span></button>`
+      : `<p class="hint">Uygulamayı ve seçtiğiniz kategorileri (çocuk kilidi) şifreyle koruyun. Şifre ${MIN_LEN}–6 rakamdır. Şifreyi unutursanız uygulama verilerini Android ayarlarından silmeniz gerekir.</p><button class="list-item" id="lk-on"><span class="t">Şifre belirle</span></button>`,
+    mount: (body) => {
+      body.addEventListener('click', async (e) => {
+        const id = e.target.closest('button') && e.target.closest('button').id;
+        if (id === 'lk-on') {
+          if (await createPin()) {
+            sh.close();
+            toast('Uygulama şifresi açıldı');
+          }
+        } else if (id === 'lk-change') {
+          if ((await askPin('Mevcut şifre', 'Önce şu anki şifrenizi girin')) && (await createPin())) {
+            sh.close();
+            toast('Şifre değiştirildi');
+          }
+        } else if (id === 'lk-off') {
+          if (await askPin('Şifreyi kaldır', 'Kaldırmak için şifrenizi girin')) {
+            store.setPref('lock.pin', null);
+            sh.close();
+            toast('Uygulama şifresi kaldırıldı');
+            refreshList(true);
+          }
+        }
+      });
+      const af = $('#lk-after', body);
+      if (af) af.addEventListener('change', (e) => store.setPref('lock.after', normalizeAfter(e.target.value)));
+    },
+  });
+}
+
 // ------------------------------------------------------------------ olaylar ve başlangıç
 
 $('#btn-source').addEventListener('click', () => (store.sources().length ? sourceSwitcher() : sourceForm()));
@@ -2120,7 +2244,11 @@ $('#tabs').addEventListener('click', (e) => {
   if (b) setTab(b.dataset.tab);
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return multiSuspend(); // arka planda kutu oynatıcıları (ses dahil) durur
+  if (document.visibilityState !== 'visible') {
+    S.hiddenAt = Date.now();
+    return multiSuspend(); // arka planda kutu oynatıcıları (ses dahil) durur
+  }
+  if (shouldLock({ enabled: lockEnabled(), after: store.pref('lock.after', DEFAULT_AFTER), hiddenAt: S.hiddenAt })) return lockApp();
   if (!pui.isOpen()) multiResume();
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
@@ -2166,6 +2294,7 @@ initNav();
 window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ayıklama ve uçtan uca testler için
 
 (async function boot() {
+  if (lockEnabled()) lockApp(); // açılışta şifre ekranı
   const src = store.activeSource();
   if (!src) {
     // İlk açılış: doğrudan kaynak ekleme sayfası (Xtream / M3U bağlantısı / dosyadan).

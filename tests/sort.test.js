@@ -39,3 +39,9 @@ test('M3U (eklenme zamanı yok): liste sırası zaman yerine geçer', () => {
 test('sıralama kipleri', () => {
   assert.ok(SORTS.every(([k]) => isSortMode(k)) && !isSortMode('x'));
 });
+
+test('puan: yüksekten düşüğe; puanı olmayanlar sona, eşitler listedeki sırada', () => {
+  const l = [{ name: 'a', rating: 3.5 }, { name: 'b' }, { name: 'c', rating: '4.8' }, { name: 'd', rating: 3.5 }, { name: 'e', rating: 0 }];
+  assert.deepEqual(names(sortItems(l, 'rate')), ['c', 'a', 'd', 'b', 'e']);
+  assert.ok(isSortMode('rate'));
+});

@@ -1,10 +1,10 @@
 // Kategori düzeni: sıralama, gizleme ve özel klasörler. Saf mantık: durum dışarıda (store) saklanır,
 // her işlem yeni bir tercih nesnesi döndürür.
 //
-// prefs = { order: [kimlik], hidden: [kimlik], folders: [{ id, name, items: [öğe kimliği] }] }
+// prefs = { order: [kimlik], hidden: [kimlik], locked: [kimlik], folders: [{ id, name, items: [öğe kimliği] }] }
 // Kimlikler: grup "g:<ad>", klasör "f:<id>".
 
-export const emptyPrefs = () => ({ order: [], hidden: [], folders: [] });
+export const emptyPrefs = () => ({ order: [], hidden: [], locked: [], folders: [] });
 
 export const groupKey = (name) => 'g:' + name;
 export const folderKey = (id) => 'f:' + id;
@@ -20,7 +20,7 @@ export function normalizePrefs(p) {
     seen.add(f.id);
     folders.push({ id: f.id, name: f.name, items: [...new Set(strings(f.items))] });
   }
-  return { order: [...new Set(strings(p && p.order))], hidden: [...new Set(strings(p && p.hidden))], folders };
+  return { order: [...new Set(strings(p && p.order))], hidden: [...new Set(strings(p && p.hidden))], locked: [...new Set(strings(p && p.locked))], folders };
 }
 
 // base: [{ id, ... }] varsayılan sırada; kayıtlı sıradakiler önce (o sırayla), kalanlar varsayılan sırayla arkadan gelir.
@@ -46,6 +46,18 @@ export function move(prefs, ids, id, where) {
   const to = where === 'top' ? 0 : where === 'up' ? Math.max(0, i - 1) : Math.min(list.length, i + 1);
   list.splice(to, 0, id);
   return { ...prefs, order: list };
+}
+
+// Kilitli kategori (çocuk kilidi): içine girmek ve öğelerini "Tümü"nde/aramada görmek için uygulama şifresi gerekir.
+export const isLocked = (prefs, id) => prefs.locked.includes(id);
+
+export function toggleLocked(prefs, id) {
+  const locked = isLocked(prefs, id) ? prefs.locked.filter((x) => x !== id) : [...prefs.locked, id];
+  return { ...prefs, locked };
+}
+
+export function lockedGroupNames(prefs) {
+  return new Set(prefs.locked.filter((id) => id.startsWith('g:')).map((id) => id.slice(2)));
 }
 
 export const resetOrderAndHidden = (prefs) => ({ ...prefs, order: [], hidden: [] });
@@ -80,6 +92,7 @@ export function deleteFolder(prefs, id) {
   return {
     order: prefs.order.filter((x) => x !== k),
     hidden: prefs.hidden.filter((x) => x !== k),
+    locked: prefs.locked.filter((x) => x !== k),
     folders: prefs.folders.filter((f) => f.id !== id),
   };
 }

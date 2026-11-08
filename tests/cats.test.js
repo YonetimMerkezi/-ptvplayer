@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  emptyPrefs, normalizePrefs, arrange, toggleHidden, isHidden, move, resetOrderAndHidden, hiddenGroupNames,
+  emptyPrefs, normalizePrefs, arrange, toggleHidden, isHidden, move, resetOrderAndHidden, hiddenGroupNames, isLocked, toggleLocked, lockedGroupNames,
   addFolder, renameFolder, deleteFolder, toggleInFolder, inFolder, folderOf, folderKey, groupKey,
 } from '../www/js/cats.js';
 
@@ -39,7 +39,7 @@ test('gizleme aç/kapa ve gizli grup adları', () => {
   assert.deepEqual([...hiddenGroupNames(p)], ['Spor']);
   p = toggleHidden(p, groupKey('Spor'));
   assert.ok(!isHidden(p, 'g:Spor'));
-  assert.deepEqual(resetOrderAndHidden({ ...p, order: ['a'], folders: [{ id: '1', name: 'K', items: [] }] }), { order: [], hidden: [], folders: [{ id: '1', name: 'K', items: [] }] });
+  assert.deepEqual(resetOrderAndHidden({ ...p, order: ['a'], folders: [{ id: '1', name: 'K', items: [] }] }), { order: [], hidden: [], locked: [], folders: [{ id: '1', name: 'K', items: [] }] });
 });
 
 test('klasör: oluştur, yeniden adlandır, öğe ekle/çıkar, sil', () => {
@@ -59,7 +59,7 @@ test('klasör: oluştur, yeniden adlandır, öğe ekle/çıkar, sil', () => {
   assert.equal(renameFolder(p, 'k1', '  '), p, 'boş ad yok sayılır');
   p = toggleHidden({ ...p, order: ['f:k1', 'g:A'] }, 'f:k1');
   p = deleteFolder(p, 'k1');
-  assert.deepEqual(p, { order: ['g:A'], hidden: [], folders: [] });
+  assert.deepEqual(p, { order: ['g:A'], hidden: [], locked: [], folders: [] });
 });
 
 test('sıra özelleştirilmişse yeni klasör en üste konur', () => {
@@ -71,6 +71,19 @@ test('sıra özelleştirilmişse yeni klasör en üste konur', () => {
 test('bozuk kayıt toparlanır', () => {
   assert.deepEqual(normalizePrefs(null), emptyPrefs());
   assert.deepEqual(normalizePrefs({ order: ['a', 3, 'a'], hidden: 'x', folders: [{ id: 'k', name: 'N', items: ['1', 1, '1'] }, { id: 'k', name: 'Çift' }, null, { id: 5 }] }), {
-    order: ['a'], hidden: [], folders: [{ id: 'k', name: 'N', items: ['1'] }],
+    order: ['a'], hidden: [], locked: [], folders: [{ id: 'k', name: 'N', items: ['1'] }],
   });
+});
+
+test('kilitli kategoriler: kilitle/aç, grup adları, klasör silinince temizlenir, sıfırlama kilidi açmaz', () => {
+  let p = emptyPrefs();
+  p = toggleLocked(p, 'g:Yetişkin');
+  p = toggleLocked(p, 'f:1');
+  assert.equal(isLocked(p, 'g:Yetişkin'), true);
+  assert.deepEqual([...lockedGroupNames(p)], ['Yetişkin']);
+  assert.equal(isLocked(resetOrderAndHidden({ ...p, order: ['g:A'] }), 'g:Yetişkin'), true, 'sırayı/gizlemeyi sıfırlamak kilidi kaldırmaz');
+  p = toggleLocked(p, 'g:Yetişkin');
+  assert.equal(isLocked(p, 'g:Yetişkin'), false);
+  const q = normalizePrefs({ locked: ['g:A', 'g:A', 5, 'f:9'], folders: [{ id: '9', name: 'K', items: [] }] });
+  assert.deepEqual(q.locked, ['g:A', 'f:9']);
 });
