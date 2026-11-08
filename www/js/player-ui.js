@@ -659,6 +659,20 @@ export function createPlayerUI({ engine, player, env }) {
   q('#pl-sleep').addEventListener('click', () => sleepSheet());
   q('#pl-sync').addEventListener('click', () => syncSheet());
   q('#pl-rec').addEventListener('click', () => recSheet());
+  q('#pl-pip').hidden = engine.kind !== 'native';
+  q('#pl-pip').addEventListener('click', async () => {
+    try {
+      await engine.enterPip();
+    } catch (e) {
+      toast(e && e.message ? e.message : 'PiP açılamadı');
+    }
+  });
+  if (engine.onPipChannel) {
+    engine.onPipChannel((e) => {
+      const st = player.state();
+      if (st.item && st.item.kind === 'live') go(Number(e.direction) || 0);
+    });
+  }
   q('#pl-tv').addEventListener('click', () => {
     const st = player.state();
     if (st.item && env.castTo) env.castTo(st, ctx);
