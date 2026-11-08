@@ -8,6 +8,7 @@ export function nativePlugin(name, win = globalThis.window) {
   return {
     addListener: async (event, cb) => C.addListener(name, event, cb),
     play: call('play'),
+    enterPip: call('enterPip'),
     pause: call('pause'),
     resume: call('resume'),
     stop: call('stop'),
