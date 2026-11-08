@@ -2,6 +2,8 @@ package com.koruk.iptv;
 
 import android.os.Build;
 import android.os.Bundle;
+import android.content.Intent;
+import android.content.res.Configuration;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -20,6 +22,26 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private long lastBackAt = 0;
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        IptvPlayerPlugin.handlePipAction(intent);
+    }
+
+    @Override
+    public void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (Build.VERSION.SDK_INT < 31) IptvPlayerPlugin.enterPipFromUserLeave();
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        IptvPlayerPlugin.onPipModeChanged(isInPictureInPictureMode);
+        if (!isInPictureInPictureMode) hideSystemBars();
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
