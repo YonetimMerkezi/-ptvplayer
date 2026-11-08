@@ -86,10 +86,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.row.cat:has-text("Tümü")');
   await page.waitForSelector('.row:not(.cat)');
   ok((await page.textContent('#crumb-t')) === 'Tümü', 'kategoriye girince başlıkta adı yazıyor');
+  ok(await page.$eval('#btn-source', (e) => e.hidden), 'kategori içinde kaynak adı gizli (başlık onun yerine)');
+  ok((await page.$$('#btn-home:not([hidden])')).length === 1 && (await page.$$('.crumb-back')).length === 0, 'kategori içinde tek geri oku var');
   const rowCount = await page.$$eval('.row', (e) => e.length);
   ok(rowCount > 5 && rowCount < 40, `yalnız görünen satırlar çizildi (${rowCount} satır)`);
 
-  await page.click('#crumb-search');
+  await page.click('#btn-search');
   await page.fill('#q', 'seker');
   await page.waitForFunction(() => document.querySelectorAll('.row').length > 0 && [...document.querySelectorAll('.row .nm')].every((n) => /Şeker/.test(n.textContent)));
   ok(true, '“seker” araması “Şeker TV” kanallarını buluyor (Türkçe duyarsız)');
@@ -97,9 +99,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#q-clear');
   await page.waitForSelector('.row:not(.cat)');
 
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.waitForSelector('.row.cat');
   ok(true, 'başlıktaki geri oku kategori listesine dönüyor');
+  ok(!(await page.$eval('#btn-source', (e) => e.hidden)) && (await page.$eval('#crumb', (e) => e.hidden)), 'kategori listesine dönünce kaynak adı geri geldi, kategori başlığı gizlendi');
   await page.click('.row.cat:has-text("Spor")');
   await page.waitForSelector('.row:not(.cat)');
   const nSpor = await page.$$eval('.row:not(.cat)', (e) => e.length);
@@ -160,7 +163,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(true, 'geri tuşu oynatıcıyı kapatıyor');
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.click('.row.cat:has-text("Son izlenen")');
   await page.waitForSelector('.row:not(.cat)');
   ok((await page.$$eval('.row:not(.cat)', (e) => e.length)) === 2, 'son izlenenlerde iki kanal');
@@ -168,7 +171,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // ---------------------------------------------------------------- 3b. kategori yönetimi
   console.log('Kategori yönetimi');
   const catRowOf = (name) => page.locator('.row.cat', { has: page.locator('.nm', { hasText: new RegExp('^' + name + '$') }) });
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.waitForSelector('.row.cat');
   const names0 = await page.$$eval('.row.cat .nm', (e) => e.map((x) => x.textContent));
   const [g1, g2] = [names0[2], names0[3]];
@@ -201,13 +204,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(JSON.stringify(names2) === JSON.stringify(names1), 'sıra ve gizleme yeniden açılışta korunuyor');
   await page.click('.row.cat:has-text("Tümü")');
   await page.waitForSelector('.row:not(.cat)');
-  await page.click('#crumb-search');
+  await page.click('#btn-search');
   await page.fill('#q', g1);
   await sleep(450);
   const hiddenInSearch = await page.evaluate((g) => window.__iptv.S.items.some((it) => it.group === g), g1);
   ok(!hiddenInSearch, 'gizli kategorideki öğeler kategori içi aramada da çıkmıyor');
   await page.click('#q-clear');
   await page.waitForSelector('.row:not(.cat)');
+  await page.click('#btn-home'); // tek geri oku: kategoriden çıkar; kategori dışında üstteki arama tüm içeriği arar
+  await page.waitForSelector('.row.cat');
   await page.click('#btn-search');
   await page.fill('#gs-q', g1);
   await sleep(500);
@@ -217,7 +222,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.pg', { state: 'detached' });
 
   // klasör: oluştur, uzun basarak öğe ekle
-  await page.click('#crumb-back');
   await page.waitForSelector('.row.cat');
   await page.click('#cat-edit');
   await page.click('#cat-new');
@@ -242,7 +246,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(true, 'öğe klasöre eklendi (işaret göründü)');
   await page.goBack();
   await page.waitForSelector('.sheet-back', { state: 'detached' });
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.waitForSelector('.row.cat');
   const folderCount = await catRowOf('Sabah kanalları').locator('.n').textContent();
   ok(folderCount === '1', 'klasör satırı 1 öğe gösteriyor');
@@ -264,7 +268,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.sheet-back', { state: 'detached' });
 
   // klasörü yeniden adlandır ve sil
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.waitForSelector('.row.cat');
   await page.click('#cat-edit');
   await page.click('.row.cat.edit:has-text("Sabah kanalları")');
@@ -314,11 +318,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.sheet [data-s=default]');
   await page.waitForSelector('.sheet-back', { state: 'detached' });
 
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.waitForSelector('.row.cat');
   await page.click('.row.cat:has-text("Spor")');
   await page.waitForSelector('.row:not(.cat)');
-  await page.click('#crumb-search');
+  await page.click('#btn-search');
   ok((await page.getAttribute('#q', 'placeholder')) === 'Bu kategoride ara…', 'kategori içindeyken arama o kategoriyle sınırlı');
   await page.keyboard.type('seker', { delay: 40 });
   await page.waitForFunction(() => window.__iptv.S.query === 'seker');
@@ -407,7 +411,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(prog.length === 1 && prog[0].pos > 10000, `kapanışta konum kaydedildi (${prog[0] && Math.round(prog[0].pos / 1000)} sn)`);
   await page.goBack(); // detay sayfası
   await page.waitForSelector('.pg', { state: 'detached' });
-  await page.click('#crumb-back');
+  await page.click('#btn-home');
   await page.waitForSelector('.row.cat:has-text("Devam et")');
   ok(true, '“Devam et” kategorisi belirdi');
   await page.click('.row.cat:has-text("Devam et")');
@@ -495,6 +499,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, '07c-film-detay-xtream.png') });
   await page.goBack();
   await page.waitForSelector('.pg', { state: 'detached' });
+  await page.click('#btn-home'); // kategori içinde kaynak adı gizli; kategori listesine dönünce görünür
+  await page.waitForSelector('.row.cat');
   await page.click('#btn-source');
   ok((await page.$$eval('.sheet .list-item', (e) => e.length)) === 3, 'kaynak değiştirici iki kaynak + “ekle” gösteriyor');
   await page.goBack();
@@ -560,7 +566,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       },
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
       play: async (a) => {
-        window.__calls.push(['play', a.url, a.mime]);
+        window.__calls.push(['play', a.url, a.mime, a.buffer]);
         if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm/.test(a.url) }), 50);
         setTimeout(() => listeners.time({ pos: 1000, dur: /webm/.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
         // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
@@ -635,6 +641,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
   const play = await page.evaluate(() => window.__calls.find((c) => c[0] === 'play'));
   ok(/\.m3u8$/.test(play[1]) && play[2] === 'hls', 'yerel oynatıcı HLS adresiyle başlatıldı');
+  ok(play[3] === 'high', 'yayın önbelleği varsayılan olarak “Yüksek” ile istendi');
   ok(await page.evaluate(() => document.documentElement.classList.contains('native-playing')), 'yerel oynatma kipi açıldı (video arkada)');
   // Video WebView'ın ARKASINDA; oynatıcıdan <html>'e kadar hiçbir üst öğenin dolgusu opak olmamalı (aksi hâlde video görünmez).
   const opak = await page.evaluate(() => {
@@ -1201,6 +1208,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.selectOption('#g-tv', 'on');
   ok((await page.$eval('html', (h) => h.classList.contains('tv'))) && (await tvCalls()).pop() === true, 'Açık: TV modu açılır, yatay kilit istenir');
   ok((await page.evaluate(() => window.__iptv.store.pref('set.tvmode', 'auto'))) === 'on', 'TV modu seçimi kalıcı kaydedildi');
+  ok((await page.inputValue('#g-buf')) === 'high', 'Yayın önbelleği varsayılan: Yüksek');
+  await page.selectOption('#g-buf', 'max');
+  ok((await page.evaluate(() => window.__iptv.store.pref('set.buffer', 'high'))) === 'max', 'Yayın önbelleği seçimi kalıcı kaydedildi');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.sheet-back', { state: 'detached' });
   ok(true, 'Esc ayar penceresini kapattı');

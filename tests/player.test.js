@@ -262,7 +262,7 @@ test('hata çevirisi ve yerel motor olay aktarımı', async () => {
   assert.deepEqual(events.map((e) => e.type), ['state', 'time', 'error', 'tracks']);
   assert.match(events[2].message, /bağlanılamadı/);
   await eng.load({ url: 'u', mime: 'hls' }, 1234.9);
-  assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234 });
+  assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234, buffer: 'high' }, 'varsayılan önbellek düzeyi eklentiye iletilir');
 });
 
 test('parça listesi değişince arayüze haber verilir (sürüm artar, olay yayılır)', async () => {

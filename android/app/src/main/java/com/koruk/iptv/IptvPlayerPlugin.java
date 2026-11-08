@@ -134,9 +134,10 @@ public class IptvPlayerPlugin extends Plugin {
         final String mime = call.getData().optString("mime", "auto");
         final long startMs = call.getData().optLong("startMs", 0L);
         final JSObject headers = call.getObject("headers");
+        final String buffer = call.getData().optString("buffer", "high");
         main.post(() -> {
             try {
-                startPlayback(url, mime, startMs, headers);
+                startPlayback(url, mime, startMs, headers, buffer);
                 call.resolve();
             } catch (Exception e) {
                 call.reject(String.valueOf(e.getMessage()));
@@ -144,13 +145,24 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
-    private void startPlayback(String url, String mime, long startMs, JSObject headers) {
+    // Yayın önbelleği düzeyi (Ayarlar > Genel): süreler ms; üst sınır bayt olarak da konur ki yüksek bithızlı yayın belleği doldurmasın.
+    private static DefaultLoadControl loadControlFor(String level) {
+        DefaultLoadControl.Builder b = new DefaultLoadControl.Builder();
+        if ("max".equals(level)) {
+            b.setBufferDurationsMs(45000, 180000, 4000, 15000).setTargetBufferBytes(96 * 1024 * 1024);
+        } else if ("normal".equals(level)) {
+            b.setBufferDurationsMs(15000, 60000, 2500, 5000);
+        } else {
+            b.setBufferDurationsMs(30000, 120000, 3000, 10000).setTargetBufferBytes(64 * 1024 * 1024);
+        }
+        return b.build();
+    }
+
+    private void startPlayback(String url, String mime, long startMs, JSObject headers, String buffer) {
         releasePlayer();
         ensureView();
 
-        player = buildExo(headers, true, new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15000, 60000, 2500, 5000)
-                .build());
+        player = buildExo(headers, true, loadControlFor(buffer));
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {

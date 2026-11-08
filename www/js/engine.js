@@ -15,7 +15,7 @@ export function describeError(name) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
-export function createNativeEngine(plugin, on) {
+export function createNativeEngine(plugin, on, getBuffer = () => 'high') {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
@@ -25,7 +25,7 @@ export function createNativeEngine(plugin, on) {
   return {
     kind: 'native',
     load: (target, startMs = 0) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)) }),
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer() }),
     pause: () => plugin.pause(),
     resume: () => plugin.resume(),
     seek: (ms) => plugin.seekTo({ ms: Math.max(0, Math.floor(ms)) }),

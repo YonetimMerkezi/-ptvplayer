@@ -24,6 +24,7 @@ import { holeClip } from './hole.js';
 import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
+import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 
@@ -89,7 +90,7 @@ let player;
 let engine;
 const video = $('#vid');
 const onEngine = (ev) => player.handle(ev);
-engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
+engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER))) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
 player = createPlayer({ engine });
 const pui = createPlayerUI({
   engine,
@@ -310,6 +311,8 @@ function renderTab() {
   $('#btn-search').hidden = !(browse || S.tab === 'favs');
   $('#btn-refresh').hidden = !S.source;
   $('#btn-home').hidden = S.tab === 'home';
+  $('#crumb').hidden = $('#crumb-sort').hidden = true; // kategori başlığını yalnız liste sayfası (drawCrumb) açar
+  $('#btn-source').hidden = false;
   tickClock();
   if (!S.source) return renderOnboarding(v);
   if (S.tab === 'home') return renderHome(v);
@@ -517,9 +520,12 @@ function pruneGroups() {
   if (!Object.values(S.group).some((g) => g != null)) dropGroupLayer();
 }
 
+// Kategori içindeyken üst çubukta kaynak adı yerine kategori adı (ve sayı, sırala) görünür; geri oku tektir.
 function drawCrumb(kind) {
   const g = S.group[kind];
   $('#crumb').hidden = g == null;
+  $('#btn-source').hidden = g != null;
+  if (g == null) $('#crumb-sort').hidden = true;
   if (g != null) {
     $('#crumb-t').textContent = groupTitle(kind, g);
     $('#crumb-n').textContent = S.items.length;
@@ -559,10 +565,7 @@ function drawCatbar(kind, mode, all) {
 }
 
 function renderBrowse(v, kind) {
-  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small><button class="icon-btn" id="crumb-search" aria-label="Bu kategoride ara">${icon('search')}</button><button class="icon-btn" id="crumb-sort" aria-label="Sırala">${icon('sort')}</button></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div>`;
-  $('#crumb-back').addEventListener('click', () => leaveGroup(kind));
-  $('#crumb-search').addEventListener('click', () => openSearch());
-  $('#crumb-sort').addEventListener('click', () => sortSheet(kind));
+  v.innerHTML = `${catbarHtml()}<div id="list"></div><div id="empty" hidden></div>`;
   wireCatbar(kind);
   refreshList();
 }
@@ -820,8 +823,13 @@ function openSearch() {
   $('#searchbar').hidden = false;
   qEl.focus();
 }
-// Üstteki arama tüm içeriği (canlı, film, dizi; tüm kategoriler) arar; kategori içi arama kategori başlığındaki simgeyle yapılır.
-$('#btn-search').addEventListener('click', () => globalSearch());
+// Üstteki arama: kategori içindeyken o kategoride, değilse tüm içerikte (canlı, film, dizi; tüm kategoriler) arar.
+$('#btn-search').addEventListener('click', () => {
+  const k = TAB_KIND[S.tab];
+  if (k && !S.split && S.group[k] != null) return openSearch();
+  globalSearch();
+});
+$('#crumb-sort').addEventListener('click', () => sortSheet(TAB_KIND[S.tab]));
 $('#q-clear').addEventListener('click', () => closeSearch());
 qEl.addEventListener(
   'input',
@@ -1927,6 +1935,7 @@ function generalSheet() {
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
+      `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
     mount: (body) => {
       body.addEventListener('click', (e) => {
@@ -1954,6 +1963,7 @@ function generalSheet() {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));
         applyTvMode();
       });
+      $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
         store.setPref('set.fontScale', Number(e.target.value));
@@ -2086,7 +2096,7 @@ $('#btn-source').addEventListener('click', () => (store.sources().length ? sourc
 $('#btn-refresh').addEventListener('click', () => refreshCatalog());
 $('#btn-home').addEventListener('click', () => {
   const k = TAB_KIND[S.tab];
-  if (S.split && k && S.group[k] != null) return leaveGroup(k); // önce kategori listesine, sonra ana ekrana
+  if (k && S.group[k] != null) return leaveGroup(k); // tek geri oku: önce kategori listesine, sonra ana ekrana
   setTab('home');
 });
 // Yatay geniş ekranda canlı TV üç bölmeli olur; yön değişince yeniden kurulur.

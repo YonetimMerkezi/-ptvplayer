@@ -89,11 +89,9 @@ html.tv body.on-home #btn-home { display: none; }
 .catbar .catq { flex: 1; min-width: 140px; margin: 0; }
 .catbar .catq input { height: 40px; border-radius: 20px; }
 .catbar .btn { flex: none; }
-.crumb { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px 6px; flex: none; }
-.crumb-back { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 22px; color: var(--text); flex: none; }
-.crumb-back:active { background: var(--surface); }
-.crumb .t { flex: 1; min-width: 0; font-weight: 600; font-size: 1.0625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crumb small { color: var(--muted); }
+.crumb { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.crumb .t { min-width: 0; font-weight: 650; font-size: 1.125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb small { color: var(--muted); flex: none; }
 .row.cat .n { color: var(--muted); font-size: 0.8125rem; flex: none; }
 .row.cat .chev { color: var(--muted); font-size: 1.375rem; width: 22px; text-align: center; flex: none; }
 .row.cat.special .nm { color: var(--accent); }
