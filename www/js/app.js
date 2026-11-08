@@ -19,6 +19,7 @@ import {
 import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, fmtAgo } from './ui.js';
+import { checkUpdate, fmtMB, shouldAutoCheck, versionCodeOf } from './update.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -27,8 +28,14 @@ const net = createNet(nativePlugin ? { native: nativePlugin, convertFileSrc: (p)
 
 const CAT_KEY = { live: 'live', movie: 'movies', series: 'series' };
 const TAB_KIND = { live: 'live', movies: 'movie', series: 'series' };
-const STALE_CATALOG_MS = 12 * 3600e3;
-const STALE_EPG_MS = 6 * 3600e3;
+// Otomatik yenileme aralıkları (saat) Ayarlar → Otomasyon'dan değişir; 0 = kapalı.
+const hoursMs = (k, d) => {
+  const h = Number(store.pref(k, d));
+  return h > 0 ? h * 3600e3 : Infinity;
+};
+const staleCatalogMs = () => hoursMs('auto.cat', 12);
+const staleEpgMs = () => hoursMs('auto.epg', 6);
+const setting = (k, d = true) => store.pref('set.' + k, d);
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
@@ -39,7 +46,9 @@ const S = {
   groups: { live: [], movie: [], series: [] },
   epg: new EpgView(null),
   epgInfo: null,
-  tab: store.pref('tab', 'live'),
+  tab: 'home', // her açılış ana ekranla başlar
+  split: false, // yatay geniş ekran: canlı TV üç bölmeli
+  pv: null, // önizlemede oynayan kanal
   // Kategori ekranı: null = kategori listesi, '__all' / '__recent' / '__cont' = özel listeler, aksi hâlde grup adı
   group: { live: null, movie: null, series: null },
   sort: Object.fromEntries(['live', 'movie', 'series'].map((k) => [k, isSortMode(store.pref('sort.' + k, 'default')) ? store.pref('sort.' + k, 'default') : 'default'])), // kategori içi sıralama (türe göre kalıcı)
@@ -76,6 +85,11 @@ const pui = createPlayerUI({
     onEpgSheet: (it) => epgSheet(it),
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
+    previewRect,
+    onPreviewBack: (item) => {
+      if (item && item.kind === 'live') setPv(item);
+      layoutPreview();
+    },
   },
 });
 
@@ -90,6 +104,10 @@ player.onProgress((pos, dur, st) => {
 
 // Oynatıcı kapanınca "Devam et" çipi ve ilerleme çubukları güncellensin.
 player.on((st) => {
+  if ($('#split')) {
+    if (st.item && st.item.kind === 'live' && (!S.pv || S.pv.id !== st.item.id)) setPv(st.item); // tam ekranda kanal değişti
+    setSpStatus(st);
+  }
   if (st.status !== 'idle' || !S.list || !TAB_KIND[S.tab] || !$('#list')) return;
   if (S.listMode === 'cats') refreshList(true);
   else S.list.refreshRows();
@@ -152,6 +170,8 @@ async function activate(id, { force = false } = {}) {
   const src = store.sources().find((s) => s.id === id);
   if (!src) return;
   store.setActive(id);
+  await pui.endPreview();
+  S.pv = null;
   S.source = src;
   S.prog = store.progressAll(id);
   S.epgInfo = null;
@@ -162,7 +182,7 @@ async function activate(id, { force = false } = {}) {
   S.epg = new EpgView(await store.cache.get('epg:' + id));
   renderTop();
   renderTab();
-  const stale = !cached || Date.now() - cached.fetchedAt > STALE_CATALOG_MS;
+  const stale = !cached || Date.now() - cached.fetchedAt > staleCatalogMs();
   if (force || stale) await refreshCatalog({ quiet: !!cached && !force });
   else maybeRefreshEpg();
 }
@@ -196,7 +216,7 @@ async function refreshCatalog({ quiet = false } = {}) {
 async function maybeRefreshEpg(force = false) {
   if (!S.source || !S.cat.live.length || !epgSourceUrls(S.source, S.cat).length) return;
   const have = S.epg.data && S.epg.data.fetchedAt;
-  if (!force && have && Date.now() - have < STALE_EPG_MS) return;
+  if (!force && have && Date.now() - have < staleEpgMs()) return;
   const id = S.source.id;
   try {
     const data = await loadEpg(S.source, S.cat, net);
@@ -205,6 +225,7 @@ async function maybeRefreshEpg(force = false) {
     S.epg = new EpgView(data);
     S.epgInfo = { matched: data.matched, at: data.fetchedAt };
     if (S.list && S.tab === 'live') S.list.refreshRows();
+    renderSpInfo();
     pui.refresh();
   } catch (e) {
     S.epgInfo = { error: e.message };
@@ -217,25 +238,62 @@ function renderTop() {
   $('#src-name').textContent = S.source ? S.source.name : 'IPTV Oynatıcı';
 }
 
+// Ana ekran dışındaki sayfalar bir geçmiş katmanı açar: Android geri tuşu önce ana ekrana döner.
+let tabLayer = 0;
+function pushTabLayer() {
+  const id = ++layerSeq;
+  tabLayer = id;
+  pushLayer('tab', () => {
+    if (tabLayer !== id) return;
+    tabLayer = 0;
+    if (S.tab !== 'home') {
+      clearGroupState();
+      S.tab = 'home';
+      closeSearch(true);
+      renderTab();
+    }
+  });
+}
+
 function setTab(tab) {
   S.tab = tab;
   store.setPref('tab', tab);
   closeSearch(true);
-  resetGroups();
+  if (tab === 'home' && tabLayer) {
+    // 'tab' katmanını (varsa üstündeki kategori katmanıyla birlikte) tek hamlede kapat; kapanış işleyicileri etkisiz
+    groupLayer = 0;
+    clearGroupState();
+    tabLayer = 0;
+    popLayer('tab');
+  } else {
+    resetGroups();
+    if (tab !== 'home' && !tabLayer) pushTabLayer();
+  }
   renderTab();
 }
 
 function renderTab() {
   S.list && S.list.destroy();
   S.list = null;
+  const v = $('#view');
+  v.onclick = null;
+  const split = S.tab === 'live' && S.split && !!S.source;
+  if (!split && (pui.isPreviewing() || S.pv)) {
+    pui.endPreview().then(syncHole);
+    S.pv = null;
+  }
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
+  document.body.classList.toggle('on-home', S.tab === 'home' && !!S.source);
   const browse = S.tab === 'live' || S.tab === 'movies' || S.tab === 'series';
   $('#btn-search').hidden = !browse;
   $('#btn-refresh').hidden = !S.source;
-  const v = $('#view');
+  $('#btn-home').hidden = S.tab === 'home';
+  tickClock();
   if (!S.source) return renderOnboarding(v);
+  if (S.tab === 'home') return renderHome(v);
   if (S.tab === 'sources') return renderSources(v);
   if (S.tab === 'favs') return renderFavs(v);
+  if (split) return renderSplit(v);
   renderBrowse(v, TAB_KIND[S.tab]);
 }
 
@@ -407,10 +465,14 @@ function dropGroupLayer() {
   if (topLayer() === 'group') popLayer('group'); // üstte alt sayfa/oynatıcı varsa onlara dokunma
 }
 
-function resetGroups() {
+function clearGroupState() {
   S.group = { live: null, movie: null, series: null };
   S.catFilter = '';
   S.catEdit = false;
+}
+
+function resetGroups() {
+  clearGroupState();
   dropGroupLayer();
 }
 
@@ -483,6 +545,7 @@ function mountList(kind, mode = 'items') {
         const it = S.items[i];
         if (ev.target.closest('[data-fav]')) return toggleFav(it);
         if (ev.target.closest('[data-epg]')) return epgSheet(it);
+        if (S.split && S.tab === 'live') return onSplitTap(i);
         playLive(S.items, i);
       },
       onLongPress: longPress,
@@ -502,6 +565,7 @@ function mountList(kind, mode = 'items') {
 
 function refreshList(keepScroll = false) {
   if (S.tab === 'favs') return S.list ? refreshFavs() : undefined;
+  if (S.tab === 'live' && S.split && $('#split')) return refreshSplit(keepScroll);
   const kind = TAB_KIND[S.tab];
   if (!kind || !$('#list')) return;
   pruneGroups();
@@ -525,20 +589,23 @@ function refreshList(keepScroll = false) {
   $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
   $('#list').hidden = none;
   empty.hidden = !none;
-  if (none) {
-    const label = { live: 'kanal', movie: 'film', series: 'dizi' }[kind];
-    const g = S.group[kind];
-    if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${g != null ? 'bu kategoride ' : ''}${label} bulunamadı.`);
-    else if (!all && S.loading) empty.innerHTML = emptyHtml('Yükleniyor…', 'Liste indiriliyor, birazdan hazır olur.');
-    else if (!all) empty.innerHTML = emptyHtml(`Bu kaynakta ${label} yok`, 'Listeyi yenilemeyi ya da başka bir kaynak seçmeyi deneyin.', '<button class="btn" id="e-refresh">Listeyi yenile</button>');
-    else if (mode === 'cats') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
-    else if (g === '__recent') empty.innerHTML = emptyHtml('Henüz izlemediniz', 'İzlediğiniz kanallar burada görünür.');
-    else if (g === '__cont') empty.innerHTML = emptyHtml('Yarım kalan yok', 'Yarıda bıraktığınız içerikler burada görünür.');
-    else if (g && g.startsWith('f:')) empty.innerHTML = emptyHtml('Klasör boş', `Bir ${label} satırına ya da kartına uzun basıp “Klasöre ekle”yi seçin.`);
-    else empty.innerHTML = emptyHtml('Bu kategoride öğe yok', '');
-    const b = $('#e-refresh');
-    if (b) b.addEventListener('click', () => refreshCatalog());
-  }
+  if (none) fillEmpty(empty, kind, mode, all);
+}
+
+// Liste boşken gösterilecek açıklama
+function fillEmpty(empty, kind, mode, all) {
+  const label = { live: 'kanal', movie: 'film', series: 'dizi' }[kind];
+  const g = S.group[kind];
+  if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${g != null ? 'bu kategoride ' : ''}${label} bulunamadı.`);
+  else if (!all && S.loading) empty.innerHTML = emptyHtml('Yükleniyor…', 'Liste indiriliyor, birazdan hazır olur.');
+  else if (!all) empty.innerHTML = emptyHtml(`Bu kaynakta ${label} yok`, 'Listeyi yenilemeyi ya da başka bir kaynak seçmeyi deneyin.', '<button class="btn" id="e-refresh">Listeyi yenile</button>');
+  else if (mode === 'cats') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
+  else if (g === '__recent') empty.innerHTML = emptyHtml('Henüz izlemediniz', 'İzlediğiniz kanallar burada görünür.');
+  else if (g === '__cont') empty.innerHTML = emptyHtml('Yarım kalan yok', 'Yarıda bıraktığınız içerikler burada görünür.');
+  else if (g && g.startsWith('f:')) empty.innerHTML = emptyHtml('Klasör boş', `Bir ${label} satırına ya da kartına uzun basıp “Klasöre ekle”yi seçin.`);
+  else empty.innerHTML = emptyHtml('Bu kategoride öğe yok', '');
+  const b = $('#e-refresh');
+  if (b) b.addEventListener('click', () => refreshCatalog());
 }
 
 // Sıralama seçimi (A→Z, Z→A, eklenme zamanı)
@@ -683,10 +750,14 @@ function resetSheet(kind) {
 }
 
 function liveRow(it, i) {
-  const nn = S.epg.nowNext(it);
+  const split = S.split && S.tab === 'live';
+  const showEpg = setting('epgRows');
+  const nn = showEpg ? S.epg.nowNext(it) : { now: null };
   const fav = isFav(it);
   const sub = nn.now ? nn.now.t : it.group || '';
-  return `<div class="row" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm">${esc(it.name)}</div><div class="sub">${esc(sub)}</div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
+  const sel = split && S.pv && S.pv.id === it.id;
+  const num = split && setting('numbers') ? `<span class="num">${it.num || i + 1}</span>` : '';
+  return `<div class="row${sel ? ' sel' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm">${esc(it.name)}</div><div class="sub">${esc(sub)}</div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
 }
 
 function card(it, i) {
@@ -921,11 +992,20 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  v.innerHTML = `<div class="page"><div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:12px;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:12px">Sürüm ${esc(VERSION)}</p></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:12px;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:12px">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
 
 function onSourcesClick(e) {
+  const t = e.target.closest('[data-set]');
+  if (t) {
+    const k = t.dataset.set;
+    if (k === 'general') return generalSheet();
+    if (k === 'epg') return epgSettingsSheet();
+    if (k === 'auto') return autoSheet();
+    if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
+  }
   const b = e.target.closest('[data-a], #src-add, #clr-rec');
   if (!b) return;
   if (b.id === 'src-add') return sourceForm();
@@ -1080,10 +1160,467 @@ function sourceSwitcher() {
   });
 }
 
+// ------------------------------------------------------------------ ana ekran
+
+const fmtDate = (d, o) => d.toLocaleDateString('tr-TR', o);
+
+function tickClock() {
+  const now = new Date();
+  const t = fmtClock(now.getTime());
+  const bc = $('#bar-clock');
+  if (bc) bc.textContent = `${t}  ${fmtDate(now, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const hc = $('#h-clock');
+  if (hc) {
+    hc.textContent = t;
+    $('#h-date').textContent = fmtDate(now, { day: '2-digit', month: 'long', year: 'numeric' });
+  }
+  const u = $('#h-upd');
+  if (u) u.textContent = 'Son güncelleme: ' + fmtAgo(S.cat.fetchedAt);
+}
+
+function renderHome(v) {
+  const c = S.cat;
+  const src = S.source;
+  const exp = c.account && c.account.expires ? fmtDate(new Date(c.account.expires), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const cnt = (n, w) => (n ? `${n} ${w}` : '');
+  const favN = store.favs(sid()).length;
+  const recN = store.recents(sid()).length;
+  const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
+  const chip = upd && upd.status === 'available' ? `<button class="btn sm" id="h-upd-chip">${icon('refresh')}Yeni sürüm</button>` : '';
+  v.innerHTML = `<div class="home">
+    <div class="home-top"><div class="brand">${icon('tv')}<b>IPTV</b><span>Oynatıcı</span></div>${chip}<div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="tiles">
+      <div class="tile t-live has-upd" role="button" tabindex="0" data-go="live">${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small><div class="upd"><span id="h-upd"></span><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button></div></div>
+      <button class="tile t-movie" data-go="movies">${icon('movie')}<b>Filmler</b><small>${cnt(c.movies.length, 'film')}</small></button>
+      <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
+      <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
+      <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>Son izlenen</b><small>${recN || ''}</small></button>
+      <button class="tile mini t-set" data-go="sources">${icon('gear')}<b>Ayarlar</b></button>
+    </div>
+    <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
+  </div>`;
+  v.onclick = (e) => {
+    if (e.target.closest('[data-refresh]')) {
+      e.stopPropagation();
+      return refreshCatalog();
+    }
+    if (e.target.closest('#h-search')) return globalSearch();
+    if (e.target.closest('#h-set')) return setTab('sources');
+    if (e.target.closest('#h-upd-chip')) return upd && updateSheet(upd);
+    if (e.target.closest('#h-src')) return store.sources().length ? sourceSwitcher() : sourceForm();
+    const t = e.target.closest('[data-go]');
+    if (!t) return;
+    if (t.dataset.go === 'recent') {
+      setTab('live');
+      return showRecent();
+    }
+    setTab(t.dataset.go);
+  };
+  tickClock();
+}
+
+function showRecent() {
+  if (S.split) {
+    S.group.live = '__recent';
+    refreshList();
+  } else enterGroup('live', '__recent');
+}
+
+// ------------------------------------------------------------------ canlı TV: bölmeli ekran (yatay)
+
+let spObs = null;
+const shortEpgCache = new Map();
+
+function previewRect() {
+  const el = $('#sp-slot');
+  if (!el || !S.split || S.tab !== 'live') return null;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null;
+}
+
+// Android'de önizleme yerel görünümde oynar: sayfa saydam, #bgfill önizleme yuvası dışındaki her yeri örter.
+function syncHole() {
+  const bg = $('#bgfill');
+  const r = pui.isPreviewing() ? previewRect() : null;
+  bg.style.clipPath = r
+    ? `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${r.x}px ${r.y}px, ${r.x}px ${r.y + r.h}px, ${r.x + r.w}px ${r.y + r.h}px, ${r.x + r.w}px ${r.y}px, ${r.x}px ${r.y}px)`
+    : '';
+}
+
+function layoutPreview() {
+  pui.syncPreview();
+  syncHole();
+}
+
+function renderSplit(v) {
+  if (spObs) spObs.disconnect();
+  S.catFilter = '';
+  S.catEdit = false;
+  if (S.group.live == null) {
+    const g = store.pref('live.cat', '__all');
+    S.group.live = groupExists('live', g) ? g : '__all';
+  }
+  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name" aria-label="Kategori seç"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button></div><div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
+  $('#sp-prev').addEventListener('click', () => cycleCat(-1));
+  $('#sp-next').addEventListener('click', () => cycleCat(1));
+  $('#sp-name').addEventListener('click', catPicker);
+  $('#sp-slot').addEventListener('click', onSlotTap);
+  if (window.ResizeObserver) {
+    spObs = new ResizeObserver(() => layoutPreview());
+    spObs.observe($('#sp-slot'));
+  }
+  setSpStatus({ status: 'idle' });
+  refreshList();
+  renderSpInfo();
+  layoutPreview();
+}
+
+function refreshSplit(keepScroll = false) {
+  pruneGroups();
+  if (S.group.live == null) S.group.live = '__all';
+  if (!S.list) mountList('live', 'items');
+  S.items = currentItems('live');
+  S.list.setItems(S.items, keepScroll);
+  $('#sp-name-t').textContent = groupTitle('live', S.group.live);
+  $('#sp-name-n').textContent = S.items.length;
+  const none = !S.items.length;
+  $('#list').hidden = none;
+  const empty = $('#empty');
+  empty.hidden = !none;
+  if (none) fillEmpty(empty, 'live', 'items', S.cat.live.length);
+}
+
+function onSplitTap(i) {
+  const it = S.items[i];
+  if (!it) return;
+  if (!setting('autoPreview')) return playLive(S.items, i);
+  if (S.pv && S.pv.id === it.id && pui.isPreviewing()) return pui.expand();
+  previewLive(S.items, i);
+}
+
+function previewLive(items, index) {
+  const it = items[index];
+  const targets = playTargets(S.source, it);
+  if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
+  store.pushRecent(sid(), it);
+  const ctx = { items, index, play: (x, i) => startPlay(x, { ctx: { ...ctx, index: i } }) };
+  S.pv = it;
+  pui.preview(it, targets, { ctx });
+  layoutPreview();
+  S.list && S.list.refreshRows();
+  renderSpInfo();
+}
+
+function onSlotTap() {
+  if (pui.isPreviewing()) return pui.expand();
+  toast('Önizleme için bir kanala dokunun', 1800);
+}
+
+// Önizlenen kanalı değiştir (tam ekranda kanal değişince ya da önizlemeye dönünce)
+function setPv(it) {
+  S.pv = it;
+  if (S.list) {
+    S.list.refreshRows();
+    const i = S.items.findIndex((x) => x.id === it.id);
+    if (i >= 0) S.list.scrollToIndex(i);
+  }
+  renderSpInfo();
+}
+
+function setSpStatus(st) {
+  const el = $('#sp-status');
+  if (!el) return;
+  if (!pui.isPreviewing()) el.innerHTML = S.pv ? '' : '<span class="sp-hint">Önizleme için bir kanala dokunun</span>';
+  else if (st.status === 'loading' || st.status === 'buffering') el.innerHTML = '<div class="spinner"></div>';
+  else if (st.status === 'error') el.innerHTML = `<span>${esc(st.error)}<br><small>Tam ekran için dokunun</small></span>`;
+  else el.innerHTML = '';
+}
+
+function renderSpInfo() {
+  const info = $('#sp-info');
+  const epgEl = $('#sp-epg');
+  if (!info || !epgEl) return;
+  const it = S.pv;
+  if (!it) {
+    info.innerHTML = '<span class="sp-badge">CANLI TV</span><span class="sp-hint">Bir kanala dokunun</span>';
+    epgEl.innerHTML = '';
+    return;
+  }
+  const nn = S.epg.nowNext(it);
+  info.innerHTML = `<span class="sp-badge">CANLI TV</span><b>${esc(it.name)}</b>${nn.now ? `<span class="sp-now">${esc(nn.now.t)}</span><span class="sp-time">${fmtClock(nn.now.s)} – ${fmtClock(nn.now.e)}</span>` : ''}`;
+  const draw = (list) => {
+    const now = Date.now();
+    epgEl.innerHTML = list.length
+      ? list.map((p) => `<div class="prog-row ${p.s <= now && p.e > now ? 'now' : ''}"><time>${fmtClock(p.s)}</time><div><b>${esc(p.t)}</b></div></div>`).join('')
+      : '<div class="sp-hint">Program bilgisi yok</div>';
+  };
+  const now = Date.now();
+  const list = S.epg.listFor(it).filter((p) => p.e > now).slice(0, 8);
+  draw(list);
+  if (!list.length && S.source) {
+    const key = sid() + ':' + it.id;
+    const done = (l) => S.pv && S.pv.id === it.id && $('#sp-epg') && draw((l || []).filter((p) => p.e > Date.now()).slice(0, 8));
+    if (shortEpgCache.has(key)) done(shortEpgCache.get(key));
+    else {
+      loadShortEpg(S.source, net, it, 6)
+        .then((l) => {
+          shortEpgCache.set(key, l);
+          done(l);
+        })
+        .catch(() => {});
+    }
+  }
+}
+
+// Kategori geçişi: ‹ › okları ve ortadaki ada dokununca açılan liste
+function setSplitCat(id) {
+  S.group.live = id;
+  store.setPref('live.cat', id);
+  closeSearch(true);
+  refreshList();
+}
+
+function cycleCat(d) {
+  const rows = categoryRows('live');
+  if (!rows.length) return;
+  let i = rows.findIndex((r) => r.id === (S.group.live || '__all'));
+  i = (i + d + rows.length) % rows.length;
+  setSplitCat(rows[i].id);
+}
+
+function catPicker() {
+  openSheet({
+    title: 'Kategori seç',
+    html: '<div class="sp-picker-q"><input id="cp-q" type="search" placeholder="Kategorilerde ara" autocomplete="off"></div><div id="cp-list"></div>',
+    mount: (body, api) => {
+      const q = $('#cp-q', body);
+      const list = $('#cp-list', body);
+      const draw = () => {
+        const f = fold(q.value);
+        const cur = S.group.live || '__all';
+        list.innerHTML = categoryRows('live')
+          .filter((r) => !f || fold(r.name).includes(f))
+          .map((r) => `<button class="list-item" data-id="${esc(r.id)}"><span class="t">${r.folder ? icon('folder') : ''}${esc(r.name)}</span><span class="n">${r.count}</span>${r.id === cur ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`)
+          .join('') || '<div class="empty">Eşleşen kategori yok</div>';
+      };
+      q.addEventListener('input', debounce(draw, 100));
+      list.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-id]');
+        if (!b) return;
+        api.close();
+        setSplitCat(b.dataset.id);
+      });
+      draw();
+    },
+  });
+}
+
+// ------------------------------------------------------------------ genel arama (ana ekran)
+
+function globalSearch() {
+  openSheet({
+    title: 'Ara',
+    html: '<div class="sp-picker-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off"></div><div id="gs-res"></div>',
+    mount: (body) => {
+      const q = $('#gs-q', body);
+      const res = $('#gs-res', body);
+      let found = { live: [], movie: [], series: [] };
+      const row = (it, k, i) => `<button class="list-item" data-k="${k}" data-i="${i}">${logo(it.logo, it.name)}<span class="t">${esc(it.name)}<small>${esc(it.group || '')}</small></span></button>`;
+      const draw = () => {
+        const t = q.value.trim();
+        if (!t) {
+          res.innerHTML = '<div class="empty">Aramak için yazın</div>';
+          return;
+        }
+        found = { live: search(visibleAll('live'), t, 20), movie: search(visibleAll('movie'), t, 20), series: search(visibleAll('series'), t, 20) };
+        const sec = (title, k) => (found[k].length ? `<div class="sect">${title}</div>` + found[k].map((it, i) => row(it, k, i)).join('') : '');
+        res.innerHTML = sec('Canlı TV', 'live') + sec('Filmler', 'movie') + sec('Diziler', 'series') || '<div class="empty">Sonuç yok</div>';
+      };
+      q.addEventListener('input', debounce(draw, 150));
+      res.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-k]');
+        if (!b) return;
+        const i = Number(b.dataset.i);
+        const it = found[b.dataset.k][i];
+        if (!it) return;
+        // Arama sayfası açık kalır: oynatıcı ya da ayrıntı üstüne açılır, geri dönünce sonuçlar durur.
+        if (b.dataset.k === 'live') playLive(found.live, i);
+        else if (b.dataset.k === 'movie') openMovie(it);
+        else openSeries(it);
+      });
+      draw();
+      setTimeout(() => q.focus(), 60);
+    },
+  });
+}
+
+// ------------------------------------------------------------------ ayarlar: genel, EPG, otomasyon
+
+const chkRow = (k, label, sub) => `<button class="chk${setting(k) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
+const optionsHtml = (pairs, cur) => pairs.map(([v, t]) => `<option value="${v}"${Number(cur) === v ? ' selected' : ''}>${t}</option>`).join('');
+
+function generalSheet() {
+  const lim = Number(store.pref('set.recentLimit', 40));
+  openSheet({
+    title: 'Genel ayarlar',
+    html:
+      chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
+      chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
+      chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
+      `<div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
+    mount: (body) => {
+      body.addEventListener('click', (e) => {
+        const c = e.target.closest('.chk');
+        if (c) {
+          const on = !setting(c.dataset.k);
+          store.setPref('set.' + c.dataset.k, on);
+          c.classList.toggle('on', on);
+          S.list && S.list.refreshRows();
+        } else if (e.target.id === 'g-clr') {
+          store.clearRecents(sid());
+          toast('Son izlenenler temizlendi');
+        }
+      });
+      $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
+    },
+  });
+}
+
+function autoSheet() {
+  openSheet({
+    title: 'Otomasyon',
+    html: `<div class="sel-row"><span>Canlı, film ve dizi listesini yenile</span><select id="a-cat">${optionsHtml([[0, 'Kapalı'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir'], [48, '2 günde bir'], [168, 'Haftada bir']], store.pref('auto.cat', 12))}</select></div><div class="sel-row"><span>TV rehberini (EPG) yenile</span><select id="a-epg">${optionsHtml([[0, 'Kapalı'], [3, '3 saatte bir'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir']], store.pref('auto.epg', 6))}</select></div><p class="hint" style="margin-top:12px">Uygulama açılırken ya da öne geldiğinde, son yenilemeden bu kadar süre geçmişse liste kendiliğinden güncellenir. İstediğiniz an ana ekrandaki yenile düğmesine de dokunabilirsiniz.</p>`,
+    mount: (body) => {
+      $('#a-cat', body).addEventListener('change', (e) => store.setPref('auto.cat', Number(e.target.value)));
+      $('#a-epg', body).addEventListener('change', (e) => store.setPref('auto.epg', Number(e.target.value)));
+    },
+  });
+}
+
+function epgSettingsSheet() {
+  const s = S.source;
+  const draw = (body) => {
+    const urls = epgSourceUrls(s, S.cat);
+    const when = S.epg.data && S.epg.data.fetchedAt ? fmtAgo(S.epg.data.fetchedAt) : 'hiç';
+    const status = S.epgInfo && S.epgInfo.error ? `Alınamadı: ${S.epgInfo.error}` : S.epg.ready ? `${Object.keys(S.epg.data.map).length} kanal için program var` : urls.length ? 'Henüz yüklenmedi' : 'Bu kaynakta TV rehberi adresi yok';
+    body.innerHTML = `<div class="list-item"><span class="t">${esc(s.name)}<small>${esc(status)}</small></span></div><div class="list-item"><span class="t">Son güncelleme<small>${esc(when)}</small></span></div>${urls.map((u) => `<div class="list-item"><span class="t">Adres<small style="word-break:break-all">${esc(u)}</small></span></div>`).join('')}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn sm" id="e-now"${urls.length ? '' : ' disabled'}>${icon('refresh')}EPG’yi şimdi yenile</button><button class="btn sm ghost" id="e-edit">Kaynağı düzenle</button></div>`;
+    $('#e-now', body).addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      e.currentTarget.textContent = 'Yenileniyor…';
+      await maybeRefreshEpg(true);
+      if (body.isConnected) draw(body);
+    });
+    $('#e-edit', body).addEventListener('click', () => sourceForm(s));
+  };
+  openSheet({ title: 'TV rehberi (EPG)', mount: (body) => draw(body) });
+}
+
+// ------------------------------------------------------------------ uygulama içi güncelleme
+
+let upd = null; // son denetimin sonucu
+let updBusy = false;
+
+async function checkForUpdate({ manual = false } = {}) {
+  if (updBusy) return;
+  if (!nativePlugin) return manual ? toast('Güncelleme yalnızca Android uygulamasında kullanılır') : undefined;
+  if (!manual && !shouldAutoCheck(store.pref('upd.at', 0))) return;
+  updBusy = true;
+  try {
+    const r = await checkUpdate({ net, localVersion: VERSION });
+    store.setPref('upd.at', Date.now());
+    if (r.status === 'unsupported') return manual ? toast('Bu geliştirme sürümünde güncelleme denetimi yok') : undefined;
+    upd = r;
+    if (r.status === 'available') {
+      if (S.tab === 'home' && S.source) renderTab(); // “Yeni sürüm” düğmesi görünsün
+      const busy = pui.isOpen() || pui.isPreviewing();
+      if (manual || (!busy && store.pref('upd.skip', 0) !== r.code)) updateSheet(r);
+    } else if (manual) toast(`Uygulama güncel (sürüm ${r.name})`);
+  } catch (e) {
+    if (manual) toast('Güncelleme denetlenemedi: ' + e.message, 4000);
+  } finally {
+    updBusy = false;
+  }
+}
+
+function updateSheet(info) {
+  let path = null;
+  let busy = false;
+  openSheet({
+    title: 'Yeni sürüm hazır',
+    html: `<p>Sürüm <b>${esc(info.name)}</b> yayında (şu an ${esc(VERSION)}).${info.size ? ` Boyut: ${fmtMB(info.size)}.` : ''}</p>${info.notes ? `<p class="hint">${esc(info.notes)}</p>` : ''}<div id="up-bar" hidden style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:10px 0"><i style="display:block;height:100%;width:0;background:var(--accent)"></i></div><p id="up-msg" class="hint"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="up-go">${icon('refresh')}Şimdi güncelle</button><button class="btn ghost" id="up-later">Sonra</button></div><p class="hint" style="margin-top:12px">Güncelleme mevcut uygulamanın üstüne kurulur; kaynaklarınız ve favorileriniz korunur.</p>`,
+    mount: (body, api) => {
+      const go = $('#up-go', body);
+      const bar = $('#up-bar', body);
+      const msg = $('#up-msg', body);
+      $('#up-later', body).addEventListener('click', () => {
+        store.setPref('upd.skip', info.code);
+        api.close();
+      });
+      const install = async () => {
+        go.disabled = true;
+        try {
+          const r = await nativePlugin.installApk({ path });
+          msg.textContent = r && r.needsPermission
+            ? 'Android, bu uygulamaya “bilinmeyen uygulamaları yükleme” izni verilmesini istiyor. Açılan ekranda izni verip geri dönün, sonra “Yüklemeyi başlat”a dokunun.'
+            : 'Kurulum ekranı açıldı. Onaylayınca uygulama güncellenip yeniden başlar.';
+          go.textContent = 'Yüklemeyi başlat';
+        } catch (e) {
+          msg.textContent = 'Kurulum başlatılamadı: ' + e.message;
+        }
+        go.disabled = false;
+      };
+      go.addEventListener('click', async () => {
+        if (busy) return;
+        if (path) return install();
+        busy = true;
+        go.disabled = true;
+        bar.hidden = false;
+        msg.textContent = 'İndiriliyor…';
+        let handle = null;
+        try {
+          handle = await nativePlugin.addListener('apkProgress', (e) => {
+            const f = e.total > 0 ? e.loaded / e.total : 0;
+            bar.firstElementChild.style.width = Math.round(f * 100) + '%';
+            msg.textContent = `İndiriliyor… ${e.total > 0 ? Math.round(f * 100) + '% · ' : ''}${fmtMB(e.loaded)}`;
+          });
+          path = (await nativePlugin.downloadApk({ url: info.apkUrl })).path;
+        } catch (e) {
+          msg.textContent = 'İndirilemedi: ' + e.message;
+          go.disabled = false;
+          go.textContent = 'Yeniden dene';
+          busy = false;
+          return;
+        } finally {
+          if (handle && handle.remove) handle.remove();
+        }
+        busy = false;
+        bar.firstElementChild.style.width = '100%';
+        msg.textContent = 'İndirildi, kurulum başlatılıyor…';
+        install();
+      });
+    },
+  });
+}
+
 // ------------------------------------------------------------------ olaylar ve başlangıç
 
 $('#btn-source').addEventListener('click', () => (store.sources().length ? sourceSwitcher() : sourceForm()));
 $('#btn-refresh').addEventListener('click', () => refreshCatalog());
+$('#btn-home').addEventListener('click', () => setTab('home'));
+// Yatay geniş ekranda canlı TV üç bölmeli olur; yön değişince yeniden kurulur.
+const mqSplit = window.matchMedia('(orientation: landscape) and (min-width: 640px)');
+S.split = mqSplit.matches;
+mqSplit.addEventListener('change', () => {
+  const was = S.split;
+  S.split = mqSplit.matches;
+  if (was === S.split || !S.source) return;
+  if (S.tab === 'live') {
+    resetGroups();
+    renderTab();
+  }
+});
+window.addEventListener('resize', layoutPreview);
+setInterval(tickClock, 20000);
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]');
   if (b) setTab(b.dataset.tab);
@@ -1096,23 +1633,26 @@ document.addEventListener('keydown', (e) => {
   }
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > STALE_CATALOG_MS) refreshCatalog({ quiet: true });
+  if (document.visibilityState !== 'visible') return;
+  if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
+  checkForUpdate();
 });
 setInterval(() => {
   if (S.list && S.tab === 'live' && document.visibilityState === 'visible' && !pui.isOpen()) S.list.refreshRows();
 }, 60000);
 
 initNav();
-window.__iptv = { S, store, net }; // hata ayıklama ve uçtan uca testler için
+window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ayıklama ve uçtan uca testler için
 
 (async function boot() {
   const src = store.activeSource();
   if (!src) {
     // İlk açılış: doğrudan kaynak ekleme sayfası (Xtream / M3U bağlantısı / dosyadan).
     renderTop();
-    S.tab = 'live';
+    S.tab = 'home';
     renderTab();
     return sourceForm();
   }
+  setTimeout(() => checkForUpdate(), 4000); // açılışta sessizce yeni sürüm var mı bak
   await activate(src.id);
 })();

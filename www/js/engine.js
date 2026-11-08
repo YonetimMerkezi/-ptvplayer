@@ -32,6 +32,9 @@ export function createNativeEngine(plugin, on) {
     stop: () => plugin.stop(),
     setResize: (mode) => plugin.setResizeMode({ mode }),
     setImmersive: (on_, landscape = on_) => plugin.setImmersive({ on: on_, landscape }),
+    // önizleme: yerel görüntüyü CSS piksel cinsinden bir dikdörtgene sığdırır / tam ekrana döndürür
+    setRect: async (r) => plugin.setRect({ x: r.x, y: r.y, w: r.w, h: r.h }),
+    clearRect: async () => plugin.clearRect(),
     tracks: () => plugin.getTracks(),
     selectTrack: (type, id) => plugin.selectTrack({ type, id: id || '' }),
     // async: eklentide metot yoksa bile eşzamanlı hata fırlatmak yerine reddedilen söz döner
@@ -100,6 +103,8 @@ export function createWebEngine({ video, Hls, on }) {
       video.style.objectFit = mode === 'fill' ? 'fill' : mode === 'zoom' ? 'cover' : 'contain';
     },
     setImmersive: async () => {},
+    setRect: async () => {},
+    clearRect: async () => {},
     tracks: async () => ({ audio: [], text: [], textOn: false }),
     selectTrack: async () => {},
     // Tarayıcıda ekran parlaklığı ayarlanamaz: videoya parlaklık süzgeci uygulanır (negatif → kaldır).

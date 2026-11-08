@@ -62,7 +62,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk iptv-oynatici.apk
+          # Uygulama içi güncelleme bu dosyayı okur (www/js/update.js): numara gradle versionCode ile aynıdır.
+          jq -n --argjson code "${{ github.run_number }}" --arg name "1.0.${{ github.run_number }}" \
+            --argjson size "$(stat -c %s iptv-oynatici.apk)" --arg notes "Derleme ${{ github.run_number }} (${GITHUB_SHA::7})" \
+            '{versionCode:$code, versionName:$name, size:$size, apk:"iptv-oynatici.apk", notes:$notes}' > version.json
+          cat version.json
           gh release delete latest --cleanup-tag --yes || true
-          gh release create latest iptv-oynatici.apk --target "${{ github.sha }}" --latest \
+          gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
             --title "Son sürüm 1.0.${{ github.run_number }}" \
             --notes "Derleme ${{ github.run_number }} (${GITHUB_SHA::7}). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur."

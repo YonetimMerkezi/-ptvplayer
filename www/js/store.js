@@ -160,7 +160,8 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   api.pushRecent = (sid, e) => {
     const list = api.recents(sid).filter((r) => r.id !== e.id);
     list.unshift({ id: e.id, kind: e.kind, name: e.name, logo: e.logo || '', at: Date.now() });
-    write('rec.' + sid, list.slice(0, 40));
+    const limit = Math.min(200, Math.max(10, Number(api.pref('set.recentLimit', 40)) || 40));
+    write('rec.' + sid, list.slice(0, limit));
   };
   api.clearRecents = (sid) => write('rec.' + sid, []);
 

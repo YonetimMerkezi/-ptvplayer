@@ -4,6 +4,9 @@ import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
 import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta } from './gestures.js';
 
+// Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
+const HIDE_MS = 2500;
+
 const RESIZE = [
   ['fit', 'Sığdır'],
   ['zoom', 'Yakınlaştır'],
@@ -26,7 +29,7 @@ export function createPlayerUI({ engine, player, env }) {
   // ---- kaydırma hareketleri: sol yarı dikey = parlaklık, sağ yarı dikey = ses, yatay = sarma ----
   const levels = { brightness: 0.5, volume: 0.5 };
   let hudTimer = 0;
-  const gest = { id: null, x0: 0, y0: 0, mode: null, kind: '', start: 0, base: 0, target: null, swallow: false, applied: 0 };
+  const gest = { id: null, x0: 0, y0: 0, t0: 0, mode: null, kind: '', start: 0, base: 0, target: null, swallow: false, applied: 0, tapAt: 0 };
 
   // kind: simge adı (sun | audio | fwd | rew | info); frac: 0..1 çubuk (yoksa gizli)
   function hud(kind, text, frac) {
@@ -69,7 +72,7 @@ export function createPlayerUI({ engine, player, env }) {
       gest.id = null;
       return;
     }
-    Object.assign(gest, { id: e.pointerId, x0: e.clientX, y0: e.clientY, mode: null, target: null });
+    Object.assign(gest, { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: Date.now(), mode: null, target: null });
   }
 
   function gestureMove(e) {
@@ -117,9 +120,23 @@ export function createPlayerUI({ engine, player, env }) {
     }
   }
 
+  // Denetimleri aç/kapat: kaydırmadan hemen sonraki dokunuşta tarayıcı "tıklama" üretmeyebiliyor
+  // (kaydırma sonrası dokunuş bastırılır); bu yüzden kısa, hareketsiz dokunuş pointer olaylarından da algılanır.
+  function toggleUi() {
+    if (ui.classList.contains('show') && player.state().status !== 'error') {
+      clearTimeout(hideTimer);
+      ui.classList.remove('show');
+    } else showUi(false);
+  }
+
   function gestureEnd(e) {
     if (e.pointerId !== gest.id) return;
     gest.id = null;
+    const tap = gest.mode == null && e.type === 'pointerup' && Date.now() - gest.t0 < 500 && Math.hypot(e.clientX - gest.x0, e.clientY - gest.y0) < 12;
+    if (tap) {
+      gest.tapAt = Date.now();
+      toggleUi();
+    }
     if (gest.mode === 'h' && gest.target != null) player.seek(gest.target);
     if (gest.mode === 'v') {
       applyLevel(gest.kind, levels[gest.kind]);
@@ -143,11 +160,17 @@ export function createPlayerUI({ engine, player, env }) {
     hud(dir > 0 ? 'fwd' : 'rew', fmtDelta(keyTotal));
   }
 
+  function scheduleHide() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      if (!seeking) ui.classList.remove('show');
+    }, HIDE_MS);
+  }
+
   function showUi(stick) {
     ui.classList.add('show');
     clearTimeout(hideTimer);
-    const st = player.state();
-    if (!stick && st.status === 'playing') hideTimer = setTimeout(() => ui.classList.remove('show'), 4000);
+    if (!stick && player.state().status === 'playing') scheduleHide();
   }
 
   function title(st) {
@@ -179,8 +202,11 @@ export function createPlayerUI({ engine, player, env }) {
     }
   }
 
+  let lastStatus = '';
   function render(st) {
     if (!open || !st.item) return;
+    const prev = lastStatus;
+    lastStatus = st.status;
     const t = title(st);
     q('#pl-name').textContent = t.name;
     q('#pl-sub').textContent = t.sub;
@@ -216,7 +242,9 @@ export function createPlayerUI({ engine, player, env }) {
     if (st.status === 'playing') {
       renderEpgLine(st);
       loadTrackButtons(st);
-      showUi(false);
+      // Gizleme sayacı her zaman güncellemesinde (saniyede birkaç kez) değil, yalnız oynatma başlayınca kurulur;
+      // yoksa sayaç hiç dolmaz ve denetimler ekranda kalır. Yeniden arabelleğe almada denetimler tekrar açılmaz.
+      if (prev !== 'playing' && ui.classList.contains('show')) scheduleHide();
     } else if (st.status !== 'error') {
       renderEpgLine(st);
     }
@@ -264,9 +292,10 @@ export function createPlayerUI({ engine, player, env }) {
     ctx.play(ctx.items[i], i);
   }
 
-  function openUi(item, targets, opts) {
+  // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
+  function enterFullscreen() {
     open = true;
-    ctx = opts.ctx || null;
+    lastStatus = '';
     shortEpgFor = null;
     tracksLoadedFor = null;
     root.hidden = false;
@@ -278,6 +307,12 @@ export function createPlayerUI({ engine, player, env }) {
     loadLevels();
     engine.setImmersive(true, true).catch(() => {});
     showUi(true);
+  }
+
+  function openUi(item, targets, opts) {
+    ctx = opts.ctx || null;
+    leavePreview();
+    enterFullscreen();
     player.open(item, targets, { ep: opts.ep || null, startAt: opts.startAt || 0 });
   }
 
@@ -290,6 +325,71 @@ export function createPlayerUI({ engine, player, env }) {
     openUi(item, targets, opts);
   }
 
+  // ---- önizleme penceresi (canlı TV bölmeli ekranı): yayın küçük bir yuvada oynar, dokununca tam ekran olur ----
+  let previewing = false;
+  let fromPreview = false; // tam ekrana önizlemeden geçildi: kapanınca önizlemeye dönülür
+
+  function applyRect() {
+    const r = env.previewRect ? env.previewRect() : null;
+    if (!r) return false;
+    if (env.native) engine.setRect(r).catch(() => {});
+    else Object.assign(root.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+    return true;
+  }
+
+  function clearRect() {
+    Object.assign(root.style, { left: '', top: '', width: '', height: '' });
+    if (env.native) engine.clearRect().catch(() => {});
+  }
+
+  function enterPreview() {
+    previewing = true;
+    root.classList.add('preview');
+    root.hidden = !!env.native; // Android'de görüntü yerel görünümde; web katmanı gerekmez
+    document.documentElement.classList.toggle('native-preview', !!env.native);
+    document.documentElement.classList.remove('native-playing');
+    applyRect();
+  }
+
+  // Önizleme durumundan çıkar (yayına dokunmaz).
+  function leavePreview() {
+    if (!previewing) return;
+    previewing = false;
+    clearRect();
+    root.classList.remove('preview');
+    document.documentElement.classList.remove('native-preview');
+    fromPreview = true;
+  }
+
+  function previewUi(item, targets, opts) {
+    if (open) return;
+    ctx = opts.ctx || null;
+    enterPreview();
+    player.open(item, targets, { ep: null, startAt: 0 });
+  }
+
+  async function endPreview() {
+    if (!previewing) return;
+    previewing = false;
+    fromPreview = false;
+    clearRect();
+    root.classList.remove('preview');
+    root.hidden = true;
+    document.documentElement.classList.remove('native-preview');
+    await player.close();
+  }
+
+  function expand() {
+    if (!previewing) return;
+    leavePreview();
+    if (!layerOpen) {
+      layerOpen = true;
+      pushLayer('player', closeUi);
+    }
+    enterFullscreen();
+    render(player.state());
+  }
+
   async function closeUi() {
     if (!open) return;
     open = false;
@@ -300,6 +400,16 @@ export function createPlayerUI({ engine, player, env }) {
     document.documentElement.classList.remove('native-playing');
     q('#pl-hud').hidden = true;
     engine.setBrightness(-1).catch(() => {}); // oynatıcıdan çıkınca sistem parlaklığına dön
+    if (fromPreview && env.previewRect && env.previewRect()) {
+      // bölmeli ekrandan gelindi: yayın sürsün, önizleme yuvasına geri dön
+      fromPreview = false;
+      enterPreview();
+      engine.setImmersive(false, false).catch(() => {});
+      setTimeout(() => previewing && applyRect(), 350); // sistem çubukları dönünce yuva yeniden ölçülür
+      if (env.onPreviewBack) env.onPreviewBack(player.state().item);
+      return;
+    }
+    fromPreview = false;
     await player.close();
     engine.setImmersive(false, false).catch(() => {});
   }
@@ -311,13 +421,14 @@ export function createPlayerUI({ engine, player, env }) {
   root.addEventListener('pointerup', gestureEnd);
   root.addEventListener('pointercancel', gestureEnd);
   root.addEventListener('click', (e) => {
+    if (previewing) return expand();
     if (gest.swallow) {
       gest.swallow = false; // kaydırmadan sonra gelen tıklama arayüzü açıp kapatmasın
       return;
     }
     if (e.target.closest('button, input, #pl-status .btn')) return;
-    if (ui.classList.contains('show') && player.state().status === 'playing') ui.classList.remove('show');
-    else showUi(false);
+    if (Date.now() - gest.tapAt < 600) return; // bu dokunuş pointer olaylarından zaten işlendi
+    toggleUi();
   });
   q('#pl-back').addEventListener('click', () => popLayer('player'));
   q('#pl-play').addEventListener('click', () => {
@@ -386,6 +497,11 @@ export function createPlayerUI({ engine, player, env }) {
 
   return {
     open: openWithLayer,
+    preview: previewUi,
+    expand,
+    endPreview,
+    syncPreview: () => previewing && applyRect(),
+    isPreviewing: () => previewing,
     close: () => popLayer('player'),
     isOpen: () => open,
     refresh: () => render(player.state()),

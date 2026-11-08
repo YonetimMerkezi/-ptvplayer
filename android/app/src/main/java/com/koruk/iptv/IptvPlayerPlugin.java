@@ -2,9 +2,11 @@ package com.koruk.iptv;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,6 +17,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebView;
 
+import androidx.core.content.FileProvider;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -97,6 +100,16 @@ public class IptvPlayerPlugin extends Plugin {
                 if (f.getName().startsWith(TMP_PREFIX) && f.getName().endsWith(".tmp") && f.lastModified() < limit) {
                     //noinspection ResultOfMethodCallIgnored
                     f.delete();
+                }
+            }
+            // Kurulumdan arta kalan güncelleme dosyaları (bir günden eski)
+            File[] old = updateDir().listFiles();
+            if (old != null) {
+                for (File f : old) {
+                    if (f.lastModified() < System.currentTimeMillis() - 24 * 3600_000L) {
+                        //noinspection ResultOfMethodCallIgnored
+                        f.delete();
+                    }
                 }
             }
         });
@@ -212,6 +225,50 @@ public class IptvPlayerPlugin extends Plugin {
         playerView = (PlayerView) LayoutInflater.from(a).inflate(R.layout.iptv_player_view, parent, false);
         parent.addView(playerView, 0); // WebView'in altında
         web.setBackgroundColor(Color.TRANSPARENT);
+        applyRect();
+    }
+
+    // Önizleme penceresi (CSS piksel: x, y, genişlik, yükseklik). null → tüm ekran.
+    private double[] rect = null;
+
+    private void applyRect() {
+        if (playerView == null) return;
+        ViewGroup.LayoutParams lp = playerView.getLayoutParams();
+        if (!(lp instanceof ViewGroup.MarginLayoutParams)) return;
+        ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) lp;
+        if (rect == null) {
+            m.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            m.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            m.setMargins(0, 0, 0, 0);
+        } else {
+            float d = getContext().getResources().getDisplayMetrics().density;
+            m.width = Math.max(1, Math.round((float) (rect[2] * d)));
+            m.height = Math.max(1, Math.round((float) (rect[3] * d)));
+            m.setMargins(Math.round((float) (rect[0] * d)), Math.round((float) (rect[1] * d)), 0, 0);
+        }
+        playerView.setLayoutParams(m);
+    }
+
+    @PluginMethod
+    public void setRect(final PluginCall call) {
+        final double x = call.getData().optDouble("x", 0);
+        final double y = call.getData().optDouble("y", 0);
+        final double w = call.getData().optDouble("w", 0);
+        final double h = call.getData().optDouble("h", 0);
+        main.post(() -> {
+            rect = (w > 0 && h > 0) ? new double[] {x, y, w, h} : null;
+            applyRect();
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void clearRect(final PluginCall call) {
+        main.post(() -> {
+            rect = null;
+            applyRect();
+            call.resolve();
+        });
     }
 
     private void releasePlayer() {
@@ -484,36 +541,8 @@ public class IptvPlayerPlugin extends Plugin {
             HttpURLConnection conn = null;
             try {
                 out = File.createTempFile(TMP_PREFIX, ".tmp", getContext().getCacheDir());
-                String cur = url;
-                boolean done = false;
-                for (int hop = 0; hop < 8 && !done; hop++) {
-                    conn = (HttpURLConnection) new URL(cur).openConnection();
-                    conn.setInstanceFollowRedirects(false);
-                    conn.setConnectTimeout(20000);
-                    conn.setReadTimeout(40000);
-                    conn.setRequestProperty("User-Agent", UA);
-                    if (headers != null) {
-                        Iterator<String> keys = headers.keys();
-                        while (keys.hasNext()) {
-                            String k = keys.next();
-                            String v = headers.optString(k, "");
-                            if (!v.isEmpty()) conn.setRequestProperty(k, v);
-                        }
-                    }
-                    int code = conn.getResponseCode();
-                    if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
-                        String loc = conn.getHeaderField("Location");
-                        if (loc == null || loc.isEmpty()) throw new IOException("Yönlendirme adresi yok");
-                        cur = new URL(new URL(cur), loc).toString();
-                        conn.disconnect();
-                        conn = null;
-                        continue;
-                    }
-                    if (code < 200 || code >= 300) throw new IOException("HTTP " + code);
-                    copy(conn.getInputStream(), out);
-                    done = true;
-                }
-                if (!done) throw new IOException("Çok fazla yönlendirme");
+                conn = connect(url, headers);
+                copy(conn.getInputStream(), out);
                 JSObject r = new JSObject();
                 r.put("path", out.getAbsolutePath());
                 r.put("size", out.length());
@@ -527,6 +556,134 @@ public class IptvPlayerPlugin extends Plugin {
                 call.reject(msg);
             } finally {
                 if (conn != null) conn.disconnect();
+            }
+        });
+    }
+
+    // Yönlendirmeleri (farklı sunucuya geçenler dahil) izleyip başarılı yanıtın bağlantısını döndürür.
+    private HttpURLConnection connect(String url, JSObject headers) throws IOException {
+        String cur = url;
+        for (int hop = 0; hop < 8; hop++) {
+            HttpURLConnection conn = (HttpURLConnection) new URL(cur).openConnection();
+            conn.setInstanceFollowRedirects(false);
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(40000);
+            conn.setRequestProperty("User-Agent", UA);
+            if (headers != null) {
+                Iterator<String> keys = headers.keys();
+                while (keys.hasNext()) {
+                    String k = keys.next();
+                    String v = headers.optString(k, "");
+                    if (!v.isEmpty()) conn.setRequestProperty(k, v);
+                }
+            }
+            int code = conn.getResponseCode();
+            if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                String loc = conn.getHeaderField("Location");
+                conn.disconnect();
+                if (loc == null || loc.isEmpty()) throw new IOException("Yönlendirme adresi yok");
+                cur = new URL(new URL(cur), loc).toString();
+                continue;
+            }
+            if (code < 200 || code >= 300) {
+                conn.disconnect();
+                throw new IOException("HTTP " + code);
+            }
+            return conn;
+        }
+        throw new IOException("Çok fazla yönlendirme");
+    }
+
+    // ------------------------------------------------------------------ uygulama içi güncelleme
+
+    private File updateDir() {
+        return new File(getContext().getCacheDir(), "update");
+    }
+
+    // Yeni sürümün APK'sını önbelleğe indirir; ilerleme "apkProgress" olayıyla bildirilir.
+    @PluginMethod
+    public void downloadApk(final PluginCall call) {
+        final String url = call.getData().optString("url", "");
+        if (url.isEmpty()) {
+            call.reject("url gerekli");
+            return;
+        }
+        io.execute(() -> {
+            HttpURLConnection conn = null;
+            File dir = updateDir();
+            File part = new File(dir, "iptv-update.part");
+            File out = new File(dir, "iptv-update.apk");
+            try {
+                //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+                conn = connect(url, null);
+                long total = conn.getContentLengthLong();
+                try (InputStream src = conn.getInputStream(); OutputStream os = new FileOutputStream(part)) {
+                    byte[] buf = new byte[64 * 1024];
+                    long done = 0;
+                    long lastEmit = 0;
+                    int n;
+                    while ((n = src.read(buf)) > 0) {
+                        os.write(buf, 0, n);
+                        done += n;
+                        long now = System.currentTimeMillis();
+                        if (now - lastEmit > 250) {
+                            lastEmit = now;
+                            JSObject p = new JSObject();
+                            p.put("loaded", done);
+                            p.put("total", total);
+                            notifyListeners("apkProgress", p);
+                        }
+                    }
+                }
+                if (total > 0 && part.length() != total) throw new IOException("İndirme yarım kaldı");
+                if (out.exists() && !out.delete()) throw new IOException("Eski güncelleme dosyası silinemedi");
+                if (!part.renameTo(out)) throw new IOException("Güncelleme dosyası yazılamadı");
+                JSObject r = new JSObject();
+                r.put("path", out.getAbsolutePath());
+                r.put("size", out.length());
+                call.resolve(r);
+            } catch (Exception e) {
+                //noinspection ResultOfMethodCallIgnored
+                part.delete();
+                call.reject(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        });
+    }
+
+    // İndirilen APK için Android kurulum ekranını açar. "Bilinmeyen uygulamaları yükle" izni yoksa izin ekranını açar.
+    @PluginMethod
+    public void installApk(final PluginCall call) {
+        final String path = call.getData().optString("path", "");
+        main.post(() -> {
+            try {
+                Context ctx = getContext();
+                File f = new File(path);
+                String dirPath = updateDir().getCanonicalPath() + File.separator;
+                if (!f.isFile() || !f.getCanonicalPath().startsWith(dirPath)) {
+                    call.reject("Güncelleme dosyası bulunamadı");
+                    return;
+                }
+                JSObject r = new JSObject();
+                if (Build.VERSION.SDK_INT >= 26 && !ctx.getPackageManager().canRequestPackageInstalls()) {
+                    Intent s = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.getPackageName()));
+                    s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(s);
+                    r.put("needsPermission", true);
+                    call.resolve(r);
+                    return;
+                }
+                Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", f);
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                r.put("needsPermission", false);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
         });
     }

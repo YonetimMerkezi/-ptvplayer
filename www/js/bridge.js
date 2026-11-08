@@ -14,12 +14,16 @@ export function nativePlugin(name, win = globalThis.window) {
     seekTo: call('seekTo'),
     setResizeMode: call('setResizeMode'),
     setImmersive: call('setImmersive'),
+    setRect: call('setRect'),
+    clearRect: call('clearRect'),
     getTracks: call('getTracks'),
     getLevels: call('getLevels'),
     setBrightness: call('setBrightness'),
     setVolume: call('setVolume'),
     selectTrack: call('selectTrack'),
     download: call('download'),
+    downloadApk: call('downloadApk'),
+    installApk: call('installApk'),
     deleteFile: call('deleteFile'),
   };
 }

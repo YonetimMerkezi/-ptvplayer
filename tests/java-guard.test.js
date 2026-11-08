@@ -50,6 +50,26 @@ test('tam ekranda pencere çentik alanına da çiziyor (yoksa Doldur/Yakınlaşt
   assert.match(m[0], /Build\.VERSION\.SDK_INT\s*>=\s*28/);
 });
 
+test('uygulama içi güncelleme: APK yalnız kendi önbellek klasöründen kurulur, izin ve dosya sağlayıcı tanımlı', () => {
+  const m = kaynak.match(/public void installApk[\s\S]*?\n    }\n/);
+  assert.ok(m, 'installApk bulunamadı');
+  assert.match(m[0], /getCanonicalPath\(\)\.startsWith\(dirPath\)/, 'yol kısıtı yok: rastgele dosya kurulabilirdi');
+  assert.match(m[0], /canRequestPackageInstalls\(\)[\s\S]*ACTION_MANAGE_UNKNOWN_APP_SOURCES/);
+  assert.match(m[0], /application\/vnd\.android\.package-archive/);
+  assert.match(m[0], /getPackageName\(\) \+ "\.fileprovider"/);
+  const manifest = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/AndroidManifest.xml'), 'utf8');
+  assert.match(manifest, /REQUEST_INSTALL_PACKAGES/, 'kurulum izni yok');
+  assert.match(manifest, /\$\{applicationId\}\.fileprovider/);
+  assert.match(kaynak, /downloadApk[\s\S]*apkProgress/);
+});
+
+test('derleme akışı her sürümde version.json yayınlıyor (uygulama içi güncelleme buna bakar)', () => {
+  const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../.github/workflows/build-apk.yml'), 'utf8');
+  assert.match(wf, /version\.json/);
+  assert.match(wf, /gh release create latest iptv-oynatici\.apk version\.json/);
+  assert.match(wf, /versionCode:\$code/);
+});
+
 test('Java eklentisindeki her @PluginMethod, köprü sarmalayıcısında (bridge.js) da tanımlı', () => {
   const metotlar = [...kaynak.matchAll(/@PluginMethod\s+public void (\w+)\(/g)].map((m) => m[1]);
   assert.ok(metotlar.length >= 10, 'eklenti metotları bulunamadı');

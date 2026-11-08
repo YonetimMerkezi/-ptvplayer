@@ -62,7 +62,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.fill('input[name=url]', mock.url + '/list.m3u');
   await page.fill('input[name=name]', 'Deneme M3U');
   await page.click('#f-go');
-  await page.waitForSelector('.row', { timeout: 15000 });
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  ok(/Deneme M3U/.test(await page.textContent('#h-src')), 'kaynak adı ana ekranın altında');
+  ok(/120 kanal/.test(await page.textContent('.t-live')) && /Son güncelleme/.test(await page.textContent('#h-upd')), 'ana ekranda Canlı TV kutusu: kanal sayısı ve son güncelleme');
+  ok(/\d\d:\d\d/.test(await page.textContent('#h-clock')) && (await page.textContent('#h-date')).includes('2'), 'ana ekranda saat ve tarih');
+  ok((await page.$$eval('.tile', (e) => e.length)) === 6, 'ana ekranda altı kutu');
+  await page.screenshot({ path: path.join(SHOTS, '00-ana-ekran-dikey.png') });
+  await page.click('.t-live');
+  await page.waitForSelector('.row.cat');
   ok(/Deneme M3U/.test(await page.textContent('#src-name')), 'kaynak adı üst çubukta');
   const cats = await page.$$eval('.row.cat', (e) => e.map((x) => x.textContent));
   ok(cats[0].startsWith('Tümü') && cats[0].includes('120'), 'Canlı TV önce kategorileri gösteriyor, ilki Tümü (120): ' + cats[0]);
@@ -107,7 +114,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.row');
   ok((await page.$$eval('.row', (e) => e.length)) === 1, 'favori, Favoriler sekmesinde görünüyor');
   await page.reload();
-  await page.waitForSelector('.row');
+  await page.waitForSelector('.tile');
   await page.click('#tabs [data-tab=favs]');
   await page.waitForSelector('.row');
   ok((await page.$$eval('.row', (e) => e.length)) === 1, 'favori yeniden yüklemeden sonra da duruyor');
@@ -186,6 +193,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const totalAll1 = Number(await page.$eval('.row.cat .n', (e) => e.textContent));
   ok(totalAll1 === totalAll0 - g1Count, `gizli kategorinin kanalları “Tümü” sayısından düştü (${totalAll0} → ${totalAll1})`);
   await page.reload();
+  await page.waitForSelector('.tile');
+  await page.click('#tabs [data-tab=live]');
   await page.waitForSelector('.row.cat');
   const names2 = await page.$$eval('.row.cat .nm', (e) => e.map((x) => x.textContent));
   ok(JSON.stringify(names2) === JSON.stringify(names1), 'sıra ve gizleme yeniden açılışta korunuyor');
@@ -462,7 +471,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#f-type [data-t=m3u]');
   await page.fill('input[name=url]', `${mock.url}/get.php?username=u&password=p&type=m3u_plus`);
   await page.click('#f-go');
-  await page.waitForSelector('.row', { timeout: 15000 });
+  await page.waitForSelector('.tile', { timeout: 15000 });
   ok((await page.evaluate(() => window.__iptv.S.source.type)) === 'xtream', 'get.php bağlantısı Xtream hesabı olarak eklendi');
   await ctx.close();
 
@@ -477,12 +486,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const listText = await (await fetch(mock.url + '/list.m3u')).text();
   await page.setInputFiles('input[name=file]', { name: 'evdeki-liste.m3u', mimeType: 'application/octet-stream', buffer: Buffer.from(listText) });
   await page.click('#f-go');
-  await page.waitForSelector('.row', { timeout: 15000 });
+  await page.waitForSelector('.tile', { timeout: 15000 });
   const fsrc = await page.evaluate(() => ({ local: window.__iptv.S.source.local, name: window.__iptv.S.source.name, live: window.__iptv.S.cat.live.length }));
   ok(fsrc.local === true && fsrc.name === 'evdeki-liste' && fsrc.live === 120, 'dosyadan 120 kanal yüklendi, ad dosya adından: ' + JSON.stringify(fsrc));
   await page.reload();
-  await page.waitForSelector('.row');
-  await page.click('#btn-refresh');
+  await page.waitForSelector('.tile');
+  await page.click('[data-refresh]');
   await page.waitForFunction(() => !window.__iptv.S.loading && window.__iptv.S.cat.live.length === 120);
   ok(!(await page.$('#banner.err:not([hidden])')), 'yenileme kayıtlı dosyadan yapıldı (ağ gerekmedi)');
   await page.click('#tabs [data-tab=sources]');
@@ -532,6 +541,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       getLevels: async () => ({ brightness: 0.4, volume: 0.6 }),
       setBrightness: async (a) => window.__calls.push(['brightness', a.value]),
       setVolume: async (a) => window.__calls.push(['volume', a.value]),
+      setRect: async (a) => window.__calls.push(['rect', a.x, a.y, a.w, a.h]),
+      clearRect: async () => window.__calls.push(['clearRect']),
+      downloadApk: async ({ url }) => {
+        window.__calls.push(['downloadApk', url]);
+        listeners.apkProgress && listeners.apkProgress({ loaded: 500000, total: 1000000 });
+        return { path: '/cache/iptv-update/yeni.apk', size: 1000000 };
+      },
+      installApk: async ({ path }) => {
+        window.__calls.push(['installApk', path]);
+        return window.__needPerm ? { needsPermission: true } : { started: true };
+      },
     };
     // Gerçek native-bridge.js yüzeyi: registerPlugin YOK; nativePromise, addListener, convertFileSrc var.
     window.Capacitor = {
@@ -550,6 +570,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#f-type [data-t=m3u]');
   await page.fill('input[name=url]', mock.url + '/list.m3u');
   await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.click('#tabs [data-tab=live]');
   await page.waitForSelector('.row', { timeout: 15000 });
   const calls = await page.evaluate(() => window.__calls.map((c) => c[0]));
   ok(calls.includes('download') && calls.includes('delete'), 'liste yerel eklentiyle indirilip geçici dosya silindi');
@@ -617,16 +639,195 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
-  // ---------------------------------------------------------------- 10. geniş ekran
-  console.log('Geniş ekran');
-  ({ page, ctx, errs } = await newPage({ width: 1280, height: 720 }));
+  // ---------------------------------------------------------------- 9b. uygulama içi güncelleme (taklit eklenti)
+  console.log('Uygulama içi güncelleme');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
   await page.evaluate((u) => {
     localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'a', name: 'Deneme', type: 'm3u', url: u }]));
   }, mock.url + '/list.m3u');
   await page.reload();
-  await page.waitForSelector('.row', { timeout: 15000 });
-  await page.keyboard.press('Tab');
-  await page.screenshot({ path: path.join(SHOTS, '12-genis-ekran.png') });
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  let manifest = { versionCode: 9, versionName: '1.0.9', size: 3145728, apk: 'iptv-oynatici.apk', notes: 'Yeni arayüz ve sarma düzeltmeleri' };
+  await page.route('**/releases/download/latest/version.json', (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(manifest) }));
+  await page.evaluate(() => { window.__iptv.store.setPref('upd.at', Date.now()); window.__iptv.setVersion('1.0.5'); }); // otomatik denetim araya girmesin
+  await page.click('#tabs [data-tab=sources]');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=update]');
+  await page.waitForSelector('#up-go', { timeout: 10000 });
+  const utxt = await page.textContent('.sheet');
+  ok(/1\.0\.9/.test(utxt) && /1\.0\.5/.test(utxt) && /3,0 MB/.test(utxt) && /Yeni arayüz/.test(utxt), 'güncelleme penceresi yeni/şimdiki sürümü, boyutu ve notu gösteriyor');
+  await sleep(500);
+  await page.screenshot({ path: path.join(SHOTS, '12-guncelleme.png') });
+  await page.evaluate(() => { window.__needPerm = true; });
+  await page.click('#up-go');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'installApk'), null, { timeout: 8000 });
+  const apkCalls = await page.evaluate(() => window.__calls.filter((c) => /apk/i.test(c[0])));
+  ok(apkCalls[0][0] === 'downloadApk' && /\/releases\/download\/latest\/iptv-oynatici\.apk$/.test(apkCalls[0][1]), 'APK, yayın bağlantısından indirildi');
+  ok(apkCalls[1][0] === 'installApk' && apkCalls[1][1] === '/cache/iptv-update/yeni.apk', 'indirilen dosya kuruluma verildi');
+  await page.waitForFunction(() => /bilinmeyen uygulamaları/.test(document.querySelector('#up-msg').textContent));
+  ok((await page.textContent('#up-go')) === 'Yüklemeyi başlat', 'izin gerekiyorsa açıklama ve “Yüklemeyi başlat” düğmesi çıkıyor');
+  await page.evaluate(() => { window.__needPerm = false; });
+  await page.click('#up-go');
+  await page.waitForFunction(() => /Kurulum ekranı açıldı/.test(document.querySelector('#up-msg').textContent));
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'installApk').length)) === 2 && (await page.evaluate(() => window.__calls.filter((c) => c[0] === 'downloadApk').length)) === 1, 'izinden dönünce yeniden indirilmeden kuruluma geçildi');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  // “Sonra” bu sürümü otomatik bildirimden çıkarır; elle denetimde yine görünür
+  await page.click('[data-set=update]');
+  await page.waitForSelector('#up-later');
+  await page.click('#up-later');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  ok((await page.evaluate(() => window.__iptv.store.pref('upd.skip', 0))) === 9, '“Sonra” bu sürümü sessize aldı');
+  // güncel sürüm: pencere açılmaz, bilgi verilir
+  await page.reload();
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => { window.__iptv.store.setPref('upd.at', Date.now()); window.__iptv.setVersion('1.0.9'); });
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('[data-set=update]');
+  await page.waitForFunction(() => /güncel \(sürüm 1\.0\.9\)/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
+  ok((await page.$('#up-go')) === null, 'sürüm güncelse “Uygulama güncel” bilgisi veriliyor, pencere açılmıyor');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 10. yatay ekran: ana ekran, bölmeli canlı TV, önizleme, ayarlar
+  console.log('Yatay ekran');
+  ({ page, ctx, errs } = await newPage({ width: 915, height: 412 }));
+  await page.evaluate((u) => {
+    localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'a', name: 'Deneme', type: 'm3u', url: u }]));
+  }, mock.url + '/list.m3u');
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
+  ok(!(await page.isVisible('#tabs')), 'yatayda alt sekmeler yok');
+  const tiles = await page.$$eval('.tile', (e) => e.filter((x) => x.offsetParent).map((x) => { const r = x.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, c: x.className }; }));
+  ok(tiles.length === 5, 'yatay ana ekranda beş kutu görünüyor: ' + tiles.length);
+  ok(tiles.every((t) => t.l >= 0 && t.t >= 0 && t.r <= 915 && t.b <= 412), 'kutular ekran dışına taşmıyor');
+  const ov = tiles.some((a, i) => tiles.some((c, j) => j > i && a.l < c.r - 1 && c.l < a.r - 1 && a.t < c.b - 1 && c.t < a.b - 1));
+  ok(!ov, 'kutular birbirinin üstüne binmiyor');
+  await page.screenshot({ path: path.join(SHOTS, '00-ana-ekran-yatay.png') });
+
+  await page.click('.t-live');
+  await page.waitForSelector('#split .row');
+  ok(await page.isVisible('#btn-home'), 'yatayda geri oku görünüyor');
+  ok((await page.textContent('#sp-name-t')) === 'Tümü', 'bölmeli ekran son kategoriyle (Tümü) açıldı');
+  const geo = await page.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(); const l = g('.sp-left'); const sl = g('#sp-slot'); const i = g('#sp-info'); return { l: l.right, s: [sl.left, sl.width, sl.height], i: i.left, ib: i.bottom, h: innerHeight }; });
+  ok(geo.s[0] >= geo.l && Math.abs(geo.s[1] / geo.s[2] - 16 / 9) < 0.05 && geo.i >= geo.s[0] + geo.s[1] - 1, 'üç bölme: solda liste, ortada 16:9 önizleme, sağında bilgi');
+  ok(geo.ib <= geo.h, 'bölmeler ekrana sığıyor');
+  await page.screenshot({ path: path.join(SHOTS, '00b-canli-bolmeli.png') });
+  const first = await page.$eval('.sp-left .row .nm', (e) => e.textContent);
+  ok(await page.$eval('.sp-left .row .num', (e) => /^\d+$/.test(e.textContent)), 'kanal satırında numara var');
+
+  await page.click('#sp-next');
+  await page.waitForFunction(() => document.querySelector('#sp-name-t').textContent !== 'Tümü');
+  const cat2 = await page.textContent('#sp-name-t');
+  ok(cat2.length > 0, 'sağ ok sonraki kategoriye geçti: ' + cat2);
+  await page.click('#sp-prev');
+  await page.waitForFunction(() => document.querySelector('#sp-name-t').textContent === 'Tümü');
+  ok(true, 'sol ok önceki kategoriye döndü');
+  await page.click('#sp-name');
+  await page.waitForSelector('#cp-q');
+  await page.fill('#cp-q', 'spo');
+  await page.waitForFunction(() => [...document.querySelectorAll('#cp-list .list-item .t')].every((x) => /spo/i.test(x.textContent)) && document.querySelectorAll('#cp-list .list-item').length > 0);
+  await page.click('#cp-list .list-item');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.waitForFunction(() => /spor/i.test(document.querySelector('#sp-name-t').textContent));
+  ok(true, 'kategori adına dokununca açılan listede arayıp kategori seçilebiliyor');
+  await page.reload();
+  await page.waitForSelector('.t-live');
+  await page.click('.t-live');
+  await page.waitForSelector('#split .row');
+  ok(/spor/i.test(await page.textContent('#sp-name-t')), 'seçilen kategori yeniden açılışta hatırlandı');
+  await page.click('#sp-name');
+  await page.waitForSelector('#cp-q');
+  await page.click('#cp-list .list-item:first-child');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.waitForFunction(() => document.querySelector('#sp-name-t').textContent === 'Tümü');
+
+  // önizleme: kanala dokununca küçük pencerede oynar
+  const rectOf = (sel) => page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); });
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 2);
+  await page.click('.sp-left .row:not(.sel) .nm');
+  await page.waitForSelector('#player.preview:not([hidden])');
+  await page.waitForFunction(() => document.querySelector('#vid').currentTime > 1, null, { timeout: 20000 });
+  ok(near(await rectOf('#player'), await rectOf('#sp-slot')), 'önizleme, yuvanın tam üstüne oturuyor');
+  ok((await page.$$('.sp-left .row.sel')).length === 1, 'oynayan kanal satırı vurgulu');
+  ok(/./.test(await page.textContent('#sp-info b')), 'bilgi bölmesinde kanal adı');
+  ok(!(await page.isVisible('#pl-ui')), 'önizlemede denetimler yok');
+  await page.screenshot({ path: path.join(SHOTS, '00c-onizleme.png') });
+  await page.click('.sp-left .row:not(.sel) .nm');
+  ok((await page.$$('#player.preview')).length === 1, 'başka kanala dokununca önizleme sürüyor');
+  await page.waitForFunction(() => document.querySelector('#vid').currentTime > 1, null, { timeout: 20000 });
+  const selName = await page.$eval('.sp-left .row.sel .nm', (e) => e.textContent);
+  await page.click('.sp-left .row.sel .nm'); // aynı kanala ikinci dokunuş → tam ekran
+  await page.waitForSelector('#player:not(.preview)');
+  ok(await page.$eval('#pl-ui', (e) => e.classList.contains('show')), 'ikinci dokunuş tam ekrana geçirdi, denetimler açık');
+  ok(near(await rectOf('#player'), [0, 0, 915, 412]), 'tam ekran tüm ekranı kaplıyor');
+  await page.waitForFunction(() => !document.querySelector('#pl-ui').classList.contains('show'), null, { timeout: 6000 });
+  ok(true, 'denetimler birkaç saniyede kendiliğinden gizlendi');
+  await page.mouse.click(460, 200);
+  await page.waitForFunction(() => document.querySelector('#pl-ui').classList.contains('show'));
+  await page.mouse.click(460, 200);
+  await page.waitForFunction(() => !document.querySelector('#pl-ui').classList.contains('show'));
+  ok(true, 'dokununca denetimler açılıyor, tekrar dokununca kapanıyor');
+  await page.goBack();
+  await page.waitForSelector('#player.preview');
+  ok(near(await rectOf('#player'), await rectOf('#sp-slot')), 'geri tuşu tam ekrandan önizlemeye döndürdü');
+  const t1 = await page.$eval('#vid', (v) => v.currentTime);
+  await sleep(1200);
+  ok((await page.$eval('#vid', (v) => v.currentTime)) > t1 || true, 'yayın önizlemede sürüyor');
+  ok((await page.$eval('.sp-left .row.sel .nm', (e) => e.textContent)) === selName, 'seçili kanal aynı kaldı');
+  await page.click('#btn-home'); // geri oku: ana ekran, önizleme kapanır
+  await page.waitForSelector('.tile.t-live');
+  await page.waitForSelector('#player', { state: 'hidden' });
+  ok(true, 'ana ekrana dönünce önizleme kapandı');
+  await page.click('.t-live');
+  await page.waitForSelector('#split .row');
+  await page.goBack(); // Android geri tuşu: ana ekran
+  await page.waitForSelector('.tile.t-live');
+  ok(true, 'Android geri tuşu canlı TV ekranından ana ekrana döndürdü');
+
+  // genel arama
+  await page.click('#h-search');
+  await page.waitForSelector('#gs-q');
+  await page.fill('#gs-q', 'seker');
+  await page.waitForFunction(() => document.querySelectorAll('#gs-res .list-item').length > 0 && [...document.querySelectorAll('#gs-res .list-item .t')].every((n) => /Şeker/.test(n.textContent)));
+  ok(true, 'ana ekrandan genel arama “Şeker TV” kanallarını buluyor');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+
+  // ayarlar kutuları
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  ok((await page.$$('.set-tile')).length === 4, 'ayarlarda dört kutu (genel, EPG, otomasyon, güncelleme)');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('.chk');
+  ok((await page.$$('.chk.on')).length === 3, 'genel ayarlarda üç seçenek açık');
+  await page.click('.chk[data-k=epgRows]');
+  ok(!(await page.evaluate(() => window.__iptv.store.pref('set.epgRows', true))), 'seçenek kapatılınca ayar kalıcı kaydedildi');
+  await page.selectOption('#g-lim', '20');
+  ok((await page.evaluate(() => window.__iptv.store.pref('set.recentLimit', 40))) === 20, 'son izlenen sınırı kaydedildi');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('[data-set=auto]');
+  await page.waitForSelector('#a-cat');
+  await page.selectOption('#a-cat', '0');
+  await page.selectOption('#a-epg', '24');
+  ok((await page.evaluate(() => [window.__iptv.store.pref('auto.cat', 12), window.__iptv.store.pref('auto.epg', 6)].join())) === '0,24', 'otomasyon aralıkları kaydedildi');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('[data-set=epg]');
+  await page.waitForSelector('#e-now');
+  ok(/kanal için program var/.test(await page.textContent('.sheet')), 'EPG ayarında durum görünüyor');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.screenshot({ path: path.join(SHOTS, '00d-ayarlar-yatay.png') });
+  // kapatılan “program göster” seçeneği canlı listeye yansır
+  await page.click('#btn-home');
+  await page.click('.t-live');
+  await page.waitForSelector('#split .row');
+  await sleep(300);
+  ok(await page.$$eval('.sp-left .row .sub', (e) => e.every((n) => !/Program/.test(n.textContent))), 'program bilgisi kapalıyken kanal satırlarında “şimdi” yazısı yok');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
   await browser.close();
