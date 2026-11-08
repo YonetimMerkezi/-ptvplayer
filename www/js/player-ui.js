@@ -610,6 +610,17 @@ export function createPlayerUI({ engine, player, env }) {
       return;
     }
     fromPreview = false;
+    const current = player.state();
+    // Canlı kanaldan çıkış, yayını kapatmak yerine Android PiP'ye taşır.
+    if (env.native && current.item && current.item.kind === 'live' && engine.enterPip) {
+      try {
+        await engine.enterPip();
+        if (env.onClose) env.onClose();
+        return;
+      } catch (e) {
+        toast(e && e.message ? e.message : 'PiP açılamadı', 2500);
+      }
+    }
     await player.close();
     engine.setImmersive(false, false).catch(() => {});
     if (env.onClose) env.onClose();
