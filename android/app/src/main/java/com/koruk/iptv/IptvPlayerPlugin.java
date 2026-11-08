@@ -1,6 +1,9 @@
 package com.koruk.iptv;
 
 import android.app.Activity;
+import android.app.PendingIntent;
+import android.app.PictureInPictureParams;
+import android.app.RemoteAction;
 import android.app.UiModeManager;
 import android.content.ContentValues;
 import android.content.Context;
@@ -10,6 +13,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.drawable.Icon;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
@@ -17,6 +21,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Environment;
 import android.os.Looper;
+import android.util.Rational;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.LayoutInflater;
@@ -124,6 +129,8 @@ public class IptvPlayerPlugin extends Plugin {
     private volatile boolean foreground = true;
     private WifiManager.MulticastLock castLock; // bazı cihazlar uyku/ekran kapalıyken yayın paketlerini (UDP) süzer; TV'nin bulunması için tutulur
     private boolean ticking = false;
+    private static volatile IptvPlayerPlugin activePlugin;
+    private volatile boolean pipMode = false;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -140,6 +147,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     public void load() {
+        activePlugin = this;
         // Kamera çentiği payı değişince (dönme, klavye vb.) sayfaya bildirilir
         SafeArea.listen(px -> main.post(() -> notifyListeners("insets", insetsObject(px))));
         RemoteKeys.listen(name -> {
@@ -1077,6 +1085,7 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("playing", player.isPlaying());
         o.put("live", player.isCurrentMediaItemLive());
         notifyListeners("state", o);
+        updatePipParams();
     }
 
     private void emitTime() {
@@ -1673,11 +1682,119 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+
+    // Android Picture-in-Picture: mevcut ExoPlayer ve PlayerView oturumu korunur.
+    @PluginMethod
+    public void enterPip(final PluginCall call) {
+        main.post(() -> {
+            if (player == null || playerView == null) {
+                call.reject("Önce bir yayın başlatın");
+                return;
+            }
+            if (Build.VERSION.SDK_INT < 26) {
+                call.reject("PiP için Android 8.0 veya üzeri gerekir");
+                return;
+            }
+            try {
+                updatePipParams();
+                boolean entered = getActivity().enterPictureInPictureMode(buildPipParams());
+                if (entered) call.resolve();
+                else call.reject("PiP penceresi açılamadı");
+            } catch (RuntimeException e) {
+                call.reject("PiP açılamadı: " + e.getMessage());
+            }
+        });
+    }
+
+    private PictureInPictureParams buildPipParams() {
+        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16, 9))
+                .setActions(pipActions());
+        if (Build.VERSION.SDK_INT >= 31) builder.setAutoEnterEnabled(player != null);
+        return builder.build();
+    }
+
+    private List<RemoteAction> pipActions() {
+        Activity activity = getActivity();
+        boolean playing = player != null && player.isPlaying();
+        List<RemoteAction> actions = new java.util.ArrayList<>();
+        actions.add(pipAction(activity, 21, "pip_previous", "Önceki kanal", android.R.drawable.ic_media_previous));
+        actions.add(pipAction(activity, 22, playing ? "pip_pause" : "pip_play",
+                playing ? "Duraklat" : "Oynat",
+                playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play));
+        actions.add(pipAction(activity, 23, "pip_next", "Sonraki kanal", android.R.drawable.ic_media_next));
+        return actions;
+    }
+
+    private RemoteAction pipAction(Activity activity, int requestCode, String action, String title, int iconRes) {
+        Intent intent = new Intent(activity, MainActivity.class);
+        intent.setAction("com.koruk.iptv.PIP_ACTION");
+        intent.putExtra("pip_action", action);
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent pending = PendingIntent.getActivity(activity, requestCode, intent, flags);
+        return new RemoteAction(Icon.createWithResource(activity, iconRes), title, title, pending);
+    }
+
+    private void updatePipParams() {
+        if (Build.VERSION.SDK_INT < 26 || player == null || getActivity().isFinishing()) return;
+        try {
+            getActivity().setPictureInPictureParams(buildPipParams());
+        } catch (RuntimeException ignored) {
+            // Activity henüz hazır değilse sonraki oynatma durumu parametreleri günceller.
+        }
+    }
+
+    public static void enterPipFromUserLeave() {
+        IptvPlayerPlugin plugin = activePlugin;
+        if (plugin == null || plugin.player == null || Build.VERSION.SDK_INT < 26) return;
+        plugin.main.post(() -> {
+            try {
+                plugin.updatePipParams();
+                plugin.getActivity().enterPictureInPictureMode(plugin.buildPipParams());
+            } catch (RuntimeException ignored) {
+                // PiP kullanılamıyorsa normal arka plan davranışı korunur.
+            }
+        });
+    }
+
+    public static void onPipModeChanged(boolean inPip) {
+        IptvPlayerPlugin plugin = activePlugin;
+        if (plugin == null) return;
+        plugin.main.post(() -> {
+            plugin.pipMode = inPip;
+            WebView web = plugin.getBridge() != null ? plugin.getBridge().getWebView() : null;
+            if (web != null) web.setVisibility(inPip ? View.GONE : View.VISIBLE);
+            if (plugin.playerView != null) plugin.playerView.setVisibility(plugin.player == null ? View.GONE : View.VISIBLE);
+        });
+    }
+
+    public static void handlePipAction(Intent intent) {
+        IptvPlayerPlugin plugin = activePlugin;
+        if (plugin == null || intent == null || !"com.koruk.iptv.PIP_ACTION".equals(intent.getAction())) return;
+        String action = intent.getStringExtra("pip_action");
+        plugin.main.post(() -> {
+            if (plugin.player == null) return;
+            if ("pip_pause".equals(action)) plugin.player.setPlayWhenReady(false);
+            else if ("pip_play".equals(action)) {
+                if (plugin.player.getPlaybackState() == Player.STATE_ENDED) plugin.player.seekTo(0);
+                plugin.player.setPlayWhenReady(true);
+            } else if ("pip_previous".equals(action) || "pip_next".equals(action)) {
+                JSObject event = new JSObject();
+                event.put("direction", "pip_previous".equals(action) ? -1 : 1);
+                plugin.notifyListeners("pipChannel", event);
+            }
+            plugin.updatePipParams();
+        });
+    }
+
     // ------------------------------------------------------------------ yaşam döngüsü
 
     @Override
     protected void handleOnStop() {
         foreground = false;
+        if (Build.VERSION.SDK_INT >= 26 && getActivity().isInPictureInPictureMode()) return;
         if (player == null) return;
         // Kayıt sürerken yayın arka planda da akar (sessiz); yoksa duraklatılır.
         if (StreamRecorder.active()) player.setVolume(0f);
@@ -1692,6 +1809,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        if (activePlugin == this) activePlugin = null;
         main.removeCallbacksAndMessages(null);
         if (cast != null) cast.stop();
         holdMulticast(false);
