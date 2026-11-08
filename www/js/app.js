@@ -123,6 +123,7 @@ const pui = createPlayerUI({
     onMiniPlayer: (active) => {
       S.miniplayer = !!active;
       updateMiniPlayerOverlay();
+      if (active) setTimeout(layoutPreview, 0);
     },
     onPreviewStep: (d) => previewStep(d),
     onClose: () => multiResume(), // tam ekrandan dönünce çoklu ekran kutuları yeniden başlar
@@ -148,6 +149,7 @@ $('#mini-player-close').addEventListener('click', async (e) => {
   S.miniplayer = false;
   updateMiniPlayerOverlay();
   await pui.endPreview();
+  syncHole();
   multiResume();
 });
 
