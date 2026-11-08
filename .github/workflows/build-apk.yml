@@ -10,8 +10,9 @@ permissions:
   contents: write
 
 # Aynı sabit 'latest' sürümünü iki workflow'un eşzamanlı yayımlamasını önle.
+# Her dalın derlemesi bağımsız çalışır. PR derlemesi, main sürüm yayımını iptal etmemeli.
 concurrency:
-  group: iptv-latest-release
+  group: iptv-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
