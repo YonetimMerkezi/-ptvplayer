@@ -34,6 +34,10 @@ export function createNativeEngine(plugin, on) {
     setImmersive: (on_, landscape = on_) => plugin.setImmersive({ on: on_, landscape }),
     tracks: () => plugin.getTracks(),
     selectTrack: (type, id) => plugin.selectTrack({ type, id: id || '' }),
+    // async: eklentide metot yoksa bile eşzamanlı hata fırlatmak yerine reddedilen söz döner
+    levels: async () => plugin.getLevels(),
+    setBrightness: async (v) => plugin.setBrightness({ value: v }),
+    setVolume: async (v) => plugin.setVolume({ value: v }),
     destroy: () => {
       for (const h of handles) h && h.remove && h.remove();
     },
@@ -42,6 +46,7 @@ export function createNativeEngine(plugin, on) {
 
 export function createWebEngine({ video, Hls, on }) {
   let hls = null;
+  let webBrightness = 1;
   const clean = () => {
     if (hls) {
       hls.destroy();
@@ -97,6 +102,16 @@ export function createWebEngine({ video, Hls, on }) {
     setImmersive: async () => {},
     tracks: async () => ({ audio: [], text: [], textOn: false }),
     selectTrack: async () => {},
+    // Tarayıcıda ekran parlaklığı ayarlanamaz: videoya parlaklık süzgeci uygulanır (negatif → kaldır).
+    levels: async () => ({ brightness: webBrightness, volume: video.volume }),
+    setBrightness: async (v) => {
+      webBrightness = v < 0 ? 1 : v;
+      video.style.filter = v < 0 ? '' : `brightness(${(0.25 + 0.75 * v).toFixed(2)})`;
+    },
+    setVolume: async (v) => {
+      video.volume = Math.min(1, Math.max(0, v));
+      video.muted = v <= 0;
+    },
     destroy: () => clean(),
   };
 }

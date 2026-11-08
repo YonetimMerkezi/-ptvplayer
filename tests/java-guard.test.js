@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { nativePlugin } from '../www/js/bridge.js';
 import { fileURLToPath } from 'node:url';
 
 const kaynak = readFileSync(
@@ -40,4 +41,20 @@ test('geri tuşu: Capacitor çekirdeği işlemez, MainActivity WebView geçmişi
 
 test('ses/altyazı parça değişimi JS tarafına bildiriliyor', () => {
   assert.match(kaynak, /onTracksChanged\(Tracks tracks\)[\s\S]*notifyListeners\("tracks"/);
+});
+
+test('tam ekranda pencere çentik alanına da çiziyor (yoksa Doldur/Yakınlaştır kenarda şerit bırakır)', () => {
+  const m = kaynak.match(/public void setImmersive[\s\S]*?\n    }\n/);
+  assert.ok(m, 'setImmersive bulunamadı');
+  assert.match(m[0], /layoutInDisplayCutoutMode\s*=\s*on[\s\S]*?LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES[\s\S]*?LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT/);
+  assert.match(m[0], /Build\.VERSION\.SDK_INT\s*>=\s*28/);
+});
+
+test('Java eklentisindeki her @PluginMethod, köprü sarmalayıcısında (bridge.js) da tanımlı', () => {
+  const metotlar = [...kaynak.matchAll(/@PluginMethod\s+public void (\w+)\(/g)].map((m) => m[1]);
+  assert.ok(metotlar.length >= 10, 'eklenti metotları bulunamadı');
+  const win = { Capacitor: { isNativePlatform: () => true, nativePromise: async () => ({}), addListener: () => ({}) } };
+  const js = nativePlugin('IptvPlayer', win);
+  const eksik = metotlar.filter((m) => typeof js[m] !== 'function');
+  assert.deepEqual(eksik, [], 'bridge.js\'de eksik metotlar (cihazda "is not a function" hatası verir)');
 });

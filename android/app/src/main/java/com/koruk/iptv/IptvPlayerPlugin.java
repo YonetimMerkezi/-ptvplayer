@@ -1,10 +1,14 @@
 package com.koruk.iptv;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
+import android.media.AudioManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -296,6 +300,14 @@ public class IptvPlayerPlugin extends Plugin {
             a.setRequestedOrientation(on && landscape
                     ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            // Yatayda kamera çentiği/ada alanına da çiz; yoksa görüntü o şeritte kesilir ve “Doldur” bile tam doldurmaz.
+            if (Build.VERSION.SDK_INT >= 28) {
+                WindowManager.LayoutParams lp = a.getWindow().getAttributes();
+                lp.layoutInDisplayCutoutMode = on
+                        ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+                a.getWindow().setAttributes(lp);
+            }
             call.resolve();
         });
     }
@@ -373,6 +385,59 @@ public class IptvPlayerPlugin extends Plugin {
                 }
             }
             player.setTrackSelectionParameters(b.build());
+            call.resolve();
+        });
+    }
+
+    // ------------------------------------------------------------------ parlaklık ve ses
+
+    // Geçerli parlaklık (0..1; sistem varsayılanındaysa sistem ayarı) ve medya sesi (0..1)
+    @PluginMethod
+    public void getLevels(final PluginCall call) {
+        main.post(() -> {
+            float b = getActivity().getWindow().getAttributes().screenBrightness;
+            if (b < 0) {
+                try {
+                    b = Settings.System.getInt(getContext().getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
+                } catch (Exception e) {
+                    b = 0.5f;
+                }
+            }
+            double vol = 0.5;
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                if (max > 0) vol = am.getStreamVolume(AudioManager.STREAM_MUSIC) / (double) max;
+            }
+            JSObject o = new JSObject();
+            o.put("brightness", b);
+            o.put("volume", vol);
+            call.resolve(o);
+        });
+    }
+
+    // value: 0..1; negatif → sistem varsayılan parlaklığına dön
+    @PluginMethod
+    public void setBrightness(final PluginCall call) {
+        final double v = call.getData().optDouble("value", -1);
+        main.post(() -> {
+            WindowManager.LayoutParams lp = getActivity().getWindow().getAttributes();
+            lp.screenBrightness = v < 0 ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : (float) Math.max(0.02, Math.min(1.0, v));
+            getActivity().getWindow().setAttributes(lp);
+            call.resolve();
+        });
+    }
+
+    // value: 0..1 (medya sesi)
+    @PluginMethod
+    public void setVolume(final PluginCall call) {
+        final double v = Math.max(0, Math.min(1, call.getData().optDouble("value", 0.5)));
+        main.post(() -> {
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, (int) Math.round(v * max), 0);
+            }
             call.resolve();
         });
     }

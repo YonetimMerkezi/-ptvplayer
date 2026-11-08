@@ -74,6 +74,8 @@ const pui = createPlayerUI({
     isFav: (it) => !!S.source && store.isFav(S.source.id, it.id),
     toggleFav: (it) => toggleFav(it),
     onEpgSheet: (it) => epgSheet(it),
+    pref: (k, d) => store.pref(k, d),
+    setPref: (k, v) => store.setPref(k, v),
   },
 });
 

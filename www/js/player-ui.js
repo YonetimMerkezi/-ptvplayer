@@ -2,6 +2,7 @@
 import { esc, fmtDuration, fmtClock } from './util.js';
 import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
+import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta } from './gestures.js';
 
 const RESIZE = [
   ['fit', 'Sığdır'],
@@ -21,6 +22,126 @@ export function createPlayerUI({ engine, player, env }) {
   let seeking = false;
   let shortEpgFor = null;
   let tracksLoadedFor = null;
+
+  // ---- kaydırma hareketleri: sol yarı dikey = parlaklık, sağ yarı dikey = ses, yatay = sarma ----
+  const levels = { brightness: 0.5, volume: 0.5 };
+  let hudTimer = 0;
+  const gest = { id: null, x0: 0, y0: 0, mode: null, kind: '', start: 0, base: 0, target: null, swallow: false, applied: 0 };
+
+  // kind: simge adı (sun | audio | fwd | rew | info); frac: 0..1 çubuk (yoksa gizli)
+  function hud(kind, text, frac) {
+    const el = q('#pl-hud');
+    el.hidden = false;
+    el.querySelector('use').setAttribute('href', '#i-' + kind);
+    el.querySelector('.hud-t').textContent = text;
+    const bar = el.querySelector('.hud-bar');
+    bar.hidden = frac == null;
+    if (frac != null) bar.firstElementChild.style.width = Math.round(frac * 100) + '%';
+    clearTimeout(hudTimer);
+    hudTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 900);
+  }
+
+  async function loadLevels() {
+    try {
+      const l = await engine.levels();
+      if (typeof l.brightness === 'number') levels.brightness = l.brightness;
+      if (typeof l.volume === 'number') levels.volume = l.volume;
+    } catch {
+      /* düzeyler okunamazsa varsayılanlarla devam */
+    }
+    const saved = env.pref ? env.pref('brightness', null) : null;
+    if (typeof saved === 'number') {
+      levels.brightness = saved;
+      engine.setBrightness(saved).catch(() => {});
+    }
+  }
+
+  function applyLevel(kind, v) {
+    if (kind === 'brightness') engine.setBrightness(v).catch(() => {});
+    else engine.setVolume(v).catch(() => {});
+  }
+
+  function gestureStart(e) {
+    gest.swallow = false;
+    if (!open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn')) {
+      gest.id = null;
+      return;
+    }
+    Object.assign(gest, { id: e.pointerId, x0: e.clientX, y0: e.clientY, mode: null, target: null });
+  }
+
+  function gestureMove(e) {
+    if (e.pointerId !== gest.id) return;
+    const dx = e.clientX - gest.x0;
+    const dy = e.clientY - gest.y0;
+    if (!gest.mode) {
+      const m = classify(dx, dy);
+      if (!m) return;
+      try {
+        root.setPointerCapture(e.pointerId);
+      } catch {
+        /* yakalama desteklenmiyorsa olaylar yine gelir */
+      }
+      gest.swallow = true;
+      const st = player.state();
+      if (m === 'h') {
+        if (st.live || !(st.dur > 0)) {
+          gest.mode = 'none';
+          return hud('info', 'Canlı yayında sarma yok');
+        }
+        gest.mode = 'h';
+        gest.base = st.pos;
+      } else {
+        gest.mode = 'v';
+        gest.kind = gest.x0 < root.clientWidth / 2 ? 'brightness' : 'volume';
+        gest.start = levels[gest.kind];
+      }
+    }
+    if (gest.mode === 'h') {
+      const st = player.state();
+      const sec = seekDelta(dx, root.clientWidth);
+      gest.target = seekTarget(gest.base, sec, st.dur);
+      const real = (gest.target - gest.base) / 1000;
+      hud(real >= 0 ? 'fwd' : 'rew', `${fmtDelta(real)} · ${fmtDuration(gest.target / 1000)}`);
+    } else if (gest.mode === 'v') {
+      const v = levelFrom(gest.start, dy, root.clientHeight);
+      levels[gest.kind] = v;
+      const now = Date.now();
+      if (now - gest.applied > 40) {
+        gest.applied = now;
+        applyLevel(gest.kind, v);
+      }
+      hud(gest.kind === 'brightness' ? 'sun' : 'audio', `${gest.kind === 'brightness' ? 'Parlaklık' : 'Ses'} ${Math.round(v * 100)}%`, v);
+    }
+  }
+
+  function gestureEnd(e) {
+    if (e.pointerId !== gest.id) return;
+    gest.id = null;
+    if (gest.mode === 'h' && gest.target != null) player.seek(gest.target);
+    if (gest.mode === 'v') {
+      applyLevel(gest.kind, levels[gest.kind]);
+      if (gest.kind === 'brightness' && env.setPref) env.setPref('brightness', levels.brightness);
+    }
+    gest.mode = null;
+  }
+
+  // Kumanda: art arda sağ/sol (ya da ileri/geri sar tuşları) sarar, basılı tutuldukça adım büyür.
+  let keyStreak = 0;
+  let keyAt = 0;
+  let keyTotal = 0;
+  function keySeek(dir) {
+    const now = Date.now();
+    const chained = now - keyAt < 700;
+    keyStreak = chained ? keyStreak + 1 : 1;
+    const step = dir * seekStep(keyStreak);
+    keyTotal = (chained ? keyTotal : 0) + step;
+    keyAt = now;
+    player.seekBy(step * 1000);
+    hud(dir > 0 ? 'fwd' : 'rew', fmtDelta(keyTotal));
+  }
 
   function showUi(stick) {
     ui.classList.add('show');
@@ -153,6 +274,8 @@ export function createPlayerUI({ engine, player, env }) {
     document.documentElement.classList.toggle('native-playing', !!env.native);
     q('#pl-audio').hidden = true;
     q('#pl-text').hidden = true;
+    q('#pl-hud').hidden = true;
+    loadLevels();
     engine.setImmersive(true, true).catch(() => {});
     showUi(true);
     player.open(item, targets, { ep: opts.ep || null, startAt: opts.startAt || 0 });
@@ -175,13 +298,23 @@ export function createPlayerUI({ engine, player, env }) {
     root.hidden = true;
     document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
+    q('#pl-hud').hidden = true;
+    engine.setBrightness(-1).catch(() => {}); // oynatıcıdan çıkınca sistem parlaklığına dön
     await player.close();
     engine.setImmersive(false, false).catch(() => {});
   }
 
   // ---- olaylar ----
   player.on(render);
+  root.addEventListener('pointerdown', gestureStart);
+  root.addEventListener('pointermove', gestureMove);
+  root.addEventListener('pointerup', gestureEnd);
+  root.addEventListener('pointercancel', gestureEnd);
   root.addEventListener('click', (e) => {
+    if (gest.swallow) {
+      gest.swallow = false; // kaydırmadan sonra gelen tıklama arayüzü açıp kapatmasın
+      return;
+    }
     if (e.target.closest('button, input, #pl-status .btn')) return;
     if (ui.classList.contains('show') && player.state().status === 'playing') ui.classList.remove('show');
     else showUi(false);
@@ -238,8 +371,9 @@ export function createPlayerUI({ engine, player, env }) {
     const k = e.key;
     if (k === 'ArrowUp' && live) go(-1);
     else if (k === 'ArrowDown' && live) go(1);
-    else if (k === 'ArrowLeft' && !live) player.seekBy(-10000);
-    else if (k === 'ArrowRight' && !live) player.seekBy(10000);
+    else if ((k === 'ArrowLeft' || k === 'MediaRewind' || k === 'Rewind') && !live) keySeek(-1);
+    else if ((k === 'ArrowRight' || k === 'MediaFastForward' || k === 'FastForward') && !live) keySeek(1);
+    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && live) hud('info', 'Canlı yayında sarma yok');
     else if (k === 'PageUp' || k === 'MediaTrackPrevious') go(-1);
     else if (k === 'PageDown' || k === 'MediaTrackNext') go(1);
     else if (k === ' ' || k === 'MediaPlayPause') player.toggle();

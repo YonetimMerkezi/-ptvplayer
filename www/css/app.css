@@ -172,7 +172,12 @@ input, select, textarea { font: inherit; color: var(--text); }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 
 /* oynatıcı */
-#player { position: fixed; inset: 0; z-index: 60; background: #000; }
+#player { position: fixed; inset: 0; z-index: 60; background: #000; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.pl-hud { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 12px; min-width: 150px; padding: 12px 18px; border-radius: 16px; background: rgba(0, 0, 0, 0.7); color: #fff; pointer-events: none; font-weight: 600; }
+.pl-hud .ic { width: 28px; height: 28px; }
+.pl-hud .hud-t { white-space: nowrap; }
+.pl-hud .hud-bar { width: 84px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
+.pl-hud .hud-bar i { display: block; height: 100%; background: var(--accent); }
 html.native-playing #player { background: transparent; }
 html.native-playing #vid { display: none; }
 #vid { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }

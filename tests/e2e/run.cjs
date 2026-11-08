@@ -212,6 +212,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#cat-edit');
   await page.click('.row.cat:has-text("Tümü")');
   await page.waitForSelector('.row:not(.cat)');
+  await page.locator('.row:not(.cat)').first().waitFor({ state: 'visible' });
   const box = await page.locator('.row:not(.cat)').first().boundingBox();
   await page.mouse.move(box.x + 120, box.y + box.height / 2);
   await page.mouse.down();
@@ -232,6 +233,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.row:not(.cat)');
   ok((await page.$$eval('.row:not(.cat)', (e) => e.length)) === 1 && (await page.textContent('#crumb-t')) === 'Sabah kanalları', 'klasör yalnız eklenen kanalı gösteriyor');
   // klasörden çıkar → boş klasör
+  await page.locator('.row:not(.cat)').first().waitFor({ state: 'visible' });
   const box2 = await page.locator('.row:not(.cat)').first().boundingBox();
   await page.mouse.move(box2.x + 120, box2.y + box2.height / 2);
   await page.mouse.down();
@@ -329,6 +331,41 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => document.querySelector('#vid').currentTime > 1, null, { timeout: 20000 });
   ok(true, 'film (WebM) oynuyor');
   ok(!(await page.$eval('#pl-prog', (e) => e.classList.contains('live'))), 'film kipinde arama çubuğu var');
+  // kaydırma hareketleri (fare ile): yatay = sarma, sol yarı dikey = parlaklık, sağ yarı dikey = ses
+  const pv = await page.$eval('#player', (e) => ({ w: e.clientWidth, h: e.clientHeight }));
+  const drag = async (x0, y0, x1, y1) => {
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(x0 + ((x1 - x0) * i) / 8, y0 + ((y1 - y0) * i) / 8);
+      await sleep(30); // gerçek parmak gibi ~30 Hz; tek karede yığılan olaylar tarayıcıda birleştirilir
+    }
+  };
+  const g0 = await page.$eval('#vid', (v) => v.currentTime);
+  await drag(pv.w * 0.4, pv.h * 0.3, pv.w * 0.55, pv.h * 0.3);
+  ok(await page.$eval('#pl-hud', (h) => !h.hidden && /sn/.test(h.textContent)), 'sağa kaydırırken ekranda “+… sn” göstergesi çıkıyor');
+  await page.mouse.up();
+  await page.waitForFunction((b) => document.querySelector('#vid').currentTime > b + 12, g0, { timeout: 3000 });
+  ok(true, 'sağa kaydırma ileri sardı');
+  await drag(pv.w * 0.7, pv.h * 0.3, pv.w * 0.3, pv.h * 0.3);
+  await page.mouse.up();
+  await page.waitForFunction(() => document.querySelector('#vid').currentTime < 8, null, { timeout: 3000 });
+  ok(true, 'sola kaydırma geri sardı');
+  await drag(pv.w * 0.2, pv.h * 0.3, pv.w * 0.2, pv.h * 0.75);
+  ok(await page.$eval('#pl-hud', (h) => !h.hidden && /Parlaklık/.test(h.textContent)), 'sol yarıda dikey kaydırma parlaklık göstergesi çıkarıyor');
+  await page.mouse.up();
+  const filt = await page.$eval('#vid', (v) => v.style.filter);
+  const bri = parseFloat((filt.match(/brightness\(([\d.]+)\)/) || [])[1]);
+  ok(bri > 0.45 && bri < 0.8, 'aşağı kaydırma parlaklığı düşürdü: ' + filt);
+  ok((await page.evaluate(() => String(getSelection()))) === '', 'oynatıcıda sürükleme metin seçmiyor');
+  await drag(pv.w * 0.8, pv.h * 0.3, pv.w * 0.8, pv.h * 0.75);
+  await page.mouse.up();
+  const vol = await page.$eval('#vid', (v) => v.volume);
+  ok(vol > 0.3 && vol < 0.75, 'sağ yarıda aşağı kaydırma sesi düşürdü: ' + vol.toFixed(2));
+  await drag(pv.w * 0.8, pv.h * 0.75, pv.w * 0.8, pv.h * 0.3);
+  await page.mouse.up();
+  ok((await page.$eval('#vid', (v) => v.volume)) > vol, 'yukarı kaydırma sesi artırdı');
+  await sleep(1000);
   const before = await page.$eval('#vid', (v) => v.currentTime);
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
   await page.waitForFunction((b) => document.querySelector('#vid').currentTime > b + 25, before, { timeout: 2500 });
@@ -492,6 +529,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       setImmersive: async (a) => window.__calls.push(['immersive', a.on]),
       getTracks: async () => ({ audio: [{ id: '0:0', label: 'Türkçe', selected: true }, { id: '1:0', label: 'İngilizce', selected: false }].slice(0, window.__audioN || 1), text: [{ id: '2:0', label: 'Türkçe', selected: false }], textOn: false }),
       selectTrack: async (a) => window.__calls.push(['track', a.type, a.id]),
+      getLevels: async () => ({ brightness: 0.4, volume: 0.6 }),
+      setBrightness: async (a) => window.__calls.push(['brightness', a.value]),
+      setVolume: async (a) => window.__calls.push(['volume', a.value]),
     };
     // Gerçek native-bridge.js yüzeyi: registerPlugin YOK; nativePromise, addListener, convertFileSrc var.
     window.Capacitor = {
@@ -549,10 +589,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.sheet .list-item[data-id="2:0"]');
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'text' && c[2] === '2:0')), 'altyazı izi seçimi eklentiye iletildi');
   await page.waitForSelector('.sheet-back', { state: 'detached' });
+  // kaydırma hareketleri yerel eklentiye iletiliyor
+  const nv = await page.$eval('#player', (e) => ({ w: e.clientWidth, h: e.clientHeight }));
+  const ndrag = async (x0, y0, x1, y1) => {
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x1, y1, { steps: 6 });
+    await page.mouse.up();
+  };
+  await ndrag(nv.w * 0.2, nv.h * 0.45, nv.w * 0.2, nv.h * 0.2);
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'brightness' && c[1] > 0.4)), 'yerel: sol yarıda yukarı kaydırma parlaklığı artırdı');
+  ok(typeof (await page.evaluate(() => window.__iptv.store.pref('brightness', null))) === 'number', 'parlaklık seçimi hatırlanıyor');
+  await ndrag(nv.w * 0.8, nv.h * 0.2, nv.w * 0.8, nv.h * 0.5);
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'volume' && c[1] < 0.6)), 'yerel: sağ yarıda aşağı kaydırma sesi düşürdü');
+  await page.mouse.move(nv.w * 0.3, nv.h * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(nv.w * 0.6, nv.h * 0.3, { steps: 6 });
+  ok(await page.$eval('#pl-hud', (h) => !h.hidden && /Canlı yayında sarma yok/.test(h.textContent)), 'canlı yayında yatay kaydırma sarmıyor, bilgi veriyor');
+  await page.mouse.up();
+  ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'seek'))), 'canlıda sarma isteği eklentiye gitmedi');
   await page.screenshot({ path: path.join(SHOTS, '11-yerel-kip-oynatici.png') });
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(await page.evaluate(() => !document.documentElement.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'brightness' && c[1] === -1)), 'kapanışta sistem parlaklığına dönüldü');
   ok((await page.$('#diag')) === null, 'ekranda hata bildirimi yok');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
