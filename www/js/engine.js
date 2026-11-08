@@ -21,6 +21,7 @@ export function createNativeEngine(plugin, on) {
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
   add('time', (e) => on({ type: 'time', pos: e.pos, dur: e.dur, buffered: e.buffered }));
   add('error', (e) => on({ type: 'error', message: describeError(e.message) }));
+  add('tracks', () => on({ type: 'tracks' }));
   return {
     kind: 'native',
     load: (target, startMs = 0) =>

@@ -139,8 +139,22 @@ test('hata çevirisi ve yerel motor olay aktarımı', async () => {
   listeners.state({ state: 'playing', live: true });
   listeners.time({ pos: 5, dur: -1, buffered: 9 });
   listeners.error({ message: 'ERROR_CODE_TIMEOUT' });
-  assert.deepEqual(events.map((e) => e.type), ['state', 'time', 'error']);
+  listeners.tracks({});
+  assert.deepEqual(events.map((e) => e.type), ['state', 'time', 'error', 'tracks']);
   assert.match(events[2].message, /bağlanılamadı/);
   await eng.load({ url: 'u', mime: 'hls' }, 1234.9);
   assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234 });
+});
+
+test('parça listesi değişince arayüze haber verilir (sürüm artar, olay yayılır)', async () => {
+  const { p } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  const seen = [];
+  p.on((st) => seen.push(st.tracksVer));
+  assert.equal(p.state().tracksVer, 0);
+  p.handle({ type: 'tracks' });
+  p.handle({ type: 'tracks' });
+  assert.equal(p.state().tracksVer, 2);
+  assert.deepEqual(seen, [1, 2]);
 });

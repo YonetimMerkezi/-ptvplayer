@@ -168,6 +168,12 @@ public class IptvPlayerPlugin extends Plugin {
                 emitState();
             }
 
+            // Ses/altyazı parçaları yayın çözüldükçe sonradan da ortaya çıkabilir (özellikle TS yayınlarda).
+            @Override
+            public void onTracksChanged(Tracks tracks) {
+                notifyListeners("tracks", new JSObject());
+            }
+
             @Override
             public void onPlayerError(PlaybackException error) {
                 JSObject o = new JSObject();

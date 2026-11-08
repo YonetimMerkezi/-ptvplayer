@@ -25,3 +25,19 @@ test('geçici dosya silme/temizleme aynı öneki kullanır', () => {
   assert.ok(!/startsWith\("dl"\)/.test(kaynak), 'eski kısa önek kalmış');
   assert.ok((kaynak.match(/startsWith\(TMP_PREFIX\)/g) || []).length >= 2);
 });
+
+test('geri tuşu: Capacitor çekirdeği işlemez, MainActivity WebView geçmişinde geri gitmeli', () => {
+  const main = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/java/com/koruk/iptv/MainActivity.java'),
+    'utf8',
+  );
+  assert.match(main, /OnBackPressedCallback/);
+  assert.match(main, /canGoBack\(\)/);
+  assert.match(main, /goBack\(\)/);
+  // geçmiş bitince uygulamadan çıkılabilmeli (geri tuşu yutulmamalı)
+  assert.match(main, /setEnabled\(false\)/);
+});
+
+test('ses/altyazı parça değişimi JS tarafına bildiriliyor', () => {
+  assert.match(kaynak, /onTracksChanged\(Tracks tracks\)[\s\S]*notifyListeners\("tracks"/);
+});

@@ -103,8 +103,9 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   async function loadTrackButtons(st) {
-    if (!env.native || tracksLoadedFor === st.item.id + (st.ep ? st.ep.id : '')) return;
-    tracksLoadedFor = st.item.id + (st.ep ? st.ep.id : '');
+    const key = st.item.id + (st.ep ? st.ep.id : '') + ':' + st.tracksVer;
+    if (!env.native || tracksLoadedFor === key) return;
+    tracksLoadedFor = key;
     try {
       const t = await engine.tracks();
       q('#pl-audio').hidden = !(t.audio && t.audio.length > 1);

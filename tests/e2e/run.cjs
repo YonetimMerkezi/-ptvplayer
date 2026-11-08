@@ -324,6 +324,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         window.__calls.push(['play', a.url, a.mime]);
         setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm/.test(a.url) }), 50);
         setTimeout(() => listeners.time({ pos: 1000, dur: /webm/.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
+        // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
+        setTimeout(() => {
+          window.__audioN = 2;
+          listeners.tracks && listeners.tracks({});
+        }, 400);
       },
       pause: async () => window.__calls.push(['pause']),
       resume: async () => window.__calls.push(['resume']),
@@ -331,7 +336,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       seekTo: async (a) => window.__calls.push(['seek', a.ms]),
       setResizeMode: async (a) => window.__calls.push(['resize', a.mode]),
       setImmersive: async (a) => window.__calls.push(['immersive', a.on]),
-      getTracks: async () => ({ audio: [{ id: '0:0', label: 'Türkçe', selected: true }, { id: '1:0', label: 'İngilizce', selected: false }], text: [{ id: '2:0', label: 'Türkçe', selected: false }], textOn: false }),
+      getTracks: async () => ({ audio: [{ id: '0:0', label: 'Türkçe', selected: true }, { id: '1:0', label: 'İngilizce', selected: false }].slice(0, window.__audioN || 1), text: [{ id: '2:0', label: 'Türkçe', selected: false }], textOn: false }),
       selectTrack: async (a) => window.__calls.push(['track', a.type, a.id]),
     };
     // Gerçek native-bridge.js yüzeyi: registerPlugin YOK; nativePromise, addListener, convertFileSrc var.
@@ -376,10 +381,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   ok(opak.length === 0, 'oynatıcının arkası saydam (html dahil)' + (opak.length ? ': ' + opak.join(', ') : ''));
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'immersive' && c[1] === true)), 'tam ekran istendi');
-  await page.waitForFunction(() => document.querySelector('#pl-audio:not([hidden])'));
+  ok(await page.$eval('#pl-audio', (b) => b.hidden), 'tek ses parçası varken ses düğmesi gizli');
+  await page.waitForFunction(() => document.querySelector('#pl-audio:not([hidden])'), null, { timeout: 5000 });
+  ok(true, 'ikinci ses parçası sonradan gelince ses düğmesi göründü');
   await page.click('#pl-audio');
+  ok((await page.$$eval('.sheet .list-item', (e) => e.length)) === 2, 'ses sayfasında iki dil listeleniyor');
   await page.click('.sheet .list-item[data-id="1:0"]');
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'audio' && c[2] === '1:0')), 'ses izi seçimi eklentiye iletildi');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('#pl-text');
+  ok((await page.$$eval('.sheet .list-item', (e) => e.map((x) => x.textContent.trim()).join('|'))) === 'Kapalı|Türkçe', 'altyazı sayfasında “Kapalı” ve diller listeleniyor');
+  ok(await page.$eval('.sheet .list-item[data-id=""]', (b) => !!b.querySelector('.ic.ok')), 'altyazı kapalıyken “Kapalı” işaretli');
+  await page.click('.sheet .list-item[data-id="2:0"]');
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'text' && c[2] === '2:0')), 'altyazı izi seçimi eklentiye iletildi');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
   await page.screenshot({ path: path.join(SHOTS, '11-yerel-kip-oynatici.png') });
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });

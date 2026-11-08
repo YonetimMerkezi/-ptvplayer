@@ -5,7 +5,7 @@ const STALL_MS = 25000;
 const PROGRESS_EVERY_MS = 10000;
 
 export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
-  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [] };
+  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0 };
   const listeners = new Set();
   let progressCb = null;
   let stallTimer = null;
@@ -62,6 +62,11 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
   function handle(ev) {
     if (st.status === 'idle') return;
     if (ev.type === 'error') return fail(ev.message);
+    if (ev.type === 'tracks') {
+      st.tracksVer++; // ses/altyazı parçaları değişti: arayüz düğmeleri yeniden okusun
+      emit();
+      return;
+    }
     if (ev.type === 'time') {
       st.pos = ev.pos;
       st.dur = ev.dur;
