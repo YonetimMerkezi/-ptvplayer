@@ -1670,7 +1670,7 @@ function multiStop() {
   M.obs = null;
   SUP.clearAll();
   if (M.eng) M.eng.stopAll().catch(() => {});
-  document.documentElement.classList.remove('native-preview');
+  document.documentElement.classList.remove('native-preview', 'native-multi');
   $('#bgfill').style.clipPath = '';
 }
 
@@ -1681,7 +1681,7 @@ function multiSuspend() {
   SUP.clearAll();
   if (M.eng) M.eng.stopAll().catch(() => {});
   for (const sl of M.slots) if (sl && sl.item) sl.status = 'idle';
-  document.documentElement.classList.remove('native-preview');
+  document.documentElement.classList.remove('native-preview', 'native-multi');
   $('#bgfill').style.clipPath = '';
 }
 
@@ -1689,6 +1689,7 @@ function multiResume() {
   if (!M.on || !M.suspended || S.tab !== 'multi') return;
   M.suspended = false;
   document.documentElement.classList.toggle('native-preview', !!nativePlugin);
+  document.documentElement.classList.toggle('native-multi', !!nativePlugin);
   M.slots.slice(0, M.n).forEach((sl, i) => sl && sl.item && multiStart(i));
 }
 
@@ -1780,8 +1781,12 @@ function renderMulti(v) {
   const chips = $('#mp-chips');
   const showChips = () => {
     chips.classList.remove('idle');
+    $('.mp').classList.remove('controls-idle');
     clearTimeout(M.hideTimer);
-    M.hideTimer = setTimeout(() => chips.classList.add('idle'), 5000);
+    M.hideTimer = setTimeout(() => {
+      chips.classList.add('idle');
+      $('.mp')?.classList.add('controls-idle');
+    }, 2000);
   };
   showChips();
   // Dokunuş bittikten sonra göster: basarken görünürlerse altındaki düğmenin üstünü örter ve tıklama kaybolur.
@@ -1822,6 +1827,7 @@ function renderMulti(v) {
   });
   M.on = true;
   document.documentElement.classList.toggle('native-preview', !!nativePlugin);
+  document.documentElement.classList.toggle('native-multi', !!nativePlugin);
   for (let i = 0; i < M.n; i++) drawCell(i);
   if (window.ResizeObserver) {
     M.obs = new ResizeObserver(() => layoutMulti());
