@@ -75,7 +75,8 @@ async function fetchManifest(net, bases, sleep) {
     let transient = false;
     for (const b of bases) {
       try {
-        const m = parseManifest(await net.json(b + 'version.json'), b);
+        const manifestUrl = b + 'version.json?check=' + Date.now(); // CDN/WebView önbelleğinden eski sürüm bilgisi dönmesini önle.
+        const m = parseManifest(await net.json(manifestUrl), b);
         if (!m) throw Object.assign(new Error('Sürüm bilgisi okunamadı'), { permanent: true });
         return m;
       } catch (e) {
