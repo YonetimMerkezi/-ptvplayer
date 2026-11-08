@@ -122,8 +122,6 @@ test('isTransient / explainError / retry', async () => {
   await assert.rejects(() => retry(async () => { j++; throw err('HTTP 500'); }, { tries: 2, sleep: noSleep() }), /500/);
   assert.equal(j, 2);
 });
-));
-  assert.ok(seen[1].startsWith(UPDATE_FALLBACKS[0] + 'version.json?check='));
   assert.equal(r.apkUrl, UPDATE_FALLBACKS[0] + 'iptv-oynatici.apk');
 });
 
