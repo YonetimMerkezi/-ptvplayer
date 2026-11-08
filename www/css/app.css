@@ -473,6 +473,8 @@ body.multi-full #app { padding-left: 0; padding-right: 0; }
 .mp-vid video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .mp-grid.fill .mp-vid video { object-fit: cover; }
 html.native-preview .mp-vid { background: transparent; }
+/* Yerel TextureView'ler WebView'in altında çizilir; çoklu ekranda video kutularının üstündeki web katmanları saydam kalmalı. */
+html.native-preview .mp-grid, html.native-preview .mp-cell { background: transparent; }
 .mp-ovl { position: absolute; inset: 0; pointer-events: none; }
 .mp-ovl button { pointer-events: auto; }
 .mp-cell:not(.has) .mp-vid { background: transparent; }
