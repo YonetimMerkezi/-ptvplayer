@@ -12,10 +12,11 @@ import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
 import { VirtualList } from './vlist.js';
 import { initNav } from './nav.js';
+import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, fmtAgo } from './ui.js';
 
 const Cap = window.Capacitor;
-const nativePlugin = Cap && Cap.isNativePlatform && Cap.isNativePlatform() ? Cap.registerPlugin('IptvPlayer') : null;
+const nativePlugin = getNativePlugin('IptvPlayer');
 const store = createStore();
 const net = createNet(nativePlugin ? { native: nativePlugin, convertFileSrc: (p) => Cap.convertFileSrc(p) } : {});
 

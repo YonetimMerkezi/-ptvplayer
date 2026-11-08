@@ -238,7 +238,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const files = new Map();
     const listeners = {};
     const plugin = {
-      addListener: async (n, f) => ((listeners[n] = f), { remove() {} }),
       download: async ({ url }) => {
         window.__calls.push(['download', url]);
         const r = await fetch(url);
@@ -262,10 +261,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       getTracks: async () => ({ audio: [{ id: '0:0', label: 'Türkçe', selected: true }, { id: '1:0', label: 'İngilizce', selected: false }], text: [{ id: '2:0', label: 'Türkçe', selected: false }], textOn: false }),
       selectTrack: async (a) => window.__calls.push(['track', a.type, a.id]),
     };
+    // Gerçek native-bridge.js yüzeyi: registerPlugin YOK; nativePromise, addListener, convertFileSrc var.
     window.Capacitor = {
       isNativePlatform: () => true,
-      registerPlugin: () => plugin,
+      getPlatform: () => 'android',
       convertFileSrc: (p) => files.get(p) || p,
+      nativePromise: (pluginName, method, opts) => {
+        if (pluginName !== 'IptvPlayer' || typeof plugin[method] !== 'function') return Promise.reject(new Error('yok: ' + method));
+        return plugin[method](opts);
+      },
+      addListener: (pluginName, ev, cb) => ((listeners[ev] = cb), { remove: async () => {} }),
     };
   };
   ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
@@ -291,6 +296,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(await page.evaluate(() => !document.body.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
+  ok((await page.$('#diag')) === null, 'ekranda hata bildirimi yok');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
