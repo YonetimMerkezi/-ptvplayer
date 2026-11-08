@@ -1,6 +1,14 @@
 // Yenilikler: en yeni üstte. id her sürümde bir artar; güncellemeden sonra görülmemiş kayıtlar bir kez gösterilir.
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
-export const CHANGELOG = [\n  {\n    id: 13,\n    title: 'Medya uyumluluğu ve yayın tanılama altyapısı',\n    items: [\n      'Yayın sağlık kontrolü için bağlantı süresi, HTTP yanıtı ve medya biçimini ölçen tanılama altyapısı eklendi; gerçek görüntü ve codec desteği oynatma sırasında ayrıca doğrulanır',\n      'HLS, DASH, MP4, MKV, TS, MOV, AVI, WMV, FLV ve RTSP adreslerini tanımaya yönelik format algılama eklendi',\n    ],\n  },
+export const CHANGELOG = [
+  {
+    id: 13,
+    title: 'Medya uyumluluğu ve yayın tanılama altyapısı',
+    items: [
+      'Yayın sağlık kontrolü için bağlantı süresi, HTTP yanıtı ve medya biçimini ölçen tanılama altyapısı eklendi; gerçek görüntü ve codec desteği oynatma sırasında ayrıca doğrulanır',
+      'HLS, DASH, MP4, MKV, TS, MOV, AVI, WMV, FLV ve RTSP adreslerini tanımaya yönelik format algılama eklendi',
+    ],
+  },
   {
     id: 12,
     title: 'Çoklu ekran ve mini oynatıcı iyileştirmeleri',
