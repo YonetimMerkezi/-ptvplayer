@@ -34,6 +34,7 @@ import { clampDelay } from './avsync.js';
 import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
+import { checkStreamHealth } from './health.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -1167,7 +1168,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1178,6 +1179,7 @@ function onSourcesClick(e) {
     const k = t.dataset.set;
     if (k === 'general') return generalSheet();
     if (k === 'epg') return epgSettingsSheet();
+    if (k === 'health') return healthSheet();
     if (k === 'auto') return autoSheet();
     if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
@@ -1970,7 +1972,40 @@ function channelPicker(onPick, { guide = false } = {}) {
 
 // Ana ekran "EPG": kanalların şimdi/sonra yayınları; dokununca tam ekran açılır.
 function guidePage() {
-  channelPicker((it, i, items) => playLive(items, i), { guide: true });
+  const rows = S.cat.live.slice(0, 500);
+  openPage({
+    title: 'TV rehberi',
+    cls: 'guide-pg',
+    html: '<div class="guide-tools"><input id="guide-q" type="search" placeholder="Kanal ara…" autocomplete="off"><button class="btn sm ghost" id="guide-refresh">EPG yenile</button></div><div id="guide-list"></div>',
+    mount: (body) => {
+      const q = $('#guide-q', body);
+      const list = $('#guide-list', body);
+      const draw = () => {
+        const term = fold(q.value.trim());
+        const filtered = rows.filter((it) => !term || fold(it.name).includes(term)).slice(0, 200);
+        list.innerHTML = filtered.map((it) => {
+          const ep = S.epg.nowNext(it);
+          const now = ep && ep.now;
+          const next = ep && ep.next;
+          return `<button class="list-item guide-row" data-id="${esc(it.id)}"><span class="t">${esc(it.name)}<small>${now ? 'ŞİMDİ · ' + esc(now.t) : 'Program bilgisi yok'}${next ? '  ·  Sonraki: ' + esc(next.t) : ''}</small></span><span class="chev">›</span></button>`;
+        }).join('') || '<div class="empty">Kanal bulunamadı.</div>';
+      };
+      q.addEventListener('input', debounce(draw, 120));
+      list.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-id]');
+        if (!b) return;
+        const it = S.idx.live.get(b.dataset.id);
+        if (it) epgSheet(it);
+      });
+      $('#guide-refresh', body).addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        e.currentTarget.textContent = 'Yenileniyor…';
+        await maybeRefreshEpg(true);
+        if (body.isConnected) { e.currentTarget.disabled = false; e.currentTarget.textContent = 'EPG yenile'; draw(); }
+      });
+      draw();
+    },
+  });
 }
 
 // Ana ekran "Kategoriler": üç türün tüm kategorileri tek yerde; seçilince o tür açılıp kategoriye girilir.
@@ -2163,6 +2198,41 @@ function epgSettingsSheet() {
     $('#e-edit', body).addEventListener('click', () => sourceForm(s));
   };
   openSheet({ title: 'TV rehberi (EPG)', mount: (body) => draw(body) });
+}
+
+// ------------------------------------------------------------------ yayın kalitesi tanılama
+function healthSheet() {
+  const channels = S.cat.live.slice(0, 500);
+  const opts = channels.map((it, i) => `<option value="${i}">${esc(it.name)}</option>`).join('');
+  openPage({
+    title: 'Yayın kalitesi',
+    cls: 'health-pg',
+    html: `<p class="hint">Seçtiğiniz kanalın sunucu yanıtı, bağlantı süresi ve yayın biçimi kontrol edilir. Bu test görüntü/codec çözümlemesini garanti etmez.</p><label class="field"><span>Kanal</span><select id="health-channel">${opts}</select></label><button class="btn" id="health-run">Bağlantıyı test et</button><div id="health-result" class="health-result"><div class="empty">Test etmek için kanal seçin.</div></div>`,
+    mount: (body) => {
+      const select = $('#health-channel', body);
+      const run = $('#health-run', body);
+      const result = $('#health-result', body);
+      run.addEventListener('click', async () => {
+        const item = channels[Number(select.value)];
+        if (!item) return;
+        run.disabled = true;
+        run.textContent = 'Test ediliyor…';
+        result.innerHTML = '<div class="empty">Yayın sunucusu kontrol ediliyor…</div>';
+        try {
+          const targets = targetsOf(item);
+          if (!targets.length) throw new Error('Bu kanal için oynatma adresi bulunamadı');
+          const checks = await Promise.all(targets.slice(0, 3).map((target) => checkStreamHealth(target)));
+          const best = checks.find((x) => x.ok === true) || checks[0];
+          result.innerHTML = `<div class="list-item"><span class="t">${esc(item.name)}<small>${best.ok === true ? 'Sunucu yanıt veriyor' : best.ok === false ? 'Bağlantı başarısız' : 'HTTP ile doğrulanamadı'}</small></span></div><div class="list-item"><span class="t">Bağlantı süresi<small>${best.latencyMs == null ? 'Ölçülemedi' : best.latencyMs + ' ms'}</small></span></div><div class="list-item"><span class="t">HTTP yanıtı<small>${best.status == null ? 'Yok' : best.status}</small></span></div><div class="list-item"><span class="t">Yayın biçimi<small>${esc(best.format || 'Bilinmiyor')}</small></span></div><p class="hint">${esc(best.message || '')}</p>${checks.length > 1 ? `<p class="hint">${checks.length} adres denendi; ${checks.filter((x) => x.ok === true).length} adres yanıt verdi.</p>` : ''}`;
+        } catch (error) {
+          result.innerHTML = `<div class="empty">${esc(error.message || 'Test başarısız')}</div>`;
+        } finally {
+          run.disabled = false;
+          run.textContent = 'Yeniden test et';
+        }
+      });
+    },
+  });
 }
 
 // ------------------------------------------------------------------ uygulama içi güncelleme

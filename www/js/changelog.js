@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 18,
+    title: 'TV rehberi ve yayın kalitesi ekranları',
+    items: [
+      'TV rehberinde kanallar tek ekranda aranabilir; her kanalın şu anki ve sonraki programı gösterilir',
+      'Kanal seçildiğinde program ayrıntıları ve gün bazlı yayın akışı açılır',
+      'Yayın kalitesi ekranında seçilen kanalın bağlantı süresi, HTTP yanıtı ve medya biçimi kontrol edilir',
+      'Tanılama sonucu sunucu erişimini gösterir; görüntü ve codec uyumluluğu ayrıca oynatma sırasında doğrulanır',
+    ],
+  },
+
+
+  {
     id: 17,
     title: 'Uygulama içi güncelleme denetimi',
     items: [

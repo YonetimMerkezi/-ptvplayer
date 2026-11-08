@@ -1,3 +1,5 @@
+TV rehberi ekranı: tüm kanallar aranabilir; her kanal için şu anki ve sonraki program gösterilir. Kanal seçildiğinde gün bazlı ayrıntılı program akışı açılır.
+Yayın kalitesi ekranı: seçilen kanalın bağlantı süresi, HTTP yanıtı ve medya biçimi kontrol edilir. Bu test görüntü/codec uyumluluğunu garanti etmez.
 Uygulama içi güncelleme denetimi: sürüm manifesti her kontrolde önbellek kırıcı sorgu parametresiyle istenir; CDN/WebView kaynaklı eski version.json yanıtı riski azaltılır.
 Küçük oynatıcı düzeltmesi: Android yerel video görüntüsünün film kartları ve gezinme katmanı tarafından örtülmesi giderildi. Küçük oynatıcı alanı uygulama arayüzünden ayrılır; büyütme ve kapatma denetimleri korunur.
 Harici oynatıcı desteği: Android oynatma ekranından kurulu harici oynatıcılar seçilebilir. Özel HTTP başlığı gerektiren yayınlar harici oynatıcıya aktarılamaz.

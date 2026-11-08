@@ -566,3 +566,13 @@ html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 3p
 .cast-add input:focus { outline: none; border-color: var(--accent); }
 .cast-code { font-size: 3rem; font-weight: 800; letter-spacing: 0.1em; text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; padding: 12px 0 6px; }
 html.tv #pl-tv, html.tv #mv-cast { display: none; }
+
+/* TV rehberi ve yayın tanılama ekranları */
+.guide-tools { display:flex; gap:8px; padding:0 0 10px; }
+.guide-tools input { flex:1; min-width:0; min-height:44px; border-radius:10px; border:1px solid var(--line); background:var(--raised); color:var(--text); padding:0 12px; font:inherit; }
+.guide-row { width:100%; text-align:left; }
+.guide-row .t small { white-space:normal; line-height:1.4; }
+.health-pg .pg-body { overflow:auto; }
+.health-pg .field { display:flex; flex-direction:column; gap:6px; margin:10px 0; }
+.health-pg select { min-height:46px; border:1px solid var(--line); border-radius:10px; padding:0 12px; background:var(--raised); color:var(--text); font:inherit; }
+.health-result { margin-top:14px; }
