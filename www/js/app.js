@@ -24,6 +24,8 @@ const CAT_KEY = { live: 'live', movie: 'movies', series: 'series' };
 const TAB_KIND = { live: 'live', movies: 'movie', series: 'series' };
 const STALE_CATALOG_MS = 12 * 3600e3;
 const STALE_EPG_MS = 6 * 3600e3;
+let VERSION = 'geliştirme';
+import('./version.js').then((m) => { VERSION = m.VERSION; if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
 const S = {
   source: null,
@@ -158,6 +160,7 @@ async function refreshCatalog({ quiet = false } = {}) {
   banner('Liste güncelleniyor…', { spin: true });
   try {
     const cat = await loadCatalog(S.source, net, {
+      readFile: (id) => store.cache.get('file:' + id),
       onStage: (t) => banner(t, { spin: true }),
       onProgress: (n) => banner(`Liste indiriliyor… ${(n / 1048576).toFixed(1)} MB`, { spin: true }),
     });
@@ -228,7 +231,7 @@ function emptyHtml(title, text, btn) {
 function renderOnboarding(v) {
   v.innerHTML = emptyHtml(
     'Hoş geldiniz',
-    'Başlamak için IPTV hizmetinizin M3U liste bağlantısını ya da Xtream hesap bilgilerini ekleyin. Uygulama içerik sağlamaz; yalnızca erişim hakkınız olan kaynakları ekleyin.',
+    'Başlamak için Xtream hesap bilgilerinizi, M3U liste bağlantınızı ya da telefondaki bir M3U dosyasını ekleyin. Uygulama içerik sağlamaz; yalnızca erişim hakkınız olan kaynakları ekleyin.',
     '<button class="btn" id="ob-add">Kaynak ekle</button>',
   );
   $('#ob-add').addEventListener('click', () => sourceForm());
@@ -601,6 +604,7 @@ function renderSources(v) {
       const c = S.cat;
       const lines = [];
       if (s.type === 'xtream') lines.push(`${esc(normalizeServer(s.server))} · ${esc(s.user)}`);
+      else if (s.local) lines.push(`Dosya: ${esc(s.fileName || s.name)}`);
       else lines.push(esc(s.url));
       if (act) {
         lines.push(`${c.live.length} kanal · ${c.movies.length} film · ${c.series.length} dizi`);
@@ -615,7 +619,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  v.innerHTML = `<div class="page"><div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:12px;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p></div>`;
+  v.innerHTML = `<div class="page"><div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:12px;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:12px">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
 
@@ -659,17 +663,18 @@ function confirmDelete(id) {
 }
 
 function sourceForm(edit) {
-  let type = edit ? edit.type : 'm3u';
+  let type = edit ? (edit.local ? 'file' : edit.type) : 'xtream';
   const v = (k) => esc((edit && edit[k]) || '');
   const sh = openSheet({
     title: edit ? 'Kaynağı düzenle' : 'Kaynak ekle',
-    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="m3u">M3U bağlantısı</button><button data-t="xtream">Xtream hesabı</button></div>
+    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button></div>
 <form id="f" autocomplete="off">
 <label class="field"><span>Ad (isteğe bağlı)</span><input name="name" value="${v('name')}" placeholder="Örn. Evdeki liste"></label>
 <div data-for="m3u"><label class="field"><span>M3U / M3U8 liste bağlantısı</span><input name="url" inputmode="url" value="${v('url')}" placeholder="http://…/liste.m3u"></label></div>
 <div data-for="xtream"><label class="field"><span>Sunucu adresi</span><input name="server" inputmode="url" value="${v('server')}" placeholder="http://sunucu.com:8080"></label>
 <label class="field"><span>Kullanıcı adı</span><input name="user" value="${v('user')}" autocapitalize="none"></label>
 <label class="field"><span>Şifre</span><input name="pass" value="${v('pass')}" autocapitalize="none"></label></div>
+<div data-for="file"><label class="field"><span>M3U / M3U8 dosyası</span><input name="file" type="file"><small>${edit && edit.local ? `Kayıtlı dosya: ${esc(edit.fileName || edit.name)}. Değiştirmek için yeni dosya seçin.` : 'Telefondaki liste dosyasını seçin.'}</small></label></div>
 <label class="field"><span>TV rehberi (XMLTV) bağlantısı — isteğe bağlı</span><input name="epgUrl" inputmode="url" value="${v('epgUrl')}" placeholder="Boş bırakırsanız kaynaktaki adres kullanılır"><small>.xml veya .xml.gz olabilir.</small></label>
 <p class="err-text" id="f-err" hidden></p>
 <button class="btn" id="f-go" type="submit" style="width:100%">Kaydet ve yükle</button>
@@ -696,7 +701,13 @@ function sourceForm(edit) {
         };
         err.hidden = true;
         let src = { id: edit && edit.id, type, name: (f.name || '').trim(), epgUrl: (f.epgUrl || '').trim() };
-        if (type === 'm3u') {
+        let text = null;
+        if (type === 'file') {
+          const file = form.elements.file.files[0];
+          if (!file && !(edit && edit.local)) return fail('Bir liste dosyası seçin.');
+          Object.assign(src, { type: 'm3u', local: true, fileName: file ? file.name : edit.fileName });
+          if (file) text = await file.text();
+        } else if (type === 'm3u') {
           const url = (f.url || '').trim();
           if (!/^https?:\/\//i.test(url)) return fail('Liste bağlantısı http:// veya https:// ile başlamalı.');
           const x = parseXtreamLink(url);
@@ -711,7 +722,7 @@ function sourceForm(edit) {
         }
         if (!src.name) {
           try {
-            src.name = new URL(src.type === 'xtream' ? src.server : src.url).hostname;
+            src.name = src.local ? String(src.fileName || 'Liste').replace(/\.[^.]+$/, '') : new URL(src.type === 'xtream' ? src.server : src.url).hostname;
           } catch {
             src.name = 'Kaynak';
           }
@@ -720,11 +731,13 @@ function sourceForm(edit) {
         go.disabled = true;
         go.textContent = 'Yükleniyor…';
         try {
-          const cat = await loadCatalog(src, net, {
+          const cat = await loadCatalog(text != null ? { ...src, text } : src, net, {
+            readFile: (id) => store.cache.get('file:' + id),
             onStage: (t) => (go.textContent = t),
             onProgress: (n) => (go.textContent = `İndiriliyor… ${(n / 1048576).toFixed(1)} MB`),
           });
           const saved = store.saveSource(src);
+          if (text != null) await store.cache.set('file:' + saved.id, text);
           await store.cache.set('cat:' + saved.id, catalogToStorable(cat));
           store.setActive(saved.id);
           S.source = saved;
@@ -793,9 +806,11 @@ window.__iptv = { S, store, net }; // hata ayıklama ve uçtan uca testler için
 (async function boot() {
   const src = store.activeSource();
   if (!src) {
+    // İlk açılış: doğrudan kaynak ekleme sayfası (Xtream / M3U bağlantısı / dosyadan).
     renderTop();
     S.tab = 'live';
-    return renderTab();
+    renderTab();
+    return sourceForm();
   }
   await activate(src.id);
 })();

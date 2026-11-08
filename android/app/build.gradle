@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+// Sürüm numarası CI çalışma numarasından gelir: her derleme bir öncekinden büyük olur, böylece üstüne güncellenir.
+def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
 android {
     namespace "com.koruk.iptv"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +10,8 @@ android {
         applicationId "com.koruk.iptv"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode runNumber
+        versionName "1.0.${runNumber}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +19,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Her derleme aynı anahtarla imzalanır; Android ancak aynı imzalı APK'yı mevcut uygulamanın üstüne günceller.
+    signingConfigs {
+        iptv {
+            storeFile file('iptv.keystore')
+            storePassword 'iptvplayer'
+            keyAlias 'iptv'
+            keyPassword 'iptvplayer'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.iptv
+        }
         release {
+            signingConfig signingConfigs.iptv
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -141,3 +141,13 @@ test('rehber adresi başarısızsa sıradakine geçer, hepsi olmazsa hata verir'
   assert.equal(d.matched, 1);
   await assert.rejects(() => loadEpg({ type: 'm3u' }, { live: [], epgUrls: ['http://e/bad.xml'] }, net));
 });
+
+test('dosyadan eklenen M3U: metin doğrudan, yenilemede kayıtlı içerikten okunur', async () => {
+  const net = fakeServer([]); // ağa hiç çıkılmamalı
+  const a = await loadCatalog({ type: 'm3u', local: true, text: M3U }, net);
+  assert.equal(a.live.length, 2);
+  assert.equal(a.movies.length, 1);
+  const b = await loadCatalog({ id: 'k1', type: 'm3u', local: true }, net, { readFile: async (id) => (id === 'k1' ? M3U : null) });
+  assert.equal(b.live.length, 2);
+  await assert.rejects(() => loadCatalog({ id: 'yok', type: 'm3u', local: true }, net), /yeniden seçin/);
+});

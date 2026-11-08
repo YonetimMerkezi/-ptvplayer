@@ -17,7 +17,8 @@ export function emptyCatalog() {
   return { live: [], movies: [], series: [], epgUrls: [], warnings: [], fetchedAt: 0 };
 }
 
-export async function loadCatalog(source, net, { onStage = () => {}, onProgress = () => {} } = {}) {
+// source.text: az önce seçilen dosyanın içeriği; source.local: dosyadan eklenmiş, içerik readFile(id) ile okunur.
+export async function loadCatalog(source, net, { onStage = () => {}, onProgress = () => {}, readFile = async () => null } = {}) {
   const cat = emptyCatalog();
   if (source.type === 'xtream') {
     const cfg = sourceCfg(source);
@@ -44,9 +45,16 @@ export async function loadCatalog(source, net, { onStage = () => {}, onProgress 
     const ss = await fetchList('Diziler…', 'get_series');
     cat.series = X.mapSeries(ss, sc);
   } else {
-    onStage('Liste indiriliyor…');
     const parser = new M3UParser();
-    await net.read(source.url, { headers: source.headers, onText: (t) => parser.push(t), onProgress });
+    if (source.text != null || source.local) {
+      onStage('Dosya okunuyor…');
+      const text = source.text != null ? source.text : await readFile(source.id);
+      if (text == null) throw new Error('Kaydedilmiş liste dosyası bulunamadı; dosyayı yeniden seçin.');
+      parser.push(text);
+    } else {
+      onStage('Liste indiriliyor…');
+      await net.read(source.url, { headers: source.headers, onText: (t) => parser.push(t), onProgress });
+    }
     onStage('Liste işleniyor…');
     const { items, epgUrls } = parser.end();
     cat.epgUrls = epgUrls;

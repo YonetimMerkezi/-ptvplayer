@@ -22,7 +22,14 @@ npm run sync             # web dosyalarını android/ içine aktarır
 
 ## APK
 
-`.github/workflows/build-apk.yml` her push'ta debug APK üretir (Actions → artifact).
+`.github/workflows/build-apk.yml` her push'ta APK üretir ve sabit adrese yayınlar:
+`https://github.com/YonetimMerkezi/-ptvplayer/releases/download/latest/iptv-oynatici.apk`
+
+**Güncelleme:** telefonda bu adresi açıp indir, eski uygulamanın üstüne kur (kaldırmaya gerek yok).
+Bunun şartı iki şey: APK her zaman `android/app/iptv.keystore` ile imzalanır ve sürüm numarası
+(`1.0.<derleme no>`) her derlemede artar. Kaynaklar sekmesinin altında kurulu sürüm yazar.
+Anahtar dosyasını silmeyin/değiştirmeyin; değişirse bir sonraki kurulum için eskisini kaldırmak gerekir.
+
 Yerelde: JDK 17 + Android SDK kurulu olmalı, sonra `cd android && ./gradlew assembleDebug`.
 
 ## Yapı

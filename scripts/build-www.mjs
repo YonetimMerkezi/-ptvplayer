@@ -1,5 +1,5 @@
-// hls.js'i web köküne kopyalar (www/vendor git'e girmez, CI ve yerelde bu betik üretir).
-import { copyFileSync, mkdirSync, existsSync } from 'node:fs';
+// hls.js'i web köküne kopyalar ve sürüm numarasını yazar (ikisi de git'e girmez; CI ve yerelde bu betik üretir).
+import { copyFileSync, mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,3 +14,8 @@ if (!existsSync(kaynak)) {
 mkdirSync(dirname(hedef), { recursive: true });
 copyFileSync(kaynak, hedef);
 console.log('hls.min.js -> www/vendor');
+
+// Sürüm: CI çalışma numarası (gradle versionName ile aynı), yerelde "geliştirme".
+const run = process.env.GITHUB_RUN_NUMBER;
+writeFileSync(join(kok, 'www', 'js', 'version.js'), `export const VERSION = ${JSON.stringify(run ? `1.0.${run}` : 'geliştirme')};\n`);
+console.log('sürüm:', run ? `1.0.${run}` : 'geliştirme');

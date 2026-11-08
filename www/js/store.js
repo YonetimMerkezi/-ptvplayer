@@ -131,6 +131,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
     }
     cache.del('cat:' + id);
     cache.del('epg:' + id);
+    cache.del('file:' + id);
   };
 
   // ---- favoriler ----
