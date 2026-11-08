@@ -25,6 +25,8 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   add('recording', (e) => onRec(e));
   return {
     kind: 'native',
+    enterPip: () => plugin.enterPip(),
+    onPipChannel: (fn) => plugin.addListener('pipChannel', fn),
     // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
     load: (target, startMs = 0, keepRecording = false) =>
       plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay() }),
@@ -83,6 +85,8 @@ export function createWebEngine({ video, Hls, on }) {
   );
   return {
     kind: 'web',
+    enterPip: async () => { throw new Error('PiP yalnız Android uygulamasında kullanılabilir'); },
+    onPipChannel: () => ({ remove() {} }),
     async load(target, startMs = 0) {
       clean();
       const isHls = target.mime === 'hls' || /\.m3u8(\?|$)/i.test(target.url);
