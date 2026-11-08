@@ -39,6 +39,7 @@ export function nativePlugin(name, win = globalThis.window) {
     recordStop: call('recordStop'),
     recordList: call('recordList'),
     recordDelete: call('recordDelete'),
+    setAudioDelay: call('setAudioDelay'),
     castStart: call('castStart'),
     castStop: call('castStop'),
     castInfo: call('castInfo'),

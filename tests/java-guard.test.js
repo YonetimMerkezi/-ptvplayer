@@ -164,8 +164,8 @@ test('Android TV bildirimi: kumanda başlatıcısı, afiş, dokunmatik ve leanba
 });
 
 test('yayın kaydı: yalnız ana oynatıcı kayda yazar, çıkışta/yeni yayında kayıt kapanır, liste (m3u8) kayda girmez', () => {
-  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer\), true\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
-  assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false\)/, 'çoklu ekran kutuları kayda yazmamalı');
+  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer\), true, true\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
+  assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false, false\)/, 'çoklu ekran kutuları kayda yazmamalı ve ses gecikmesi almamalı');
   assert.match(kaynak, /public void stop\(final PluginCall call\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'oynatıcı kapanınca kayıt bitmeli');
   assert.match(kaynak, /if \(!keepRec\) StreamRecorder\.stop\(null\)/, 'başka yayına geçilince kayıt bitmeli');
   assert.match(kaynak, /handleOnDestroy\(\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'uygulama kapanınca kayıt dosyası düzgün kapanmalı');
@@ -213,4 +213,18 @@ test('telefondan TV\'ye oynatma: yöntemler köprüde, sunucu eşleşmesiz iste�
   const manifest = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/AndroidManifest.xml'), 'utf8');
   assert.match(manifest, /android\.permission\.CHANGE_WIFI_MULTICAST_STATE/, 'TV\'nin UDP ile bulunması için çoklu yayın kilidi izni');
   assert.match(kaynak, /holdMulticast\(false\)/, 'alıcı kapanınca çoklu yayın kilidi bırakılmalı');
+});
+
+test('ses senkronu: yöntem köprüde, yalnız ana oynatıcıda ses işlemcisi, gecikmede kodlu geçiş kapalı, sınırlar', () => {
+  const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
+  assert.match(kaynak, /public void setAudioDelay\(/, 'setAudioDelay Java\'da yok');
+  assert.equal(typeof pl.setAudioDelay, 'function', 'setAudioDelay köprüde yok');
+  assert.match(kaynak, /optInt\("audioDelay", audioDelayMs\)/, 'play çağrısı gecikmeyi almalı');
+  assert.match(kaynak, /if \(delay && audioDelayMs != 0\)/, 'ses işlemcisi yalnız gecikme varken ve ana oynatıcıda takılmalı');
+  assert.match(kaynak, /new DefaultAudioSink\.Builder\(\)[\s\S]*?setAudioProcessors\(new AudioProcessor\[\] \{proc\}\)/, 'gecikme PCM ister: kodlu geçiş açık bırakılmamalı');
+  assert.match(kaynak, /Math\.max\(-1000, Math\.min\(2000, ms\)\)/, 'gecikme sınırlanmalı');
+  assert.match(kaynak, /private void releasePlayer\(\) \{\s*delayProc = null;/, 'oynatıcı bırakılınca işlemci referansı da bırakılmalı');
+  const islemci = oku('AudioDelayProcessor.java');
+  assert.match(islemci, /C\.ENCODING_PCM_16BIT\) return AudioProcessor\.AudioFormat\.NOT_SET/, 'PCM 16 bit dışında ses olduğu gibi geçmeli');
+  assert.match(islemci, /protected void onFlush\(\)[\s\S]*?core\.reset\(/, 'değer her sarmada yeniden okunmalı');
 });

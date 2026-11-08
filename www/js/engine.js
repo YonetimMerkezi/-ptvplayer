@@ -15,7 +15,7 @@ export function describeError(name) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
-export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}) {
+export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0) {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
@@ -27,7 +27,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     kind: 'native',
     // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
     load: (target, startMs = 0, keepRecording = false) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording }),
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay() }),
     // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
     rec: {
       start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),
@@ -35,6 +35,8 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
       list: () => plugin.recordList(),
       remove: (id) => plugin.recordDelete({ id }),
     },
+    // Ses senkronu (ms): açık oynatıcıya anında uygulanır (yalnız Android)
+    setAudioDelay: (ms) => plugin.setAudioDelay({ ms }),
     pause: () => plugin.pause(),
     resume: () => plugin.resume(),
     seek: (ms) => plugin.seekTo({ ms: Math.max(0, Math.floor(ms)) }),

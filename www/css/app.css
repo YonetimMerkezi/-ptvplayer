@@ -210,6 +210,11 @@ html.tv body.on-home #btn-home { display: none; }
 .rec-row .rec-play .t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .rec-row .rec-play small { color: var(--muted, #8a97ad); font-size: 0.8125rem; }
 .rec-row.on .rec-play small { color: var(--danger); }
+.sy-val { font-size: 2rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin: 4px 0 0; }
+#sy-desc { text-align: center; }
+.sy-btns { display: flex; gap: 8px; margin: 12px 0; }
+.sy-btns .btn { flex: 1; padding: 0 8px; }
+.sy-reset { width: 100%; margin-bottom: 12px; }
 .rec-info { margin: 12px 0 0; font-size: 0.8125rem; color: var(--muted, #8a97ad); }
 .row.bad .sub { color: var(--danger); }
 .pl-num { position: absolute; right: max(5%, env(safe-area-inset-right)); top: 12%; z-index: 6; min-width: 96px; padding: 10px 22px; border-radius: 14px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 2.75rem; font-weight: 700; letter-spacing: 0.08em; text-align: center; pointer-events: none; font-variant-numeric: tabular-nums; }

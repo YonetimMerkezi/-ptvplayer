@@ -846,7 +846,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       },
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
       play: async (a) => {
-        window.__calls.push(['play', a.url, a.mime, a.buffer]);
+        window.__calls.push(['play', a.url, a.mime, a.buffer, a.audioDelay]);
         if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm|\/rec\//.test(a.url) }), 50);
         setTimeout(() => listeners.time({ pos: 1000, dur: /webm|\/rec\//.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
         // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
@@ -880,6 +880,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       multiMute: async (a) => window.__calls.push(['multiMute', a.slot, !!a.muted]),
       multiStop: async (a) => window.__calls.push(['multiStop', a.slot]),
       multiStopAll: async () => window.__calls.push(['multiStopAll']),
+      setAudioDelay: async (a) => {
+        window.__calls.push(['audioDelay', a.ms]);
+      },
       recordStart: async (a) => {
         window.__calls.push(['recStart', a.name, a.maxMs]);
         return { active: true };
@@ -1057,6 +1060,43 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => { window.__noPlay = false; });
   await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
   ok(true, 'yayın gelince bilgi kalktı, oynatma sürüyor');
+
+  // ses senkronu: düğme, pencere, kalıcı değer, eklentiye iletim
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  ok(await page.$eval('#pl-sync', (b) => !b.hidden), 'yerel kipte “Ses senkronu” düğmesi var');
+  ok((await page.textContent('#pl-sync-l')).trim() === 'Ses senkronu', 'ayarsızken düğme adı “Ses senkronu”');
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop()[4])) === 0, 'yayın başlarken ses gecikmesi (0) eklentiye iletildi');
+  await page.click('#pl-sync');
+  await page.waitForSelector('#sy-val');
+  ok((await page.textContent('#sy-val')) === 'Ayarsız', 'pencerede değer “Ayarsız”');
+  await page.click('.sy-btns [data-d="250"]');
+  await page.click('.sy-btns [data-d="50"]');
+  ok((await page.textContent('#sy-val')) === '+300 ms', 'dokunuşlar toplanıyor: +300 ms');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'audioDelay'), null, { timeout: 3000 });
+  await sleep(600);
+  const sent = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'audioDelay').map((c) => c[1]));
+  ok(sent.length === 1 && sent[0] === 300, 'art arda dokunuşlar eklentiye tek seferde (300 ms) iletildi: ' + JSON.stringify(sent));
+  ok((await page.evaluate(() => window.__iptv.store.pref('audioDelay', 0))) === 300, 'değer kalıcı kaydedildi');
+  ok((await page.textContent('#pl-sync-l')).trim() === '+300 ms', 'düğmede geçerli değer görünüyor');
+  await page.click('.sy-btns [data-d="-250"]');
+  await page.click('.sy-btns [data-d="-250"]');
+  ok((await page.textContent('#sy-val')) === '−200 ms', 'eksi yönde: −200 ms');
+  await page.click('.sy-reset');
+  ok((await page.textContent('#sy-val')) === 'Ayarsız', '“Sıfırla” değeri sıfırladı');
+  await sleep(700);
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'audioDelay').pop()[1])) === 0, 'sıfırlama eklentiye iletildi');
+  await page.click('.sy-btns [data-d="50"]');
+  await sleep(600);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached', timeout: 3000 });
+  ok(await page.$eval('#player', (e) => !e.hidden), 'pencere kapanınca oynatıcı açık kaldı');
+  // sonraki yayın, kayıtlı gecikmeyle başlar
+  const nPl = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').length);
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  await page.click('#pl-next');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, nPl, { timeout: 5000 });
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop()[4])) === 50, 'sonraki yayın kayıtlı ses gecikmesiyle (50 ms) başladı');
+  await page.evaluate(() => window.__iptv.store.setPref('audioDelay', 0));
   // yayın kaydı (yalnız Android)
   await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
   ok(await page.$eval('#pl-rec', (b) => !b.hidden), 'canlı yayında “Kaydet” düğmesi var');

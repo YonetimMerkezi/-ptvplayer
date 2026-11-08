@@ -34,12 +34,16 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionOverride;
+import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
@@ -93,6 +97,12 @@ public class IptvPlayerPlugin extends Plugin {
     private PlayerView playerView;
     private ExoPlayer player;
     private String curUrl = "";
+    // Ses senkronu (ms; + sesi geciktirir, − öne alır). Ana oynatıcı sıfırdan farklı değerle kurulursa ses işlemcisi takılır.
+    private volatile int audioDelayMs = 0;
+    private AudioDelayProcessor delayProc = null;
+    private String lastMime = "auto";
+    private JSObject lastHeaders = null;
+    private String lastBuffer = "high";
     // Telefondan TV'ye oynatma (alıcı): durum anlık görüntüsü ana iş parçacığında güncellenir, sunucu iş parçacığı okur.
     private CastServer cast;
     private volatile boolean castActive = false;
@@ -166,6 +176,7 @@ public class IptvPlayerPlugin extends Plugin {
         final JSObject headers = call.getObject("headers");
         final String buffer = call.getData().optString("buffer", "high");
         final boolean keepRec = call.getData().optBoolean("keepRecording", false);
+        audioDelayMs = clampDelay(call.getData().optInt("audioDelay", audioDelayMs));
         main.post(() -> {
             try {
                 startPlayback(url, mime, startMs, headers, buffer, keepRec);
@@ -195,10 +206,13 @@ public class IptvPlayerPlugin extends Plugin {
         releasePlayer();
         ensureView();
         curUrl = url;
+        lastMime = mime;
+        lastHeaders = headers;
+        lastBuffer = buffer;
         castActive = true;
         castState = "buffering";
 
-        player = buildExo(headers, true, loadControlFor(buffer), true);
+        player = buildExo(headers, true, loadControlFor(buffer), true, true);
         player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
         player.addListener(new Player.Listener() {
             @Override
@@ -243,7 +257,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     // Ortak oynatıcı kurulumu: başlıklar (User-Agent dahil), arabellek ayarı, ses odağı.
     // Çoklu ekran kutuları ses odağı istemez (yoksa birbirini duraklatırlar).
-    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load, boolean tap) {
+    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load, boolean tap, boolean delay) {
         Map<String, String> props = new HashMap<>();
         String ua = UA;
         if (headers != null) {
@@ -268,7 +282,25 @@ public class IptvPlayerPlugin extends Plugin {
         // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
         if (tap) base = new TapDataSource.Factory(base);
-        return new ExoPlayer.Builder(getContext())
+        ExoPlayer.Builder eb;
+        if (delay && audioDelayMs != 0) {
+            // Gecikme PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
+            final AudioDelayProcessor proc = new AudioDelayProcessor(audioDelayMs);
+            delayProc = proc;
+            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()) {
+                @Override
+                protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
+                    return new DefaultAudioSink.Builder()
+                            .setEnableFloatOutput(enableFloatOutput)
+                            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                            .setAudioProcessors(new AudioProcessor[] {proc})
+                            .build();
+                }
+            });
+        } else {
+            eb = new ExoPlayer.Builder(getContext());
+        }
+        return eb
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(base))
                 .setLoadControl(load)
                 .setAudioAttributes(audio, audioFocus)
@@ -341,6 +373,7 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     private void releasePlayer() {
+        delayProc = null;
         castActive = false;
         castState = "idle";
         castPos = 0;
@@ -364,6 +397,30 @@ public class IptvPlayerPlugin extends Plugin {
             o.put("playing", false);
             o.put("live", false);
             notifyListeners("state", o);
+            call.resolve();
+        });
+    }
+
+    private static int clampDelay(int ms) {
+        return Math.max(-1000, Math.min(2000, ms));
+    }
+
+    // Ses senkronu (ms): + sesi geciktirir, − öne alır. Açık oynatıcıya anında uygulanır.
+    @PluginMethod
+    public void setAudioDelay(final PluginCall call) {
+        final int ms = clampDelay(call.getData().optInt("ms", 0));
+        audioDelayMs = ms;
+        main.post(() -> {
+            if (player != null) {
+                if (delayProc != null) {
+                    delayProc.setDelayMs(ms);
+                    player.seekTo(player.getCurrentPosition()); // sarma ses hattını boşaltır, yeni değer okunur
+                } else if (ms != 0 && !curUrl.isEmpty()) {
+                    // oynatıcı ses işlemcisiz kurulmuştu: yeniden kur (canlıda yayın yeniden açılır, filmde konum korunur)
+                    long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
+                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
+                }
+            }
             call.resolve();
         });
     }
@@ -523,7 +580,7 @@ public class IptvPlayerPlugin extends Plugin {
         placeView(s.view, r);
         s.player = buildExo(headers, false, new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(5000, 20000, 1500, 3000)
-                .build(), false);
+                .build(), false, false);
         s.player.setVolume(muted ? 0f : 1f);
         s.player.addListener(new Player.Listener() {
             @Override

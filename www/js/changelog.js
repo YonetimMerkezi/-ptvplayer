@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 9,
+    title: 'Ses senkronu',
+    items: [
+      'Ses görüntüden önce ya da sonra geliyorsa: oynatıcıda “Ses senkronu” ile sesi 50 ms adımlarla geciktirin veya öne alın',
+      'Ayar kalıcıdır ve tüm yayınlarda geçerlidir; “Sıfırla” ile kaldırılır',
+      'Gecikme ayarlıyken Dolby/DTS sesler çözülerek işlenir; ayar ilk yapıldığında yayın yeniden açılır',
+    ],
+  },
+  {
     id: 8,
     title: 'Kayıtlardan izleme düzeltildi',
     items: ['Ana ekran › Kayıtlar’dan bir kayda dokununca oynatıcı artık açık kalıyor (daha önce hemen kapanıyordu)', 'Alt pencereler kapanırken yeni açılan sayfa ya da oynatıcı da kapanma sorunu giderildi'],

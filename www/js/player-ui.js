@@ -6,6 +6,7 @@ import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta } from '
 import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
 import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
 import { REC_LIMITS, fmtElapsed } from './rec.js';
+import { DELAY_PRESETS, clampDelay, stepDelay, fmtDelay, describeDelay } from './avsync.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
 const HIDE_MS = 2500;
@@ -238,6 +239,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
     q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
+    renderSyncLabel();
     q('#pl-golive').hidden = !(st.item.kind === 'recording' && ctx && ctx.items[ctx.index] && ctx.items[ctx.index].kind === 'live');
     renderRec(st);
     renderSleepLabel();
@@ -420,6 +422,49 @@ export function createPlayerUI({ engine, player, env }) {
     if (t === sleepLabel) return;
     sleepLabel = t;
     q('#pl-sleep-l').textContent = t;
+  }
+
+  // ---- ses senkronu (yalnız Android): sesi görüntüye göre geciktirir ya da öne alır; değer kalıcıdır ----
+  const audioDelay = () => clampDelay(env.pref('audioDelay', 0));
+  function renderSyncLabel() {
+    q('#pl-sync').hidden = !engine.setAudioDelay;
+    const d = audioDelay();
+    q('#pl-sync-l').textContent = d ? fmtDelay(d) : 'Ses senkronu';
+  }
+
+  function syncSheet() {
+    if (!engine.setAudioDelay) return;
+    let timer = 0;
+    let box = null;
+    // Her dokunuş değeri hemen kaydeder; oynatıcıya kısa bir bekleyişten sonra, art arda dokunuşlar tek seferde iletilir.
+    const send = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => engine.setAudioDelay(audioDelay()).catch(() => toast('Ses senkronu uygulanamadı', 2500)), 400);
+    };
+    const set = (ms) => {
+      env.setPref('audioDelay', ms);
+      draw();
+      renderSyncLabel();
+      send();
+    };
+    const btn = (d) => `<button class="btn ghost" data-d="${d}">${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`;
+    openSheet({
+      title: 'Ses senkronu',
+      html: `<p class="hint">Ses görüntüden önce geliyorsa + yönüne (geciktir), sonra geliyorsa − yönüne (öne al) ayarlayın. Değer tüm yayınlarda geçerlidir.</p><div class="sy-val" id="sy-val" aria-live="polite"></div><p class="hint" id="sy-desc"></p><div class="sy-btns">${DELAY_PRESETS.map(btn).join('')}</div><button class="btn ghost sy-reset" data-r>Sıfırla</button><p class="hint">Gecikme ayarlıyken Dolby/DTS sesler çözülerek işlenir. İlk ayarda yayın yeniden açılır.</p>`,
+      mount: (body) => {
+        box = body;
+        body.addEventListener('click', (e) => {
+          const d = e.target.closest('[data-d]');
+          if (d) return set(stepDelay(audioDelay(), Number(d.dataset.d)));
+          if (e.target.closest('[data-r]')) set(0);
+        });
+        draw();
+      },
+    });
+    function draw() {
+      $('#sy-val', box).textContent = fmtDelay(audioDelay());
+      $('#sy-desc', box).textContent = describeDelay(audioDelay());
+    }
   }
 
   function sleepSheet() {
@@ -612,6 +657,7 @@ export function createPlayerUI({ engine, player, env }) {
     showUi(false);
   });
   q('#pl-sleep').addEventListener('click', () => sleepSheet());
+  q('#pl-sync').addEventListener('click', () => syncSheet());
   q('#pl-rec').addEventListener('click', () => recSheet());
   q('#pl-tv').addEventListener('click', () => {
     const st = player.state();

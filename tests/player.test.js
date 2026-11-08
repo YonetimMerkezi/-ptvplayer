@@ -262,7 +262,7 @@ test('hata çevirisi ve yerel motor olay aktarımı', async () => {
   assert.deepEqual(events.map((e) => e.type), ['state', 'time', 'error', 'tracks']);
   assert.match(events[2].message, /bağlanılamadı/);
   await eng.load({ url: 'u', mime: 'hls' }, 1234.9);
-  assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234, buffer: 'high', keepRecording: false }, 'varsayılan önbellek düzeyi eklentiye iletilir');
+  assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234, buffer: 'high', keepRecording: false, audioDelay: 0 }, 'varsayılan önbellek düzeyi ve ses senkronu eklentiye iletilir');
   await eng.load({ url: 'u' }, 0, true);
   assert.equal(sent[1].keepRecording, true, 'yeniden bağlanmada süren kayıt korunur');
   const rec = [];

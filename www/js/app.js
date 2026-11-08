@@ -30,6 +30,7 @@ import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
+import { clampDelay } from './avsync.js';
 import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
@@ -98,7 +99,7 @@ let player;
 let engine;
 const video = $('#vid');
 const onEngine = (ev) => player.handle(ev);
-engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e)) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
+engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0))) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
 player = createPlayer({ engine });
 const pui = createPlayerUI({
   engine,
