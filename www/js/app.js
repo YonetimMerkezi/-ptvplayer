@@ -120,6 +120,10 @@ const pui = createPlayerUI({
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
     previewRect,
+    onMiniPlayer: (active) => {
+      S.miniplayer = !!active;
+      updateMiniPlayerOverlay();
+    },
     onPreviewStep: (d) => previewStep(d),
     onClose: () => multiResume(), // tam ekrandan dönünce çoklu ekran kutuları yeniden başlar
     onPreviewBack: (item) => {
@@ -127,6 +131,24 @@ const pui = createPlayerUI({
       layoutPreview();
     },
   },
+});
+
+const miniPlayerOverlay = document.createElement('div');
+miniPlayerOverlay.id = 'mini-player-overlay';
+miniPlayerOverlay.hidden = true;
+miniPlayerOverlay.innerHTML = '<button id="mini-player-expand" aria-label="Oynatıcıyı büyüt"></button><button id="mini-player-close" aria-label="Oynatıcıyı kapat">×</button>';
+document.body.appendChild(miniPlayerOverlay);
+$('#mini-player-expand').addEventListener('click', () => {
+  S.miniplayer = false;
+  updateMiniPlayerOverlay();
+  pui.expand();
+});
+$('#mini-player-close').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  S.miniplayer = false;
+  updateMiniPlayerOverlay();
+  await pui.endPreview();
+  multiResume();
 });
 
 // İzleme ilerlemesi kaydı (bu cihazda ya da TV'ye gönderilen oynatmada telefon yoklamasından).
@@ -1377,9 +1399,25 @@ const shortEpgCache = new Map();
 
 function previewRect() {
   const el = $('#sp-slot');
-  if (!el || !S.split || S.tab !== 'live') return null;
-  const r = el.getBoundingClientRect();
-  return r.width > 0 && r.height > 0 ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null;
+  if (el && S.split && S.tab === 'live') {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+  }
+  if (S.miniplayer) {
+    const w = Math.min(220, Math.round(window.innerWidth * 0.43));
+    const h = Math.round(w * 9 / 16);
+    const bottom = S.tab === 'multi' ? 14 : 78;
+    return { x: Math.max(8, Math.round(window.innerWidth - w - 12)), y: Math.max(8, Math.round(window.innerHeight - h - bottom)), w, h };
+  }
+  return null;
+}
+
+function updateMiniPlayerOverlay() {
+  const el = $('#mini-player-overlay');
+  if (!el) return;
+  const r = S.miniplayer ? previewRect() : null;
+  el.hidden = !r;
+  if (r) Object.assign(el.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
 }
 
 // Android'de önizleme ve çoklu ekran yerel görünümlerde oynar: sayfa saydam, #bgfill video pencereleri dışındaki her yeri örter.
@@ -1395,6 +1433,7 @@ function syncHole() {
 
 function layoutPreview() {
   pui.syncPreview();
+  updateMiniPlayerOverlay();
   if (M.on) layoutMulti();
   else syncHole();
 }
@@ -1781,19 +1820,23 @@ function renderMulti(v) {
   mark();
   const chips = $('#mp-chips');
   const showChips = () => {
+    const root = $('.mp');
     chips.classList.remove('idle');
-    $('.mp').classList.remove('controls-idle');
+    root.classList.remove('controls-idle');
+    $('.mp-top', root).forEach((el) => { el.classList.remove('mp-hidden'); });
     clearTimeout(M.hideTimer);
     M.hideTimer = setTimeout(() => {
       chips.classList.add('idle');
-      $('.mp')?.classList.add('controls-idle');
+      root.classList.add('controls-idle');
+      $('.mp-top', root).forEach((el) => { el.classList.add('mp-hidden'); });
     }, 2000);
   };
   showChips();
   // Dokunuş bittikten sonra göster: basarken görünürlerse altındaki düğmenin üstünü örter ve tıklama kaybolur.
+  $('.mp').addEventListener('pointerdown', showChips, true);
+  $('.mp').addEventListener('touchstart', showChips, { capture: true, passive: true });
   $('.mp').addEventListener('click', showChips, true);
-  $('.mp').addEventListener('keydown', showChips, true);
-  $('.mp').addEventListener('focusin', showChips); // kumandayla odak alt düğmelere geçince görünür kalsın
+  $('.mp').addEventListener('keydown', showChips, true); // kumandayla odak alt düğmelere geçince görünür kalsın
   $('#mp-back').addEventListener('click', () => setTab('home'));
   $('#mp-fit').addEventListener('click', () => {
     M.fill = !M.fill;
