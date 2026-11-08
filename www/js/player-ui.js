@@ -5,6 +5,7 @@ import { pushLayer, popLayer } from './nav.js';
 import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta } from './gestures.js';
 import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
 import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
+import { REC_LIMITS, fmtElapsed } from './rec.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
 const HIDE_MS = 2500;
@@ -234,6 +235,9 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-prev').hidden = !hasNav;
     q('#pl-next').hidden = !hasNav;
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
+    q('#pl-fav').hidden = st.item.kind === 'recording';
+    q('#pl-golive').hidden = !(st.item.kind === 'recording' && ctx && ctx.items[ctx.index] && ctx.items[ctx.index].kind === 'live');
+    renderRec(st);
     renderSleepLabel();
 
     const s = q('#pl-status');
@@ -343,6 +347,61 @@ export function createPlayerUI({ engine, player, env }) {
     },
     onLast: lastChannel,
   });
+
+  // ---- yayın kaydı (yalnız Android) ----
+  let rec = null; // süren kayıt: { active, elapsedMs, bytes } | null
+  let recLabel = '';
+  function renderRec(st) {
+    const btn = q('#pl-rec');
+    const can = !!env.canRecord && st && st.item && st.item.kind === 'live';
+    btn.hidden = !can && !rec;
+    btn.classList.toggle('rec-on', !!rec);
+    const t = rec ? fmtElapsed(rec.elapsedMs || 0) : 'Kaydet';
+    if (t === recLabel) return;
+    recLabel = t;
+    q('#pl-rec-l').textContent = t;
+  }
+
+  function recSheet() {
+    const st = player.state();
+    if (!st.item) return;
+    if (!rec) {
+      const rows = REC_LIMITS.map(([m, label]) => `<button class="list-item" data-m="${m}"><span class="t">${esc(label)}</span></button>`).join('');
+      const sh = openSheet({
+        title: 'Yayını kaydet',
+        html: `<p class="hint">Yayın izlerken cihaza kaydedilir (ikinci bağlantı açılmaz). Kaydı Ana ekran › Kayıtlar'dan izleyip istediğiniz yere sarabilirsiniz. Yayından çıkınca ya da başka kanala geçince kayıt biter.</p>${rows}`,
+        mount: (body) =>
+          body.addEventListener('click', async (e) => {
+            const b = e.target.closest('[data-m]');
+            if (!b) return;
+            sh.close();
+            try {
+              await env.recStart(st.item, Number(b.dataset.m) * 60000);
+              toast('Kayıt başladı');
+            } catch (err) {
+              toast(String((err && err.message) || err || 'Kayıt başlatılamadı'), 4000);
+            }
+          }),
+      });
+      return;
+    }
+    const sh = openSheet({
+      title: 'Kayıt sürüyor · ' + fmtElapsed(rec.elapsedMs || 0),
+      html: `<button class="list-item" data-a="stop"><span class="t">Kaydı durdur</span></button><button class="list-item" data-a="watch"><span class="t">Durdur ve baştan izle</span></button><p class="hint">“Baştan izle”de kayıt biter ve kaydedilen yayın başından oynar; canlıya dön düğmesiyle yayına geri dönebilirsiniz.</p>`,
+      mount: (body) =>
+        body.addEventListener('click', async (e) => {
+          const b = e.target.closest('[data-a]');
+          if (!b) return;
+          sh.close();
+          try {
+            const r = await env.recStop();
+            if (b.dataset.a === 'watch' && r && r.url) env.playRecording(r, ctx);
+          } catch (err) {
+            toast(String((err && err.message) || err || 'Kayıt durdurulamadı'), 4000);
+          }
+        }),
+    });
+  }
 
   // ---- uyku zamanlayıcısı ----
   const sleep = createSleepTimer({
@@ -551,6 +610,10 @@ export function createPlayerUI({ engine, player, env }) {
     showUi(false);
   });
   q('#pl-sleep').addEventListener('click', () => sleepSheet());
+  q('#pl-rec').addEventListener('click', () => recSheet());
+  q('#pl-golive').addEventListener('click', () => {
+    if (ctx && ctx.items[ctx.index]) ctx.play(ctx.items[ctx.index], ctx.index);
+  });
   q('#pl-audio').addEventListener('click', () => trackSheet('audio'));
   q('#pl-text').addEventListener('click', () => trackSheet('text'));
   q('#pl-aspect').addEventListener('click', async () => {
@@ -672,6 +735,11 @@ export function createPlayerUI({ engine, player, env }) {
     close: () => popLayer('player'),
     isOpen: () => open,
     refresh: () => render(player.state()),
+    // yerel eklentiden gelen kayıt olayı (süren kaydın süresi, bitişi)
+    recording: (e) => {
+      rec = e && e.active ? e : null;
+      renderRec(player.state());
+    },
     toastError: (m) => toast(m),
   };
 }

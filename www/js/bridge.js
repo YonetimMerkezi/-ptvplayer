@@ -34,5 +34,9 @@ export function nativePlugin(name, win = globalThis.window) {
     downloadApk: call('downloadApk'),
     installApk: call('installApk'),
     deleteFile: call('deleteFile'),
+    recordStart: call('recordStart'),
+    recordStop: call('recordStop'),
+    recordList: call('recordList'),
+    recordDelete: call('recordDelete'),
   };
 }

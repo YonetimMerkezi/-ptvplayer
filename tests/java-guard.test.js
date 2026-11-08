@@ -162,3 +162,26 @@ test('Android TV bildirimi: kumanda başlatıcısı, afiş, dokunmatik ve leanba
   const layout = readFileSync(join(androidDizin, 'res/layout/iptv_player_view.xml'), 'utf8');
   assert.match(layout, /android:focusable="false"/, 'yerel görünüm odağı çalarsa yön tuşları WebView\'e ulaşmaz');
 });
+
+test('yayın kaydı: yalnız ana oynatıcı kayda yazar, çıkışta/yeni yayında kayıt kapanır, liste (m3u8) kayda girmez', () => {
+  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer\), true\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
+  assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false\)/, 'çoklu ekran kutuları kayda yazmamalı');
+  assert.match(kaynak, /public void stop\(final PluginCall call\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'oynatıcı kapanınca kayıt bitmeli');
+  assert.match(kaynak, /if \(!keepRec\) StreamRecorder\.stop\(null\)/, 'başka yayına geçilince kayıt bitmeli');
+  assert.match(kaynak, /handleOnDestroy\(\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'uygulama kapanınca kayıt dosyası düzgün kapanmalı');
+  assert.match(kaynak, /new DefaultDataSource\.Factory\(getContext\(\), http\)/, 'kayıt dosyaları (file://) açılabilmeli');
+  const tap = oku('TapDataSource.java');
+  assert.match(tap, /m3u8/);
+  assert.match(tap, /mpegurl/);
+  assert.match(tap, /catch \(RuntimeException/, 'kayıt hatası oynatmayı bozmamalı');
+  const manifest = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/AndroidManifest.xml'), 'utf8');
+  assert.match(manifest, /android\.permission\.WAKE_LOCK/);
+});
+
+test('yayın kaydı yöntemleri köprüde de var', () => {
+  const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
+  for (const m of ['recordStart', 'recordStop', 'recordList', 'recordDelete']) {
+    assert.match(kaynak, new RegExp(`public void ${m}\\(`), `${m} Java'da yok`);
+    assert.equal(typeof pl[m], 'function', `${m} köprüde yok`);
+  }
+});

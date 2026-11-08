@@ -15,17 +15,26 @@ export function describeError(name) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
-export function createNativeEngine(plugin, on, getBuffer = () => 'high') {
+export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}) {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
   add('time', (e) => on({ type: 'time', pos: e.pos, dur: e.dur, buffered: e.buffered }));
   add('error', (e) => on({ type: 'error', message: describeError(e.message) }));
   add('tracks', () => on({ type: 'tracks' }));
+  add('recording', (e) => onRec(e));
   return {
     kind: 'native',
-    load: (target, startMs = 0) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer() }),
+    // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
+    load: (target, startMs = 0, keepRecording = false) =>
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording }),
+    // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
+    rec: {
+      start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),
+      stop: () => plugin.recordStop(),
+      list: () => plugin.recordList(),
+      remove: (id) => plugin.recordDelete({ id }),
+    },
     pause: () => plugin.pause(),
     resume: () => plugin.resume(),
     seek: (ms) => plugin.seekTo({ ms: Math.max(0, Math.floor(ms)) }),

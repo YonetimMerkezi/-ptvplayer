@@ -262,7 +262,29 @@ test('hata çevirisi ve yerel motor olay aktarımı', async () => {
   assert.deepEqual(events.map((e) => e.type), ['state', 'time', 'error', 'tracks']);
   assert.match(events[2].message, /bağlanılamadı/);
   await eng.load({ url: 'u', mime: 'hls' }, 1234.9);
-  assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234, buffer: 'high' }, 'varsayılan önbellek düzeyi eklentiye iletilir');
+  assert.deepEqual(sent[0], { url: 'u', mime: 'hls', headers: {}, startMs: 1234, buffer: 'high', keepRecording: false }, 'varsayılan önbellek düzeyi eklentiye iletilir');
+  await eng.load({ url: 'u' }, 0, true);
+  assert.equal(sent[1].keepRecording, true, 'yeniden bağlanmada süren kayıt korunur');
+  const rec = [];
+  const eng2 = createNativeEngine(plugin, () => {}, () => 'high', (e) => rec.push(e));
+  await new Promise((r) => setTimeout(r, 0));
+  listeners.recording({ active: true, elapsedMs: 5 });
+  assert.deepEqual(rec, [{ active: true, elapsedMs: 5 }], 'kayıt olayı ayrı geri çağırmaya gider');
+  assert.ok(eng2.rec && typeof eng2.rec.start === 'function');
+});
+
+test('yeniden bağlanma ve yedek adres denemesi süren kaydı korur, yeni açılış korumaz', async () => {
+  const loads = [];
+  const engine = { load: async (t, ms, keep) => loads.push([t.url, !!keep]), stop: async () => {}, pause: async () => {}, resume: async () => {}, seek: async () => {} };
+  const timers = { set: () => 1, clear() {} };
+  const p = createPlayer({ engine, timers });
+  await p.open(live, [T('a'), T('b')]);
+  assert.deepEqual(loads[0], ['a', false], 'ilk açılışta kayıt sürdürülmez');
+  p.handle({ type: 'error', message: 'x' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(loads[1], ['b', true], 'ilk adres açılmayınca yedeğe geçerken kayıt sürer');
+  await p.open(live, [T('c')]);
+  assert.deepEqual(loads[2], ['c', false], 'başka yayın açılınca kayıt biter');
 });
 
 test('parça listesi değişince arayüze haber verilir (sürüm artar, olay yayılır)', async () => {

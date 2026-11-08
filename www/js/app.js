@@ -10,6 +10,7 @@ import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
+import { fmtBytes, recItem, recEndMessage, recSub } from './rec.js';
 import { VirtualList } from './vlist.js';
 import { sortItems, SORTS, isSortMode } from './sort.js';
 import {
@@ -94,13 +95,17 @@ let player;
 let engine;
 const video = $('#vid');
 const onEngine = (ev) => player.handle(ev);
-engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER))) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
+engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e)) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
 player = createPlayer({ engine });
 const pui = createPlayerUI({
   engine,
   player,
   env: {
     native: !!nativePlugin,
+    canRecord: !!engine.rec,
+    recStart: (item, maxMs) => engine.rec.start(item.name, maxMs),
+    recStop: () => engine.rec.stop(),
+    playRecording: (r, ctx) => startPlay(recItem(r), { ctx }),
     epg: (it) => S.epg.nowNext(it),
     shortEpg: (it) => (S.source ? loadShortEpg(S.source, net, it, 4).catch(() => []) : Promise.resolve([])),
     isFav: (it) => !!S.source && store.isFav(S.source.id, it.id),
@@ -119,7 +124,7 @@ const pui = createPlayerUI({
 });
 
 player.onProgress((pos, dur, st) => {
-  if (!S.source || st.item.kind === 'live') return;
+  if (!S.source || st.item.kind === 'live' || st.item.kind === 'recording') return;
   const e = st.ep
     ? { id: st.ep.id, kind: 'episode', name: `${st.item.name} · ${st.ep.label}`, logo: st.item.logo, parent: st.item.id }
     : { id: st.item.id, kind: st.item.kind, name: st.item.name, logo: st.item.logo };
@@ -894,11 +899,13 @@ function playLive(items, index) {
 }
 
 function startPlay(item, { ep = null, ctx = null, startAt } = {}) {
-  const targets = targetsOf(item, ep);
+  const isRec = item.kind === 'recording'; // cihazdaki kayıt: yerel dosya, kaynaktan bağımsız
+  const targets = isRec ? [{ url: item.url, mime: 'auto' }] : targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
-  if (item.kind !== 'series') store.pushRecent(sid(), item);
+  if (item.kind !== 'series' && !isRec) store.pushRecent(sid(), item);
   let at = startAt;
-  if (at == null) {
+  if (isRec) at = 0;
+  else if (at == null) {
     const p = store.progress(sid(), ep ? ep.id : item.id);
     at = p && p.pos > 0 ? Math.max(0, p.pos - 3000) : 0;
   }
@@ -1103,7 +1110,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1115,6 +1122,7 @@ function onSourcesClick(e) {
     if (k === 'general') return generalSheet();
     if (k === 'epg') return epgSettingsSheet();
     if (k === 'auto') return autoSheet();
+    if (k === 'rec') return recordingsSheet();
     if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
   }
   const b = e.target.closest('[data-a], #src-add, #clr-rec');
@@ -1308,11 +1316,12 @@ function renderHome(v) {
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
       <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
     </div>
-    <div class="shortcuts">
+    <div class="shortcuts${nativePlugin ? ' has-rec' : ''}">
       <button class="tile mini t-guide" data-go="guide">${icon('list')}<b>EPG</b></button>
       <button class="tile mini t-multi" data-go="multi">${icon('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>İzleme listesi</b><small>${recN || ''}</small></button>
       <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
+      ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${icon('rec')}<b>Kayıtlar</b></button>` : ''}
       <button class="tile mini t-set" data-go="sources">${icon('gear')}<b>Ayarlar</b></button>
     </div>
     <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
@@ -1332,6 +1341,7 @@ function renderHome(v) {
       setTab('live');
       return showRecent();
     }
+    if (t.dataset.go === 'rec') return recordingsSheet();
     if (t.dataset.go === 'cats') return categoriesPage();
     if (t.dataset.go === 'guide') return guidePage();
     setTab(t.dataset.go);
@@ -2140,6 +2150,85 @@ function updateSheet(info) {
         bar.firstElementChild.style.width = '100%';
         msg.textContent = 'İndirildi, kurulum başlatılıyor…';
         install();
+      });
+    },
+  });
+}
+
+// ------------------------------------------------------------------ yayın kayıtları (Android)
+
+let recSheetApi = null;
+
+// Yerel eklentiden gelen kayıt olayı: oynatıcıdaki düğme güncellenir, kayıt bitince bilgi verilir.
+function recEvent(e) {
+  if (!e) return;
+  pui.recording(e);
+  if (e.active) return;
+  toast(recEndMessage(e), 3500);
+  if (recSheetApi && recSheetApi.draw) recSheetApi.draw();
+}
+
+// Kayıtlar: izle (başından, sarılabilir) ve sil. Kayıtlar uygulamanın kendi klasöründe durur.
+function recordingsSheet() {
+  if (!engine.rec) return toast('Kayıt yalnız Android uygulamasında çalışır');
+  const sh = openSheet({
+    title: 'Kayıtlar',
+    html: '<div id="rec-body"><p class="hint">Yükleniyor…</p></div>',
+    mount: (body, api) => {
+      const box = $('#rec-body', body);
+      let items = [];
+      const draw = async () => {
+        if (!box.isConnected) return;
+        let res;
+        try {
+          res = await engine.rec.list();
+        } catch (err) {
+          box.innerHTML = `<p class="err-text">${esc(String((err && err.message) || 'Kayıtlar okunamadı'))}</p>`;
+          return;
+        }
+        items = res.items || [];
+        const rows = items
+          .map(
+            (r, i) =>
+              `<div class="rec-row${r.active ? ' on' : ''}"><button class="rec-play" data-i="${i}"><span class="t">${esc(r.name)}</span><small>${esc(recSub(r))}</small></button>${r.active ? '' : `<button class="icon-btn" data-del="${i}" aria-label="Sil">${icon('trash')}</button>`}</div>`,
+          )
+          .join('');
+        box.innerHTML = (rows || '<p class="hint">Henüz kayıt yok. Canlı yayın açıkken oynatıcıdaki “Kaydet” düğmesiyle kayıt başlatın.</p>') + `<p class="rec-info">Kayıtlar: ${fmtBytes(res.usedBytes || 0)} · Boş alan: ${fmtBytes(res.freeBytes || 0)}</p>`;
+      };
+      api.draw = draw;
+      recSheetApi = api;
+      body.addEventListener('click', (e) => {
+        const del = e.target.closest('[data-del]');
+        const play = e.target.closest('[data-i]');
+        if (del) return deleteRecSheet(items[Number(del.dataset.del)], draw);
+        if (play && items[Number(play.dataset.i)]) {
+          const r = items[Number(play.dataset.i)];
+          if (r.active) return toast('Kayıt sürüyor');
+          sh.close();
+          startPlay(recItem(r));
+        }
+      });
+      draw();
+    },
+  });
+}
+
+function deleteRecSheet(r, after) {
+  if (!r) return;
+  const sh = openSheet({
+    title: 'Kaydı sil',
+    html: `<p>“${esc(r.name)}” kaydı cihazdan silinecek.</p><div style="display:flex;gap:8px"><button class="btn danger" id="rd-yes">Sil</button><button class="btn ghost" id="rd-no">Vazgeç</button></div>`,
+    mount: (body) => {
+      $('#rd-no', body).addEventListener('click', () => sh.close());
+      $('#rd-yes', body).addEventListener('click', async () => {
+        sh.close();
+        try {
+          await engine.rec.remove(r.id);
+          toast('Kayıt silindi', 1800);
+        } catch (err) {
+          toast(String((err && err.message) || 'Kayıt silinemedi'), 3000);
+        }
+        after();
       });
     },
   });

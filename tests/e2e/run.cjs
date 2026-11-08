@@ -735,8 +735,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
       play: async (a) => {
         window.__calls.push(['play', a.url, a.mime, a.buffer]);
-        if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm/.test(a.url) }), 50);
-        setTimeout(() => listeners.time({ pos: 1000, dur: /webm/.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
+        if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm|\/rec\//.test(a.url) }), 50);
+        setTimeout(() => listeners.time({ pos: 1000, dur: /webm|\/rec\//.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
         // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
         setTimeout(() => {
           window.__audioN = 2;
@@ -768,6 +768,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       multiMute: async (a) => window.__calls.push(['multiMute', a.slot, !!a.muted]),
       multiStop: async (a) => window.__calls.push(['multiStop', a.slot]),
       multiStopAll: async () => window.__calls.push(['multiStopAll']),
+      recordStart: async (a) => {
+        window.__calls.push(['recStart', a.name, a.maxMs]);
+        return { active: true };
+      },
+      recordStop: async () => {
+        window.__calls.push(['recStop']);
+        const r = { active: false, id: 'a.ts', url: 'file:///rec/a.ts', name: 'Kanal', durationMs: 65000, bytes: 1000, startedAt: Date.now() };
+        setTimeout(() => listeners.recording && listeners.recording(r), 20);
+        return r;
+      },
+      recordList: async () => ({ items: window.__recs || [], freeBytes: 5e9, usedBytes: 4e7 }),
+      recordDelete: async ({ id }) => {
+        window.__calls.push(['recDel', id]);
+        window.__recs = (window.__recs || []).filter((r) => r.id !== id);
+      },
       downloadApk: async ({ url }) => {
         window.__calls.push(['downloadApk', url]);
         listeners.apkProgress && listeners.apkProgress({ loaded: 500000, total: 1000000 });
@@ -872,10 +887,56 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => { window.__noPlay = false; });
   await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
   ok(true, 'yayın gelince bilgi kalktı, oynatma sürüyor');
+  // yayın kaydı (yalnız Android)
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  ok(await page.$eval('#pl-rec', (b) => !b.hidden), 'canlı yayında “Kaydet” düğmesi var');
+  await page.click('#pl-rec');
+  await page.waitForSelector('.sheet [data-m="30"]');
+  await sleep(500);
+  await page.screenshot({ path: path.join(SHOTS, '14-kayit-sure.png') });
+  await page.click('.sheet [data-m="30"]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'recStart'));
+  const rs = await page.evaluate(() => window.__calls.find((c) => c[0] === 'recStart'));
+  ok(rs[2] === 30 * 60000 && String(rs[1]).length > 0, 'kayıt kanal adı ve 30 dakika sınırıyla başlatıldı');
+  await page.evaluate(() => window.__emit('recording', { active: true, elapsedMs: 65000, bytes: 1000, id: 'a.ts' }));
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  ok((await page.textContent('#pl-rec-l')) === '1:05' && (await page.$eval('#pl-rec', (b) => b.classList.contains('rec-on'))), 'kayıt süresi düğmede sayıyor');
+  await page.click('#pl-rec');
+  await page.waitForSelector('.sheet [data-a="watch"]');
+  await page.click('.sheet [data-a="watch"]');
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'play').pop()[1] === 'file:///rec/a.ts', null, { timeout: 5000 });
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'recStop')), '“Durdur ve baştan izle”: kayıt durduruldu');
+  ok(true, 'kaydedilen yayın başından oynatıldı');
+  await page.waitForSelector('#pl-golive:not([hidden])', { timeout: 5000 });
+  ok(await page.$eval('#pl-rec', (b) => b.hidden), 'kayıt oynarken “Kaydet” düğmesi gizli');
+  ok(/Kayıt kaydedildi/.test(await page.textContent('#toast')), 'kayıt bitince bilgi verildi');
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  await page.click('#pl-golive');
+  await page.waitForFunction(() => /\.m3u8$/.test(window.__calls.filter((c) => c[0] === 'play').pop()[1]), null, { timeout: 5000 });
+  ok(true, '“Canlıya dön” yayına geri döndürdü');
   await page.screenshot({ path: path.join(SHOTS, '11-yerel-kip-oynatici.png') });
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(await page.evaluate(() => !document.documentElement.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
+  // Kayıtlar ekranı
+  await page.evaluate(() => {
+    window.__recs = [{ id: 'a.ts', url: 'file:///rec/a.ts', name: 'Deneme Kanal', startedAt: Date.now(), durationMs: 65000, size: 20 * 1024 * 1024, active: false }];
+  });
+  await page.click('#tabs [data-tab=home]');
+  await page.waitForSelector('.t-recs');
+  await page.click('.t-recs');
+  await page.waitForSelector('.rec-row');
+  ok(/Deneme Kanal/.test(await page.textContent('.rec-row')) && /20 MB/.test(await page.textContent('.rec-row')) && /1:05/.test(await page.textContent('.rec-row')), 'Kayıtlar listesinde ad, süre ve boyut var');
+  ok(/Boş alan: 4,7 GB/.test(await page.textContent('.rec-info')), 'boş alan gösteriliyor: ' + (await page.textContent('.rec-info')).trim());
+  await sleep(500);
+  await page.screenshot({ path: path.join(SHOTS, '15-kayitlar.png') });
+  await page.click('.rec-row [data-del]');
+  await page.waitForSelector('#rd-yes');
+  await page.click('#rd-yes');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'recDel' && c[1] === 'a.ts'));
+  await page.waitForSelector('.rec-row', { state: 'detached' });
+  ok(/Henüz kayıt yok/.test(await page.textContent('#rec-body')), 'silinince liste boşaldı');
+  await page.keyboard.press('Escape');
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'brightness' && c[1] === -1)), 'kapanışta sistem parlaklığına dönüldü');
 
   // tam ekran: çentik payı eklentiden gerçek ölçüyle gelir ve sayfa kenarlarına yansır

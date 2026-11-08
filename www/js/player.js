@@ -38,13 +38,14 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     else clearStall();
   };
 
-  async function startTarget(resumeAt) {
+  // keep: aynı yayına yeniden bağlanma (süren kayıt kesilmesin); yeni açılışta kayıt biter.
+  async function startTarget(resumeAt, keep = false) {
     const t = st.targets[st.idx];
     st.error = '';
     setStatus('loading');
     emit();
     try {
-      await engine.load(t, resumeAt);
+      await engine.load(t, resumeAt, keep);
     } catch (e) {
       fail(e && e.message ? e.message : 'Oynatıcı başlatılamadı');
     }
@@ -62,7 +63,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     emit();
     retryTimer = timers.set(() => {
       retryTimer = null;
-      if (st.status !== 'idle') startTarget(st.live ? 0 : st.pos);
+      if (st.status !== 'idle') startTarget(st.live ? 0 : st.pos, true);
     }, reconnectDelay(n));
   }
 
@@ -71,7 +72,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     if (everPlayed && reconnects < (st.live ? LIVE_MAX_RECONNECT : VOD_MAX_RECONNECT)) return scheduleReconnect();
     if (!everPlayed && st.idx + 1 < st.targets.length) {
       st.idx++;
-      startTarget(startMs);
+      startTarget(startMs, true);
       return;
     }
     clearStall();
@@ -149,7 +150,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
       reconnects = 0;
       st.reconnect = 0;
       clearRetry();
-      return startTarget(st.live ? 0 : st.pos);
+      return startTarget(st.live ? 0 : st.pos, true);
     },
     async toggle() {
       if (st.status === 'playing' || st.status === 'buffering') {

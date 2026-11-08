@@ -12,6 +12,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Environment;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.LayoutInflater;
@@ -31,6 +32,8 @@ import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -50,6 +53,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Locale;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
@@ -75,6 +82,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     private PlayerView playerView;
     private ExoPlayer player;
+    private String curUrl = "";
     private boolean ticking = false;
 
     private final Runnable tick = new Runnable() {
@@ -85,6 +93,7 @@ public class IptvPlayerPlugin extends Plugin {
                 return;
             }
             emitTime();
+            if (StreamRecorder.active()) notifyListeners("recording", recState());
             main.postDelayed(this, 1000);
         }
     };
@@ -135,9 +144,10 @@ public class IptvPlayerPlugin extends Plugin {
         final long startMs = call.getData().optLong("startMs", 0L);
         final JSObject headers = call.getObject("headers");
         final String buffer = call.getData().optString("buffer", "high");
+        final boolean keepRec = call.getData().optBoolean("keepRecording", false);
         main.post(() -> {
             try {
-                startPlayback(url, mime, startMs, headers, buffer);
+                startPlayback(url, mime, startMs, headers, buffer, keepRec);
                 call.resolve();
             } catch (Exception e) {
                 call.reject(String.valueOf(e.getMessage()));
@@ -158,11 +168,15 @@ public class IptvPlayerPlugin extends Plugin {
         return b.build();
     }
 
-    private void startPlayback(String url, String mime, long startMs, JSObject headers, String buffer) {
+    private void startPlayback(String url, String mime, long startMs, JSObject headers, String buffer, boolean keepRec) {
+        // Kayıt, aynı yayına yeniden bağlanırken sürer; başka bir yayına/dosyaya geçilince biter.
+        if (!keepRec) StreamRecorder.stop(null);
         releasePlayer();
         ensureView();
+        curUrl = url;
 
-        player = buildExo(headers, true, loadControlFor(buffer));
+        player = buildExo(headers, true, loadControlFor(buffer), true);
+        player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -206,7 +220,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     // Ortak oynatıcı kurulumu: başlıklar (User-Agent dahil), arabellek ayarı, ses odağı.
     // Çoklu ekran kutuları ses odağı istemez (yoksa birbirini duraklatırlar).
-    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load) {
+    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load, boolean tap) {
         Map<String, String> props = new HashMap<>();
         String ua = UA;
         if (headers != null) {
@@ -228,8 +242,11 @@ public class IptvPlayerPlugin extends Plugin {
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                 .build();
+        // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
+        DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
+        if (tap) base = new TapDataSource.Factory(base);
         return new ExoPlayer.Builder(getContext())
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(base))
                 .setLoadControl(load)
                 .setAudioAttributes(audio, audioFocus)
                 .setHandleAudioBecomingNoisy(true)
@@ -311,6 +328,7 @@ public class IptvPlayerPlugin extends Plugin {
     @PluginMethod
     public void stop(final PluginCall call) {
         main.post(() -> {
+            StreamRecorder.stop(null);
             releasePlayer();
             if (playerView != null) playerView.setVisibility(View.GONE);
             getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -464,6 +482,7 @@ public class IptvPlayerPlugin extends Plugin {
     private void startSlot(final int id, String url, String mime, JSObject headers, double[] r, boolean muted, boolean fill) {
         stopSlot(id);
         // Tek oynatıcı ile çoklu ekran birlikte çalışmaz: tam ekran/önizleme oynatıcısı durdurulur.
+        StreamRecorder.stop(null);
         releasePlayer();
         if (playerView != null) playerView.setVisibility(View.GONE);
         Activity a = getActivity();
@@ -477,7 +496,7 @@ public class IptvPlayerPlugin extends Plugin {
         placeView(s.view, r);
         s.player = buildExo(headers, false, new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(5000, 20000, 1500, 3000)
-                .build());
+                .build(), false);
         s.player.setVolume(muted ? 0f : 1f);
         s.player.addListener(new Player.Listener() {
             @Override
@@ -715,6 +734,181 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // ------------------------------------------------------------------ kayıt
+
+    private File recDir() {
+        File base = getContext().getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        File dir = new File(base != null ? base : getContext().getFilesDir(), "Kayitlar");
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        return dir;
+    }
+
+    private static String safeName(String name) {
+        String s = String.valueOf(name).replaceAll("[^\\p{L}\\p{N}]+", "-").replaceAll("^-+|-+$", "");
+        if (s.length() > 40) s = s.substring(0, 40);
+        return s.isEmpty() ? "kanal" : s;
+    }
+
+    private JSObject recState() {
+        JSObject o = new JSObject();
+        long[] snap = StreamRecorder.snapshot();
+        File f = StreamRecorder.currentFile();
+        o.put("active", snap != null);
+        if (snap != null) {
+            o.put("startedAt", snap[0]);
+            o.put("bytes", snap[1]);
+            o.put("elapsedMs", Math.max(0, System.currentTimeMillis() - snap[0]));
+        }
+        if (f != null) o.put("id", f.getName());
+        return o;
+    }
+
+    private JSObject recInfo(StreamRecorder.Info info, String reason) {
+        JSObject o = new JSObject();
+        o.put("active", false);
+        o.put("id", info.file.getName());
+        o.put("url", Uri.fromFile(info.file).toString());
+        o.put("name", info.name);
+        o.put("startedAt", info.startedAt);
+        o.put("durationMs", info.durationMs);
+        o.put("bytes", info.bytes);
+        if (reason != null) o.put("reason", reason);
+        return o;
+    }
+
+    private final StreamRecorder.Listener recListener = (info, reason) -> {
+        final JSObject o = recInfo(info, reason);
+        main.post(() -> notifyListeners("recording", o));
+    };
+
+    @PluginMethod
+    public void recordStart(final PluginCall call) {
+        final String name = call.getData().optString("name", "Kanal");
+        final long maxMs = call.getData().optLong("maxMs", 0L);
+        main.post(() -> {
+            try {
+                if (player == null || !curUrl.startsWith("http")) {
+                    call.reject("Önce bir canlı yayın açın");
+                    return;
+                }
+                if (StreamRecorder.active()) {
+                    call.reject("Zaten kayıt yapılıyor");
+                    return;
+                }
+                File dir = recDir();
+                if (dir.getUsableSpace() < StreamRecorder.MIN_FREE_BYTES) {
+                    call.reject("Yetersiz depolama alanı (en az 300 MB boş yer gerekir)");
+                    return;
+                }
+                String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
+                File f = new File(dir, stamp + "_" + safeName(name) + ".ts");
+                StreamRecorder.start(f, name, maxMs, recListener);
+                JSObject st = recState();
+                call.resolve(st);
+                notifyListeners("recording", st);
+            } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void recordStop(final PluginCall call) {
+        main.post(() -> {
+            StreamRecorder.Info info = StreamRecorder.stop(null);
+            if (info == null) {
+                JSObject o = new JSObject();
+                o.put("active", false);
+                call.resolve(o);
+            } else {
+                call.resolve(recInfo(info, null));
+            }
+        });
+    }
+
+    // Kayıt klasörü: {items: [{id, url, name, startedAt, durationMs, size, active}], freeBytes, usedBytes}
+    @PluginMethod
+    public void recordList(final PluginCall call) {
+        io.execute(() -> {
+            try {
+                File dir = recDir();
+                File[] files = dir.listFiles((d, n) -> n.endsWith(".ts"));
+                if (files == null) files = new File[0];
+                Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified())); // en yeni başta
+                File live = StreamRecorder.currentFile();
+                JSArray items = new JSArray();
+                long used = 0;
+                for (File f : files) {
+                    used += f.length();
+                    JSObject o = new JSObject();
+                    o.put("id", f.getName());
+                    o.put("url", Uri.fromFile(f).toString());
+                    o.put("size", f.length());
+                    o.put("active", live != null && live.equals(f));
+                    readMeta(f, o);
+                    items.put(o);
+                }
+                JSObject res = new JSObject();
+                res.put("items", items);
+                res.put("freeBytes", dir.getUsableSpace());
+                res.put("usedBytes", used);
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    // Yan dosyadan ad/başlangıç/süre; yoksa dosya adından ve değişiklik tarihinden türetilir.
+    private static void readMeta(File ts, JSObject o) {
+        String name = null;
+        long startedAt = 0;
+        long dur = -1;
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(StreamRecorder.metaOf(ts)))) {
+            name = r.readLine();
+            startedAt = Long.parseLong(String.valueOf(r.readLine()).trim());
+            dur = Long.parseLong(String.valueOf(r.readLine()).trim());
+        } catch (Exception ignored) {
+            // yan dosya yok ya da bozuk: aşağıdaki varsayılanlar kullanılır
+        }
+        if (name == null || name.isEmpty()) {
+            String n = ts.getName();
+            int u = n.indexOf('_');
+            name = (u >= 0 ? n.substring(u + 1) : n).replaceAll("\\.ts$", "").replace('-', ' ');
+        }
+        if (startedAt <= 0) startedAt = ts.lastModified();
+        o.put("name", name);
+        o.put("startedAt", startedAt);
+        o.put("durationMs", dur);
+    }
+
+    @PluginMethod
+    public void recordDelete(final PluginCall call) {
+        final String id = call.getData().optString("id", "");
+        io.execute(() -> {
+            try {
+                if (id.isEmpty() || !id.equals(new File(id).getName()) || !id.endsWith(".ts")) {
+                    call.reject("Geçersiz kayıt");
+                    return;
+                }
+                File f = new File(recDir(), id);
+                File live = StreamRecorder.currentFile();
+                if (live != null && live.equals(f)) {
+                    call.reject("Kayıt sürerken silinemez");
+                    return;
+                }
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+                //noinspection ResultOfMethodCallIgnored
+                StreamRecorder.metaOf(f).delete();
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
     // ------------------------------------------------------------------ olaylar
 
     private void emitState() {
@@ -939,12 +1133,21 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     protected void handleOnStop() {
-        if (player != null) player.setPlayWhenReady(false);
+        if (player == null) return;
+        // Kayıt sürerken yayın arka planda da akar (sessiz); yoksa duraklatılır.
+        if (StreamRecorder.active()) player.setVolume(0f);
+        else player.setPlayWhenReady(false);
+    }
+
+    @Override
+    protected void handleOnResume() {
+        if (player != null) player.setVolume(1f);
     }
 
     @Override
     protected void handleOnDestroy() {
         main.removeCallbacksAndMessages(null);
+        StreamRecorder.stop(null);
         stopAllSlots();
         releasePlayer();
         io.shutdownNow();
