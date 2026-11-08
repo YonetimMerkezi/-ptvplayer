@@ -14,13 +14,13 @@ const fakeTimers = () => {
 };
 
 test('kanal numarası: açık numara yoksa listedeki sıra', () => {
-  assert.equal(channelNumber({ chno: 0 }, 4), 5);
-  assert.equal(channelNumber({ chno: 120 }, 4), 120);
+  assert.equal(channelNumber({ num: 0 }, 4), 5);
+  assert.equal(channelNumber({ num: 120 }, 4), 120);
   assert.equal(channelNumber({}, 0), 1);
 });
 
 test('numaradan kanal bulma: açık numara öncelikli, yoksa sıra', () => {
-  const items = [{ name: 'a' }, { name: 'b' }, { name: 'c', chno: 7 }];
+  const items = [{ name: 'a' }, { name: 'b' }, { name: 'c', num: 7 }];
   assert.equal(resolveChannel(items, 1), 0);
   assert.equal(resolveChannel(items, 2), 1);
   assert.equal(resolveChannel(items, 7), 2);

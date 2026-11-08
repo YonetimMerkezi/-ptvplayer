@@ -208,6 +208,7 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   let lastStatus = '';
+  let altShown = '';
   function render(st) {
     if (!open || !st.item) return;
     const prev = lastStatus;
@@ -247,6 +248,10 @@ export function createPlayerUI({ engine, player, env }) {
       s.hidden = true;
     }
     if (st.status === 'playing') {
+      const tg = st.targets && st.targets[st.idx];
+      const altKey = tg && tg.alt ? st.item.id + ':' + st.idx : '';
+      if (altKey && altShown !== altKey) toast('Yedek kaynak kullanılıyor: ' + tg.alt, 3000);
+      altShown = altKey;
       renderEpgLine(st);
       loadTrackButtons(st);
       // Gizleme sayacı her zaman güncellemesinde (saniyede birkaç kez) değil, yalnız oynatma başlayınca kurulur;

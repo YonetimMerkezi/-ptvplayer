@@ -4,7 +4,7 @@ import { createStore } from './store.js';
 import { createNet } from './net.js';
 import {
   loadCatalog, catalogToStorable, catalogFromStorable, emptyCatalog, search, groupList, inGroup,
-  playTargets, loadSeriesInfo, loadVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
+  playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
 } from './catalog.js';
 import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
@@ -127,6 +127,17 @@ player.onProgress((pos, dur, st) => {
   S.prog = store.progressAll(S.source.id);
 });
 
+// Açılamayan canlı kanal işaretlenir; yedek adres oynadıysa asıl kanal da işaretlenir, asıl oynarsa işaret kalkar.
+player.on((st) => {
+  if (!S.source || !st.item || st.item.kind !== 'live' || !st.targets) return;
+  if (st.status === 'error') {
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) markBad(st.item.id, true);
+  } else if (st.status === 'playing') {
+    const t = st.targets[st.idx];
+    markBad(st.item.id, !!(t && t.alt));
+  }
+});
+
 // Oynatıcı kapanınca "Devam et" çipi ve ilerleme çubukları güncellensin.
 player.on((st) => {
   if ($('#split')) {
@@ -156,6 +167,7 @@ function banner(text, { err = false, spin = false } = {}) {
 
 function setCatalog(cat) {
   S.cat = cat;
+  S.altIdx = null;
   S.idx = {
     live: new Map(cat.live.map((i) => [i.id, i])),
     movies: new Map(cat.movies.map((i) => [i.id, i])),
@@ -163,6 +175,30 @@ function setCatalog(cat) {
   };
   S.groups = { live: groupList(cat.live), movie: groupList(cat.movies), series: groupList(cat.series) };
   pruneGroups();
+}
+
+// Oynatma adresleri; canlı kanalda aynı adlı kanallar yedek olarak sona eklenir.
+function targetsOf(item, ep) {
+  if (item.kind !== 'live') return playTargets(S.source, item, ep);
+  if (!S.altIdx) S.altIdx = buildAltIndex(S.cat.live);
+  return playTargets(S.source, item, ep, altsOf(S.altIdx, item));
+}
+
+// Çalışmayan kanal işareti: son 7 günde açılamayan kanallar listede "Çalışmıyor olabilir" görünür; açılınca kalkar.
+const BAD_TTL = 7 * 86400000;
+const badKey = () => 'bad.' + sid();
+const isBad = (id) => {
+  const t = (store.pref(badKey(), {}) || {})[id];
+  return !!t && Date.now() - t < BAD_TTL;
+};
+function markBad(id, bad) {
+  if (isBad(id) === bad) return;
+  const now = Date.now();
+  const m = {};
+  for (const [k, t] of Object.entries(store.pref(badKey(), {}) || {})) if (now - t < BAD_TTL && k !== id) m[k] = t;
+  if (bad) m[id] = now;
+  store.setPref(badKey(), m);
+  if (S.list && TAB_KIND[S.tab]) S.list.refreshRows();
 }
 
 function resolve(entry, kind) {
@@ -804,10 +840,11 @@ function liveRow(it, i) {
   const showEpg = setting('epgRows');
   const nn = showEpg ? S.epg.nowNext(it) : { now: null };
   const fav = isFav(it);
-  const sub = nn.now ? nn.now.t : it.group || '';
+  const bad = isBad(it.id);
+  const sub = bad ? 'Çalışmıyor olabilir' : nn.now ? nn.now.t : it.group || '';
   const sel = split && S.pv && S.pv.id === it.id;
   const num = split && setting('numbers') ? `<span class="num">${it.num || i + 1}</span>` : '';
-  return `<div class="row${sel ? ' sel' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
+  return `<div class="row${sel ? ' sel' : ''}${bad ? ' bad' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
 }
 
 function card(it, i) {
@@ -857,7 +894,7 @@ function playLive(items, index) {
 }
 
 function startPlay(item, { ep = null, ctx = null, startAt } = {}) {
-  const targets = playTargets(S.source, item, ep);
+  const targets = targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   if (item.kind !== 'series') store.pushRecent(sid(), item);
   let at = startAt;
@@ -1421,7 +1458,7 @@ function onSplitTap(i) {
 
 function previewLive(items, index) {
   const it = items[index];
-  const targets = playTargets(S.source, it);
+  const targets = targetsOf(it);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   store.pushRecent(sid(), it);
   const ctx = { items, index, play: (x, i) => startPlay(x, { ctx: { ...ctx, index: i } }) };
@@ -1646,7 +1683,7 @@ function firstFilled() {
 }
 
 function multiAssign(i, item) {
-  const targets = playTargets(S.source, item);
+  const targets = targetsOf(item);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   const hadSound = M.slots[M.sound] && M.slots[M.sound].item;
   SUP.clear(i);
@@ -1699,7 +1736,7 @@ function renderMulti(v) {
   const ids = fitSlots(store.pref(multiIdsKey(), []), MAX_SLOTS);
   M.slots = ids.map((id) => {
     const item = id ? S.idx.live.get(id) : null;
-    const targets = item ? playTargets(S.source, item) : [];
+    const targets = item ? targetsOf(item) : [];
     return item && targets.length ? { item, targets, idx: 0, status: 'idle', msg: '', attempt: 0 } : null;
   });
   if (!M.slots[M.sound] || M.sound >= M.n) M.sound = firstFilled();

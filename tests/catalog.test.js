@@ -151,3 +151,25 @@ test('dosyadan eklenen M3U: metin doğrudan, yenilemede kayıtlı içerikten oku
   assert.equal(b.live.length, 2);
   await assert.rejects(() => loadCatalog({ id: 'yok', type: 'm3u', local: true }, net), /yeniden seçin/);
 });
+
+test('yedek adres: kalite ve ülke ekleri yok sayılır, farklı kanallar karışmaz', async () => {
+  const { altKey, buildAltIndex, altsOf, playTargets } = await import('../www/js/catalog.js');
+  assert.equal(altKey('TR: TRT 1 HD'), 'trt 1');
+  assert.equal(altKey('TRT 1 [FHD]'), 'trt 1');
+  assert.equal(altKey('TRT 2'), 'trt 2');
+  assert.equal(altKey('Star TV (Backup)'), 'star tv');
+  assert.equal(altKey('A'), '');
+  const list = [
+    { id: '1', name: 'TRT 1 HD', url: 'http://h/1.m3u8', kind: 'live' },
+    { id: '2', name: 'TRT 1', url: 'http://h/2.m3u8', kind: 'live' },
+    { id: '3', name: 'TRT 2', url: 'http://h/3.m3u8', kind: 'live' },
+    { id: '4', name: 'TR: TRT 1 FHD', url: 'http://h/4.m3u8', kind: 'live' },
+  ];
+  const idx = buildAltIndex(list);
+  assert.deepEqual(altsOf(idx, list[0]).map((x) => x.id), ['2', '4']);
+  assert.deepEqual(altsOf(idx, list[2]), []);
+  assert.deepEqual(altsOf(idx, list[0], 1).map((x) => x.id), ['2']);
+  const t = playTargets({ type: 'm3u' }, list[0], null, altsOf(idx, list[0]));
+  assert.deepEqual(t.map((x) => [x.url, x.alt || null]), [['http://h/1.m3u8', null], ['http://h/2.m3u8', 'TRT 1'], ['http://h/4.m3u8', 'TR: TRT 1 FHD']]);
+  assert.equal(playTargets({ type: 'm3u' }, list[0]).length, 1);
+});

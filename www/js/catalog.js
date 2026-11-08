@@ -117,8 +117,53 @@ function mimeOf(url) {
   return 'auto';
 }
 
-// Sırayla denenecek oynatma adresleri (ilki olmazsa ikincisi).
-export function playTargets(source, item, ep) {
+// ---- yedek adres: aynı adlı başka canlı kanal ----
+const NOISE = /\b(hd|fhd|uhd|sd|4k|8k|hevc|h ?26[45]|\d+ ?fps|1080p?|720p?|576p?|backup|yedek|raw|lq|hq)\b/g;
+
+// Kanal adını kalite/ülke ekleri olmadan karşılaştırma anahtarına çevirir ("TR: TRT 1 HD" ≈ "TRT 1").
+export function altKey(name) {
+  let s = fold(name)
+    .replace(/^\s*[a-z]{2,3}\s*[:|]\s*/, '')
+    .replace(/[\[(][^\])]*[\])]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ');
+  s = s.replace(NOISE, ' ').replace(/\s+/g, ' ').trim();
+  return s.length >= 2 ? s : '';
+}
+
+// anahtar → aynı anahtarlı kanallar (yalnız birden fazla olanlar saklanır).
+export function buildAltIndex(list) {
+  const m = new Map();
+  for (const it of list) {
+    const k = altKey(it.name);
+    if (!k) continue;
+    const a = m.get(k);
+    if (a) a.push(it);
+    else m.set(k, [it]);
+  }
+  for (const [k, a] of m) if (a.length < 2) m.delete(k);
+  return m;
+}
+
+export function altsOf(index, item, max = 3) {
+  const k = altKey(item.name);
+  const a = k && index.get(k);
+  if (!a) return [];
+  return a.filter((x) => x.id !== item.id && x.url !== item.url).slice(0, max);
+}
+
+// Sırayla denenecek oynatma adresleri (ilki olmazsa ikincisi); yedek kanalların ilk adresi sona eklenir.
+export function playTargets(source, item, ep, alts = []) {
+  const own = ownTargets(source, item, ep);
+  if (!own.length || !alts.length) return own;
+  const extra = [];
+  for (const a of alts) {
+    const t = ownTargets(source, a)[0];
+    if (t) extra.push({ ...t, alt: a.name });
+  }
+  return own.concat(extra);
+}
+
+function ownTargets(source, item, ep) {
   if (source.type === 'xtream') {
     const cfg = sourceCfg(source);
     if (item.kind === 'live') {

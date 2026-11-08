@@ -124,6 +124,14 @@ export function startMock(port = 0) {
     const url = new URL(req.url, base);
     hits.push(url.pathname + url.search);
     const p = url.pathname;
+    if (p === '/alt.m3u') {
+      const L = ['#EXTM3U'];
+      const add = (name, group, u) => L.push(`#EXTINF:-1 group-title="${group}",${name}`, u);
+      add('Yedekli Kanal HD', 'Haber', `${base}/live/u/p/bozuk.m3u8`);
+      add('Yedekli Kanal', 'Yedek', `${base}/live/u/p/7.m3u8`);
+      add('Başka Kanal', 'Haber', `${base}/live/u/p/8.m3u8`);
+      return res.writeHead(200, { 'Content-Type': 'audio/x-mpegurl' }).end(L.join('\n') + '\n');
+    }
     if (p === '/list.m3u') return res.writeHead(200, { 'Content-Type': 'audio/x-mpegurl' }).end(m3u(base));
     if (p === '/player_api.php') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(xtream(url, base)));
     if (p === '/epg.xml.gz') return res.writeHead(200, { 'Content-Type': 'application/gzip' }).end(gzipSync(xtmlCache()));

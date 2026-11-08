@@ -92,6 +92,6 @@ http://h/series/u/p/9.mp4`).items;
 
 test('tvg-chno kanal numarası okunur, yoksa 0', () => {
   const r = parseM3U('#EXTM3U\n#EXTINF:-1 tvg-chno="105" group-title="A",Bir\nhttp://x/live/u/p/1.m3u8\n#EXTINF:-1,İki\nhttp://x/live/u/p/2.m3u8\n');
-  assert.equal(r.items[0].chno, 105);
-  assert.equal(r.items[1].chno, 0);
+  assert.equal(r.items[0].num, 105);
+  assert.equal(r.items[1].num, 0);
 });

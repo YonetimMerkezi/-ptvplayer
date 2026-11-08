@@ -648,6 +648,34 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
+  // ---------------------------------------------------------------- 7c. yedek adres ve çalışmayan kanal işareti
+  console.log('Yedek adres');
+  ({ page, ctx, errs } = await newPage());
+  await page.waitForSelector('#f');
+  await page.click('.sheet [data-close]');
+  await page.click('#ob-add');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/alt.m3u');
+  await page.fill('input[name=name]', 'Yedekli');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.click('.tile.t-live');
+  await page.waitForSelector('.row.cat');
+  await page.click('.row.cat:has-text("Haber")');
+  await page.waitForSelector('.row:not(.cat)');
+  await page.click('.row:not(.cat):has-text("Yedekli Kanal HD") .nm');
+  await page.waitForSelector('#player:not([hidden])');
+  await page.waitForFunction(() => document.querySelector('#vid').currentTime > 1, null, { timeout: 30000 });
+  ok(true, 'ilk adres açılmayınca aynı adlı kanalın adresiyle yayın başladı');
+  ok(/Yedek kaynak kullanılıyor: Yedekli Kanal/.test(await page.textContent('#toast')), 'ekranda yedek kaynak bilgisi');
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.waitForSelector('.row.bad');
+  ok(/Çalışmıyor olabilir/.test(await page.textContent('.row.bad .sub')) && /Yedekli Kanal HD/.test(await page.textContent('.row.bad .nm')), 'açılmayan kanal listede “Çalışmıyor olabilir” diye işaretlendi');
+  ok((await page.$$('.row.bad')).length === 1, 'yalnız o kanal işaretli');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
   // ---------------------------------------------------------------- 8. get.php bağlantısı otomatik Xtream
   console.log('get.php bağlantısı');
   ({ page, ctx, errs } = await newPage());

@@ -2,17 +2,17 @@
 export const NUM_COMMIT_MS = 1600;
 export const NUM_MAX_DIGITS = 4;
 
-// Kanalın numarası: listede açıkça yazılmışsa (tvg-chno) o, yoksa listedeki sırası (1'den başlar).
+// Kanalın numarası: listede açıkça yazılmışsa (tvg-chno ya da sağlayıcı numarası) o, yoksa listedeki sırası (1'den başlar).
 export function channelNumber(item, index) {
-  return item && item.chno > 0 ? item.chno : index + 1;
+  return item && item.num > 0 ? item.num : index + 1;
 }
 
 // Numaradan listedeki sırayı bulur; yoksa -1. Açık numara olan kanallar önceliklidir.
 export function resolveChannel(items, n) {
   if (!Array.isArray(items) || !(n > 0)) return -1;
-  const i = items.findIndex((it) => it && it.chno === n);
+  const i = items.findIndex((it) => it && it.num === n);
   if (i >= 0) return i;
-  return n <= items.length && !(items[n - 1] && items[n - 1].chno > 0) ? n - 1 : -1;
+  return n <= items.length && !(items[n - 1] && items[n - 1].num > 0) ? n - 1 : -1;
 }
 
 // onChange(buf): ekranda gösterilecek rakamlar ('' ise gizle). onCommit(n): numara onaylandı.
