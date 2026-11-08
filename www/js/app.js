@@ -1641,10 +1641,10 @@ const SUP = createSlotSupervisor({
   },
 });
 
-function multiEvent({ slot, state, message }) {
+function multiEvent({ slot, state, message, has, supported, info }) {
   const sl = M.slots[slot];
   if (!sl || !sl.item || !M.on || M.suspended) return;
-  SUP.event(slot, state, message);
+  SUP.event(slot, state, message, { has, supported, info });
 }
 
 function multiStart(i) {

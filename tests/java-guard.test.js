@@ -78,6 +78,12 @@ test('çoklu ekran: her kutu ayrı oynatıcı, yalnız seçili kutu sesli, sesli
   }
   assert.match(kaynak, /setVolume\(/, 'kutu sesi kapatılamıyor');
   assert.match(kaynak, /notifyListeners\("multi"/, 'kutu olayları sayfaya bildirilmiyor');
+  // ses var görüntü yok teşhisi: ilk kare, görüntü izi ve çözücü bilgisi sayfaya bildirilir; küçük kutuda çözünürlük sınırlanır
+  assert.match(kaynak, /onRenderedFirstFrame\(\)[\s\S]*?"frame"/, 'ilk görüntü karesi bildirilmiyor');
+  assert.match(kaynak, /C\.TRACK_TYPE_VIDEO[\s\S]*?"video"/, 'görüntü izi bildirilmiyor');
+  assert.match(kaynak, /onVideoDecoderInitialized/, 'çözücü adı alınmıyor');
+  assert.match(kaynak, /setViewportSize\(/, 'kutu için çözünürlük sınırı yok');
+  assert.match(kaynak, /setEnableDecoderFallback\(true\)/, 'yedek çözücü kapalı');
   // eklenti kapanınca tüm kutu oynatıcıları bırakılmalı (sızıntı olmasın)
   assert.match(kaynak, /handleOnDestroy[\s\S]*?stopAllSlots\(\)/);
 });

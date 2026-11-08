@@ -1267,6 +1267,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   await page.waitForFunction(() => !document.querySelector('.mp-cell[data-c="0"] .mp-st'));
   ok(true, 'kutu yeniden oynayınca bilgi kalktı');
+  // ses var görüntü yok: cihaz görüntü biçimini çözemiyorsa nedeni kutuda yazar, dokununca yeniden dener
+  await page.evaluate(() => window.__emit('multi', { slot: 1, state: 'video', has: true, supported: false, info: 'hevc 3840x2160 · c2.test.decoder' }));
+  await page.waitForFunction(() => /çözemiyor/.test((document.querySelector('.mp-cell[data-c="1"] .mp-st') || {}).textContent || ''), null, { timeout: 2000 });
+  ok(/Bu cihaz bu görüntü biçimini çözemiyor \(hevc 3840x2160 · c2\.test\.decoder\)/.test(await page.textContent('.mp-cell[data-c="1"] .mp-st')), 'çözülemeyen görüntü biçiminde neden kutuda yazıyor');
+  const b1 = await mpN(1);
+  await page.click('.mp-cell[data-c="1"]');
+  await page.waitForFunction(([x, n]) => window.__calls.filter((c) => c[0] === 'multiPlay' && c[1] === x).length > n, [1, b1], { timeout: 2000 });
+  await page.waitForFunction(() => !document.querySelector('.mp-cell[data-c="1"] .mp-st'));
+  ok(true, 'kutuya dokununca yeniden denendi ve bilgi kalktı');
   // kumanda: kutudan yukarı → sağ üstteki düğmeler; odak düğmeye gelince denetimler görünür kalır
   await page.focus('.mp-cell[data-c="0"]');
   await page.keyboard.press('ArrowUp');

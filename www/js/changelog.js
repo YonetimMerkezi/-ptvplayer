@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 11,
+    title: 'Çoklu ekran',
+    items: [
+      'Ses geliyor ama görüntü gelmiyorsa (örn. HEVC yayınlar) kutu kendiliğinden yeniden bağlanır; sürerse nedeni kutuda yazar (görüntü biçimi, kod çözücü)',
+      'Küçük kutularda uyarlanır yayınlarda kutuya uygun çözünürlük seçilir; ilk kod çözücü açılamazsa yedeği denenir',
+    ],
+  },
+  {
     id: 10,
     title: 'TV ile eşitleme',
     items: [

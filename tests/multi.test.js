@@ -146,3 +146,54 @@ test('kutu bekçisi: çok uzun süre bağlanamazsa hata durumuna geçer; temizle
   sup.clear(0);
   assert.equal(timers.pending().length, 0);
 });
+
+test('kutu bekçisi: ses var görüntü yok → yeniden bağlanır, tekrarlanırsa nedeniyle hata gösterir', () => {
+  const { sup, log, timers } = supSetup();
+  sup.begin(0, 1);
+  sup.event(0, 'video', '', { has: true, supported: true, info: 'hevc 1920x1080 50fps · c2.qti.hevc.decoder' });
+  assert.equal(timers.pending().length, 1, 'oynamadan önce yalnız açılış bekçisi var');
+  sup.event(0, 'playing');
+  assert.equal(timers.lastMs(), 8000, 'oynuyor ama kare yok: 8 sn beklenir');
+  timers.fire(); // kare gelmedi → yeniden bağlanma planlanır
+  assert.equal(timers.lastMs(), 0);
+  timers.fire();
+  assert.equal(restarts(log).length, 1);
+  sup.event(0, 'video', '', { has: true, supported: true, info: 'hevc 1920x1080' });
+  sup.event(0, 'playing');
+  timers.fire(); // ikinci kez görüntüsüz
+  const last = log.filter((l) => l[0] === 'status').at(-1);
+  assert.equal(last[2], 'error');
+  assert.match(last[3], /^Görüntü gelmiyor \(hevc 1920x1080\)$/, 'neden iletide');
+  assert.equal(timers.pending().length, 0, 'hata durumunda zamanlayıcı kalmaz');
+});
+
+test('kutu bekçisi: ilk kare gelirse görüntü bekçisi kapanır ve sayaç sıfırlanır; yalnız sesli (radyo) yayın sorun sayılmaz', () => {
+  const { sup, log, timers } = supSetup();
+  sup.begin(0, 1);
+  sup.event(0, 'video', '', { has: true, supported: true });
+  sup.event(0, 'playing');
+  sup.event(0, 'frame', '', { info: 'h264 1280x720' });
+  assert.equal(timers.pending().length, 0, 'kare geldi: bekçi yok');
+  assert.ok(!restarts(log).length);
+  // radyo: görüntü izi hiç bildirilmez
+  sup.begin(1, 1);
+  sup.event(1, 'playing');
+  sup.event(1, 'video', '', { has: false });
+  assert.equal(timers.pending().length, 0, 'görüntü izi yoksa kare beklenmez');
+});
+
+test('kutu bekçisi: görüntü biçimi cihazca desteklenmiyorsa yedek adres yoksa hemen nedenle hata verir, varsa önce yedeğe geçer', () => {
+  const a = supSetup();
+  a.sup.begin(0, 1);
+  a.sup.event(0, 'playing');
+  a.sup.event(0, 'video', '', { has: true, supported: false, info: 'hevc 3840x2160' });
+  const last = a.log.filter((l) => l[0] === 'status').at(-1);
+  assert.equal(last[2], 'error');
+  assert.match(last[3], /Bu cihaz bu görüntü biçimini çözemiyor \(hevc 3840x2160\)/);
+  const b = supSetup();
+  b.sup.begin(0, 2);
+  b.sup.event(0, 'playing');
+  b.sup.event(0, 'video', '', { has: true, supported: false, info: 'hevc' });
+  b.timers.fire();
+  assert.deepEqual(restarts(b.log), [['restart', 0, true]], 'yedek adrese geçildi');
+});

@@ -42,6 +42,7 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -304,9 +305,9 @@ public class IptvPlayerPlugin extends Plugin {
                             .setAudioProcessors(new AudioProcessor[] {proc})
                             .build();
                 }
-            });
+            }.setEnableDecoderFallback(true));
         } else {
-            eb = new ExoPlayer.Builder(getContext());
+            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true));
         }
         return eb
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(base))
@@ -538,6 +539,7 @@ public class IptvPlayerPlugin extends Plugin {
     private static final class Slot {
         PlayerView view;
         ExoPlayer player;
+        String decoder = ""; // görüntü çözücünün adı (donanım mı yazılım mı anlaşılsın diye teşhis bilgisi)
     }
 
     private final Map<Integer, Slot> slots = new HashMap<>();
@@ -590,6 +592,19 @@ public class IptvPlayerPlugin extends Plugin {
                 .setBufferDurationsMs(5000, 20000, 1500, 3000)
                 .build(), false, false);
         s.player.setVolume(muted ? 0f : 1f);
+        // Kutu küçüktür: uyarlanır (HLS) yayınlarda kutuya yetecek çözünürlük seçilir, kod çözücüler gereksiz yüklenmez.
+        if (r != null) {
+            float dens = getContext().getResources().getDisplayMetrics().density;
+            s.player.setTrackSelectionParameters(s.player.getTrackSelectionParameters().buildUpon()
+                    .setViewportSize(Math.max(1, Math.round((float) (r[2] * dens))), Math.max(1, Math.round((float) (r[3] * dens))), true)
+                    .build());
+        }
+        s.player.addAnalyticsListener(new AnalyticsListener() {
+            @Override
+            public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
+                s.decoder = decoderName == null ? "" : decoderName;
+            }
+        });
         s.player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -599,6 +614,37 @@ public class IptvPlayerPlugin extends Plugin {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 emitSlot(id, s.player);
+            }
+
+            // Görüntü karesi çizildi: sayfadaki kutu bekçisi "ses var görüntü yok" durumunu buna bakarak ayırt eder.
+            @Override
+            public void onRenderedFirstFrame() {
+                JSObject o = new JSObject();
+                o.put("slot", id);
+                o.put("state", "frame");
+                o.put("info", videoInfo(s));
+                notifyListeners("multi", o);
+            }
+
+            // Yayında görüntü izi var mı, bu cihaz çözebiliyor mu?
+            @Override
+            public void onTracksChanged(Tracks tracks) {
+                boolean has = false;
+                boolean supported = false;
+                for (int g = 0; g < tracks.getGroups().size(); g++) {
+                    Tracks.Group group = tracks.getGroups().get(g);
+                    if (group.getType() != C.TRACK_TYPE_VIDEO) continue;
+                    has = true;
+                    for (int t = 0; t < group.length; t++) if (group.isTrackSupported(t)) supported = true;
+                }
+                if (!has) return; // yalnız ses (radyo) ya da izler henüz bilinmiyor
+                JSObject o = new JSObject();
+                o.put("slot", id);
+                o.put("state", "video");
+                o.put("has", true);
+                o.put("supported", supported);
+                o.put("info", videoInfo(s));
+                notifyListeners("multi", o);
             }
 
             @Override
@@ -616,6 +662,19 @@ public class IptvPlayerPlugin extends Plugin {
         s.player.prepare();
         slots.put(id, s);
         a.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    // "hevc 1920x1080 50fps · c2.qti.hevc.decoder": hata iletisinde ve teşhiste kullanılır.
+    private static String videoInfo(Slot s) {
+        StringBuilder b = new StringBuilder();
+        Format f = s.player == null ? null : s.player.getVideoFormat();
+        if (f != null) {
+            if (f.sampleMimeType != null) b.append(f.sampleMimeType.startsWith("video/") ? f.sampleMimeType.substring(6) : f.sampleMimeType);
+            if (f.width > 0 && f.height > 0) b.append(b.length() > 0 ? " " : "").append(f.width).append("x").append(f.height);
+            if (f.frameRate > 0) b.append(" ").append(Math.round(f.frameRate)).append("fps");
+        }
+        if (!s.decoder.isEmpty()) b.append(b.length() > 0 ? " · " : "").append(s.decoder);
+        return b.toString();
     }
 
     private void emitSlot(int id, ExoPlayer p) {
