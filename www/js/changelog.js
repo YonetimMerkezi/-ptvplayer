@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 15,
+    title: 'Harici oynatıcı desteği',
+    items: [
+      'Android cihazlarda oynatma ekranından kurulu harici oynatıcılar seçilebilir',
+      'VLC gibi uyumlu uygulamalara Android uygulama seçicisi üzerinden geçiş yapılır',
+      'Özel HTTP başlığı gerektiren yayınlar için aktarımın desteklenmediği bildirilir',
+    ],
+  },
+
+  {
     id: 14,
     title: 'Gelişmiş TV rehberi',
     items: [
