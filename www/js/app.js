@@ -1769,7 +1769,8 @@ function renderMulti(v) {
   });
   if (!M.slots[M.sound] || M.sound >= M.n) M.sound = firstFilled();
   if (!M.eng) M.eng = createMultiEngine({ native: nativePlugin, Hls: window.Hls, on: multiEvent });
-  M.fill = store.pref('multi.fill', true) !== false;
+  // Çoklu ekranda yayın oranını koru: portre kutularda yatay görüntüyü kırpma.
+  M.fill = false;
   // Tüm ekranı kaplar: üst çubuk ve alt sekmeler gizlenir (body.multi-full); denetimler kısa süre sonra kaybolan düğmelerdir.
   v.innerHTML = `<div class="mp"><div class="mp-grid n${M.n}${M.fill ? ' fill' : ''}" id="mp-grid">${Array.from({ length: M.n }, (_, i) => `<div class="mp-cell" data-c="${i}" role="button" tabindex="0"><div class="mp-vid"></div><div class="mp-ovl"></div></div>`).join('')}</div><div class="mp-chips" id="mp-chips"><button class="mp-chip" id="mp-back" aria-label="Ana ekran">${icon('back')}</button><div class="mp-n" id="mp-n"><button data-n="2" aria-label="2 kutu">2</button><button data-n="4" aria-label="4 kutu">4</button></div><button class="mp-chip txt" id="mp-fit"></button></div></div>`;
   const mark = () => {
