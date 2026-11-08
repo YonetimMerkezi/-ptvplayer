@@ -477,8 +477,8 @@ html.native-preview .mp-vid { background: transparent; }
 html.native-preview .mp-grid, html.native-preview .mp-cell { background: transparent; }
 /* Çoklu ekranda video deliklerini clip-path ile açmak yerine WebView dolgu katmanını tamamen kaldır; yerel video yüzeyleri doğrudan görünsün. */
 html.native-preview.native-multi #bgfill { display: none !important; }
-.mp-top, .mp-name { transition: opacity .18s ease; }
-.mp.controls-idle .mp-top, .mp.controls-idle .mp-name { opacity: 0; pointer-events: none; }
+.mp-top { transition: opacity .18s ease; }
+.mp.controls-idle .mp-top { opacity: 0; pointer-events: none; }
 .mp-ovl { position: absolute; inset: 0; pointer-events: none; }
 .mp-ovl button { pointer-events: auto; }
 .mp-cell:not(.has) .mp-vid { background: transparent; }
