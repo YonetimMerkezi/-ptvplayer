@@ -83,8 +83,8 @@ test('ana adres sürekli 504 verirse yedek adres denenir ve APK adresi yedekten 
   const net = { json: async (u) => { seen.push(u); if (u.startsWith(UPDATE_BASE)) throw err('HTTP 504'); return { versionCode: 20 }; } };
   const r = await checkUpdate({ net, localVersion: '1.0.11', sleep: noSleep() });
   assert.equal(r.status, 'available');
-  assert.match(seen[0], new RegExp(UPDATE_BASE.replace(/[.*+?^${}()|[\\]\\]/g, '\\assert.equal(seen[0], UPDATE_BASE + 'version.json');') + 'version\\.json\\?check=\\d+
-  assert.match(seen[1], new RegExp(UPDATE_FALLBACKS[0].replace(/[.*+?^${}()|[\\]\\]/g, '\\assert.equal(seen[1], UPDATE_FALLBACKS[0] + 'version.json');') + 'version\\.json\\?check=\\d+
+  assert.ok(seen[0].startsWith(UPDATE_BASE + 'version.json?check='));
+  assert.ok(seen[1].startsWith(UPDATE_FALLBACKS[0] + 'version.json?check='));
   assert.equal(r.apkUrl, UPDATE_FALLBACKS[0] + 'iptv-oynatici.apk');
 });
 
@@ -123,7 +123,7 @@ test('isTransient / explainError / retry', async () => {
   assert.equal(j, 2);
 });
 ));
-  assert.equal(seen[1], UPDATE_FALLBACKS[0] + 'version.json');
+  assert.ok(seen[1].startsWith(UPDATE_FALLBACKS[0] + 'version.json?check='));
   assert.equal(r.apkUrl, UPDATE_FALLBACKS[0] + 'iptv-oynatici.apk');
 });
 
@@ -200,7 +200,7 @@ test('isTransient / explainError / retry', async () => {
   assert.equal(j, 2);
 });
 ));
-  assert.equal(seen[1], UPDATE_FALLBACKS[0] + 'version.json');
+  assert.ok(seen[1].startsWith(UPDATE_FALLBACKS[0] + 'version.json?check='));
   assert.equal(r.apkUrl, UPDATE_FALLBACKS[0] + 'iptv-oynatici.apk');
 });
 
