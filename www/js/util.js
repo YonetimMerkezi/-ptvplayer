@@ -72,3 +72,12 @@ export function decodeEntities(s) {
     return Number.isFinite(cp) && cp > 0 && cp < 0x110000 ? String.fromCodePoint(cp) : m;
   });
 }
+
+// Ekranda gösterilecek adreste gizli bilgileri (kullanıcı adı, şifre, anahtar) noktalarla kapatır.
+// Sorgudaki username/password/token vb. değerleri ve "kullanıcı:şifre@" önekini gizler; yol ve sunucu adı kalır.
+const SECRET_KEYS = /^(username|user|uname|login|password|pass|passwd|pwd|token|key|apikey|api_key|secret|auth|mac)$/i;
+export function maskUrl(u) {
+  return String(u == null ? '' : u)
+    .replace(/\/\/[^/@\s?#]+@/, '//••••@')
+    .replace(/([?&;])([^=&#\s]+)=([^&#\s]*)/g, (m, sep, k, v) => (SECRET_KEYS.test(k) ? `${sep}${k}=••••` : m));
+}

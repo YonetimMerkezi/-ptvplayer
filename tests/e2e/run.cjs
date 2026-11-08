@@ -1114,11 +1114,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await page.evaluate(() => [window.__iptv.store.pref('auto.cat', 12), window.__iptv.store.pref('auto.epg', 6)].join())) === '0,24', 'otomasyon aralıkları kaydedildi');
   await page.goBack();
   await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.evaluate(() => { window.__iptv.S.source.epgUrl = 'http://h.example/xmltv.php?username=sedathoca&password=Sifre123'; });
   await page.click('[data-set=epg]');
   await page.waitForSelector('#e-now');
   ok(/kanal için program var/.test(await page.textContent('.sheet')), 'EPG ayarında durum görünüyor');
+  const epgTxt = await page.textContent('.sheet');
+  ok(/Adres/.test(epgTxt) && /h\.example\/xmltv\.php\?username=••••&password=••••/.test(epgTxt) && !/Sifre123|sedathoca/.test(epgTxt), 'EPG adresinde kullanıcı adı ve şifre gizli (••••)');
+  await page.evaluate(() => { delete window.__iptv.S.source.epgUrl; });
   await page.goBack();
   await page.waitForSelector('.sheet-back', { state: 'detached' });
+  // ayar kutuları tema rengini izler
+  const tileLook = () => page.$eval('.set-tile', (e) => getComputedStyle(e).backgroundColor + '|' + getComputedStyle(e.querySelector('.ic')).color);
+  const look0 = await tileLook();
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'purple'; });
+  const look1 = await tileLook();
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'orange'; });
+  const look2 = await tileLook();
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'green'; });
+  ok(new Set([look0, look1, look2]).size === 3 && (await tileLook()) === look0, 'tema değişince ayar kutularının rengi (zemin ve simge) değişiyor');
   await page.screenshot({ path: path.join(SHOTS, '00d-ayarlar-yatay.png') });
   // kapatılan “program göster” seçeneği canlı listeye yansır
   await page.click('#btn-home');

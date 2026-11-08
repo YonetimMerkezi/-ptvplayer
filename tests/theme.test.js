@@ -40,3 +40,12 @@ test('applyTheme: kök öğeye data-theme ve tarayıcı çubuğu rengi yazar', (
   assert.equal(applyTheme('bozuk', doc), 'green');
   assert.equal(doc.documentElement.dataset.theme, 'green');
 });
+
+test('ayar kutuları (.set-tile) renklerini temadan alır, sabit renk yok', () => {
+  const rules = css.split('\n').filter((l) => l.startsWith('.set-tile'));
+  assert.ok(rules.length >= 3, '.set-tile kuralları bulunamadı');
+  for (const l of rules) assert.doesNotMatch(l, /#[0-9a-fA-F]{3,8}\b/, `sabit renk kalmış: ${l}`);
+  const all = rules.join('\n');
+  assert.match(all, /background: var\(--raised\)/);
+  assert.match(all, /\.set-tile \.ic \{[^}]*color: var\(--accent\)/);
+});
