@@ -127,7 +127,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
+        if (hasFocus && !isInPictureInPictureMode()) {
             hideSystemBars(); // klavye/iletişim kutusundan dönünce çubuklar yeniden gizlenir
             focusWebView();
         }
