@@ -74,14 +74,17 @@ jobs:
           cat version.json
           TITLE="Son sürüm 1.0.${{ github.run_number }}"
           NOTES="Derleme ${{ github.run_number }} (${GITHUB_SHA::7}). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur."
-          # 'latest' sürümü varsa silmeye çalışma; var olan release'i ve sabit etiketi güncelle.
-          if gh release view latest >/dev/null 2>&1; then
-            # Eski 'latest' kaydı taslak/ön sürüm işaretli kalmış olabilir; yayımlamadan önce ikisini de kapat.
-            RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/latest" --jq .id)"
-            gh api "repos/${GITHUB_REPOSITORY}/releases/$RELEASE_ID" -X PATCH -F draft=false -F prerelease=false >/dev/null
-            gh release edit latest --title "$TITLE" --notes "$NOTES" --latest
+          # Draft release kayıtları /releases/tags/latest uç noktasında görünmeyebilir.
+          # Tüm release kayıtları içinde tag_name=latest olan kaydı bul.
+          RELEASE_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.tag_name == "latest") | .id' | head -n 1)"
+          if [ -n "$RELEASE_ID" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$RELEASE_ID" -X PATCH \
+              -f name="$TITLE" -f body="$NOTES" -F draft=false -F prerelease=false -f make_latest=true >/dev/null
             gh release upload latest iptv-oynatici.apk version.json --clobber
           else
+            gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
+              --title "$TITLE" --notes "$NOTES"
+          fie
             gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
               --title "$TITLE" --notes "$NOTES"
           fi
