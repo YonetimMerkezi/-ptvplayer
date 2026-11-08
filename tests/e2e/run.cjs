@@ -278,7 +278,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         window.__calls.push(['download', url]);
         const r = await fetch(url);
         const blob = URL.createObjectURL(await r.blob());
-        const p = '/cache/dl' + files.size + '.tmp';
+        const p = '/cache/iptvdl' + files.size + '.tmp';
         files.set('file://' + p, blob);
         return { path: p, size: 1 };
       },

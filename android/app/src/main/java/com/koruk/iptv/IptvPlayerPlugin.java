@@ -59,6 +59,8 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(name = "IptvPlayer")
 public class IptvPlayerPlugin extends Plugin {
     private static final String UA = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36";
+    // File.createTempFile en az 3 karakterlik önek ister; "dl" gibi kısa önek IllegalArgumentException atar.
+    private static final String TMP_PREFIX = "iptvdl";
     private static final long MAX_DOWNLOAD_BYTES = 400L * 1024L * 1024L;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -88,7 +90,7 @@ public class IptvPlayerPlugin extends Plugin {
             if (files == null) return;
             long limit = System.currentTimeMillis() - 3600_000L;
             for (File f : files) {
-                if (f.getName().startsWith("dl") && f.getName().endsWith(".tmp") && f.lastModified() < limit) {
+                if (f.getName().startsWith(TMP_PREFIX) && f.getName().endsWith(".tmp") && f.lastModified() < limit) {
                     //noinspection ResultOfMethodCallIgnored
                     f.delete();
                 }
@@ -410,7 +412,7 @@ public class IptvPlayerPlugin extends Plugin {
             File out = null;
             HttpURLConnection conn = null;
             try {
-                out = File.createTempFile("dl", ".tmp", getContext().getCacheDir());
+                out = File.createTempFile(TMP_PREFIX, ".tmp", getContext().getCacheDir());
                 String cur = url;
                 boolean done = false;
                 for (int hop = 0; hop < 8 && !done; hop++) {
@@ -478,7 +480,7 @@ public class IptvPlayerPlugin extends Plugin {
             try {
                 File f = new File(path).getCanonicalFile();
                 File cache = getContext().getCacheDir().getCanonicalFile();
-                if (f.getPath().startsWith(cache.getPath() + File.separator) && f.getName().startsWith("dl")) {
+                if (f.getPath().startsWith(cache.getPath() + File.separator) && f.getName().startsWith(TMP_PREFIX)) {
                     //noinspection ResultOfMethodCallIgnored
                     f.delete();
                 }
