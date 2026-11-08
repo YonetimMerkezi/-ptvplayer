@@ -76,7 +76,10 @@ jobs:
           NOTES="Derleme ${{ github.run_number }} (${GITHUB_SHA::7}). Mevcut uygulamanın üstüne kurulur, kaldırmaya gerek yoktur."
           # 'latest' sürümü varsa silmeye çalışma; var olan release'i ve sabit etiketi güncelle.
           if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest --tag latest --target "${{ github.sha }}" --title "$TITLE" --notes "$NOTES" --latest
+            # Eski 'latest' kaydı taslak/ön sürüm işaretli kalmış olabilir; yayımlamadan önce ikisini de kapat.
+            RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/latest" --jq .id)"
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$RELEASE_ID" -X PATCH -F draft=false -F prerelease=false >/dev/null
+            gh release edit latest --title "$TITLE" --notes "$NOTES" --latest
             gh release upload latest iptv-oynatici.apk version.json --clobber
           else
             gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
