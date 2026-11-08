@@ -683,6 +683,15 @@ export function createPlayerUI({ engine, player, env }) {
       if (st.item && st.item.kind === 'live') go(Number(e.direction) || 0);
     });
   }
+  q('#pl-external').hidden = engine.kind !== 'native';
+  q('#pl-external').addEventListener('click', async () => {
+    const st = player.state();
+    const target = st.targets && st.targets[st.idx];
+    if (!target) return toast('Oynatma adresi bulunamadı');
+    if (target.headers && Object.keys(target.headers).length) return toast('Bu yayın özel başlık gerektiriyor; harici oynatıcıya aktarılamaz');
+    try { await engine.openExternal(target); showUi(false); }
+    catch (e) { toast(e && e.message ? e.message : 'Harici oynatıcı açılamadı'); }
+  });
   q('#pl-tv').addEventListener('click', () => {
     const st = player.state();
     if (st.item && env.castTo) env.castTo(st, ctx);
