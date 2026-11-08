@@ -1,0 +1,3 @@
+Yayın sağlık kontrolü altyapısı: bağlantı süresi, HTTP yanıtı ve medya türü tanılama yardımcıları eklendi.
+Medya biçimi algılama: HLS, DASH, MP4, MKV, TS, MOV, AVI, WMV, FLV ve RTSP adresleri tanınır.
+Bu aşamada tanılama çekirdeği hazırlanmıştır; kullanıcı arayüzü, gerçek codec testi ve harici oynatıcı seçimi sonraki geliştirme adımlarında tamamlanacaktır.
