@@ -600,6 +600,10 @@ public class IptvPlayerPlugin extends Plugin {
                 .setBufferDurationsMs(5000, 20000, 1500, 3000)
                 .build(), false, false);
         s.player.setVolume(muted ? 0f : 1f);
+        s.player.setWakeMode(C.WAKE_MODE_NETWORK);
+        // Çoklu video yüzeylerinde hazırlık sırasında son kareyi koru ve boşta kalan shutter'ı saydam tut.
+        s.view.setKeepContentOnPlayerReset(true);
+        s.view.setShutterBackgroundColor(Color.TRANSPARENT);
         // Kutu küçüktür: uyarlanır (HLS) yayınlarda kutuya yetecek çözünürlük seçilir, kod çözücüler gereksiz yüklenmez.
         if (r != null) {
             float dens = getContext().getResources().getDisplayMetrics().density;
