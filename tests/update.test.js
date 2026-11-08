@@ -35,7 +35,7 @@ test('yalnız daha büyük sürüm güncelleme sayılır; yerel sürüm bilinmiy
 });
 
 test('checkUpdate: yeni sürümü, güncel durumu ve desteklenmeyen sürümü ayırt eder', async () => {
-  const net = (j) => ({ json: async (url) => (assert.match(url, /version\\.json\\?check=\\d+$/), j) });
+  const net = (j) => ({ json: async (url) => (assert.match(url, /version\.json\?check=\d+$/), j) });
   const a = await checkUpdate({ net: net({ versionCode: 60, versionName: '1.0.60', size: 31457280, notes: 'Yeni' }), localVersion: '1.0.57' });
   assert.equal(a.status, 'available');
   assert.equal(a.name, '1.0.60');
