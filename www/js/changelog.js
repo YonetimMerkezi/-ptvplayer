@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 14,
+    title: 'Gelişmiş TV rehberi',
+    items: [
+      'Kanal programları günlere ayrıldı; Bugün ve diğer yayın günleri arasında geçiş yapılabilir',
+      'Şu anda yayınlanan program belirginleştirilir; program açıklamaları rehberde gösterilir',
+      'TV kumandası ve dokunmatik ekranla kullanılabilen gün seçimi eklendi',
+    ],
+  },
+  {
     id: 13,
     title: 'Medya uyumluluğu ve yayın tanılama altyapısı',
     items: [
