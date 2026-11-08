@@ -104,7 +104,7 @@ test('tüm adresler geçici hata verirse 3 tur sonra hata yayılır; kalıcı ha
 test('özel base verilirse yedek adres kullanılmaz', async () => {
   const seen = [];
   await assert.rejects(() => checkUpdate({ base: 'https://x.test/r/', net: { json: async (u) => { seen.push(u); throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: noSleep() }), /404/);
-  assert.deepEqual(seen, ['https://x.test/r/version.json']);
+  assert.ok(seen[0].startsWith('https://x.test/r/version.json?check='));
 });
 
 test('isTransient / explainError / retry', async () => {
@@ -143,7 +143,7 @@ test('tüm adresler geçici hata verirse 3 tur sonra hata yayılır; kalıcı ha
 test('özel base verilirse yedek adres kullanılmaz', async () => {
   const seen = [];
   await assert.rejects(() => checkUpdate({ base: 'https://x.test/r/', net: { json: async (u) => { seen.push(u); throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: noSleep() }), /404/);
-  assert.deepEqual(seen, ['https://x.test/r/version.json']);
+  assert.ok(seen[0].startsWith('https://x.test/r/version.json?check='));
 });
 
 test('isTransient / explainError / retry', async () => {
@@ -181,7 +181,7 @@ test('tüm adresler geçici hata verirse 3 tur sonra hata yayılır; kalıcı ha
 test('özel base verilirse yedek adres kullanılmaz', async () => {
   const seen = [];
   await assert.rejects(() => checkUpdate({ base: 'https://x.test/r/', net: { json: async (u) => { seen.push(u); throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: noSleep() }), /404/);
-  assert.deepEqual(seen, ['https://x.test/r/version.json']);
+  assert.ok(seen[0].startsWith('https://x.test/r/version.json?check='));
 });
 
 test('isTransient / explainError / retry', async () => {
@@ -220,7 +220,7 @@ test('tüm adresler geçici hata verirse 3 tur sonra hata yayılır; kalıcı ha
 test('özel base verilirse yedek adres kullanılmaz', async () => {
   const seen = [];
   await assert.rejects(() => checkUpdate({ base: 'https://x.test/r/', net: { json: async (u) => { seen.push(u); throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: noSleep() }), /404/);
-  assert.deepEqual(seen, ['https://x.test/r/version.json']);
+  assert.ok(seen[0].startsWith('https://x.test/r/version.json?check='));
 });
 
 test('isTransient / explainError / retry', async () => {
