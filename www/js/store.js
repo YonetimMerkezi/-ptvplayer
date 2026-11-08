@@ -1,6 +1,7 @@
 // Kalıcı durum: kaynaklar, favoriler, son izlenenler, izleme ilerlemesi (localStorage);
 // katalog ve rehber önbelleği (IndexedDB, yoksa bellek).
 import { hashId } from './util.js';
+import { normalizePrefs } from './cats.js';
 
 class MemStorage {
   constructor() {
@@ -122,7 +123,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   };
   api.removeSource = (id) => {
     write('sources', api.sources().filter((s) => s.id !== id));
-    for (const k of ['fav.', 'rec.', 'prog.']) {
+    for (const k of ['fav.', 'rec.', 'prog.', 'cats.']) {
       try {
         storage.removeItem(P + k + id);
       } catch {
@@ -132,6 +133,14 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
     cache.del('cat:' + id);
     cache.del('epg:' + id);
     cache.del('file:' + id);
+  };
+
+  // ---- kategori düzeni: sıra, gizleme, özel klasörler (kaynak + tür başına) ----
+  api.catPrefs = (sid, kind) => normalizePrefs((read('cats.' + sid, {}) || {})[kind]);
+  api.setCatPrefs = (sid, kind, prefs) => {
+    const all = read('cats.' + sid, {}) || {};
+    all[kind] = prefs;
+    write('cats.' + sid, all);
   };
 
   // ---- favoriler ----

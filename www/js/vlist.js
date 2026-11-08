@@ -9,7 +9,8 @@ export function visibleRows({ scrollTop, viewH, rowH, count, cols = 1, overscan 
 }
 
 export class VirtualList {
-  // opts: rowH, minCellW (ızgara için), cellH, render(item, index) -> html, onTap(index, ev), gap
+  // opts: rowH, minCellW (ızgara için), cellH, render(item, index) -> html, onTap(index, ev), gap,
+  //       onLongPress(index, ev, el) (isteğe bağlı: uzun basma / sağ tık / Menü tuşu)
   constructor(el, opts) {
     this.el = el;
     this.o = { gap: 0, ...opts };
@@ -26,11 +27,48 @@ export class VirtualList {
     if (this._ro) this._ro.observe(el);
     this._onKey = (ev) => this._key(ev);
     this._onClick = (ev) => {
+      if (this._lpFired) {
+        this._lpFired = false; // uzun basmadan sonra gelen tıklama işlenmez
+        return;
+      }
       const t = ev.target.closest('[data-i]');
       if (t && this.el.contains(t)) this.o.onTap(Number(t.dataset.i), ev, t);
     };
     el.addEventListener('keydown', this._onKey);
     el.addEventListener('click', this._onClick);
+    this._lp = { timer: 0, x: 0, y: 0 };
+    this._lpFired = false;
+    this._lpCancel = () => {
+      clearTimeout(this._lp.timer);
+      this._lp.timer = 0;
+    };
+    this._onDown = (ev) => {
+      this._lpFired = false;
+      if (!this.o.onLongPress || (ev.button != null && ev.button > 0)) return;
+      const t = ev.target.closest('[data-i]');
+      if (!t || ev.target.closest('button')) return;
+      this._lp.x = ev.clientX;
+      this._lp.y = ev.clientY;
+      this._lpCancel();
+      this._lp.timer = setTimeout(() => {
+        this._lp.timer = 0;
+        this._lpFired = true;
+        this.o.onLongPress(Number(t.dataset.i), ev, t);
+      }, 550);
+    };
+    this._onMove = (ev) => {
+      if (this._lp.timer && Math.hypot(ev.clientX - this._lp.x, ev.clientY - this._lp.y) > 10) this._lpCancel();
+    };
+    this._onCtx = (ev) => {
+      if (this.o.onLongPress && ev.target.closest('[data-i]')) ev.preventDefault();
+    };
+    if (opts.onLongPress) {
+      el.addEventListener('pointerdown', this._onDown);
+      el.addEventListener('pointermove', this._onMove);
+      el.addEventListener('pointerup', this._lpCancel);
+      el.addEventListener('pointercancel', this._lpCancel);
+      el.addEventListener('contextmenu', this._onCtx);
+    }
   }
 
   setItems(items, keepScroll = false) {
@@ -91,6 +129,11 @@ export class VirtualList {
     const cur = ev.target.closest && ev.target.closest('[data-i]');
     if (!cur) return;
     const i = Number(cur.dataset.i);
+    if (ev.key === 'ContextMenu' && this.o.onLongPress) {
+      ev.preventDefault();
+      this.o.onLongPress(i, ev, cur);
+      return;
+    }
     const step = { ArrowDown: this.cols, ArrowUp: -this.cols, ArrowRight: this.cols > 1 ? 1 : 0, ArrowLeft: this.cols > 1 ? -1 : 0 }[ev.key];
     if (!step) return;
     const n = i + step;
@@ -122,6 +165,10 @@ export class VirtualList {
     this.el.removeEventListener('scroll', this._onScroll);
     this.el.removeEventListener('keydown', this._onKey);
     this.el.removeEventListener('click', this._onClick);
+    this._lpCancel();
+    for (const [n, f] of [['pointerdown', this._onDown], ['pointermove', this._onMove], ['pointerup', this._lpCancel], ['pointercancel', this._lpCancel], ['contextmenu', this._onCtx]]) {
+      this.el.removeEventListener(n, f);
+    }
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = 0;
     if (this._ro) this._ro.disconnect();

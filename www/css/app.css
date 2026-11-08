@@ -55,6 +55,29 @@ input, select, textarea { font: inherit; color: var(--text); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .chip small { opacity: 0.7; margin-left: 6px; }
 
+/* kategori ekranı */
+.catbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; flex: none; flex-wrap: wrap; }
+.catbar .catq { flex: 1; min-width: 140px; margin: 0; }
+.catbar .catq input { height: 40px; border-radius: 20px; }
+.catbar .btn { flex: none; }
+.crumb { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px 6px; flex: none; }
+.crumb-back { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 22px; color: var(--text); flex: none; }
+.crumb-back:active { background: var(--surface); }
+.crumb .t { flex: 1; min-width: 0; font-weight: 600; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb small { color: var(--muted); }
+.row.cat .n { color: var(--muted); font-size: 13px; flex: none; }
+.row.cat .chev { color: var(--muted); font-size: 22px; width: 22px; text-align: center; flex: none; }
+.row.cat.special .nm { color: var(--accent); }
+.row.cat .nm .ic { width: 18px; height: 18px; vertical-align: -3px; margin-right: 8px; color: var(--gold); }
+.row.cat.edit { padding-left: 2px; gap: 2px; }
+.row.cat.edit .act { width: 40px; height: 44px; border-radius: 20px; }
+.row.cat.edit .meta { margin-left: 6px; }
+.row.cat.hid .nm, .row.cat.hid .n { opacity: 0.4; text-decoration: line-through; }
+.row.cat.hid .act[data-act=eye] { color: var(--danger); }
+.vl .row, .vl .card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.hint { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.fl-new { margin-top: 14px; }
+
 .vl { position: relative; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; contain: strict; }
 .vl-sizer { width: 1px; position: absolute; top: 0; left: 0; }
 .vl-win { position: absolute; top: 0; left: 0; right: 0; }

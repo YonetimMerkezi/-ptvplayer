@@ -11,6 +11,10 @@ import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
 import { VirtualList } from './vlist.js';
+import {
+  arrange, toggleHidden, move, resetOrderAndHidden, hiddenGroupNames, addFolder, renameFolder, deleteFolder,
+  toggleInFolder, folderOf, groupKey, folderKey,
+} from './cats.js';
 import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, fmtAgo } from './ui.js';
@@ -38,6 +42,7 @@ const S = {
   // Kategori ekranı: null = kategori listesi, '__all' / '__recent' / '__cont' = özel listeler, aksi hâlde grup adı
   group: { live: null, movie: null, series: null },
   catFilter: '',
+  catEdit: false, // kategori düzenleme kipi (sırala / gizle / klasör)
   cats: [],
   listMode: null,
   favKind: 'live',
@@ -246,16 +251,34 @@ function renderOnboarding(v) {
 // ------------------------------------------------------------------ göz atma (canlı / film / dizi)
 
 function currentItems(kind) {
-  const all = S.cat[CAT_KEY[kind]];
-  if (S.query) return search(all, S.query);
+  if (S.query) return search(visibleAll(kind), S.query);
   const g = S.group[kind];
   if (g === '__recent') return recentItems(kind);
   if (g === '__cont') return continueItems(kind);
-  return g && g !== '__all' ? inGroup(all, g) : all;
+  if (g && g.startsWith('f:')) return folderItems(kind, folderOf(prefsOf(kind), g.slice(2)));
+  if (g && g.startsWith('g:')) return inGroup(S.cat[CAT_KEY[kind]], g.slice(2));
+  return visibleAll(kind);
 }
 
 function recentItems(kind) {
   return store.recents(sid()).filter((r) => r.kind === kind).map((r) => resolve(r, kind)).filter(Boolean);
+}
+
+// Kategori düzeni (sıra, gizleme, klasörler)
+const prefsOf = (kind) => store.catPrefs(sid(), kind);
+const savePrefs = (kind, prefs) => store.setCatPrefs(sid(), kind, prefs);
+
+// Gizlenen kategorilerdeki öğeler "Tümü"nde ve aramada görünmez.
+function visibleAll(kind) {
+  const all = S.cat[CAT_KEY[kind]];
+  const hid = hiddenGroupNames(prefsOf(kind));
+  return hid.size ? all.filter((it) => !hid.has(it.group || 'Diğer')) : all;
+}
+
+function folderItems(kind, folder) {
+  if (!folder) return [];
+  const m = S.idx[CAT_KEY[kind]];
+  return folder.items.map((id) => m.get(id)).filter(Boolean);
 }
 
 function continueItems(kind) {
@@ -274,8 +297,14 @@ function continueItems(kind) {
 }
 
 // Kategori ekranı: her sekme önce kategorileri gösterir, bir kategoriye dokununca içeriği açılır.
+// Düzenle kipinde kategoriler sıralanır, gizlenir; özel klasörler oluşturulur.
 
-function groupTitle(g) {
+function groupTitle(kind, g) {
+  if (g.startsWith('f:')) {
+    const f = folderOf(prefsOf(kind), g.slice(2));
+    return f ? f.name : 'Klasör';
+  }
+  if (g.startsWith('g:')) return g.slice(2);
   return { __all: 'Tümü', __recent: 'Son izlenen', __cont: 'Devam et' }[g] || g;
 }
 
@@ -283,20 +312,55 @@ function browseMode(kind) {
   return !S.query && S.group[kind] == null ? 'cats' : 'items';
 }
 
+// Varsayılan sıra: klasörler, sonra sağlayıcının grupları.
+function categoryBase(kind) {
+  const prefs = prefsOf(kind);
+  return [
+    ...prefs.folders.map((f) => ({ id: folderKey(f.id), name: f.name, count: folderItems(kind, f).length, folder: true })),
+    ...S.groups[kind].map((g) => ({ id: groupKey(g.name), name: g.name, count: g.count })),
+  ];
+}
+
 function categoryRows(kind) {
-  const rows = [{ key: '__all', name: 'Tümü', count: S.cat[CAT_KEY[kind]].length, special: true }];
-  if (kind === 'live') rows.push({ key: '__recent', name: 'Son izlenen', count: recentItems(kind).length, special: true });
+  const prefs = prefsOf(kind);
+  const specials = [{ id: '__all', name: 'Tümü', count: visibleAll(kind).length, special: true }];
+  if (kind === 'live') specials.push({ id: '__recent', name: 'Son izlenen', count: recentItems(kind).length, special: true });
   else {
     const n = continueItems(kind).length;
-    if (n) rows.push({ key: '__cont', name: 'Devam et', count: n, special: true });
+    if (n) specials.push({ id: '__cont', name: 'Devam et', count: n, special: true });
   }
-  for (const g of S.groups[kind]) rows.push({ key: g.name, name: g.name, count: g.count });
+  let rows = arrange(categoryBase(kind), prefs).map((r) => ({ ...r, hidden: prefs.hidden.includes(r.id) }));
+  if (!S.catEdit) rows = rows.filter((r) => !r.hidden);
   const f = fold(S.catFilter);
-  return f ? rows.filter((r) => fold(r.name).includes(f)) : rows;
+  const match = (r) => fold(r.name).includes(f);
+  return f ? specials.filter(match).concat(rows.filter(match)) : specials.concat(rows);
 }
 
 function catRow(c, i) {
-  return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm">${esc(c.name)}</div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
+  const folderIc = c.folder ? icon('folder') : '';
+  if (!S.catEdit || c.special) {
+    return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm">${folderIc}${esc(c.name)}</div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
+  }
+  const move_ = S.catFilter
+    ? ''
+    : `<button class="act" data-act="top" aria-label="En üste al">${icon('top')}</button><button class="act" data-act="up" aria-label="Yukarı">${icon('up')}</button><button class="act" data-act="down" aria-label="Aşağı">${icon('down')}</button>`;
+  return `<div class="row cat edit${c.hidden ? ' hid' : ''}" role="button" tabindex="0" data-i="${i}"><button class="act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><div class="meta"><div class="nm">${folderIc}${esc(c.name)}</div></div><span class="n">${c.count}</span>${move_}</div>`;
+}
+
+function onCatTap(kind, i, ev) {
+  const c = S.cats[i];
+  if (!c) return;
+  if (!S.catEdit || c.special) return enterGroup(kind, c.id);
+  const act = ev.target.closest('[data-act]');
+  if (act) {
+    const prefs = prefsOf(kind);
+    const next = act.dataset.act === 'eye'
+      ? toggleHidden(prefs, c.id)
+      : move(prefs, arrange(categoryBase(kind), prefs).map((r) => r.id), c.id, act.dataset.act);
+    savePrefs(kind, next);
+    return refreshList(true);
+  }
+  if (c.folder) folderMenu(kind, c.id.slice(2));
 }
 
 // Kategoriye gir: Android geri tuşu bir adım geri (kategori listesine) döner.
@@ -334,14 +398,21 @@ function dropGroupLayer() {
 function resetGroups() {
   S.group = { live: null, movie: null, series: null };
   S.catFilter = '';
+  S.catEdit = false;
   dropGroupLayer();
 }
 
-// Liste yenilenince, artık var olmayan kategoriden çık.
+function groupExists(kind, g) {
+  if (g.startsWith('__')) return true;
+  if (g.startsWith('f:')) return !!folderOf(prefsOf(kind), g.slice(2));
+  if (g.startsWith('g:')) return S.groups[kind].some((x) => groupKey(x.name) === g);
+  return false;
+}
+
+// Liste yenilenince ya da klasör silinince, artık var olmayan kategoriden çık.
 function pruneGroups() {
   for (const k of Object.keys(S.group)) {
-    const g = S.group[k];
-    if (g && !g.startsWith('__') && !S.groups[k].some((x) => x.name === g)) S.group[k] = null;
+    if (S.group[k] && !groupExists(k, S.group[k])) S.group[k] = null;
   }
   if (!Object.values(S.group).some((g) => g != null)) dropGroupLayer();
 }
@@ -351,13 +422,13 @@ function drawCrumb(kind) {
   const inGroupView = !S.query && g != null;
   $('#crumb').hidden = !inGroupView;
   if (inGroupView) {
-    $('#crumb-t').textContent = groupTitle(g);
+    $('#crumb-t').textContent = groupTitle(kind, g);
     $('#crumb-n').textContent = S.items.length;
   }
 }
 
 function renderBrowse(v, kind) {
-  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small></div><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><div id="list"></div><div id="empty" hidden></div>`;
+  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small></div><div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div><div id="list"></div><div id="empty" hidden></div>`;
   $('#crumb-back').addEventListener('click', () => leaveGroup(kind));
   $('#cat-q').value = S.catFilter;
   $('#cat-q').addEventListener(
@@ -367,17 +438,24 @@ function renderBrowse(v, kind) {
       refreshList();
     }, 120),
   );
+  $('#cat-edit').addEventListener('click', () => {
+    S.catEdit = !S.catEdit;
+    refreshList(true);
+  });
+  $('#cat-new').addEventListener('click', () => nameSheet(kind));
+  $('#cat-reset').addEventListener('click', () => resetSheet(kind));
   refreshList();
 }
 
 function mountList(kind, mode = 'items') {
   const el = $('#list');
   S.listMode = mode;
+  const longPress = (i) => S.items[i] && folderSheet(kind, S.items[i]);
   if (mode === 'cats') {
     S.list = new VirtualList(el, {
       rowH: 56,
       render: (c, i) => catRow(c, i),
-      onTap: (i) => S.cats[i] && enterGroup(kind, S.cats[i].key),
+      onTap: (i, ev) => onCatTap(kind, i, ev),
     });
   } else if (kind === 'live') {
     S.list = new VirtualList(el, {
@@ -389,6 +467,7 @@ function mountList(kind, mode = 'items') {
         if (ev.target.closest('[data-epg]')) return epgSheet(it);
         playLive(S.items, i);
       },
+      onLongPress: longPress,
     });
   } else {
     const gap = 10;
@@ -398,6 +477,7 @@ function mountList(kind, mode = 'items') {
       cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + 42,
       render: (it, i) => card(it, i),
       onTap: (i) => (kind === 'movie' ? openMovie(S.items[i]) : openSeries(S.items[i])),
+      onLongPress: longPress,
     });
   }
 }
@@ -406,6 +486,7 @@ function refreshList(keepScroll = false) {
   if (S.tab === 'favs') return S.list ? refreshFavs() : undefined;
   const kind = TAB_KIND[S.tab];
   if (!kind || !$('#list')) return;
+  pruneGroups();
   const mode = browseMode(kind);
   if (!S.list || S.listMode !== mode) {
     if (S.list) S.list.destroy();
@@ -420,21 +501,149 @@ function refreshList(keepScroll = false) {
   drawCrumb(kind);
   const empty = $('#empty');
   const none = mode === 'cats' ? !all || !rows.length : !rows.length;
-  $('#catq').hidden = !(mode === 'cats' && all && (S.groups[kind].length > 8 || S.catFilter));
+  $('#catbar').hidden = !(mode === 'cats' && all);
+  $('#catq').hidden = !(S.groups[kind].length > 8 || S.catFilter);
+  $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit;
+  $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
   $('#list').hidden = none;
   empty.hidden = !none;
   if (none) {
     const label = { live: 'kanal', movie: 'film', series: 'dizi' }[kind];
+    const g = S.group[kind];
     if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${label} bulunamadı.`);
     else if (!all && S.loading) empty.innerHTML = emptyHtml('Yükleniyor…', 'Liste indiriliyor, birazdan hazır olur.');
     else if (!all) empty.innerHTML = emptyHtml(`Bu kaynakta ${label} yok`, 'Listeyi yenilemeyi ya da başka bir kaynak seçmeyi deneyin.', '<button class="btn" id="e-refresh">Listeyi yenile</button>');
     else if (mode === 'cats') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
-    else if (S.group[kind] === '__recent') empty.innerHTML = emptyHtml('Henüz izlemediniz', 'İzlediğiniz kanallar burada görünür.');
-    else if (S.group[kind] === '__cont') empty.innerHTML = emptyHtml('Yarım kalan yok', 'Yarıda bıraktığınız içerikler burada görünür.');
+    else if (g === '__recent') empty.innerHTML = emptyHtml('Henüz izlemediniz', 'İzlediğiniz kanallar burada görünür.');
+    else if (g === '__cont') empty.innerHTML = emptyHtml('Yarım kalan yok', 'Yarıda bıraktığınız içerikler burada görünür.');
+    else if (g && g.startsWith('f:')) empty.innerHTML = emptyHtml('Klasör boş', `Bir ${label} satırına ya da kartına uzun basıp “Klasöre ekle”yi seçin.`);
     else empty.innerHTML = emptyHtml('Bu kategoride öğe yok', '');
     const b = $('#e-refresh');
     if (b) b.addEventListener('click', () => refreshCatalog());
   }
+}
+
+// ---- özel klasörler ----
+
+const tick = () => icon('check').replace('class="ic"', 'class="ic ok"');
+
+// Öğeyi klasörlere ekle/çıkar (uzun basma ve detay sayfası).
+function folderSheet(kind, it) {
+  if (!it) return;
+  openSheet({
+    title: 'Klasöre ekle',
+    html: `<p class="hint">${esc(it.name)}</p><div id="fl-list"></div><div class="fl-new"><label class="field"><input id="fl-name" type="text" maxlength="60" placeholder="Yeni klasör adı" autocomplete="off"></label><button class="btn" id="fl-add">${icon('plus')}Oluştur ve ekle</button></div>`,
+    mount: (body) => {
+      const draw = () => {
+        const prefs = prefsOf(kind);
+        $('#fl-list', body).innerHTML = prefs.folders.length
+          ? prefs.folders
+              .map((f) => `<button class="list-item" data-f="${esc(f.id)}"><span class="t">${icon('folder').replace('class="ic"', 'class="ic" style="color:var(--gold);vertical-align:-5px;margin-right:8px"')}${esc(f.name)}<small>${f.items.length} öğe</small></span>${f.items.includes(it.id) ? tick() : ''}</button>`)
+              .join('')
+          : '<p class="hint">Henüz klasör yok. Aşağıdan bir tane oluşturun.</p>';
+      };
+      const changed = () => {
+        draw();
+        if (S.list && TAB_KIND[S.tab] === kind) refreshList(true); // klasör içindeyken çıkarılan öğe hemen kaybolsun
+      };
+      draw();
+      body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-f]');
+        if (!b) return;
+        const r = toggleInFolder(prefsOf(kind), b.dataset.f, it.id);
+        savePrefs(kind, r.prefs);
+        toast(r.on ? 'Klasöre eklendi' : 'Klasörden çıkarıldı', 1400);
+        changed();
+      });
+      const add = () => {
+        const nameEl = $('#fl-name', body);
+        const created = addFolder(prefsOf(kind), nameEl.value);
+        if (!created.folder) return nameEl.focus();
+        savePrefs(kind, toggleInFolder(created.prefs, created.folder.id, it.id).prefs);
+        nameEl.value = '';
+        toast('Klasör oluşturuldu', 1400);
+        changed();
+      };
+      $('#fl-add', body).addEventListener('click', add);
+      $('#fl-name', body).addEventListener('keydown', (e) => e.key === 'Enter' && add());
+    },
+  });
+}
+
+// Yeni klasör adı
+function nameSheet(kind) {
+  const sh = openSheet({
+    title: 'Yeni klasör',
+    html: '<label class="field"><span>Klasör adı</span><input id="nf-name" type="text" maxlength="60" placeholder="Örn. Çocuk kanalları" autocomplete="off"></label><button class="btn" id="nf-go">Oluştur</button>',
+    mount: (body) => {
+      const go = () => {
+        const r = addFolder(prefsOf(kind), $('#nf-name', body).value);
+        if (!r.folder) return $('#nf-name', body).focus();
+        savePrefs(kind, r.prefs);
+        sh.close();
+        refreshList(true);
+      };
+      $('#nf-go', body).addEventListener('click', go);
+      $('#nf-name', body).addEventListener('keydown', (e) => e.key === 'Enter' && go());
+      setTimeout(() => $('#nf-name', body).focus(), 200);
+    },
+  });
+}
+
+// Klasör: yeniden adlandır / sil (aynı sayfa içinde adım adım)
+function folderMenu(kind, id) {
+  const f0 = folderOf(prefsOf(kind), id);
+  if (!f0) return;
+  openSheet({
+    title: f0.name,
+    mount: (body, sh) => {
+      const menu = () => {
+        const f = folderOf(prefsOf(kind), id);
+        body.innerHTML = `<p class="hint">${f.items.length} öğe</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="fm-ren">Yeniden adlandır</button><button class="btn ghost danger" id="fm-del">${icon('trash')}Klasörü sil</button></div>`;
+        $('#fm-ren', body).addEventListener('click', rename);
+        $('#fm-del', body).addEventListener('click', confirmDel);
+      };
+      const rename = () => {
+        const f = folderOf(prefsOf(kind), id);
+        body.innerHTML = '<label class="field"><span>Klasör adı</span><input id="fm-name" type="text" maxlength="60" autocomplete="off"></label><button class="btn" id="fm-save">Kaydet</button>';
+        $('#fm-name', body).value = f.name;
+        const save = () => {
+          savePrefs(kind, renameFolder(prefsOf(kind), id, $('#fm-name', body).value));
+          sh.close();
+          refreshList(true);
+        };
+        $('#fm-save', body).addEventListener('click', save);
+        $('#fm-name', body).addEventListener('keydown', (e) => e.key === 'Enter' && save());
+        $('#fm-name', body).focus();
+      };
+      const confirmDel = () => {
+        body.innerHTML = '<p>Bu klasör silinsin mi? İçindeki kanal/film/diziler listeden silinmez, yalnız klasör kalkar.</p><div style="display:flex;gap:8px"><button class="btn danger" id="fm-yes">Sil</button><button class="btn ghost" id="fm-no">Vazgeç</button></div>';
+        $('#fm-no', body).addEventListener('click', menu);
+        $('#fm-yes', body).addEventListener('click', () => {
+          savePrefs(kind, deleteFolder(prefsOf(kind), id));
+          sh.close();
+          refreshList(true);
+        });
+      };
+      menu();
+    },
+  });
+}
+
+// Sıralama ve gizlemeleri sıfırla (klasörler korunur)
+function resetSheet(kind) {
+  const sh = openSheet({
+    title: 'Sıralamayı sıfırla',
+    html: '<p>Kategorilerin sırası varsayılana döner ve gizlediğiniz kategoriler yeniden görünür. Klasörleriniz silinmez.</p><div style="display:flex;gap:8px"><button class="btn danger" id="rs-yes">Sıfırla</button><button class="btn ghost" id="rs-no">Vazgeç</button></div>',
+    mount: (body) => {
+      $('#rs-no', body).addEventListener('click', () => sh.close());
+      $('#rs-yes', body).addEventListener('click', () => {
+        savePrefs(kind, resetOrderAndHidden(prefsOf(kind)));
+        sh.close();
+        refreshList(true);
+      });
+    },
+  });
 }
 
 function liveRow(it, i) {
@@ -501,11 +710,12 @@ function openMovie(it) {
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   const sh = openSheet({
     title: it.name,
-    html: `<div class="detail"><div class="pos">${it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(it.name)}</h2><div class="m" id="mv-meta">${esc(it.group || '')}${it.rating ? ` · ★ ${it.rating}` : ''}</div></div></div><p class="plot" id="mv-plot"></p><div class="btns" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button></div>`,
+    html: `<div class="detail"><div class="pos">${it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(it.name)}</h2><div class="m" id="mv-meta">${esc(it.group || '')}${it.rating ? ` · ★ ${it.rating}` : ''}</div></div></div><p class="plot" id="mv-plot"></p><div class="btns" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div>`,
     mount: (body) => {
       $('#mv-play', body).addEventListener('click', () => startPlay(it));
       const st = $('#mv-start', body);
       if (st) st.addEventListener('click', () => startPlay(it, { startAt: 0 }));
+      $('#mv-fold', body).addEventListener('click', () => folderSheet('movie', it));
       $('#mv-fav', body).addEventListener('click', () => {
         toggleFav(it);
         $('#mv-fav', body).innerHTML = icon(isFav(it) ? 'star-on' : 'star') + 'Favori';
@@ -564,9 +774,10 @@ function openSeries(it) {
           })
           .join('');
         const cont = p ? all.find((x) => x.id === p.id) : null;
-        body.innerHTML = `<div class="detail"><div class="pos">${it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(it.name)}</h2><div class="m">${esc([it.group, info.genre, info.year && String(info.year).slice(0, 4)].filter(Boolean).join(' · '))}</div><div style="display:flex;gap:8px;flex-wrap:wrap">${cont ? `<button class="btn sm" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : ''}<button class="btn sm ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button></div></div></div>${info.plot || it.plot ? `<p class="plot">${esc(info.plot || it.plot)}</p>` : ''}<div class="chips" style="padding-left:0;padding-right:0">${seasons}</div>${rows}`;
+        body.innerHTML = `<div class="detail"><div class="pos">${it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(it.name)}</h2><div class="m">${esc([it.group, info.genre, info.year && String(info.year).slice(0, 4)].filter(Boolean).join(' · '))}</div><div style="display:flex;gap:8px;flex-wrap:wrap">${cont ? `<button class="btn sm" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : ''}<button class="btn sm ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn sm ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div></div>${info.plot || it.plot ? `<p class="plot">${esc(info.plot || it.plot)}</p>` : ''}<div class="chips" style="padding-left:0;padding-right:0">${seasons}</div>${rows}`;
         const c = $('#sr-cont', body);
         if (c) c.addEventListener('click', () => play(cont));
+        $('#sr-fold', body).addEventListener('click', () => folderSheet('series', it));
         $('#sr-fav', body).addEventListener('click', () => {
           toggleFav(it);
           draw();
