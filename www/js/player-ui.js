@@ -180,6 +180,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   function title(st) {
     if (st.ep) return { name: st.item.name, sub: st.ep.label || st.ep.title };
+    if (st.item.cast) return { name: st.item.name, sub: 'Telefondan oynatılıyor' };
     if (st.item.kind === 'live' && ctx && ctx.items.length > 1) return { name: st.item.name, sub: 'Kanal ' + channelNumber(st.item, ctx.index) };
     return { name: st.item.name, sub: '' };
   }
@@ -224,7 +225,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-play').innerHTML = icon(st.status === 'playing' || st.status === 'buffering' || st.status === 'loading' ? 'pause' : 'play');
     q('#pl-fav').innerHTML = icon(env.isFav(st.item) ? 'star-on' : 'star');
     q('#pl-fav').style.color = env.isFav(st.item) ? 'var(--gold)' : '';
-    q('#pl-epg').hidden = st.item.kind !== 'live';
+    q('#pl-epg').hidden = st.item.kind !== 'live' || !!st.item.cast;
     if (!live && !seeking) {
       q('#pl-pos').textContent = fmtDuration(st.pos);
       q('#pl-dur').textContent = st.dur > 0 ? fmtDuration(st.dur) : '';
@@ -235,7 +236,8 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-prev').hidden = !hasNav;
     q('#pl-next').hidden = !hasNav;
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
-    q('#pl-fav').hidden = st.item.kind === 'recording';
+    q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
+    q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-golive').hidden = !(st.item.kind === 'recording' && ctx && ctx.items[ctx.index] && ctx.items[ctx.index].kind === 'live');
     renderRec(st);
     renderSleepLabel();
@@ -611,6 +613,10 @@ export function createPlayerUI({ engine, player, env }) {
   });
   q('#pl-sleep').addEventListener('click', () => sleepSheet());
   q('#pl-rec').addEventListener('click', () => recSheet());
+  q('#pl-tv').addEventListener('click', () => {
+    const st = player.state();
+    if (st.item && env.castTo) env.castTo(st, ctx);
+  });
   q('#pl-golive').addEventListener('click', () => {
     if (ctx && ctx.items[ctx.index]) ctx.play(ctx.items[ctx.index], ctx.index);
   });

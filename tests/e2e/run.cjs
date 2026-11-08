@@ -899,6 +899,60 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         window.__calls.push(['recDel', id]);
         window.__recs = (window.__recs || []).filter((r) => r.id !== id);
       },
+      // ---- telefondan TV'ye oynatma: TV tarafı (alıcı) ve sahte TV (telefonun istekleri) ----
+      castStart: async (a) => {
+        window.__calls.push(['castStart', a.name]);
+        return { running: true, port: 8765, id: 'me', name: 'TV Kutusu', ips: ['192.168.1.30'], paired: window.__paired || [] };
+      },
+      castStop: async () => {
+        window.__calls.push(['castStop']);
+        return { running: false };
+      },
+      castInfo: async () => ({ running: true, port: 8765, id: 'me', name: 'TV Kutusu', ips: ['192.168.1.30'], paired: window.__paired || [] }),
+      castPairOpen: async () => {
+        window.__calls.push(['castPairOpen']);
+        return { running: true, port: 8765, id: 'me', name: 'TV Kutusu', ips: ['192.168.1.30'], paired: window.__paired || [], code: '482913' };
+      },
+      castPairClose: async () => window.__calls.push(['castPairClose']),
+      castUnpair: async ({ id }) => {
+        window.__calls.push(['castUnpair', id]);
+        window.__paired = (window.__paired || []).filter((p) => p.id !== id);
+        return { running: true };
+      },
+      castNow: async (a) => window.__calls.push(['castNow', a.title, a.kind]),
+      castDiscover: async () => ({ devices: window.__found || [] }),
+      castRequest: async (a) => {
+        const tv = (window.__tv = window.__tv || { token: 'tok123', code: '123456', played: [], cmds: [], state: { active: false } });
+        window.__calls.push(['castRequest', a.method, a.path, a.token ? 'token' : '', a.code || '']);
+        if (tv.offline) return { status: 0, body: '', error: 'zaman aşımı' };
+        if (a.path === '/hello') return { status: 200, body: JSON.stringify({ app: 'iptvpro', id: 'tv1', name: 'Salon TV', port: 8765, paired: a.token === tv.token }) };
+        if (a.path === '/pair') {
+          if (a.code === tv.code) return { status: 200, body: JSON.stringify({ token: tv.token, id: 'tv1', name: 'Salon TV' }) };
+          return { status: 403, body: '{"error":"wrong"}' };
+        }
+        if (a.token !== tv.token) return { status: 401, body: '{"error":"auth"}' };
+        if (a.path === '/play') {
+          const p = JSON.parse(a.body);
+          tv.played.push(p);
+          tv.state = { active: true, state: 'playing', pos: p.startMs || 0, dur: p.kind === 'live' ? -1 : 600000, live: p.kind === 'live', title: p.title, kind: p.kind, vol: { cur: 5, max: 15, fixed: false } };
+          return { status: 200, body: '{"ok":true}' };
+        }
+        if (a.path === '/cmd') {
+          const c = JSON.parse(a.body);
+          tv.cmds.push(c);
+          const st = tv.state;
+          if (c.a === 'toggle') st.state = st.state === 'paused' ? 'playing' : 'paused';
+          else if (c.a === 'pause') st.state = 'paused';
+          else if (c.a === 'play') st.state = 'playing';
+          else if (c.a === 'seekBy') st.pos = Math.max(0, st.pos + c.v);
+          else if (c.a === 'seekTo') st.pos = c.v;
+          else if (c.a === 'stop') tv.state = { active: false };
+          return { status: 200, body: '{"ok":true}' };
+        }
+        if (a.path === '/state') return { status: 200, body: JSON.stringify(tv.state) };
+        if (a.path === '/unpair') return { status: 200, body: '{"ok":true}' };
+        return { status: 404, body: '{}' };
+      },
       downloadApk: async ({ url }) => {
         window.__calls.push(['downloadApk', url]);
         listeners.apkProgress && listeners.apkProgress({ loaded: 500000, total: 1000000 });
@@ -1190,6 +1244,204 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(!(await page.evaluate(() => document.documentElement.classList.contains('native-preview'))), 'çoklu ekrandan çıkınca tüm kutu oynatıcıları durdu, sayfa opak');
 
   ok((await page.$('#diag')) === null, 'ekranda hata bildirimi yok');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 7f. telefondan TV'ye oynatma
+  console.log('Telefondan TV’ye oynatma');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => {
+    window.__found = [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765, paired: false }];
+  });
+  await page.click('#tabs [data-tab=movies]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card', { timeout: 15000 });
+  const movieName = await page.evaluate(() => {
+    const it = window.__iptv.S.cat.movies[0];
+    window.__iptv.store.setProgress(window.__iptv.S.source.id, { id: it.id, kind: 'movie', name: it.name, logo: it.logo }, 120000, 600000);
+    window.__movieId = it.id;
+    return it.name;
+  });
+  await page.click('.card');
+  await page.waitForSelector('#mv-play');
+  ok(await page.isVisible('#mv-cast'), 'telefonda film sayfasında “TV’de oynat” düğmesi var');
+  await page.click('#mv-cast');
+  await page.waitForSelector('.cast-row-d');
+  ok(/Yeni · kod gerekir/.test(await page.textContent('.cast-row-d')) && /Salon TV/.test(await page.textContent('.cast-row-d')), 'ağda bulunan TV listelendi, eşleşmesi yok');
+  await page.click('.cast-row-d [data-i="0"]');
+  await page.waitForSelector('#lock .lk-k');
+  const typeCode = async (c) => {
+    for (const d of c) await page.click(`#lock .lk-k[data-k="${d}"]`);
+  };
+  await typeCode('111111');
+  await page.waitForFunction(() => /Kod yanlış/.test(document.querySelector('#lk-h').textContent));
+  ok(true, 'yanlış kod reddedildi ve söylendi');
+  ok((await page.evaluate(() => window.__tv.played.length)) === 0, 'yanlış kodla oynatma gönderilmedi');
+  await typeCode('123456');
+  await page.waitForSelector('.cast-pg', { timeout: 10000 });
+  await page.waitForFunction(() => /Oynatılıyor/.test(document.querySelector('#cs-state').textContent));
+  const pl = await page.evaluate(() => window.__tv.played[0]);
+  ok(pl && pl.title === movieName && pl.kind === 'vod' && /\/movie\/u\/p\/\d+\.webm$/.test(pl.targets[0].url), 'doğru kodla eşleşti; film adı ve adresi TV’ye gitti');
+  ok(pl.startMs === 117000, 'kaldığı yerden (117 sn) gönderildi');
+  ok((await page.textContent('#cs-title')) === movieName, 'kumanda sayfası film adını gösteriyor');
+  ok((await page.textContent('#cs-pos')) === '1:57' && (await page.textContent('#cs-dur')) === '10:00', 'TV’deki konum ve süre gösteriliyor');
+  const dev = await page.evaluate(() => window.__iptv.store.pref('cast.tvs', []));
+  ok(dev.length === 1 && dev[0].token === 'tok123' && dev[0].host === '192.168.1.20', 'eşleşme telefonda saklandı');
+  ok((await page.evaluate(() => window.__iptv.store.progress(window.__iptv.S.source.id, window.__movieId))).pos === 117000, 'TV’deki ilerleme telefonda “Devam et” için kaydedildi');
+  await page.click('#cs-fwd');
+  await page.waitForFunction(() => document.querySelector('#cs-pos').textContent === '2:07', null, { timeout: 5000 });
+  ok((await page.evaluate(() => window.__tv.cmds.some((c) => c.a === 'seekBy' && c.v === 10000))), '10 sn ileri komutu TV’ye gitti ve konum güncellendi');
+  await page.click('#cs-rew');
+  await page.waitForFunction(() => document.querySelector('#cs-pos').textContent === '1:57', null, { timeout: 5000 });
+  await page.click('#cs-play');
+  await page.waitForFunction(() => /Duraklatıldı/.test(document.querySelector('#cs-state').textContent), null, { timeout: 5000 });
+  ok(await page.$eval('#cs-play', (b) => /i-play/.test(b.innerHTML)), 'duraklatınca düğme “oynat” simgesine döndü');
+  await page.click('#cs-play');
+  await page.waitForFunction(() => /Oynatılıyor/.test(document.querySelector('#cs-state').textContent), null, { timeout: 5000 });
+  await page.$eval('#cs-seek', (e) => {
+    e.value = '500';
+    e.dispatchEvent(new Event('input', { bubbles: true }));
+    e.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForFunction(() => window.__tv.cmds.some((c) => c.a === 'seekTo'), null, { timeout: 5000 });
+  ok((await page.evaluate(() => window.__tv.cmds.find((c) => c.a === 'seekTo').v)) === 300000, 'çubuğu ortaya çekmek TV’yi 5:00’e sardı');
+  await page.click('#cs-vup');
+  await page.click('#cs-vdn');
+  ok(await page.evaluate(() => window.__tv.cmds.some((c) => c.a === 'volUp') && window.__tv.cmds.some((c) => c.a === 'volDown')), 'ses komutları TV’ye gitti');
+  await page.screenshot({ path: path.join(SHOTS, '12-tv-kumanda.png') });
+  await page.click('#cs-stop');
+  await page.waitForSelector('.cast-pg', { state: 'detached' });
+  ok(await page.evaluate(() => window.__tv.cmds.some((c) => c.a === 'stop') && !window.__tv.state.active), '“TV’de durdur” TV’yi durdurdu ve kumanda kapandı');
+
+  // ikinci gönderim: eşleşme hatırlandığı için kod sorulmaz
+  await page.click('#mv-cast');
+  await page.waitForSelector('.cast-row-d');
+  ok(/Eşleşmiş · bağlanabilir/.test(await page.textContent('.cast-row-d')), 'kayıtlı TV “eşleşmiş” görünüyor');
+  await page.click('.cast-row-d [data-i="0"]');
+  await page.waitForSelector('.cast-pg', { timeout: 10000 });
+  ok((await page.$$('#lock')).length === 0 && (await page.evaluate(() => window.__tv.played.length)) === 2, 'ikinci gönderimde kod istenmedi');
+  // yanlışlıkla geri çıkılırsa: TV hâlâ oynuyor, listeden “Kumandayı aç” ile yeniden gönderilmeden dönülür
+  await page.click('.cast-pg [data-close]');
+  await page.waitForSelector('.cast-pg', { state: 'detached' });
+  await page.click('#mv-cast');
+  await page.waitForSelector('.cast-row-d [data-remote]', { timeout: 8000 });
+  ok(/Şu an: /.test(await page.textContent('.cast-row-d')), 'TV’nin şu an oynattığı listede görünüyor');
+  await page.click('.cast-row-d [data-remote]');
+  await page.waitForSelector('.cast-pg', { timeout: 10000 });
+  await page.waitForFunction(() => /Oynatılıyor|Duraklatıldı/.test(document.querySelector('#cs-state').textContent), null, { timeout: 5000 });
+  ok((await page.evaluate(() => window.__tv.played.length)) === 2 && (await page.textContent('#cs-title')) === movieName, '“Kumandayı aç” yeniden göndermeden kumandaya döndü');
+  // TV kapanınca / oynatma bitince kumanda kendiliğinden kapanır
+  await page.evaluate(() => (window.__tv.state = { active: false }));
+  await page.waitForSelector('.cast-pg', { state: 'detached', timeout: 8000 });
+  ok(true, 'TV’de oynatma bitince kumanda sayfası kapandı');
+  await page.click('.dt-pg [data-close]');
+
+  // oynatıcıdan gönderme (canlı): yerel oynatma kapanır, kanal değiştirme düğmeleri çıkar
+  await page.click('#tabs [data-tab=live]');
+  await page.waitForSelector('.row', { timeout: 15000 });
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.row:not(.cat)');
+  await page.click('.row:not(.cat) .nm');
+  await page.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'));
+  await page.waitForSelector('#pl-tv:not([hidden])', { timeout: 5000 });
+  ok(true, 'oynatıcıda “TV’de oynat” düğmesi göründü');
+  const liveName = await page.textContent('#pl-name');
+  await page.evaluate(() => (window.__calls.length = 0));
+  await page.click('#pl-tv');
+  await page.waitForSelector('.cast-row-d');
+  await page.click('.cast-row-d [data-i="0"]');
+  await page.waitForSelector('.cast-pg', { timeout: 10000 });
+  await page.waitForFunction(() => /Oynatılıyor/.test(document.querySelector('#cs-state').textContent));
+  const lp = await page.evaluate(() => window.__tv.played[2]);
+  ok(lp.kind === 'live' && lp.title === liveName && /\.m3u8$/.test(lp.targets[0].url) && lp.startMs === 0, 'canlı kanal TV’ye gönderildi');
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'stop')), 'telefondaki oynatma durduruldu');
+  ok(await page.$eval('#cs-prog', (e) => e.hidden) && await page.$eval('#cs-rew', (e) => e.hidden), 'canlıda sarma çubuğu ve 10 sn düğmeleri yok');
+  ok(await page.isVisible('#cs-next') && await page.isVisible('#cs-prev'), 'canlıda önceki/sonraki kanal düğmeleri var');
+  await page.click('#cs-next');
+  await page.waitForFunction(() => window.__tv.played.length === 4, null, { timeout: 5000 });
+  ok((await page.evaluate(() => window.__tv.played[3].title)) !== liveName, 'telefondan sonraki kanala geçildi');
+  await page.waitForFunction((n) => document.querySelector('#cs-title').textContent !== n, liveName);
+  await page.evaluate(() => (window.__tv.offline = true));
+  await page.waitForSelector('.cast-pg', { state: 'detached', timeout: 10000 });
+  ok(true, 'TV’ye ulaşılamayınca kumanda kapandı');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // eşleşmesi kaldırılmış telefon
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => {
+    window.__iptv.store.setPref('cast.tvs', [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765, token: 'eski' }]);
+    window.__found = [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765 }];
+  });
+  await page.click('#tabs [data-tab=movies]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card', { timeout: 15000 });
+  await page.click('.card');
+  await page.waitForSelector('#mv-cast');
+  await page.click('#mv-cast');
+  await page.waitForSelector('.cast-row-d');
+  await page.click('.cast-row-d [data-i="0"]');
+  await page.waitForFunction(() => /eşleşmesi kaldırılmış/.test(document.querySelector('#toast').textContent), null, { timeout: 5000 });
+  ok(((await page.evaluate(() => window.__iptv.store.pref('cast.tvs', []))).length) === 0, 'TV eşleşmeyi kaldırmışsa telefon da unutur ve yeniden eşleştirmeyi ister');
+  await ctx.close();
+
+  // TV tarafı (alıcı)
+  ({ page, ctx, errs } = await newPage({ width: 915, height: 412 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'castStart'))), 'telefonda alıcı kendiliğinden açılmıyor');
+  await page.evaluate(() => localStorage.setItem('__isTv', '1'));
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castStart'), null, { timeout: 5000 });
+  ok(true, 'TV’de uygulama açılınca alıcı kendiliğinden başladı');
+  await page.evaluate(() => window.__emit('castPlay', { title: 'Evdeki Film', kind: 'vod', startMs: 65000, targets: [{ url: 'file:///etc/passwd' }] }));
+  await sleep(300);
+  ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'play'))), 'geçersiz (dosya adresli) istek oynatılmadı');
+  await page.evaluate(() => window.__emit('castPlay', { title: 'Evdeki Film', kind: 'vod', startMs: 65000, targets: [{ url: 'http://192.168.1.50/m/film.mp4', mime: 'auto' }] }));
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'), null, { timeout: 5000 });
+  const tp = await page.evaluate(() => window.__calls.find((c) => c[0] === 'play'));
+  ok(tp[1] === 'http://192.168.1.50/m/film.mp4', 'gelen adres TV’nin oynatıcısında açıldı');
+  ok((await page.textContent('#pl-name')) === 'Evdeki Film' && /Telefondan oynatılıyor/.test(await page.textContent('#pl-sub')), 'TV oynatıcısı adı ve “Telefondan oynatılıyor” bilgisini gösteriyor');
+  ok(await page.$eval('#pl-tv', (b) => b.hidden || getComputedStyle(b).display === 'none') && await page.$eval('#pl-fav', (b) => b.hidden), 'TV’de “TV’de oynat” ve favori düğmeleri yok');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castNow' && c[1] === 'Evdeki Film'), null, { timeout: 5000 });
+  ok(true, 'çalan medyanın adı kumanda için eklentiye bildirildi');
+  ok(!(await page.evaluate(() => window.__iptv.store.progress(window.__iptv.S.source.id, 'cast:x') || window.__iptv.store.recents(window.__iptv.S.source.id).some((r) => /Evdeki/.test(r.name)))), 'TV’de gelen oynatma son izlenenlere/ilerlemeye yazılmadı');
+  await page.evaluate(() => window.__emit('castStop', {}));
+  await page.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
+  ok(true, 'telefondan “durdur” gelince TV oynatıcıyı kapattı');
+  // Ayarlar › Telefondan oynat
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=cast]');
+  await page.waitForSelector('.cast-code');
+  ok((await page.textContent('.cast-code')).replace(/\s/g, '') === '482913', 'TV ekranında 6 haneli eşleştirme kodu gösteriliyor');
+  ok(/192\.168\.1\.30/.test(await page.textContent('#rc-body')), 'elle bağlanmak için TV’nin adresi gösteriliyor');
+  await page.evaluate(() => (window.__paired = [{ id: 'abcd1234', name: 'Ali’nin Telefonu' }]));
+  await page.waitForSelector('.rec-row:has-text("Ali’nin Telefonu")', { timeout: 5000 });
+  await page.click('[data-un="abcd1234"]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castUnpair' && c[1] === 'abcd1234'), null, { timeout: 5000 });
+  ok(true, 'eşleşmiş telefon listeden kaldırılabiliyor');
+  await page.click('.sheet [data-close]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castPairClose'), null, { timeout: 6000 });
+  ok(true, 'ekran kapanınca eşleştirme kodu kapatıldı');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 

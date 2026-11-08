@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 7,
+    title: 'Telefondan TV’ye oynatma',
+    items: [
+      'Telefondaki uygulamadan film veya kanalı aynı Wi‑Fi’deki TV’ye gönderin: film sayfasında ya da oynatıcıda “TV’de oynat”',
+      'Telefon uzaktan kumanda olur: oynat/duraklat, 10 sn ileri-geri, konum çubuğu, ses, durdur; canlıda kanal değiştirme',
+      'TV’de Ayarlar › Telefondan oynat: bir kereye mahsus eşleştirme kodu gösterir; film adı ve ilerleme TV ekranında görünür',
+    ],
+  },
+  {
     id: 6,
     title: 'Yeni ad ve ikon, yedekleme',
     items: ['Uygulamanın adı “Iptv Player Pro” oldu, yeni ikon', 'Ayarlar › Genel ayarlar › Yedekle / geri yükle: kaynaklar, favoriler, kategori düzeni ve ayarlar tek dosyaya kaydedilir, yeni cihazda geri yüklenir', 'Yenilikler: güncellemeden sonra neler eklendiği burada gösterilir'],

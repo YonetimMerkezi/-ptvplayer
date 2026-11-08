@@ -185,3 +185,32 @@ test('yayın kaydı yöntemleri köprüde de var', () => {
     assert.equal(typeof pl[m], 'function', `${m} köprüde yok`);
   }
 });
+
+test('telefondan TV\'ye oynatma: yöntemler köprüde, sunucu eşleşmesiz isteği ve yanlış kod denemelerini reddeder', () => {
+  const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
+  for (const m of ['castStart', 'castStop', 'castInfo', 'castPairOpen', 'castPairClose', 'castUnpair', 'castNow', 'castDiscover', 'castRequest']) {
+    assert.match(kaynak, new RegExp(`public void ${m}\\(`), `${m} Java'da yok`);
+    assert.equal(typeof pl[m], 'function', `${m} köprüde yok`);
+  }
+  const sunucu = oku('CastServer.java');
+  // oynat, komut, durum ve eşleşme kaldırma token ister
+  for (const yol of ['GET /state', 'POST /play', 'POST /cmd', 'POST /unpair']) {
+    const i = sunucu.indexOf(`case "${yol}"`);
+    assert.ok(i > 0, `${yol} yok`);
+    assert.match(sunucu.slice(i, i + 220), /!authed\) return response\(401/, `${yol} token denetimsiz`);
+  }
+  assert.match(sunucu, /MAX_PAIR_FAILS = 5/);
+  assert.match(sunucu, /pairFails\.incrementAndGet\(\) >= MAX_PAIR_FAILS\) pairCode = null/, 'çok yanlış denemede kod iptal edilmeli');
+  assert.match(sunucu, /MessageDigest\.isEqual/, 'kod sabit zamanlı karşılaştırılmalı');
+  assert.match(sunucu, /pairCode = null;\s*persist\(\)/, 'kod tek kullanımlık olmalı');
+  assert.match(sunucu, /MAX_BODY = 64 \* 1024/);
+  assert.doesNotMatch(sunucu, /Access-Control-Allow-Origin/, 'web sayfalarının erişimine açılmamalı (CORS yok)');
+  const istemci = oku('CastClient.java');
+  assert.match(istemci, /if \(!isLanHost\(host\)\) return new Response/, 'yalnız yerel ağ adreslerine istek atılmalı');
+  assert.match(kaynak, /case "stop":[\s\S]*?"castStop"/);
+  assert.match(kaynak, /o\.optJSONArray\("targets"\) == null/, 'adressiz oynatma isteği reddedilmeli');
+  assert.match(kaynak, /handleOnDestroy\(\)[\s\S]*?cast\.stop\(\)/, 'uygulama kapanınca alıcı kapanmalı');
+  const manifest = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/AndroidManifest.xml'), 'utf8');
+  assert.match(manifest, /android\.permission\.CHANGE_WIFI_MULTICAST_STATE/, 'TV\'nin UDP ile bulunması için çoklu yayın kilidi izni');
+  assert.match(kaynak, /holdMulticast\(false\)/, 'alıcı kapanınca çoklu yayın kilidi bırakılmalı');
+});

@@ -523,3 +523,31 @@ html.tv .lk-box { width: min(60vh, 420px); }
 html.tv .lk-k { height: 56px; }
 html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 3px var(--accent), 0 0 20px var(--accent-soft); }
 @media (orientation: landscape) and (max-height: 520px) { .lk-box { gap: 6px; } .lk-k { height: 44px; font-size: 1.25rem; } .lk-pad { gap: 6px; } }
+
+/* Telefondan TV'ye oynatma */
+.cast { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 18px 16px 32px; max-width: 520px; margin: 0 auto; }
+.cast [hidden] { display: none !important; }
+.cast-now { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 100%; }
+.cast-ic { width: 72px; height: 72px; border-radius: 36px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 4px; }
+.cast-ic .ic { width: 38px; height: 38px; }
+.cast-now b { font-size: 1.25rem; overflow-wrap: anywhere; }
+.cast-now span { color: var(--accent); font-weight: 600; }
+.cast-now small { color: var(--muted); }
+.cast-prog { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.cast-prog input { flex: 1; min-width: 0; accent-color: var(--accent); height: 32px; }
+.cast-btns { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.cast .big-btn { background: var(--raised); color: var(--text); }
+.cast .big-btn.lg { background: var(--accent); color: var(--accent-ink, #04202c); }
+.cast-vol { display: flex; gap: 12px; }
+.cast .tool { background: var(--raised); color: var(--text); }
+.cast-stop { width: 100%; }
+.cast-row-d { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+.cast-row-d .rec-play { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center; padding: 12px 8px; text-align: left; }
+.cast-row-d .rec-play .ic { grid-row: span 2; width: 28px; height: 28px; color: var(--accent); }
+.cast-row-d .rec-play .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.cast-row-d .rec-play small { color: var(--muted); font-size: 0.8125rem; }
+.cast-add { display: flex; gap: 8px; margin: 14px 0 6px; }
+.cast-add input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+.cast-add input:focus { outline: none; border-color: var(--accent); }
+.cast-code { font-size: 3rem; font-weight: 800; letter-spacing: 0.1em; text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; padding: 12px 0 6px; }
+html.tv #pl-tv, html.tv #mv-cast { display: none; }

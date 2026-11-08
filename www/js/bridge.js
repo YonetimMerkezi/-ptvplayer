@@ -39,5 +39,14 @@ export function nativePlugin(name, win = globalThis.window) {
     recordStop: call('recordStop'),
     recordList: call('recordList'),
     recordDelete: call('recordDelete'),
+    castStart: call('castStart'),
+    castStop: call('castStop'),
+    castInfo: call('castInfo'),
+    castPairOpen: call('castPairOpen'),
+    castPairClose: call('castPairClose'),
+    castUnpair: call('castUnpair'),
+    castNow: call('castNow'),
+    castDiscover: call('castDiscover'),
+    castRequest: call('castRequest'),
   };
 }

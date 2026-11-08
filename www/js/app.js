@@ -29,6 +29,7 @@ import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { createPinPad } from './lockui.js';
+import { createCastUI } from './cast-ui.js';
 import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
@@ -108,6 +109,8 @@ const pui = createPlayerUI({
     recStart: (item, maxMs) => engine.rec.start(item.name, maxMs),
     recStop: () => engine.rec.stop(),
     playRecording: (r, ctx) => startPlay(recItem(r), { ctx }),
+    canCast: () => !!nativePlugin && !isTvUi(),
+    castTo: (st, ctx) => castItem(st.item, st.ep, { startMs: st.pos, ctx, closePlayer: true }),
     epg: (it) => S.epg.nowNext(it),
     shortEpg: (it) => (S.source ? loadShortEpg(S.source, net, it, 4).catch(() => []) : Promise.resolve([])),
     isFav: (it) => !!S.source && store.isFav(S.source.id, it.id),
@@ -125,18 +128,24 @@ const pui = createPlayerUI({
   },
 });
 
-player.onProgress((pos, dur, st) => {
-  if (!S.source || st.item.kind === 'live' || st.item.kind === 'recording') return;
-  const e = st.ep
-    ? { id: st.ep.id, kind: 'episode', name: `${st.item.name} · ${st.ep.label}`, logo: st.item.logo, parent: st.item.id }
-    : { id: st.item.id, kind: st.item.kind, name: st.item.name, logo: st.item.logo };
+// İzleme ilerlemesi kaydı (bu cihazda ya da TV'ye gönderilen oynatmada telefon yoklamasından).
+function saveProgress(item, ep, pos, dur) {
+  if (!S.source) return;
+  const e = ep
+    ? { id: ep.id, kind: 'episode', name: `${item.name} · ${ep.label}`, logo: item.logo, parent: item.id }
+    : { id: item.id, kind: item.kind, name: item.name, logo: item.logo };
   store.setProgress(S.source.id, e, pos, dur);
   S.prog = store.progressAll(S.source.id);
+}
+
+player.onProgress((pos, dur, st) => {
+  if (!S.source || st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
+  saveProgress(st.item, st.ep, pos, dur);
 });
 
 // Açılamayan canlı kanal işaretlenir; yedek adres oynadıysa asıl kanal da işaretlenir, asıl oynarsa işaret kalkar.
 player.on((st) => {
-  if (!S.source || !st.item || st.item.kind !== 'live' || !st.targets) return;
+  if (!S.source || !st.item || st.item.kind !== 'live' || st.item.cast || !st.targets) return;
   if (st.status === 'error') {
     if (typeof navigator === 'undefined' || navigator.onLine !== false) markBad(st.item.id, true);
   } else if (st.status === 'playing') {
@@ -159,6 +168,7 @@ player.on((st) => {
 // ------------------------------------------------------------------ yardımcılar
 
 const sid = () => (S.source ? S.source.id : '');
+const isTvUi = () => document.documentElement.classList.contains('tv');
 const isFav = (it) => store.isFav(sid(), it.id);
 
 function banner(text, { err = false, spin = false } = {}) {
@@ -927,11 +937,13 @@ function openMovie(it) {
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   return openPage({
     cls: 'dt-pg',
-    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
+    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
     mount: (body) => {
       $('#mv-play', body).addEventListener('click', () => startPlay(it));
       const st = $('#mv-start', body);
       if (st) st.addEventListener('click', () => startPlay(it, { startAt: 0 }));
+      const cb = $('#mv-cast', body);
+      if (cb) cb.addEventListener('click', () => castItem(it, null, { startMs: p && p.pos > 0 ? Math.max(0, p.pos - 3000) : 0 }));
       $('#mv-fold', body).addEventListener('click', () => folderSheet('movie', it));
       $('#mv-fav', body).addEventListener('click', () => {
         toggleFav(it);
@@ -1112,7 +1124,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1126,6 +1138,7 @@ function onSourcesClick(e) {
     if (k === 'auto') return autoSheet();
     if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
+    if (k === 'cast') return castUi.receiverSheet();
     if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
   }
   const b = e.target.closest('[data-a], #src-add, #clr-rec');
@@ -2327,6 +2340,59 @@ function backupSheet() {
 // ------------------------------------------------------------------ uygulama şifresi
 
 const pad = createPinPad();
+
+// ------------------------------------------------------------------ telefondan TV'ye oynatma
+
+// Gönderen (telefon): seçilen TV'de oynatır, kumanda sayfasını açar. Alıcı (TV): gelen isteği oynatıcıda açar.
+const castUi = createCastUI({
+  plugin: nativePlugin,
+  store,
+  pad,
+  toast,
+  icon,
+  esc,
+  openSheet,
+  openPage,
+  fmtDuration,
+  isTv: () => isTvUi() || tvDetected,
+  playCast: ({ item, targets, startAt }) => pui.open(item, targets, { ep: null, startAt, ctx: null }),
+  stopCast: () => {
+    if (pui.isOpen()) pui.close();
+  },
+});
+
+function castItem(item, ep, { startMs = 0, ctx = null, closePlayer = false } = {}) {
+  const targets = targetsOf(item, ep);
+  if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
+  if (item.kind !== 'series' && item.kind !== 'recording') store.pushRecent(sid(), item);
+  const live = item.kind === 'live';
+  let idx = ctx && live ? ctx.index : -1;
+  castUi.sendToTv({
+    item,
+    ep,
+    targets,
+    startMs: live ? 0 : startMs,
+    onSent: async () => {
+      if (!closePlayer || !pui.isOpen()) return;
+      pui.close();
+      for (let i = 0; i < 50 && pui.isOpen(); i++) await new Promise((r) => setTimeout(r, 20)); // geri gidiş bitmeden yeni sayfa açılırsa o da kapanır
+    },
+    onProgress: live ? null : (pos, dur) => saveProgress(item, ep, pos, dur),
+    // canlıda telefondan kanal değiştirme: bulunduğumuz listede bir önceki/sonraki kanal
+    step:
+      ctx && live && ctx.items.length > 1
+        ? (d) => {
+            const i = idx + d;
+            if (i < 0 || i >= ctx.items.length) return null;
+            const it = ctx.items[i];
+            const t = targetsOf(it);
+            if (!t.length) return null;
+            idx = i;
+            return { item: it, targets: t };
+          }
+        : null,
+  });
+}
 const pinRec = () => store.pref('lock.pin', null);
 const lockEnabled = () => !!(pinRec() && pinRec().hash);
 const catKey = (kind, id) => kind + '|' + id;
@@ -2503,8 +2569,11 @@ if (nativePlugin) {
   nativePlugin.isTv().then((r) => {
     tvDetected = tvDetected || !!(r && r.tv);
     applyTvMode();
+    castUi.startReceiver(); // TV'de varsayılan açık: telefondan gelen oynatma isteklerini karşılar
   }).catch(() => {});
   nativePlugin.addListener('remote', (e) => e && e.key && dpad.sendKey(e.key)).catch(() => {}); // kanal +/-, medya, menü tuşları
+  castUi.listen();
+  player.on((st) => castUi.nowPlaying(st));
 }
 
 initNav();

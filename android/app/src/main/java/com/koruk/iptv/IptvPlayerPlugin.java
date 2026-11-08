@@ -6,11 +6,13 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Environment;
@@ -55,6 +57,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.security.SecureRandom;
+import java.util.List;
+import java.util.UUID;
+import org.json.JSONException;
+import org.json.JSONObject;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -85,6 +93,17 @@ public class IptvPlayerPlugin extends Plugin {
     private PlayerView playerView;
     private ExoPlayer player;
     private String curUrl = "";
+    // Telefondan TV'ye oynatma (alıcı): durum anlık görüntüsü ana iş parçacığında güncellenir, sunucu iş parçacığı okur.
+    private CastServer cast;
+    private volatile boolean castActive = false;
+    private volatile String castState = "idle";
+    private volatile boolean castLive = false;
+    private volatile long castPos = 0;
+    private volatile long castDur = -1;
+    private volatile String castTitle = "";
+    private volatile String castKind = "";
+    private volatile boolean foreground = true;
+    private WifiManager.MulticastLock castLock; // bazı cihazlar uyku/ekran kapalıyken yayın paketlerini (UDP) süzer; TV'nin bulunması için tutulur
     private boolean ticking = false;
 
     private final Runnable tick = new Runnable() {
@@ -176,6 +195,8 @@ public class IptvPlayerPlugin extends Plugin {
         releasePlayer();
         ensureView();
         curUrl = url;
+        castActive = true;
+        castState = "buffering";
 
         player = buildExo(headers, true, loadControlFor(buffer), true);
         player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
@@ -320,6 +341,10 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     private void releasePlayer() {
+        castActive = false;
+        castState = "idle";
+        castPos = 0;
+        castDur = -1;
         if (player != null) {
             if (playerView != null) playerView.setPlayer(null);
             player.release();
@@ -921,6 +946,8 @@ public class IptvPlayerPlugin extends Plugin {
         else if (s == Player.STATE_BUFFERING) name = "buffering";
         else if (s == Player.STATE_ENDED) name = "ended";
         else name = player.isPlaying() ? "playing" : (player.getPlayWhenReady() ? "buffering" : "paused");
+        castState = name;
+        castLive = player.isCurrentMediaItemLive();
         JSObject o = new JSObject();
         o.put("state", name);
         o.put("playing", player.isPlaying());
@@ -932,6 +959,8 @@ public class IptvPlayerPlugin extends Plugin {
         if (player == null) return;
         JSObject o = new JSObject();
         long dur = player.getDuration();
+        castPos = player.getCurrentPosition();
+        castDur = dur == C.TIME_UNSET ? -1L : dur;
         o.put("pos", player.getCurrentPosition());
         o.put("dur", dur == C.TIME_UNSET ? -1L : dur);
         o.put("buffered", player.getBufferedPosition());
@@ -1179,10 +1208,321 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+
+    // ------------------------------------------------------------------ telefondan TV'ye oynatma
+
+    private SharedPreferences castPrefs() {
+        return getContext().getSharedPreferences("cast", Context.MODE_PRIVATE);
+    }
+
+    private String castDeviceId() {
+        SharedPreferences sp = castPrefs();
+        String id = sp.getString("id", "");
+        if (id.isEmpty()) {
+            id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+            sp.edit().putString("id", id).apply();
+        }
+        return id;
+    }
+
+    private Map<String, String> castLoadTokens() {
+        Map<String, String> m = new HashMap<>();
+        try {
+            JSONObject o = new JSONObject(castPrefs().getString("tokens", "{}"));
+            Iterator<String> it = o.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                m.put(k, o.optString(k, "Telefon"));
+            }
+        } catch (JSONException ignored) {
+            // bozuk kayıt: eşleşmeler yok sayılır
+        }
+        return m;
+    }
+
+    private void castSaveTokens(Map<String, String> tokens) {
+        JSONObject o = new JSONObject();
+        try {
+            for (Map.Entry<String, String> e : tokens.entrySet()) o.put(e.getKey(), e.getValue());
+        } catch (JSONException ignored) {
+            // anahtar/değer her zaman geçerli
+        }
+        castPrefs().edit().putString("tokens", o.toString()).apply();
+    }
+
+    private JSObject castInfoObject() {
+        JSObject o = new JSObject();
+        o.put("running", cast != null && cast.isRunning());
+        if (cast != null && cast.isRunning()) {
+            o.put("port", cast.port());
+            o.put("id", cast.id());
+            o.put("name", cast.name());
+            o.put("pairing", cast.pairingOpen());
+            JSArray ips = new JSArray();
+            for (String ip : CastServer.localAddresses()) ips.put(ip);
+            o.put("ips", ips);
+            JSArray pl = new JSArray();
+            for (String[] p : cast.paired()) {
+                JSObject d = new JSObject();
+                d.put("id", p[0]);
+                d.put("name", p[1]);
+                pl.put(d);
+            }
+            o.put("paired", pl);
+        }
+        return o;
+    }
+
+    private final CastServer.Host castHost = new CastServer.Host() {
+        @Override
+        public String onPlay(String body, String from) {
+            final JSObject o;
+            try {
+                o = new JSObject(body);
+            } catch (JSONException e) {
+                return "Geçersiz istek";
+            }
+            if (o.optJSONArray("targets") == null || o.optJSONArray("targets").length() == 0) return "Oynatma adresi yok";
+            main.post(() -> {
+                if (!foreground) bringToFront();
+                notifyListeners("castPlay", o);
+            });
+            return null;
+        }
+
+        @Override
+        public String onCommand(String body) {
+            return castCommand(body);
+        }
+
+        @Override
+        public String state() {
+            return castStateJson();
+        }
+
+        @Override
+        public void onTokens(Map<String, String> tokens) {
+            castSaveTokens(tokens);
+        }
+    };
+
+    private void holdMulticast(boolean on) {
+        try {
+            if (on && castLock == null) {
+                WifiManager wm = (WifiManager) getContext().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    castLock = wm.createMulticastLock("iptvpro-cast");
+                    castLock.setReferenceCounted(false);
+                    castLock.acquire();
+                }
+            } else if (!on && castLock != null) {
+                if (castLock.isHeld()) castLock.release();
+                castLock = null;
+            }
+        } catch (RuntimeException ignored) {
+            // izin/Wi-Fi yoksa bulma yayını yine de çoğu cihazda çalışır; elle IP kalır
+        }
+    }
+
+    private void bringToFront() {
+        try {
+            Intent i = new Intent(getContext(), MainActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            getContext().startActivity(i);
+        } catch (RuntimeException ignored) {
+            // Android 10+ arka plandan açmayı engelleyebilir; uygulama açıkken çalışır
+        }
+    }
+
+    private String castCommand(String body) {
+        final JSONObject o;
+        try {
+            o = new JSONObject(body);
+        } catch (JSONException e) {
+            return "Geçersiz komut";
+        }
+        final String a = o.optString("a", "");
+        final long v = o.optLong("v", 0L);
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        switch (a) {
+            case "pause":
+            case "play":
+            case "toggle":
+            case "seekBy":
+            case "seekTo":
+                main.post(() -> {
+                    if (player == null) return;
+                    if ("pause".equals(a)) {
+                        player.setPlayWhenReady(false);
+                    } else if ("play".equals(a) || ("toggle".equals(a) && !player.getPlayWhenReady())) {
+                        if (player.getPlaybackState() == Player.STATE_ENDED) player.seekTo(0);
+                        player.setPlayWhenReady(true);
+                    } else if ("toggle".equals(a)) {
+                        player.setPlayWhenReady(false);
+                    } else if (!player.isCurrentMediaItemLive()) {
+                        long dur = player.getDuration();
+                        long t = "seekBy".equals(a) ? player.getCurrentPosition() + v : v;
+                        if (dur != C.TIME_UNSET) t = Math.min(t, dur);
+                        player.seekTo(Math.max(0L, t));
+                    }
+                });
+                return null;
+            case "stop":
+                main.post(() -> notifyListeners("castStop", new JSObject()));
+                return null;
+            case "volUp":
+            case "volDown":
+                if (am == null) return "Ses ayarlanamıyor";
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, "volUp".equals(a) ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                return null;
+            case "setVol":
+                if (am == null) return "Ses ayarlanamıyor";
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, (int) Math.max(0, Math.min(am.getStreamMaxVolume(AudioManager.STREAM_MUSIC), v)), AudioManager.FLAG_SHOW_UI);
+                return null;
+            default:
+                return "Bilinmeyen komut";
+        }
+    }
+
+    private String castStateJson() {
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        int cur = 0;
+        int max = 0;
+        boolean fixed = false;
+        if (am != null) {
+            cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+            max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            fixed = Build.VERSION.SDK_INT >= 21 && am.isVolumeFixed();
+        }
+        return "{\"active\":" + castActive + ",\"state\":" + CastServer.q(castState) + ",\"pos\":" + castPos + ",\"dur\":" + castDur + ",\"live\":" + castLive
+                + ",\"title\":" + CastServer.q(castTitle) + ",\"kind\":" + CastServer.q(castKind) + ",\"vol\":{\"cur\":" + cur + ",\"max\":" + max + ",\"fixed\":" + fixed + "}}";
+    }
+
+    // Alıcıyı açar (TV'de ayar açıksa uygulama başlarken çağrılır). Eşleşmiş telefonlar korunur.
+    @PluginMethod
+    public void castStart(final PluginCall call) {
+        final String name = call.getData().optString("name", "");
+        io.execute(() -> {
+            try {
+                if (cast == null) cast = new CastServer(castHost, castDeviceId(), name.isEmpty() ? Build.MODEL : name);
+                else cast.setName(name);
+                if (!cast.isRunning()) cast.start(CastServer.PORT, castLoadTokens());
+                holdMulticast(true);
+                call.resolve(castInfoObject());
+            } catch (Exception e) {
+                call.reject("Alıcı açılamadı: " + e.getMessage());
+            }
+        });
+    }
+
+    @PluginMethod
+    public void castStop(final PluginCall call) {
+        io.execute(() -> {
+            if (cast != null) cast.stop();
+            holdMulticast(false);
+            call.resolve(castInfoObject());
+        });
+    }
+
+    @PluginMethod
+    public void castInfo(final PluginCall call) {
+        call.resolve(castInfoObject());
+    }
+
+    // TV ekranında gösterilecek 6 haneli eşleştirme kodunu açar (5 dakika geçerli, tek kullanımlık).
+    @PluginMethod
+    public void castPairOpen(final PluginCall call) {
+        if (cast == null || !cast.isRunning()) {
+            call.reject("Alıcı kapalı");
+            return;
+        }
+        String code = String.format("%06d", new SecureRandom().nextInt(1000000));
+        cast.openPairing(code, 5 * 60_000L);
+        JSObject o = castInfoObject();
+        o.put("code", code);
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void castPairClose(final PluginCall call) {
+        if (cast != null) cast.closePairing();
+        call.resolve(castInfoObject());
+    }
+
+    @PluginMethod
+    public void castUnpair(final PluginCall call) {
+        if (cast != null) cast.unpair(call.getData().optString("id", ""));
+        call.resolve(castInfoObject());
+    }
+
+    // Çalan şeyin adı (TV'nin kendi oynatması dahil); telefon uzaktan kumandası bunu gösterir.
+    @PluginMethod
+    public void castNow(final PluginCall call) {
+        castTitle = call.getData().optString("title", "");
+        castKind = call.getData().optString("kind", "");
+        call.resolve();
+    }
+
+    // Ağdaki TV alıcılarını arar.
+    @PluginMethod
+    public void castDiscover(final PluginCall call) {
+        final int timeout = Math.max(300, Math.min(4000, call.getData().optInt("timeoutMs", 1500)));
+        io.execute(() -> {
+            try {
+                List<CastClient.Found> found = CastClient.discover(CastServer.PORT, timeout, null);
+                JSArray arr = new JSArray();
+                for (CastClient.Found f : found) {
+                    try {
+                        JSObject d = new JSObject(f.json);
+                        d.put("host", f.host);
+                        d.put("port", f.port);
+                        arr.put(d);
+                    } catch (JSONException ignored) {
+                        // bozuk yanıt yok sayılır
+                    }
+                }
+                JSObject o = new JSObject();
+                o.put("devices", arr);
+                call.resolve(o);
+            } catch (Exception e) {
+                call.reject("Arama yapılamadı: " + e.getMessage());
+            }
+        });
+    }
+
+    // TV alıcısına HTTP isteği: { host, port, method, path, token, code, name, body, timeoutMs } → { status, body, error }.
+    @PluginMethod
+    public void castRequest(final PluginCall call) {
+        final JSONObject d = call.getData();
+        io.execute(() -> {
+            Map<String, String> h = new HashMap<>();
+            String token = d.optString("token", "");
+            if (!token.isEmpty()) h.put("X-Token", token);
+            String code = d.optString("code", "");
+            if (!code.isEmpty()) h.put("X-Code", code);
+            if (!code.isEmpty()) {
+                String n = d.optString("name", "");
+                if (n.isEmpty()) n = Build.MODEL;
+                try {
+                    h.put("X-Name", URLEncoder.encode(n, "UTF-8").replace("+", "%20"));
+                } catch (Exception ignored) {
+                    // ad gönderilmez
+                }
+            }
+            CastClient.Response r = CastClient.request(d.optString("host", ""), d.optInt("port", CastServer.PORT), d.optString("method", "GET"), d.optString("path", "/"), h, d.optString("body", ""), Math.max(500, Math.min(10000, d.optInt("timeoutMs", 4000))));
+            JSObject o = new JSObject();
+            o.put("status", r.status);
+            o.put("body", r.body);
+            if (r.error != null) o.put("error", r.error);
+            call.resolve(o);
+        });
+    }
+
     // ------------------------------------------------------------------ yaşam döngüsü
 
     @Override
     protected void handleOnStop() {
+        foreground = false;
         if (player == null) return;
         // Kayıt sürerken yayın arka planda da akar (sessiz); yoksa duraklatılır.
         if (StreamRecorder.active()) player.setVolume(0f);
@@ -1191,12 +1531,15 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     protected void handleOnResume() {
+        foreground = true;
         if (player != null) player.setVolume(1f);
     }
 
     @Override
     protected void handleOnDestroy() {
         main.removeCallbacksAndMessages(null);
+        if (cast != null) cast.stop();
+        holdMulticast(false);
         StreamRecorder.stop(null);
         stopAllSlots();
         releasePlayer();
