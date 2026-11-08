@@ -323,7 +323,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
   const play = await page.evaluate(() => window.__calls.find((c) => c[0] === 'play'));
   ok(/\.m3u8$/.test(play[1]) && play[2] === 'hls', 'yerel oynatıcı HLS adresiyle başlatıldı');
-  ok(await page.evaluate(() => document.body.classList.contains('native-playing')), 'gövde saydam kipe geçti (video arkada)');
+  ok(await page.evaluate(() => document.documentElement.classList.contains('native-playing')), 'yerel oynatma kipi açıldı (video arkada)');
+  // Video WebView'ın ARKASINDA; oynatıcıdan <html>'e kadar hiçbir üst öğenin dolgusu opak olmamalı (aksi hâlde video görünmez).
+  const opak = await page.evaluate(() => {
+    const kotu = [];
+    for (let el = document.querySelector('#player'); el; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/);
+      const alfa = m ? (m[1].split(',').length > 3 ? parseFloat(m[1].split(',')[3]) : 1) : 0;
+      if (alfa > 0 || cs.backgroundImage !== 'none') kotu.push((el.id ? '#' + el.id : el.tagName.toLowerCase()) + ' ' + cs.backgroundColor);
+    }
+    return kotu;
+  });
+  ok(opak.length === 0, 'oynatıcının arkası saydam (html dahil)' + (opak.length ? ': ' + opak.join(', ') : ''));
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'immersive' && c[1] === true)), 'tam ekran istendi');
   await page.waitForFunction(() => document.querySelector('#pl-audio:not([hidden])'));
   await page.click('#pl-audio');
@@ -332,7 +344,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, '11-yerel-kip-oynatici.png') });
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
-  ok(await page.evaluate(() => !document.body.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
+  ok(await page.evaluate(() => !document.documentElement.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
   ok((await page.$('#diag')) === null, 'ekranda hata bildirimi yok');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();

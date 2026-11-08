@@ -20,9 +20,9 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; overscroll-behavior: none; }
-body.native-playing, body.native-playing html { background: transparent; }
-body.native-playing { background: transparent; }
-body.native-playing #app, body.native-playing #sheets .sheet-back:not(.over-player) { visibility: hidden; }
+/* Android'de video WebView'ın arkasındaki yerel görünümde oynar: html ve body saydam olmalı (sınıf <html> üzerinde). */
+html.native-playing, html.native-playing body { background: transparent; }
+html.native-playing #app, html.native-playing #sheets .sheet-back:not(.over-player) { visibility: hidden; }
 .sheet-back.over-player { z-index: 70; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 input, select, textarea { font: inherit; color: var(--text); }
@@ -149,8 +149,8 @@ input, select, textarea { font: inherit; color: var(--text); }
 
 /* oynatıcı */
 #player { position: fixed; inset: 0; z-index: 60; background: #000; }
-body.native-playing #player { background: transparent; }
-body.native-playing #vid { display: none; }
+html.native-playing #player { background: transparent; }
+html.native-playing #vid { display: none; }
 #vid { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }
 #pl-ui { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; opacity: 0; transition: opacity 0.2s; pointer-events: none; padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l); }
 #pl-ui.show { opacity: 1; pointer-events: auto; }

@@ -149,7 +149,7 @@ export function createPlayerUI({ engine, player, env }) {
     tracksLoadedFor = null;
     root.hidden = false;
     document.body.classList.add('player-open');
-    document.body.classList.toggle('native-playing', !!env.native);
+    document.documentElement.classList.toggle('native-playing', !!env.native);
     q('#pl-audio').hidden = true;
     q('#pl-text').hidden = true;
     engine.setImmersive(true, true).catch(() => {});
@@ -172,7 +172,8 @@ export function createPlayerUI({ engine, player, env }) {
     layerOpen = false;
     clearTimeout(hideTimer);
     root.hidden = true;
-    document.body.classList.remove('player-open', 'native-playing', 'live-mode', 'vod-mode');
+    document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
+    document.documentElement.classList.remove('native-playing');
     await player.close();
     engine.setImmersive(false, false).catch(() => {});
   }
