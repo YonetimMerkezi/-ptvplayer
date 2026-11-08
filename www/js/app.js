@@ -1998,10 +1998,21 @@ function guidePage() {
         if (it) epgSheet(it);
       });
       $('#guide-refresh', body).addEventListener('click', async (e) => {
-        e.currentTarget.disabled = true;
-        e.currentTarget.textContent = 'Yenileniyor…';
-        await maybeRefreshEpg(true);
-        if (body.isConnected) { e.currentTarget.disabled = false; e.currentTarget.textContent = 'EPG yenile'; draw(); }
+        // currentTarget yalnızca olay işleyicisi çalışırken geçerlidir; await sonrasında null olur.
+        const button = e.currentTarget;
+        if (!button) return;
+        button.disabled = true;
+        button.textContent = 'Yenileniyor…';
+        try {
+          await maybeRefreshEpg(true);
+        } finally {
+          // Sayfa kapatılmış veya yeniden oluşturulmuş olabilir.
+          if (body.isConnected && button.isConnected) {
+            button.disabled = false;
+            button.textContent = 'EPG yenile';
+            draw();
+          }
+        }
       });
       draw();
     },
