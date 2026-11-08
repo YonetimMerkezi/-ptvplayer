@@ -215,6 +215,7 @@ html.native-playing #vid { display: none; }
 .tool .ic { width: 20px; height: 20px; }
 .pl-status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; padding: 16px 20px; border-radius: 16px; background: #000b; max-width: 82%; pointer-events: auto; }
 .pl-status .btn { margin-top: 12px; }
+.pl-status .rc, .sp-status .rc, .mp-st .rc { margin-top: 10px; font-size: 0.8125rem; color: #cbd5e1; }
 .spinner { width: 34px; height: 34px; border: 3px solid #fff4; border-top-color: #fff; border-radius: 50%; animation: sp 0.8s linear infinite; margin: 0 auto; }
 body.live-mode #pl-rew, body.live-mode #pl-fwd { display: none; }
 body.vod-mode #pl-prev, body.vod-mode #pl-next { }

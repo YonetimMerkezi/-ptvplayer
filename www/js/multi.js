@@ -2,12 +2,88 @@
 // Android'de her kutu ayrı bir Media3 oynatıcısıdır (WebView'ın altında, kutunun dikdörtgenine yerleşir);
 // tarayıcıda kutuya bir <video> eklenir.
 import { describeError } from './engine.js';
+import { LIVE_STALL_MS, LIVE_MAX_RECONNECT, STEADY_MS, reconnectDelay } from './retry.js';
+
+const FIRST_STALL_MS = 15000; // ilk açılışta yayının gelmesi için
 
 // Kayıtlı kanal kimliklerini n kutuya sığdırır (eksikler null).
 export const fitSlots = (ids, n) => Array.from({ length: n }, (_, i) => (Array.isArray(ids) && ids[i] != null ? ids[i] : null));
 
-// Kutu hatasında sıradaki oynatma adresinin indeksi; kalmadıysa -1.
-export const nextTargetIdx = (idx, count) => (idx + 1 < count ? idx + 1 : -1);
+// Kutu bekçisi: takılan ya da kopan kutuyu hızla yeniden bağlar (art arda başarısızsa yedek adrese de geçer).
+// restart(slot, rotate): kutuyu yeniden başlat (rotate: sıradaki adrese geç);
+// status(slot, 'loading' | 'playing' | 'error', mesaj, deneme): kutunun görünümünü güncelle.
+export function createSlotSupervisor({ restart, status, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
+  const all = new Map();
+  const get = (slot) => {
+    let e = all.get(slot);
+    if (!e) all.set(slot, (e = { rc: 0, n: 1, retry: null, watch: null, since: null, played: false }));
+    return e;
+  };
+  const clearWatch = (e) => {
+    if (e.watch) timers.clear(e.watch);
+    e.watch = null;
+  };
+  const armWatch = (slot, e) => {
+    clearWatch(e);
+    e.watch = timers.set(() => {
+      e.watch = null;
+      problem(slot, 'Yayın başlamadı (zaman aşımı)');
+    }, e.played ? LIVE_STALL_MS : FIRST_STALL_MS);
+  };
+  function problem(slot, message) {
+    const e = get(slot);
+    clearWatch(e);
+    if (e.retry) return; // yeniden bağlanma zaten planlı
+    if (e.since !== null && now() - e.since >= STEADY_MS) e.rc = 0; // uzun süre sorunsuz oynadı: sayaç sıfır
+    e.since = null;
+    const n = e.rc++;
+    if (n >= LIVE_MAX_RECONNECT) return status(slot, 'error', message || 'Yayın oynatılamadı', n);
+    const rotate = e.n > 1 && (!e.played || n >= 2);
+    status(slot, 'loading', '', n + 1);
+    e.retry = timers.set(() => {
+      e.retry = null;
+      restart(slot, rotate);
+    }, reconnectDelay(n));
+  }
+  return {
+    // Kutu (yeniden) başlatılırken: bekçiyi kur. nTargets: yedek adres sayısı dahil toplam adres.
+    begin(slot, nTargets = 1) {
+      const e = get(slot);
+      e.n = nTargets;
+      armWatch(slot, e);
+    },
+    // Motor olayı: 'playing' | 'buffering' | 'error' | 'ended'
+    event(slot, state, message) {
+      const e = get(slot);
+      if (state === 'playing') {
+        clearWatch(e);
+        if (e.retry) {
+          timers.clear(e.retry);
+          e.retry = null;
+        }
+        e.played = true;
+        if (e.since === null) e.since = now();
+        return status(slot, 'playing', '', 0);
+      }
+      if (e.retry) return; // bağlantı beklenirken gelen geçici durumlar sayacı bozmasın
+      if (state === 'buffering') {
+        if (!e.watch) armWatch(slot, e); // takılma sürerse yeniden bağlan
+        return status(slot, e.played ? 'buffering' : 'loading', '', e.rc);
+      }
+      if (state === 'error' || state === 'ended') return problem(slot, message);
+    },
+    clear(slot) {
+      const e = all.get(slot);
+      if (!e) return;
+      clearWatch(e);
+      if (e.retry) timers.clear(e.retry);
+      all.delete(slot);
+    },
+    clearAll() {
+      [...all.keys()].forEach((k) => this.clear(k));
+    },
+  };
+}
 
 export function createMultiEngine({ native, Hls, on }) {
   if (native) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fitSlots, nextTargetIdx } from '../www/js/multi.js';
+import { fitSlots, createSlotSupervisor } from '../www/js/multi.js';
 import { holeClip } from '../www/js/hole.js';
 
 test('kayıtlı kanallar kutu sayısına sığdırılır', () => {
@@ -8,12 +8,6 @@ test('kayıtlı kanallar kutu sayısına sığdırılır', () => {
   assert.deepEqual(fitSlots(['a'], 4), ['a', null, null, null]);
   assert.deepEqual(fitSlots(undefined, 2), [null, null]);
   assert.deepEqual(fitSlots(['a', null, 'c'], 3), ['a', null, 'c']);
-});
-
-test('hatada sıradaki adres denenir, kalmadıysa -1', () => {
-  assert.equal(nextTargetIdx(0, 2), 1);
-  assert.equal(nextTargetIdx(1, 2), -1);
-  assert.equal(nextTargetIdx(0, 1), -1);
 });
 
 // evenodd dolgusunun alanını ızgara örnekleyerek ölçer (deliklerin tam açıldığını ve fazladan bölge çıkmadığını doğrular)
@@ -50,4 +44,105 @@ test('holeClip: birden çok delik yalnız kendi dikdörtgenlerini açar', () => 
       assert.equal(inside(poly, x + 0.5, y + 0.5), !hole, `(${x},${y}) ${hole ? 'delik olmalıydı' : 'dolu olmalıydı'}`);
     }
   }
+});
+
+function supSetup() {
+  const log = [];
+  let t = 0;
+  const timers = {
+    fns: [],
+    ms: [],
+    set(f, ms) { this.fns.push(f); this.ms.push(ms); return this.fns.length; },
+    clear(id) { this.fns[id - 1] = null; },
+    pending() { return this.fns.map((f, k) => (f ? k : -1)).filter((k) => k >= 0); },
+    lastMs() { const p = this.pending(); return p.length ? this.ms[p.at(-1)] : null; },
+    fire() { const p = this.pending(); if (!p.length) return false; const f = this.fns[p.at(-1)]; this.fns[p.at(-1)] = null; f(); return true; },
+  };
+  const sup = createSlotSupervisor({
+    restart: (slot, rotate) => { log.push(['restart', slot, rotate]); sup.begin(slot, 2); },
+    status: (slot, st, msg, n) => log.push(['status', slot, st, msg, n]),
+    timers,
+    now: () => t,
+  });
+  return { sup, log, timers, tick: (ms) => (t += ms) };
+}
+const restarts = (log) => log.filter((l) => l[0] === 'restart');
+
+test('kutu bekçisi: oynarken kopan kutu hemen yeniden başlar, sonra kademeli ama kısa beklenir', () => {
+  const { sup, log, timers } = supSetup();
+  sup.begin(0, 1);
+  sup.event(0, 'playing');
+  const delays = [];
+  for (let i = 0; i < 5; i++) {
+    sup.event(0, 'error', 'x');
+    delays.push(timers.lastMs());
+    timers.fire();
+  }
+  assert.deepEqual(delays, [0, 600, 1200, 1800, 2000]);
+  assert.equal(restarts(log).length, 5);
+  assert.ok(log.some((l) => l[0] === 'status' && l[2] === 'loading' && l[4] === 3), 'deneme sayısı bildirilir');
+});
+
+test('kutu bekçisi: takılan (arabellekte kalan) kutu 7 sn sonra yeniden bağlanır', () => {
+  const { sup, log, timers } = supSetup();
+  sup.begin(1, 1);
+  sup.event(1, 'playing');
+  sup.event(1, 'buffering');
+  assert.equal(timers.lastMs(), 7000);
+  timers.fire(); // bekçi doldu → yeniden bağlanma planlanır
+  assert.equal(timers.lastMs(), 0);
+  timers.fire();
+  assert.deepEqual(restarts(log), [['restart', 1, false]]);
+});
+
+test('kutu bekçisi: ilk açılışta hata sıradaki adrese geçirir; art arda başarısız denemelerde yedek adrese geçilir', () => {
+  const { sup, log, timers } = supSetup();
+  sup.begin(0, 2);
+  sup.event(0, 'error', 'x'); // hiç oynamadı → hemen yedek adres
+  timers.fire();
+  assert.equal(restarts(log)[0][2], true);
+  sup.event(0, 'playing');
+  const rot = [];
+  for (let i = 0; i < 4; i++) {
+    sup.event(0, 'error', 'x');
+    timers.fire();
+    rot.push(restarts(log).at(-1)[2]);
+  }
+  assert.deepEqual(rot, [false, true, true, true], 'ilk açılıştaki hata da art arda sayılır (sayaç yalnız 8 sn kesintisiz oynayınca sıfırlanır)');
+});
+
+test('kutu bekçisi: sekiz sn kesintisiz oynarsa sayaç sıfırlanır; kutular birbirinden bağımsız', () => {
+  const { sup, timers, tick } = supSetup();
+  sup.begin(0, 1);
+  sup.begin(1, 1);
+  sup.event(0, 'playing');
+  sup.event(0, 'error', 'x');
+  timers.fire();
+  sup.event(0, 'error', 'x');
+  assert.equal(timers.lastMs(), 600);
+  timers.fire();
+  sup.event(0, 'playing');
+  tick(9000);
+  sup.event(0, 'error', 'x');
+  assert.equal(timers.lastMs(), 0, 'sayaç sıfırlandı');
+  timers.fire();
+  sup.event(1, 'playing');
+  sup.event(1, 'error', 'y');
+  assert.equal(timers.lastMs(), 0, 'ikinci kutunun sayacı ayrı');
+});
+
+test('kutu bekçisi: çok uzun süre bağlanamazsa hata durumuna geçer; temizleyince hiçbir zamanlayıcı kalmaz', () => {
+  const { sup, log, timers } = supSetup();
+  sup.begin(0, 1);
+  sup.event(0, 'playing');
+  for (let i = 0; i < 100; i++) {
+    sup.event(0, 'error', 'koptu');
+    timers.fire();
+  }
+  const last = log.filter((l) => l[0] === 'status').at(-1);
+  assert.deepEqual(last.slice(2, 4), ['error', 'koptu']);
+  sup.begin(0, 1);
+  sup.event(0, 'buffering');
+  sup.clear(0);
+  assert.equal(timers.pending().length, 0);
 });

@@ -547,7 +547,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
       play: async (a) => {
         window.__calls.push(['play', a.url, a.mime]);
-        setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm/.test(a.url) }), 50);
+        if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm/.test(a.url) }), 50);
         setTimeout(() => listeners.time({ pos: 1000, dur: /webm/.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
         // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
         setTimeout(() => {
@@ -571,7 +571,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       getInsets: async () => window.__insets || { l: 0, t: 0, r: 0, b: 0 },
       multiPlay: async (a) => {
         window.__calls.push(['multiPlay', a.slot, a.url, !!a.muted, a.x, a.y, a.w, a.h]);
-        setTimeout(() => listeners.multi && listeners.multi({ slot: a.slot, state: 'playing' }), 50);
+        if (!window.__noPlay) setTimeout(() => listeners.multi && listeners.multi({ slot: a.slot, state: 'playing' }), 50);
       },
       multiRect: async (a) => window.__calls.push(['multiRect', a.slot, a.x, a.y, a.w, a.h]),
       multiMute: async (a) => window.__calls.push(['multiMute', a.slot, !!a.muted]),
@@ -665,6 +665,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(await page.$eval('#pl-hud', (h) => !h.hidden && /Canlı yayında sarma yok/.test(h.textContent)), 'canlı yayında yatay kaydırma sarmıyor, bilgi veriyor');
   await page.mouse.up();
   ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'seek'))), 'canlıda sarma isteği eklentiye gitmedi');
+  // yayın kopunca ya da takılınca hızlı, tekrar tekrar yeniden bağlanma
+  const nPlays = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').length);
+  const pl0 = await nPlays();
+  await page.evaluate(() => {
+    window.__noPlay = true; // bağlantı kurulamıyor
+    window.__emit('error', { message: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' });
+  });
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, pl0, { timeout: 1500 });
+  ok(true, 'yayın kopunca bir saniye içinde yeniden bağlanıldı');
+  ok(/Yeniden bağlanılıyor/.test(await page.textContent('#pl-status')), 'ekranda “Yeniden bağlanılıyor” bilgisi var');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n + 1, pl0, { timeout: 12000 });
+  ok(/\((2|3)\)/.test(await page.textContent('#pl-status')), 'bağlantı kurulamayınca (7 sn) yeniden denendi, deneme sayısı artıyor: ' + (await page.textContent('#pl-status')).trim());
+  await page.evaluate(() => { window.__noPlay = false; });
+  await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
+  ok(true, 'yayın gelince bilgi kalktı, oynatma sürüyor');
   await page.screenshot({ path: path.join(SHOTS, '11-yerel-kip-oynatici.png') });
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden' });
@@ -724,6 +739,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiPlay').length >= n + 2, n0);
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'multiStopAll')), 'kutu sayısı değişince eski oynatıcılar bırakıldı');
   ok((await page.evaluate(() => window.__iptv.store.pref('multi.n', 2))) === 4, 'kutu sayısı kaydedildi');
+  // kutu kopunca yalnız o kutu hemen yeniden bağlanır
+  const mpN = (slot) => page.evaluate((x) => window.__calls.filter((c) => c[0] === 'multiPlay' && c[1] === x).length, slot);
+  const a0 = await mpN(0);
+  const a1 = await mpN(1);
+  await page.evaluate(() => {
+    window.__noPlay = true;
+    window.__emit('multi', { slot: 0, state: 'error', message: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' });
+  });
+  await page.waitForFunction(([x, n]) => window.__calls.filter((c) => c[0] === 'multiPlay' && c[1] === x).length > n, [0, a0], { timeout: 1500 });
+  ok((await mpN(1)) === a1, 'kopan kutu hemen yeniden bağlandı, diğer kutuya dokunulmadı');
+  ok(/Yeniden bağlanılıyor/.test(await page.textContent('.mp-cell[data-c="0"] .mp-st')), 'kutuda “Yeniden bağlanılıyor” bilgisi var');
+  await page.evaluate(() => {
+    window.__noPlay = false;
+    window.__emit('multi', { slot: 0, state: 'playing' });
+  });
+  await page.waitForFunction(() => !document.querySelector('.mp-cell[data-c="0"] .mp-st'));
+  ok(true, 'kutu yeniden oynayınca bilgi kalktı');
   // kutudan tam ekran
   n0 = await nPlay();
   const stops0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiStopAll').length);

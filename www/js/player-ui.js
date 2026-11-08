@@ -231,7 +231,7 @@ export function createPlayerUI({ engine, player, env }) {
     const s = q('#pl-status');
     if (st.status === 'loading' || st.status === 'buffering') {
       s.hidden = false;
-      s.innerHTML = '<div class="spinner"></div>';
+      s.innerHTML = '<div class="spinner"></div>' + (st.reconnect ? `<div class="rc">Yeniden bağlanılıyor… (${st.reconnect})</div>` : '');
     } else if (st.status === 'error') {
       s.hidden = false;
       s.innerHTML = `<div>${esc(st.error)}</div><button class="btn" id="pl-retry">Yeniden dene</button>`;

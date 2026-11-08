@@ -1,15 +1,18 @@
-// Oynatma denetleyicisi: motor üstünde yedek adres denemesi, yeniden bağlanma, takılma bekçisi,
+// Oynatma denetleyicisi: motor üstünde yedek adres denemesi, hızlı yeniden bağlanma, takılma bekçisi,
 // ilerleme bildirimi. Motordan bağımsızdır (sahte motorla test edilir).
+import { LIVE_STALL_MS, VOD_STALL_MS, LIVE_MAX_RECONNECT, VOD_MAX_RECONNECT, STEADY_MS, reconnectDelay } from './retry.js';
 
-const STALL_MS = 25000;
+const STALL_MS = 25000; // ilk açılışta yayının gelmesi için
 const PROGRESS_EVERY_MS = 10000;
 
 export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
-  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0 };
+  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0 };
   const listeners = new Set();
   let progressCb = null;
   let stallTimer = null;
-  let retries = 0;
+  let reconnects = 0; // art arda yeniden bağlanma denemesi (kesintisiz oynayınca sıfırlanır)
+  let retryTimer = null;
+  let playingSince = null;
   let everPlayed = false;
   let lastProgressAt = 0;
   let startMs = 0;
@@ -19,9 +22,15 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     if (stallTimer) timers.clear(stallTimer);
     stallTimer = null;
   };
+  const clearRetry = () => {
+    if (retryTimer) timers.clear(retryTimer);
+    retryTimer = null;
+  };
+  // Oynamış bir yayında takılma kısa sürede yeniden bağlanmayı tetikler; ilk açılışta daha sabırlı bekler.
+  const stallMs = () => (!everPlayed ? STALL_MS : st.live ? LIVE_STALL_MS : VOD_STALL_MS);
   const armStall = () => {
     clearStall();
-    stallTimer = timers.set(() => fail('Yayın başlamadı (zaman aşımı)'), STALL_MS);
+    stallTimer = timers.set(() => fail('Yayın başlamadı (zaman aşımı)'), stallMs());
   };
   const setStatus = (s) => {
     st.status = s;
@@ -41,19 +50,32 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     }
   }
 
+  // Oynarken kopan ya da takılan yayına hızla yeniden bağlanır; art arda başarısız olursa yedek adrese de geçer.
+  function scheduleReconnect() {
+    clearStall();
+    clearRetry();
+    const n = reconnects++;
+    if (n >= 2 && st.targets.length > 1) st.idx = (st.idx + 1) % st.targets.length;
+    st.status = 'buffering';
+    st.reconnect = reconnects;
+    st.error = '';
+    emit();
+    retryTimer = timers.set(() => {
+      retryTimer = null;
+      if (st.status !== 'idle') startTarget(st.live ? 0 : st.pos);
+    }, reconnectDelay(n));
+  }
+
   function fail(message) {
-    if (st.status === 'idle') return;
-    if (everPlayed && retries > 0) {
-      retries--;
-      startTarget(st.live ? 0 : st.pos);
-      return;
-    }
-    if (st.idx + 1 < st.targets.length) {
+    if (st.status === 'idle' || retryTimer) return; // yeniden bağlanma zaten planlı
+    if (everPlayed && reconnects < (st.live ? LIVE_MAX_RECONNECT : VOD_MAX_RECONNECT)) return scheduleReconnect();
+    if (!everPlayed && st.idx + 1 < st.targets.length) {
       st.idx++;
       startTarget(startMs);
       return;
     }
     clearStall();
+    clearRetry();
     st.status = 'error';
     st.error = message || 'Yayın oynatılamadı';
     emit();
@@ -70,6 +92,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     if (ev.type === 'time') {
       st.pos = ev.pos;
       st.dur = ev.dur;
+      if (reconnects && st.status === 'playing' && playingSince !== null && now() - playingSince >= STEADY_MS) reconnects = 0;
       if (progressCb && ev.dur > 0 && now() - lastProgressAt >= PROGRESS_EVERY_MS && st.status === 'playing') {
         lastProgressAt = now();
         progressCb(st.pos, st.dur, st);
@@ -80,9 +103,12 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     if (ev.type === 'state') {
       st.live = st.item.kind === 'live' || !!ev.live;
       if (ev.state === 'idle') return; // yükleme sırasında gelen geçici durum
+      if (retryTimer && ev.state !== 'playing') return; // bağlantı beklenirken gelen geçici durumlar sayacı bozmasın
       if (ev.state === 'playing') {
+        if (st.status !== 'playing') playingSince = now();
         everPlayed = true;
-        retries = 2;
+        clearRetry();
+        st.reconnect = 0;
       }
       if (ev.state === 'ended' && progressCb && st.dur > 0) progressCb(st.dur, st.dur, st);
       setStatus(ev.state);
@@ -103,7 +129,9 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     async open(item, targets, { ep = null, startAt = 0 } = {}) {
       Object.assign(st, { item, ep, targets, idx: 0, pos: startAt, dur: -1, live: item.kind === 'live', error: '' });
       everPlayed = false;
-      retries = 0;
+      reconnects = 0;
+      st.reconnect = 0;
+      clearRetry();
       startMs = startAt;
       lastProgressAt = now();
       if (!targets.length) {
@@ -118,7 +146,9 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
       if (!st.targets.length) return;
       st.idx = 0;
       everPlayed = false;
-      retries = 0;
+      reconnects = 0;
+      st.reconnect = 0;
+      clearRetry();
       return startTarget(st.live ? 0 : st.pos);
     },
     async toggle() {
@@ -144,6 +174,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
       if (st.status === 'idle') return;
       if (progressCb && st.dur > 0 && st.pos > 0) progressCb(st.pos, st.dur, st);
       clearStall();
+      clearRetry();
       st.status = 'idle';
       try {
         await engine.stop();

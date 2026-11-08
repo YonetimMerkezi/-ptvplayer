@@ -21,7 +21,7 @@ import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, openPage, fmtAgo } from './ui.js';
 import { marquee } from './marquee.js';
 import { holeClip } from './hole.js';
-import { createMultiEngine, fitSlots, nextTargetIdx } from './multi.js';
+import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, fmtMB, shouldAutoCheck, versionCodeOf } from './update.js';
 
 const Cap = window.Capacitor;
@@ -1388,7 +1388,7 @@ function setSpStatus(st) {
   const el = $('#sp-status');
   if (!el) return;
   if (!pui.isPreviewing()) el.innerHTML = S.pv ? '' : '<span class="sp-hint">Önizleme için bir kanala dokunun</span>';
-  else if (st.status === 'loading' || st.status === 'buffering') el.innerHTML = '<div class="spinner"></div>';
+  else if (st.status === 'loading' || st.status === 'buffering') el.innerHTML = '<div><div class="spinner"></div>' + (st.reconnect ? `<div class="rc">Yeniden bağlanılıyor… (${st.reconnect})</div>` : '') + '</div>';
   else if (st.status === 'error') el.innerHTML = `<span>${esc(st.error)}<br><small>Tam ekran için dokunun</small></span>`;
   else el.innerHTML = '';
 }
@@ -1467,21 +1467,28 @@ function layoutMulti() {
   syncHole();
 }
 
+// Takılan ya da kopan kutu hızla yeniden bağlanır (tek oynatıcıdaki gibi); art arda başarısızsa yedek adrese geçilir.
+const SUP = createSlotSupervisor({
+  restart: (i, rotate) => {
+    const sl = M.slots[i];
+    if (!sl || !sl.item || !M.on || M.suspended) return;
+    if (rotate && sl.targets.length > 1) sl.idx = (sl.idx + 1) % sl.targets.length;
+    multiStart(i);
+  },
+  status: (i, status, msg, attempt) => {
+    const sl = M.slots[i];
+    if (!sl || !sl.item || !M.on) return;
+    sl.status = status;
+    sl.msg = msg || '';
+    sl.attempt = attempt || 0;
+    drawCell(i);
+  },
+});
+
 function multiEvent({ slot, state, message }) {
   const sl = M.slots[slot];
-  if (!sl || !sl.item || !M.on) return;
-  if (state === 'error') {
-    const next = nextTargetIdx(sl.idx, sl.targets.length);
-    if (next >= 0) {
-      sl.idx = next;
-      return multiStart(slot);
-    }
-    sl.status = 'error';
-    sl.msg = message || 'Yayın oynatılamadı';
-  } else if (state === 'playing') sl.status = 'playing';
-  else if (state === 'buffering') sl.status = sl.status === 'playing' ? 'playing' : 'loading';
-  else return;
-  drawCell(slot);
+  if (!sl || !sl.item || !M.on || M.suspended) return;
+  SUP.event(slot, state, message);
 }
 
 function multiStart(i) {
@@ -1491,6 +1498,7 @@ function multiStart(i) {
   sl.status = 'loading';
   sl.msg = '';
   drawCell(i);
+  SUP.begin(i, sl.targets.length);
   const vid = $('.mp-vid', host);
   const r = vid.getBoundingClientRect();
   const rect = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
@@ -1503,6 +1511,7 @@ function multiStop() {
   M.suspended = false;
   if (M.obs) M.obs.disconnect();
   M.obs = null;
+  SUP.clearAll();
   if (M.eng) M.eng.stopAll().catch(() => {});
   document.documentElement.classList.remove('native-preview');
   $('#bgfill').style.clipPath = '';
@@ -1512,6 +1521,7 @@ function multiStop() {
 function multiSuspend() {
   if (!M.on || M.suspended) return;
   M.suspended = true;
+  SUP.clearAll();
   if (M.eng) M.eng.stopAll().catch(() => {});
   for (const sl of M.slots) if (sl && sl.item) sl.status = 'idle';
   document.documentElement.classList.remove('native-preview');
@@ -1546,7 +1556,8 @@ function multiAssign(i, item) {
   const targets = playTargets(S.source, item);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   const hadSound = M.slots[M.sound] && M.slots[M.sound].item;
-  M.slots[i] = { item, targets, idx: 0, status: 'loading', msg: '' };
+  SUP.clear(i);
+  M.slots[i] = { item, targets, idx: 0, status: 'loading', msg: '', attempt: 0 };
   if (!hadSound) M.sound = i;
   persistMulti();
   multiStart(i);
@@ -1554,6 +1565,7 @@ function multiAssign(i, item) {
 }
 
 function multiRemove(i) {
+  SUP.clear(i);
   M.eng.stop(i).catch(() => {});
   M.slots[i] = null;
   if (M.sound === i) M.sound = firstFilled();
@@ -1581,7 +1593,8 @@ function drawCell(i) {
     ovl.innerHTML = `<div class="mp-add">${icon('plus')}<span>Kanal ekle</span></div>`;
     return;
   }
-  const st = sl.status === 'error' ? `<div class="mp-st"><span>${esc(sl.msg)}<br><small>Yeniden denemek için dokunun</small></span></div>` : sl.status === 'loading' ? '<div class="mp-st"><div class="spinner"></div></div>' : '';
+  const wait = sl.status === 'loading' || sl.status === 'buffering';
+  const st = sl.status === 'error' ? `<div class="mp-st"><span>${esc(sl.msg)}<br><small>Yeniden denemek için dokunun</small></span></div>` : wait ? `<div class="mp-st"><div><div class="spinner"></div>${sl.attempt ? `<div class="rc">Yeniden bağlanılıyor… (${sl.attempt})</div>` : ''}</div></div>` : '';
   ovl.innerHTML = `${st}<div class="mp-top"><span class="mp-snd${i === M.sound ? ' on' : ''}">${icon(i === M.sound ? 'audio' : 'mute')}</span><span class="mp-act"><button data-act="swap" aria-label="Kanalı değiştir">${icon('list')}</button><button data-act="full" aria-label="Tam ekran">${icon('aspect')}</button><button data-act="rm" aria-label="Kaldır">${icon('close')}</button></span></div><div class="mp-name"><span class="mq-i">${esc(sl.item.name)}</span></div>`;
   marquee(ovl);
 }
@@ -1594,7 +1607,7 @@ function renderMulti(v) {
   M.slots = ids.map((id) => {
     const item = id ? S.idx.live.get(id) : null;
     const targets = item ? playTargets(S.source, item) : [];
-    return item && targets.length ? { item, targets, idx: 0, status: 'idle', msg: '' } : null;
+    return item && targets.length ? { item, targets, idx: 0, status: 'idle', msg: '', attempt: 0 } : null;
   });
   if (!M.slots[M.sound] || M.sound >= M.n) M.sound = firstFilled();
   if (!M.eng) M.eng = createMultiEngine({ native: nativePlugin, Hls: window.Hls, on: multiEvent });
@@ -1619,7 +1632,10 @@ function renderMulti(v) {
       if (act.dataset.act === 'full') return multiFull(i);
     }
     if (!sl || !sl.item) return channelPicker((it) => multiAssign(i, it));
-    if (sl.status === 'error') return multiStart(i);
+    if (sl.status === 'error') {
+      SUP.clear(i); // elle yeniden deneme: sayaç baştan
+      return multiStart(i);
+    }
     if (i !== M.sound) setSound(i);
   });
   M.on = true;

@@ -16,7 +16,14 @@ function setup() {
     seek: async (ms) => calls.push(['seek', ms]),
     stop: async () => calls.push(['stop']),
   };
-  const timers = { fns: [], set(f) { this.fns.push(f); return this.fns.length; }, clear(id) { this.fns[id - 1] = null; }, fire() { const f = this.fns.filter(Boolean).pop(); if (f) f(); } };
+  const timers = {
+    fns: [],
+    ms: [],
+    set(f, ms) { this.fns.push(f); this.ms.push(ms); return this.fns.length; },
+    clear(id) { this.fns[id - 1] = null; },
+    fire() { const i = this.fns.map((f, k) => (f ? k : -1)).filter((k) => k >= 0).pop(); if (i !== undefined) { const f = this.fns[i]; this.fns[i] = null; f(); } },
+    lastMs() { const i = this.fns.map((f, k) => (f ? k : -1)).filter((k) => k >= 0).pop(); return i === undefined ? null : this.ms[i]; },
+  };
   let t = 0;
   const p = createPlayer({ engine, timers, now: () => t });
   return { p, engine, calls, timers, tick: (ms) => (t += ms) };
@@ -63,15 +70,127 @@ test('takılma bekçisi: yayın başlamazsa sonraki adrese geçer', async () => 
   assert.equal(p.state().status, 'playing');
 });
 
-test('oynarken kopan canlı yayın aynı adresle yeniden bağlanır (en çok 2 kez)', async () => {
-  const { p, calls } = setup();
+const loads = (calls) => calls.filter((c) => c[0] === 'load').length;
+
+test('oynarken kopan canlı yayın hemen yeniden bağlanır ve vazgeçmez', async () => {
+  const { p, calls, timers } = setup();
   await p.open(live, [T('a')]);
   p.handle({ type: 'state', state: 'playing' });
   p.handle({ type: 'error', message: 'x' });
+  assert.equal(p.state().status, 'buffering');
+  assert.equal(p.state().reconnect, 1);
+  assert.equal(timers.lastMs(), 0, 'ilk deneme gecikmesiz');
+  timers.fire();
+  assert.equal(loads(calls), 2);
+  for (let i = 0; i < 10; i++) {
+    p.handle({ type: 'error', message: 'x' });
+    timers.fire();
+  }
+  assert.equal(loads(calls), 12, 'art arda kopsa da sürekli yeniden dener');
+  assert.notEqual(p.state().status, 'error');
+  assert.ok(p.state().reconnect >= 10);
+});
+
+test('yeniden bağlanma süreleri kısa kalır (en çok 2 sn)', async () => {
+  const { p, timers } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  const delays = [];
+  for (let i = 0; i < 6; i++) {
+    p.handle({ type: 'error', message: 'x' });
+    delays.push(timers.lastMs());
+    timers.fire();
+  }
+  assert.deepEqual(delays, [0, 600, 1200, 1800, 2000, 2000]);
+});
+
+test('art arda başarısız denemelerde yedek adrese de geçilir', async () => {
+  const { p, calls, timers } = setup();
+  await p.open(live, [T('a'), T('b')]);
+  p.handle({ type: 'state', state: 'playing' });
+  const urls = [];
+  for (let i = 0; i < 5; i++) {
+    p.handle({ type: 'error', message: 'x' });
+    timers.fire();
+    urls.push(calls.at(-1)[1]);
+  }
+  assert.deepEqual(urls, ['a', 'a', 'b', 'a', 'b']);
+});
+
+test('oynarken takılan (arabellekte kalan) canlı yayın 7 sn sonra yeniden bağlanır', async () => {
+  const { p, calls, timers } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'state', state: 'buffering' });
+  assert.equal(timers.lastMs(), 7000);
+  timers.fire(); // bekçi doldu
+  assert.equal(p.state().reconnect, 1);
+  assert.equal(p.state().status, 'buffering');
+  timers.fire(); // yeniden bağlanma
+  assert.equal(loads(calls), 2);
+  assert.equal(timers.lastMs(), 7000, 'yeniden bağlanırken de kısa bekçi kurulur');
+});
+
+test('yayın sekiz saniye kesintisiz oynarsa deneme sayacı sıfırlanır', async () => {
+  const { p, timers, tick } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  for (let i = 0; i < 3; i++) {
+    p.handle({ type: 'error', message: 'x' });
+    timers.fire();
+  }
+  p.handle({ type: 'state', state: 'playing' });
+  assert.equal(p.state().reconnect, 0, 'oynayınca ekrandaki sayaç kalkar');
+  tick(8500);
+  p.handle({ type: 'time', pos: 1, dur: -1 });
   p.handle({ type: 'error', message: 'x' });
-  assert.equal(calls.filter((c) => c[0] === 'load').length, 3);
+  assert.equal(timers.lastMs(), 0, 'sayaç sıfırlandığı için yine hemen bağlanır');
+  assert.equal(p.state().reconnect, 1);
+});
+
+test('bağlantı beklenirken gelen geçici durumlar planlı denemeyi bozmaz', async () => {
+  const { p, calls, timers } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'error', message: 'x' });
+  p.handle({ type: 'state', state: 'buffering' });
+  p.handle({ type: 'error', message: 'y' });
+  assert.equal(p.state().reconnect, 1);
+  timers.fire();
+  assert.equal(loads(calls), 2);
+});
+
+test('film: oynarken kopunca kaldığı yerden en çok 5 kez dener, sonra hata', async () => {
+  const { p, calls, timers } = setup();
+  await p.open(movie, [T('f.mkv')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'time', pos: 42000, dur: 600000 });
+  for (let i = 0; i < 5; i++) {
+    p.handle({ type: 'error', message: 'x' });
+    assert.equal(p.state().status, 'buffering');
+    timers.fire();
+    assert.deepEqual(calls.at(-1), ['load', 'f.mkv', 42000]);
+  }
   p.handle({ type: 'error', message: 'son' });
   assert.equal(p.state().status, 'error');
+  assert.equal(p.state().error, 'son');
+});
+
+test('kapatınca bekleyen yeniden bağlanma iptal olur; elle "Yeniden dene" sayacı sıfırlar', async () => {
+  const { p, calls, timers } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'error', message: 'x' });
+  await p.close();
+  timers.fire();
+  assert.equal(loads(calls), 1);
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'error', message: 'x' });
+  await p.retry();
+  assert.equal(p.state().reconnect, 0);
+  timers.fire();
+  assert.equal(loads(calls), 3, 'iptal edilen planlı deneme bir daha yüklemez');
 });
 
 test('film: kaldığı yerden başlar, ilerleme 10 sn\'de bir bildirilir, kapanışta son konum', async () => {
