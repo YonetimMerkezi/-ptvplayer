@@ -5,10 +5,6 @@ import { CAST_PORT, CODE_LEN, buildCast, parseCast, createDevices, mergeDevices,
 // deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast() }
 export function createCastUI(deps) {
   const { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration } = deps;
-  // Katman kapatma geçmişte geri gidişle olur (eşzamansız); hemen yeni katman açılırsa onu da kapatır. Bu yüzden kapanması beklenir.
-  const gone = async (el, ms = 1000) => {
-    for (let t = 0; t < ms && el.isConnected; t += 20) await new Promise((r) => setTimeout(r, 20));
-  };
   const devices = createDevices(store);
   let receiver = null; // { port, id, name, ips, paired } — alıcı açıkken
   let nowKey = '';
@@ -113,7 +109,6 @@ export function createCastUI(deps) {
               const full = d && devices.get(d.id);
               if (!full || !now[d.id]) return;
               api.close();
-              await gone(api.el);
               finish({ ...full, host: d.host, port: d.port || full.port, remoteOnly: now[d.id] });
               return;
             }
@@ -129,7 +124,6 @@ export function createCastUI(deps) {
               const dev = await ensurePaired(d);
               if (!dev) return;
               api.close();
-              await gone(api.el);
               finish(dev);
               return;
             }

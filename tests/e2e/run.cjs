@@ -1078,6 +1078,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'recStop')), '“Durdur ve baştan izle”: kayıt durduruldu');
   ok(true, 'kaydedilen yayın başından oynatıldı');
   await page.waitForSelector('#pl-golive:not([hidden])', { timeout: 5000 });
+  // kayıt bitiş olayı eklentiden eşzamansız gelir (taklit 20 ms sonra yayar): beklenir
+  await page.waitForFunction(() => document.querySelector('#pl-rec').hidden && /Kayıt kaydedildi/.test(document.querySelector('#toast').textContent), null, { timeout: 5000 }).catch(() => {});
   ok(await page.$eval('#pl-rec', (b) => b.hidden), 'kayıt oynarken “Kaydet” düğmesi gizli');
   ok(/Kayıt kaydedildi/.test(await page.textContent('#toast')), 'kayıt bitince bilgi verildi');
   await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
@@ -1111,6 +1113,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/Boş alan: 4,7 GB/.test(await page.textContent('.rec-info')), 'boş alan gösteriliyor: ' + (await page.textContent('.rec-info')).trim());
   await sleep(500);
   await page.screenshot({ path: path.join(SHOTS, '15-kayitlar.png') });
+  // kayda dokununca pencere kapanır, kayıt oynatıcıda açık kalır (pencere kapanırken oynatıcıyı da kapatmamalı)
+  const recPlays = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'play' && c[1] === 'file:///rec/a.ts').length);
+  const rp0 = await recPlays();
+  await page.click('.rec-play');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play' && c[1] === 'file:///rec/a.ts').length > n, rp0, { timeout: 5000 });
+  await sleep(700);
+  ok((await page.$$('#player:not([hidden])')).length === 1, 'Kayıtlar’dan açılan kayıt oynatıcıda açık kaldı');
+  ok((await page.$$('.sheet-back')).length === 0, 'Kayıtlar penceresi kapandı');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#player', { state: 'hidden', timeout: 5000 });
+  await page.click('.t-recs');
+  await page.waitForSelector('.rec-row');
   await page.click('.rec-row [data-del]');
   await page.waitForSelector('#rd-yes');
   await page.click('#rd-yes');
