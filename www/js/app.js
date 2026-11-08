@@ -1079,15 +1079,33 @@ async function epgSheet(it) {
     body.innerHTML = emptyHtml('Program bilgisi yok', S.source.type === 'xtream' || S.cat.epgUrls.length || S.source.epgUrl ? 'Bu kanal için rehberde program bulunamadı.' : 'Bu kaynakta TV rehberi adresi yok. Kaynaklar sekmesinden bir XMLTV adresi ekleyebilirsiniz.');
     return;
   }
-  let day = '';
-  body.innerHTML = list
-    .slice(0, 60)
-    .map((p) => {
-      const d = new Date(p.s).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
-      const head = d !== day ? `<div class="sect">${esc((day = d))}</div>` : '';
-      return `${head}<div class="prog-row ${p.s <= now && p.e > now ? 'now' : ''}"><time>${fmtClock(p.s)}</time><div><b>${esc(p.t)}</b>${p.d ? `<small>${esc(p.d)}</small>` : ''}</div></div>`;
-    })
-    .join('');
+  // Programları yerel takvim günlerine ayır; tarih seçimi kumanda ve dokunmatik ile kullanılabilir.
+  const dayKey = (ts) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const days = [...new Set(list.map((p) => dayKey(p.s)))].sort();
+  let selected = days.find((d) => d === dayKey(now)) || days[0];
+  const draw = () => {
+    const dayList = list.filter((p) => dayKey(p.s) === selected).sort((a, b) => a.s - b.s);
+    const tabs = days.map((d) => {
+      const date = new Date(d + 'T12:00:00');
+      const label = dayKey(now) === d ? 'Bugün' : date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' });
+      return `<button class="chip ${selected === d ? 'on' : ''}" data-day="${d}">${esc(label)}</button>`;
+    }).join('');
+    body.innerHTML = `<div class="chips epg-days" role="group" aria-label="Program günü">${tabs}</div><div class="epg-schedule">${dayList.length ? dayList.map((p) => {
+      const active = p.s <= now && p.e > now;
+      const past = p.e <= now;
+      return `<div class="prog-row ${active ? 'now' : ''}${past ? ' past' : ''}"><time>${fmtClock(p.s)}</time><div><b>${esc(p.t)}</b>${p.d ? `<small>${esc(p.d)}</small>` : ''}</div>${active ? '<span class="epg-live">ŞİMDİ</span>' : ''}</div>`;
+    }).join('') : '<div class="empty">Bu gün için program bilgisi yok.</div>'}</div>`;
+  };
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-day]');
+    if (!b) return;
+    selected = b.dataset.day;
+    draw();
+  });
+  draw();
 }
 
 // ------------------------------------------------------------------ favoriler
@@ -1430,7 +1448,15 @@ function holeRects() {
 }
 
 function syncHole() {
-  $('#bgfill').style.clipPath = holeClip(holeRects());
+  const rects = holeRects();
+  $('#bgfill').style.clipPath = holeClip(rects);
+
+  // Küçük oynatıcı, yerel Android video yüzeyinin WebView arkasında çizilmesini kullanır.
+  // Yalnız #bgfill'i kesmek yetmez: #app içindeki film kartları ve gezinme çubuğu da
+  // videonun üstünde kalır. Küçük oynatıcı dikdörtgenini tüm uygulama katmanından çıkar.
+  // mini-player-overlay body altında, #app dışında olduğundan genişlet/kapat denetimleri görünür kalır.
+  const mini = S.miniplayer && pui.isPreviewing() ? previewRect() : null;
+  $('#app').style.clipPath = mini && mini.w > 0 && mini.h > 0 ? holeClip([mini]) : '';
 }
 
 function layoutPreview() {

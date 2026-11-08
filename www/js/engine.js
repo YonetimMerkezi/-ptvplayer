@@ -26,6 +26,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   return {
     kind: 'native',
     enterPip: () => plugin.enterPip(),
+    openExternal: (target) => plugin.openExternal({ url: target.url, mime: target.mime === 'hls' || /\\.m3u8(\\?|$)/i.test(target.url) ? 'application/vnd.apple.mpegurl' : target.mime === 'dash' || /\\.mpd(\\?|$)/i.test(target.url) ? 'application/dash+xml' : /^video\\//i.test(target.mime || '') ? target.mime : 'video/*' }),
     onPipChannel: (fn) => plugin.addListener('pipChannel', fn),
     // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
     load: (target, startMs = 0, keepRecording = false) =>

@@ -182,6 +182,28 @@ public class IptvPlayerPlugin extends Plugin {
     // ------------------------------------------------------------------ oynatma
 
     @PluginMethod
+    public void openExternal(final PluginCall call) {
+        final String url = call.getData().optString("url", "").trim();
+        final String mime = call.getData().optString("mime", "");
+        if (url.isEmpty()) {
+            call.reject("Oynatma adresi gerekli");
+            return;
+        }
+        main.post(() -> {
+            try {
+                Intent view = new Intent(Intent.ACTION_VIEW);
+                view.setDataAndType(Uri.parse(url), mime.isEmpty() ? "*/*" : mime);
+                view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                Intent chooser = Intent.createChooser(view, "Harici oynatıcı seçin");
+                getContext().startActivity(chooser);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("Harici oynatıcı açılamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
     public void play(final PluginCall call) {
         final String url = call.getData().optString("url", "");
         if (url.isEmpty()) {

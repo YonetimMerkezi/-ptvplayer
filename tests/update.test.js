@@ -35,7 +35,7 @@ test('yalnız daha büyük sürüm güncelleme sayılır; yerel sürüm bilinmiy
 });
 
 test('checkUpdate: yeni sürümü, güncel durumu ve desteklenmeyen sürümü ayırt eder', async () => {
-  const net = (j) => ({ json: async (url) => (assert.ok(url.endsWith('version.json')), j) });
+  const net = (j) => ({ json: async (url) => (assert.match(url, /version\.json\?check=\d+$/), j) });
   const a = await checkUpdate({ net: net({ versionCode: 60, versionName: '1.0.60', size: 31457280, notes: 'Yeni' }), localVersion: '1.0.57' });
   assert.equal(a.status, 'available');
   assert.equal(a.name, '1.0.60');
@@ -83,8 +83,8 @@ test('ana adres sürekli 504 verirse yedek adres denenir ve APK adresi yedekten 
   const net = { json: async (u) => { seen.push(u); if (u.startsWith(UPDATE_BASE)) throw err('HTTP 504'); return { versionCode: 20 }; } };
   const r = await checkUpdate({ net, localVersion: '1.0.11', sleep: noSleep() });
   assert.equal(r.status, 'available');
-  assert.equal(seen[0], UPDATE_BASE + 'version.json');
-  assert.equal(seen[1], UPDATE_FALLBACKS[0] + 'version.json');
+  assert.ok(seen[0].startsWith(UPDATE_BASE + 'version.json?check='));
+  assert.ok(seen[1].startsWith(UPDATE_FALLBACKS[0] + 'version.json?check='));
   assert.equal(r.apkUrl, UPDATE_FALLBACKS[0] + 'iptv-oynatici.apk');
 });
 
@@ -104,7 +104,7 @@ test('tüm adresler geçici hata verirse 3 tur sonra hata yayılır; kalıcı ha
 test('özel base verilirse yedek adres kullanılmaz', async () => {
   const seen = [];
   await assert.rejects(() => checkUpdate({ base: 'https://x.test/r/', net: { json: async (u) => { seen.push(u); throw err('HTTP 404'); } }, localVersion: '1.0.11', sleep: noSleep() }), /404/);
-  assert.deepEqual(seen, ['https://x.test/r/version.json']);
+  assert.ok(seen[0].startsWith('https://x.test/r/version.json?check='));
 });
 
 test('isTransient / explainError / retry', async () => {

@@ -2,6 +2,50 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 17,
+    title: 'Uygulama içi güncelleme denetimi',
+    items: [
+      'Sürüm bilgisi her kontrolde önbellekten bağımsız istenir; eski sürüm bilgisinin gösterilmesi riski azaltılır',
+    ],
+  },
+
+  {
+    id: 16,
+    title: 'Küçük oynatıcı görüntüsü düzeltildi',
+    items: [
+      'Küçük oynatıcı açıkken arka plandaki film kartlarının videoyu örtmesi giderildi',
+      'Video alanı uygulama arayüzünden ayrılır; büyütme ve kapatma düğmeleri çalışmaya devam eder',
+    ],
+  },
+
+  {
+    id: 15,
+    title: 'Harici oynatıcı desteği',
+    items: [
+      'Android cihazlarda oynatma ekranından kurulu harici oynatıcılar seçilebilir',
+      'VLC gibi uyumlu uygulamalara Android uygulama seçicisi üzerinden geçiş yapılır',
+      'Özel HTTP başlığı gerektiren yayınlar için aktarımın desteklenmediği bildirilir',
+    ],
+  },
+
+  {
+    id: 14,
+    title: 'Gelişmiş TV rehberi',
+    items: [
+      'Kanal programları günlere ayrıldı; Bugün ve diğer yayın günleri arasında geçiş yapılabilir',
+      'Şu anda yayınlanan program belirginleştirilir; program açıklamaları rehberde gösterilir',
+      'TV kumandası ve dokunmatik ekranla kullanılabilen gün seçimi eklendi',
+    ],
+  },
+  {
+    id: 13,
+    title: 'Medya uyumluluğu ve yayın tanılama altyapısı',
+    items: [
+      'Yayın sağlık kontrolü için bağlantı süresi, HTTP yanıtı ve medya biçimini ölçen tanılama altyapısı eklendi; gerçek görüntü ve codec desteği oynatma sırasında ayrıca doğrulanır',
+      'HLS, DASH, MP4, MKV, TS, MOV, AVI, WMV, FLV ve RTSP adreslerini tanımaya yönelik format algılama eklendi',
+    ],
+  },
+  {
     id: 12,
     title: 'Çoklu ekran ve mini oynatıcı iyileştirmeleri',
     items: [
