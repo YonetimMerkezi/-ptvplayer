@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 17,
+    title: 'Uygulama içi güncelleme denetimi',
+    items: [
+      'Sürüm bilgisi her kontrolde önbellekten bağımsız istenir; eski sürüm bilgisinin gösterilmesi riski azaltılır',
+    ],
+  },
+
+  {
     id: 16,
     title: 'Küçük oynatıcı görüntüsü düzeltildi',
     items: [
