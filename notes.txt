@@ -1,3 +1,4 @@
+Harici oynatıcı desteği: Android oynatma ekranından kurulu harici oynatıcılar seçilebilir. Özel HTTP başlığı gerektiren yayınlar harici oynatıcıya aktarılamaz.
 Gelişmiş TV rehberi: kanal programları günlere ayrılır; Bugün ve diğer yayın günleri seçilebilir. Şu an yayınlanan program vurgulanır, açıklamalar gösterilir. Kumanda ve dokunmatik kullanım desteklenir.
 Yayın sağlık kontrolü altyapısı: bağlantı süresi, HTTP yanıtı ve medya türü tanılama yardımcıları eklendi.
 Medya biçimi algılama: HLS, DASH, MP4, MKV, TS, MOV, AVI, WMV, FLV ve RTSP adresleri tanınır.
