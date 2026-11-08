@@ -66,7 +66,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/Deneme M3U/.test(await page.textContent('#h-src')), 'kaynak adı ana ekranın altında');
   ok(/120 kanal/.test(await page.textContent('.t-live')) && /Son güncelleme/.test(await page.textContent('#h-upd')), 'ana ekranda Canlı TV kutusu: kanal sayısı ve son güncelleme');
   ok(/\d\d:\d\d/.test(await page.textContent('#h-clock')) && (await page.textContent('#h-date')).includes('2'), 'ana ekranda saat ve tarih');
-  ok((await page.$$eval('.tile', (e) => e.length)) === 7, 'ana ekranda yedi kutu (canlı, film, dizi, favoriler, son izlenen, çoklu ekran, ayarlar)');
+  ok((await page.$$eval('.tile', (e) => e.length)) === 9, 'ana ekranda dokuz kutu (canlı, film, dizi, kategoriler + EPG, çoklu ekran, izleme listesi, favoriler, ayarlar)');
+  ok(/Hoş Geldiniz/.test(await page.textContent('.hero')) && /Deneme M3U/.test(await page.textContent('.hero')), 'karşılama kartında “Hoş Geldiniz” ve kaynak adı');
   await page.screenshot({ path: path.join(SHOTS, '00-ana-ekran-dikey.png') });
   await page.click('.t-live');
   await page.waitForSelector('.row.cat');
@@ -569,11 +570,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       setRect: async (a) => window.__calls.push(['rect', a.x, a.y, a.w, a.h]),
       clearRect: async () => window.__calls.push(['clearRect']),
       getInsets: async () => window.__insets || { l: 0, t: 0, r: 0, b: 0 },
+      isTv: async () => ({ tv: localStorage.getItem('__isTv') === '1' }),
+      setTvMode: async (a) => window.__calls.push(['tvMode', !!a.on]),
       multiPlay: async (a) => {
-        window.__calls.push(['multiPlay', a.slot, a.url, !!a.muted, a.x, a.y, a.w, a.h]);
+        window.__calls.push(['multiPlay', a.slot, a.url, !!a.muted, a.x, a.y, a.w, a.h, a.fill !== false]);
         if (!window.__noPlay) setTimeout(() => listeners.multi && listeners.multi({ slot: a.slot, state: 'playing' }), 50);
       },
       multiRect: async (a) => window.__calls.push(['multiRect', a.slot, a.x, a.y, a.w, a.h]),
+      multiFit: async (a) => window.__calls.push(['multiFit', !!a.fill]),
       multiMute: async (a) => window.__calls.push(['multiMute', a.slot, !!a.muted]),
       multiStop: async (a) => window.__calls.push(['multiStop', a.slot]),
       multiStopAll: async () => window.__calls.push(['multiStopAll']),
@@ -704,6 +708,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.mp-cell');
   ok((await page.$$('.mp-cell')).length === 2, 'çoklu ekran iki kutuyla açıldı');
   ok(await page.evaluate(() => document.documentElement.classList.contains('native-preview')), 'çoklu ekranda sayfa saydam (kutuların görüntüsü yerel oynatıcıda)');
+  const mpGrid = await page.$eval('#mp-grid', (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom].map(Math.round).join(); });
+  ok(mpGrid === '0,0,390,844', 'çoklu ekran tüm ekranı kaplıyor (kenar boşluğu yok): ' + mpGrid);
+  ok(!(await page.isVisible('#bar')) && !(await page.isVisible('#tabs')), 'çoklu ekranda üst çubuk ve alt sekmeler gizli');
+  const showMpChips = () => page.evaluate(() => document.querySelector('#mp-grid').dispatchEvent(new MouseEvent('click', { bubbles: true })));
   await page.click('.mp-cell[data-c="0"]');
   await page.waitForSelector('#pk-q');
   ok((await page.$$eval('#pk-cat option', (o) => o.length)) > 3, 'kanal seçicide kategori listesi var');
@@ -714,7 +722,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'multiPlay'));
   let mp = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiPlay'));
   ok(mp.length === 1 && mp[0][1] === 0 && /\.m3u8$/.test(mp[0][2]) && mp[0][3] === false, 'ilk kutu yerel oynatıcıda başladı, sesi açık');
-  ok(mp[0][6] > 100 && mp[0][7] > 60, 'kutunun dikdörtgeni eklentiye iletildi: ' + mp[0].slice(4).join(','));
+  ok(mp[0][6] > 100 && mp[0][7] > 60, 'kutunun dikdörtgeni eklentiye iletildi: ' + mp[0].slice(4, 8).join(','));
+  ok(mp[0][8] === true, 'kutular varsayılan olarak görüntüyü dolduruyor (şerit yok)');
   await page.click('.mp-cell[data-c="1"]');
   await page.waitForSelector('#pk-q');
   await page.fill('#pk-q', 'haber');
@@ -732,6 +741,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await page.evaluate(() => window.__iptv.store.pref('multi.ids.' + window.__iptv.S.source.id, []).filter(Boolean).length)) === 2, 'seçilen kanallar kaydedildi');
   const nPlay = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiPlay').length);
   let n0 = await nPlay();
+  await showMpChips();
+  await page.click('#mp-fit');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'multiFit' && c[1] === false));
+  ok((await page.textContent('#mp-fit')) === 'Sığdır' && (await page.evaluate(() => window.__iptv.store.pref('multi.fill', true))) === false, '“Doldur/Sığdır” düğmesi tüm kutulara iletildi ve kaydedildi');
+  await showMpChips();
+  await page.click('#mp-fit');
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'multiFit').length === 2);
+  await showMpChips();
   await page.click('#mp-n [data-n="4"]');
   await page.waitForFunction(() => document.querySelectorAll('.mp-cell').length === 4);
   const cells4 = await page.$$eval('.mp-vid', (e) => e.map((x) => { const r = x.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; }));
@@ -741,6 +758,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await page.evaluate(() => window.__iptv.store.pref('multi.n', 2))) === 4, 'kutu sayısı kaydedildi');
   // kutu kopunca yalnız o kutu hemen yeniden bağlanır
   const mpN = (slot) => page.evaluate((x) => window.__calls.filter((c) => c[0] === 'multiPlay' && c[1] === x).length, slot);
+  await sleep(250); // başlangıçtaki bekleyen "oynuyor" olayları bitsin (yoksa hata olayından sonra gelip durumu ezer)
   const a0 = await mpN(0);
   const a1 = await mpN(1);
   await page.evaluate(() => {
@@ -779,7 +797,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'multiStop' && c[1] === 1));
   ok(await page.$eval('.mp-cell[data-c="1"]', (e) => !e.classList.contains('has')), 'kutudan kanal kaldırılınca oynatıcısı bırakıldı');
   const stops1 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiStopAll').length);
-  await page.click('#tabs [data-tab=live]');
+  await showMpChips();
+  await page.click('#mp-back');
   await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiStopAll').length > n, stops1);
   ok(!(await page.evaluate(() => document.documentElement.classList.contains('native-preview'))), 'çoklu ekrandan çıkınca tüm kutu oynatıcıları durdu, sayfa opak');
 
@@ -848,7 +867,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
   ok(!(await page.isVisible('#tabs')), 'yatayda alt sekmeler yok');
   const tiles = await page.$$eval('.tile', (e) => e.filter((x) => x.offsetParent).map((x) => { const r = x.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, c: x.className }; }));
-  ok(tiles.length === 6, 'yatay ana ekranda altı kutu görünüyor (ayarlar kutusu yatayda gizli): ' + tiles.length);
+  ok(tiles.length === 9, 'yatay ana ekranda dokuz kutu görünüyor: ' + tiles.length);
+  const big = tiles.filter((t) => !/mini/.test(t.c));
+  ok(big.length === 4 && big.every((t) => Math.abs(t.t - big[0].t) < 2), 'yatayda dört büyük kutu tek satırda');
   ok(tiles.every((t) => t.l >= 0 && t.t >= 0 && t.r <= 915 && t.b <= 412), 'kutular ekran dışına taşmıyor');
   const ov = tiles.some((a, i) => tiles.some((c, j) => j > i && a.l < c.r - 1 && c.l < a.r - 1 && a.t < c.b - 1 && c.t < a.b - 1));
   ok(!ov, 'kutular birbirinin üstüne binmiyor');
@@ -980,7 +1001,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.t-multi');
   await page.waitForSelector('.mp-cell');
   const mpCells = await page.$$eval('.mp-cell', (e) => e.map((x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; }));
-  ok(mpCells.length === 2 && mpCells[0][1] <= mpCells[1][0] + 2 && Math.abs(mpCells[0][2] - mpCells[1][2]) < 2, 'yatayda iki kutu yan yana');
+  ok(mpCells.length === 2 && mpCells[0][1] <= mpCells[1][0] + 4 && Math.abs(mpCells[0][2] - mpCells[1][2]) < 2, 'yatayda iki kutu yan yana');
+  ok(mpCells[0][0] === 0 && mpCells[1][1] === 915 && mpCells[0][2] === 0 && mpCells[0][3] === 412, 'kutular ekranı kenardan kenara dolduruyor: ' + JSON.stringify(mpCells));
   await page.click('.mp-cell[data-c="0"]');
   await page.waitForSelector('#pk-q');
   await page.fill('#pk-q', 'seker');
@@ -1006,9 +1028,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => document.querySelectorAll('.mp-cell.has').length === 2);
   ok(true, 'kutulardaki kanallar yeniden açılışta hatırlandı');
   await page.waitForFunction(() => [...document.querySelectorAll('.mp-cell video')].filter((v) => v.currentTime > 0.5).length === 2, null, { timeout: 25000 });
-  await page.click('#btn-home');
+  await page.evaluate(() => document.querySelector('#mp-grid').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.click('#mp-back');
   await page.waitForSelector('.tile.t-live');
   ok((await page.$$('video.mp-v')).length === 0, 'çoklu ekrandan çıkınca kutu videoları kaldırıldı');
+  ok(await page.isVisible('#bar') || (await page.$eval('body', (b) => !b.classList.contains('multi-full'))), 'çıkınca normal arayüz geri geldi');
 
   // ayarlar kutuları
   await page.click('#h-set');
@@ -1053,6 +1077,159 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => document.querySelectorAll('.sp-left .row:not(.cat) .nm.mq').length > 0, null, { timeout: 4000 });
   ok(true, 'dev yazı boyutunda sığmayan kanal adları kayan yazıya geçti');
   ok(await page.$eval('.sp-left .row:not(.cat) .nm.mq .mq-i', (e) => getComputedStyle(e).animationName !== 'none'), 'kayan yazı animasyonu çalışıyor');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 11. TV modu: kumanda tuşları, medya tuşları, ana ekran
+  console.log('TV modu ve kumanda');
+  ({ page, ctx, errs } = await newPage({ width: 915, height: 412 }, nativeInit));
+  await page.evaluate((u) => {
+    localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'a', name: 'Deneme', type: 'm3u', url: u }]));
+  }, mock.url + '/list.m3u');
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
+  const tvCalls = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'tvMode').map((c) => c[1]));
+  ok(!(await page.$eval('html', (h) => h.classList.contains('tv'))), 'TV olmayan cihazda otomatik kipte TV modu kapalı');
+  ok((await tvCalls()).pop() === false, 'yerel taraf TV modu kapalı bilgisini aldı');
+  await page.evaluate(() => localStorage.setItem('__isTv', '1'));
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.waitForFunction(() => document.documentElement.classList.contains('tv'));
+  ok((await tvCalls()).pop() === true, 'Android TV algılanınca TV modu açıldı ve yerel taraf yatay kilitledi (setTvMode)');
+  ok(!(await page.isVisible('#tabs')), 'TV modunda alt sekmeler yok');
+  const tvTiles = await page.$$eval('.tile', (e) => e.filter((x) => x.offsetParent).map((x) => { const r = x.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, mini: x.classList.contains('mini') }; }));
+  ok(tvTiles.every((t) => t.l >= 0 && t.t >= 0 && t.r <= 915 && t.b <= 412), 'TV modunda kutular ekran dışına taşmıyor');
+  await page.screenshot({ path: path.join(SHOTS, '00e-ana-ekran-tv.png') });
+
+  // yön tuşlarıyla ana ekranda gezinme
+  const focused = () => page.evaluate(() => { const a = document.activeElement; return a && a !== document.body ? (a.dataset.go || a.id || a.className) : ''; });
+  await page.waitForFunction(() => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.go === 'live');
+  ok(true, 'TV modunda ana ekran açılınca odak kendiliğinden Canlı TV kutusunda');
+  await page.keyboard.press('ArrowRight');
+  ok((await focused()) === 'movies', 'sağ ok: Filmler');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  ok((await focused()) === 'cats', 'sağ ok ×2: Kategoriler');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowDown');
+  ok(['guide', 'multi', 'recent', 'favs', 'sources'].includes(await focused()), 'aşağı ok: kısayol çubuğuna iner: ' + (await focused()));
+  await page.keyboard.press('ArrowUp');
+  ok(['live', 'movies', 'series', 'cats'].includes(await focused()), 'yukarı ok: büyük kutulara döner');
+  // Tamam (Enter) odaktaki kutuyu açar, Esc/geri kapatır
+  while ((await focused()) !== 'cats') await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.pg');
+  ok((await page.textContent('.pg h3')) === 'Kategoriler' && (await page.$$('.pg .row.cat')).length > 3, 'Kategoriler sayfası açıldı ve canlı TV kategorilerini listeliyor');
+  await sleep(400); // sayfa açılış geçişi bitsin
+  await page.screenshot({ path: path.join(SHOTS, '00f-kategoriler-tv.png') });
+  await page.click('.pg .row.cat:has-text("Spor")');
+  await page.waitForFunction(() => /spor/i.test(document.querySelector('#sp-name-t') && document.querySelector('#sp-name-t').textContent));
+  ok(true, 'Kategoriler sayfasından seçilen kategori Canlı TV’de açıldı');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#sp-name-t') && document.querySelector('#sp-name-t').textContent === 'Kategoriler');
+  ok(true, 'Esc/Geri bir adım geri götürdü (kanallardan kategori listesine)');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.tile.t-live');
+  ok(true, 'ikinci Esc/Geri ana ekrana döndürdü');
+
+  // EPG kısayolu: kanalların şimdi/sonra yayını
+  await page.click('[data-go=guide]');
+  await page.waitForSelector('.pg .row.gd');
+  ok((await page.textContent('.pg h3')).includes('EPG'), 'EPG kısayolu TV rehberini açtı');
+  await sleep(400);
+  await page.screenshot({ path: path.join(SHOTS, '00g-rehber-tv.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.pg', { state: 'detached' });
+
+  // ayarlarda TV modu seçimi
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('#g-tv');
+  ok((await page.inputValue('#g-tv')) === 'auto', 'TV modu varsayılan: Otomatik');
+  await page.selectOption('#g-tv', 'off');
+  ok(!(await page.$eval('html', (h) => h.classList.contains('tv'))) && (await tvCalls()).pop() === false, 'Kapalı: TV modu TV’de bile kapanır, yön kilidi kalkar');
+  await page.selectOption('#g-tv', 'on');
+  ok((await page.$eval('html', (h) => h.classList.contains('tv'))) && (await tvCalls()).pop() === true, 'Açık: TV modu açılır, yatay kilit istenir');
+  ok((await page.evaluate(() => window.__iptv.store.pref('set.tvmode', 'auto'))) === 'on', 'TV modu seçimi kalıcı kaydedildi');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  ok(true, 'Esc ayar penceresini kapattı');
+
+  // kumanda medya tuşları: önizleme (bölmeli canlı TV) ve tam ekran oynatıcı
+  await page.click('#btn-home').catch(() => {});
+  await page.waitForSelector('.tile.t-live');
+  await page.click('.t-live');
+  await page.waitForSelector('#split .row.cat');
+  await page.click('#split .row.cat:has-text("Tümü")');
+  await page.waitForSelector('#split .row:not(.cat)');
+  // kalıcı kanal arama alanı (liste sanal olduğu için satır sayısı yerine öğe listesine bakılır)
+  const itemsN = () => page.evaluate(() => window.__iptv.S.items.length);
+  await page.fill('#sp-q', 'Haber');
+  await page.waitForFunction(() => window.__iptv.S.items.length > 0 && window.__iptv.S.items.length < 120);
+  ok(await page.evaluate(() => window.__iptv.S.items.every((i) => /haber/i.test(i.name + ' ' + (i.group || '')))), 'bölmedeki “Kanal ara…” alanı kanalları süzdü: ' + (await itemsN()));
+  await page.fill('#sp-q', '');
+  await page.waitForFunction(() => window.__iptv.S.items.length === 120);
+  ok(true, 'arama silinince tüm kanallar geri geldi');
+  await page.click('#split .row:not(.cat)');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  await sleep(300);
+  // bilgi kartındaki eylem düğmeleri
+  ok((await page.$$('#sp-info .sp-act')).length === 3, 'bilgi kartında EPG, Bilgi ve Favori düğmeleri var');
+  await page.click('#sp-info [data-sp=fav]');
+  ok(await page.$eval('#sp-info [data-sp=fav]', (b) => b.classList.contains('on')), 'Favori düğmesi kanalı favoriye ekledi');
+  await page.click('#sp-info [data-sp=fav]');
+  ok(!(await page.$eval('#sp-info [data-sp=fav]', (b) => b.classList.contains('on'))), 'Favori düğmesi tekrar basılınca çıkardı');
+  await page.click('#sp-info [data-sp=info]');
+  await page.waitForSelector('.sheet .ci-facts');
+  ok(/Kategori/.test(await page.textContent('.sheet .ci-facts')) && !/\/live\//.test(await page.textContent('.sheet')), 'Kanal bilgisi açıldı; yayın adresi (kullanıcı/parola) gösterilmiyor');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('#sp-info [data-sp=epg]');
+  await page.waitForSelector('.sheet-back');
+  ok(true, 'EPG düğmesi program rehberini açtı');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  const nCalls = (name) => page.evaluate((n) => window.__calls.filter((c) => c[0] === n).length, name);
+  const key = (k) => page.evaluate((x) => window.__emit('remote', { key: x }), k);
+  const plays0 = await nCalls('play');
+  const url0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop()[1]);
+  await key('MediaPlayPause');
+  await sleep(150);
+  ok((await nCalls('pause')) >= 1, 'önizlemede Oynat/Duraklat tuşu yayını duraklattı');
+  await key('MediaPlayPause');
+  await sleep(150);
+  ok((await nCalls('resume')) >= 1, 'Oynat/Duraklat tuşu yayını sürdürdü');
+  await key('ChannelUp');
+  await sleep(300);
+  const url1 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop()[1]);
+  ok((await nCalls('play')) === plays0 + 1 && url1 !== url0, 'önizlemede Kanal + tuşu listedeki sonraki kanalı açtı');
+  ok(!(await page.$eval('body', (b) => b.classList.contains('player-open'))), 'kanal tuşu önizlemeyi tam ekrana çevirmedi');
+  await key('ChannelDown');
+  await sleep(300);
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop()[1])) === url0, 'Kanal − tuşu önceki kanala döndü');
+
+  await page.click('#sp-slot');
+  await page.waitForFunction(() => document.body.classList.contains('player-open'));
+  const p1 = await nCalls('pause');
+  await key('MediaPause');
+  await sleep(150);
+  ok((await nCalls('pause')) === p1 + 1, 'tam ekranda Duraklat tuşu duraklattı');
+  const r1 = await nCalls('resume');
+  await key('MediaPlay');
+  await sleep(150);
+  ok((await nCalls('resume')) === r1 + 1, 'tam ekranda Oynat tuşu sürdürdü');
+  const plays1 = await nCalls('play');
+  await key('ChannelUp');
+  await sleep(300);
+  ok((await nCalls('play')) === plays1 + 1, 'tam ekranda Kanal + sonraki kanala geçti');
+  await key('MediaFastForward');
+  await sleep(100);
+  ok(await page.isVisible('#pl-hud'), 'canlı yayında ileri sarma tuşu “sarma yok” bilgisini gösterdi');
+  await key('MediaStop');
+  await page.waitForFunction(() => !document.body.classList.contains('player-open'));
+  ok(true, 'Durdur tuşu oynatıcıyı kapattı (önizlemeye dönüldü)');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 

@@ -110,3 +110,55 @@ test('Java eklentisindeki her @PluginMethod, köprü sarmalayıcısında (bridge
   const eksik = metotlar.filter((m) => typeof js[m] !== 'function');
   assert.deepEqual(eksik, [], 'bridge.js\'de eksik metotlar (cihazda "is not a function" hatası verir)');
 });
+
+// ---- TV kumandası ----
+const javaDizin = join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/java/com/koruk/iptv/');
+const androidDizin = join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/');
+const oku_ = (f) => readFileSync(join(javaDizin, f), 'utf8');
+
+test('TV kumandası: MainActivity kanal/medya tuşlarını sayfaya iletir ve WebView\'i odakta tutar', () => {
+  const main = oku_('MainActivity.java');
+  assert.match(main, /public boolean dispatchKeyEvent\(KeyEvent/);
+  assert.match(main, /RemoteKeys\.nameOf\([\s\S]*?RemoteKeys\.send\(/);
+  assert.match(main, /ACTION_DOWN/, 'tuş yalnız basılırken iletilmeli (bırakılırken ikinci olay olmasın)');
+  assert.match(main, /requestFocus\(\)/);
+  assert.match(main, /onWindowFocusChanged[\s\S]*?focusWebView\(\)/, 'pencere odağı dönünce WebView yeniden odaklanmalı');
+  assert.match(kaynak, /RemoteKeys\.listen\([\s\S]*?notifyListeners\("remote"/);
+  assert.match(kaynak, /public void isTv\(/);
+});
+
+test('kumanda tuşları: sayfanın dinlediği her ad yerelde üretilir ve yerelin ürettiği her ad sayfada işlenir', () => {
+  const rk = oku_('RemoteKeys.java');
+  const yerel = new Set([...rk.matchAll(/return "(\w+)";/g)].map((m) => m[1]));
+  const ui = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/player-ui.js'), 'utf8');
+  for (const ad of ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'MediaTrackPrevious', 'ChannelUp', 'ChannelDown']) {
+    assert.ok(yerel.has(ad), `${ad} yerelde üretilmiyor`);
+  }
+  for (const ad of yerel) {
+    if (['ContextMenu', 'ColorF1Green', 'ColorF2Yellow'].includes(ad)) continue; // henüz bir işlevi yok
+    assert.ok(ui.includes(`'${ad}'`), `${ad} oynatıcı arayüzünde işlenmiyor`);
+  }
+});
+
+test('TV modu: setTvMode yatay kilitler; oynatıcıdan çıkınca da kilit sürer; ana ekranda çift geri tuşuyla çıkılır', () => {
+  const m = kaynak.match(/public void setTvMode[\s\S]*?\n    }\n/);
+  assert.ok(m, 'setTvMode bulunamadı');
+  assert.match(m[0], /SCREEN_ORIENTATION_SENSOR_LANDSCAPE/);
+  assert.match(m[0], /SCREEN_ORIENTATION_UNSPECIFIED/);
+  const imm = kaynak.match(/public void setImmersive[\s\S]*?\n    }\n/)[0];
+  assert.match(imm, /\|\| tvMode/, 'TV modunda oynatıcıdan çıkınca yön serbest kalmamalı');
+  const main = oku_('MainActivity.java');
+  assert.match(main, /web\.canGoBack\(\)[\s\S]*?web\.goBack\(\)/, 'geri tuşu önce sayfa geçmişinde gitmeli');
+  assert.match(main, /IptvPlayerPlugin\.tvMode[\s\S]*?lastBackAt[\s\S]*?Toast/, 'TV\'de ilk geri basışı uyarı vermeli');
+});
+
+test('Android TV bildirimi: kumanda başlatıcısı, afiş, dokunmatik ve leanback zorunlu değil, oynatıcı görünümü odak almaz', () => {
+  const manifest_ = readFileSync(join(androidDizin, 'AndroidManifest.xml'), 'utf8');
+  assert.match(manifest_, /LEANBACK_LAUNCHER/);
+  assert.match(manifest_, /android:banner="@drawable\/tv_banner"/);
+  assert.match(manifest_, /hardware\.touchscreen"\s+android:required="false"/);
+  assert.match(manifest_, /software\.leanback"\s+android:required="false"/);
+  assert.ok(readFileSync(join(androidDizin, 'res/drawable/tv_banner.png')).length > 1000, 'afiş boş');
+  const layout = readFileSync(join(androidDizin, 'res/layout/iptv_player_view.xml'), 'utf8');
+  assert.match(layout, /android:focusable="false"/, 'yerel görünüm odağı çalarsa yön tuşları WebView\'e ulaşmaz');
+});

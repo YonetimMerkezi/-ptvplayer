@@ -2,10 +2,12 @@ package com.koruk.iptv;
 
 import android.os.Build;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.Insets;
@@ -17,6 +19,8 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private long lastBackAt = 0;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(IptvPlayerPlugin.class);
@@ -31,6 +35,10 @@ public class MainActivity extends BridgeActivity {
                 WebView web = getBridge() != null ? getBridge().getWebView() : null;
                 if (web != null && web.canGoBack()) {
                     web.goBack();
+                } else if (IptvPlayerPlugin.tvMode && System.currentTimeMillis() - lastBackAt > 2500) {
+                    // TV'de kumandayla yanlışlıkla çıkmamak için ana ekranda ikinci basış gerekir
+                    lastBackAt = System.currentTimeMillis();
+                    Toast.makeText(MainActivity.this, "Çıkmak için Geri tuşuna tekrar basın", Toast.LENGTH_SHORT).show();
                 } else {
                     setEnabled(false);
                     getOnBackPressedDispatcher().onBackPressed();
@@ -39,6 +47,26 @@ public class MainActivity extends BridgeActivity {
         });
 
         setupFullscreen();
+        focusWebView();
+    }
+
+    // TV kumandasının yön/Tamam tuşları WebView'e ulaşsın: WebView ilk açılışta odakta olmalı.
+    private void focusWebView() {
+        WebView web = getBridge() != null ? getBridge().getWebView() : null;
+        if (web == null) return;
+        web.setFocusable(true);
+        web.setFocusableInTouchMode(true);
+        web.requestFocus();
+    }
+
+    // Kanal +/-, medya, menü ve renkli tuşlar sayfaya olay olarak iletilir (WebView bunları klavye olayına çevirmez).
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+            String name = RemoteKeys.nameOf(e.getKeyCode());
+            if (name != null && RemoteKeys.send(name)) return true;
+        }
+        return super.dispatchKeyEvent(e);
     }
 
     // Uygulamanın tamamı tam ekran: durum/gezinme çubukları gizli, pencere kamera çentiğinin altına da çizilir.
@@ -77,6 +105,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemBars(); // klavye/iletişim kutusundan dönünce çubuklar yeniden gizlenir
+        if (hasFocus) {
+            hideSystemBars(); // klavye/iletişim kutusundan dönünce çubuklar yeniden gizlenir
+            focusWebView();
+        }
     }
 }

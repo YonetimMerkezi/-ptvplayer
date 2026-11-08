@@ -21,6 +21,9 @@ import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, openPage, fmtAgo } from './ui.js';
 import { marquee } from './marquee.js';
 import { holeClip } from './hole.js';
+import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
+import { initDpad } from './dpad.js';
+import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, fmtMB, shouldAutoCheck, versionCodeOf } from './update.js';
 
@@ -50,6 +53,7 @@ function applyFontScale() {
   document.documentElement.style.setProperty('--fs', String(fontScale()));
 }
 applyFontScale();
+applyTheme(store.pref('set.theme', DEFAULT_THEME));
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
@@ -100,6 +104,7 @@ const pui = createPlayerUI({
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
     previewRect,
+    onPreviewStep: (d) => previewStep(d),
     onClose: () => multiResume(), // tam ekrandan dönünce çoklu ekran kutuları yeniden başlar
     onPreviewBack: (item) => {
       if (item && item.kind === 'live') setPv(item);
@@ -300,6 +305,7 @@ function renderTab() {
   }
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
   document.body.classList.toggle('on-home', S.tab === 'home' && !!S.source);
+  document.body.classList.toggle('multi-full', S.tab === 'multi' && !!S.source);
   const browse = S.tab === 'live' || S.tab === 'movies' || S.tab === 'series';
   $('#btn-search').hidden = !(browse || S.tab === 'favs');
   $('#btn-refresh').hidden = !S.source;
@@ -805,6 +811,8 @@ function closeSearch(keepList) {
   const had = !!S.query;
   S.query = '';
   qEl.value = '';
+  const spq = $('#sp-q');
+  if (spq) spq.value = '';
   $('#searchbar').hidden = true;
   if (!keepList && had && S.list) refreshList();
 }
@@ -1233,15 +1241,21 @@ function renderHome(v) {
   const recN = store.recents(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
   const chip = upd && upd.status === 'available' ? `<button class="btn sm" id="h-upd-chip">${icon('refresh')}Yeni sürüm</button>` : '';
+  const catN = S.groups.live.length + S.groups.movie.length + S.groups.series.length;
   v.innerHTML = `<div class="home">
     <div class="home-top"><div class="brand">${icon('tv')}<b>IPTV</b><span>Oynatıcı</span></div>${chip}<div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="hero"><div class="hero-t"><small>Hoş Geldiniz</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
     <div class="tiles">
-      <div class="tile t-live has-upd" role="button" tabindex="0" data-go="live">${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small><div class="upd"><span id="h-upd"></span><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button></div></div>
+      <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
       <button class="tile t-movie" data-go="movies">${icon('movie')}<b>Filmler</b><small>${cnt(c.movies.length, 'film')}</small></button>
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
-      <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
-      <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>Son izlenen</b><small>${recN || ''}</small></button>
+      <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
+    </div>
+    <div class="shortcuts">
+      <button class="tile mini t-guide" data-go="guide">${icon('list')}<b>EPG</b></button>
       <button class="tile mini t-multi" data-go="multi">${icon('grid')}<b>Çoklu ekran</b></button>
+      <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>İzleme listesi</b><small>${recN || ''}</small></button>
+      <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
       <button class="tile mini t-set" data-go="sources">${icon('gear')}<b>Ayarlar</b></button>
     </div>
     <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
@@ -1261,6 +1275,8 @@ function renderHome(v) {
       setTab('live');
       return showRecent();
     }
+    if (t.dataset.go === 'cats') return categoriesPage();
+    if (t.dataset.go === 'guide') return guidePage();
     setTab(t.dataset.go);
   };
   tickClock();
@@ -1304,11 +1320,35 @@ function renderSplit(v) {
   S.catFilter = '';
   S.catEdit = false;
   // Canlı TV her açılışta kategorilerle başlar (S.group.live null); kategoriye girince kanallar sol bölmede listelenir.
-  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
+  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button></div><div class="sp-search"><input id="sp-q" type="search" placeholder="Kanal ara…" aria-label="Kanal ara" autocomplete="off" enterkeyhint="search"></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
   $('#sp-prev').addEventListener('click', () => cycleCat(-1));
   $('#sp-next').addEventListener('click', () => cycleCat(1));
   $('#sp-name').addEventListener('click', () => S.group.live != null && leaveGroup('live'));
   $('#sp-slot').addEventListener('click', onSlotTap);
+  // Kalıcı kanal arama alanı: yazdıkça tüm canlı kanallarda (kategori seçiliyse onun içinde) arar
+  const spq = $('#sp-q');
+  spq.value = S.query;
+  spq.addEventListener(
+    'input',
+    debounce(() => {
+      S.query = spq.value.trim();
+      qEl.value = S.query;
+      refreshList();
+    }, 150),
+  );
+  // Bilgi kartındaki eylem düğmeleri (EPG, kanal bilgisi, favori)
+  $('#sp-info').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sp]');
+    if (!b || !S.pv) return;
+    if (b.dataset.sp === 'epg') return epgSheet(S.pv);
+    if (b.dataset.sp === 'info') return channelInfoSheet(S.pv);
+    if (b.dataset.sp === 'fav') {
+      toggleFav(S.pv);
+      renderSpInfo();
+      const nb = $('[data-sp=fav]');
+      if (nb) nb.focus({ preventScroll: true });
+    }
+  });
   wireCatbar('live');
   if (window.ResizeObserver) {
     spObs = new ResizeObserver(() => layoutPreview());
@@ -1368,6 +1408,16 @@ function previewLive(items, index) {
   renderSpInfo();
 }
 
+// Kumandanın kanal +/- tuşları (önizleme): listedeki sonraki/önceki kanalı önizler
+function previewStep(d) {
+  if (!S.pv || !S.items) return;
+  const cur = S.items.findIndex((x) => x.id === S.pv.id);
+  const i = cur + d;
+  if (cur < 0 || i < 0 || i >= S.items.length) return;
+  previewLive(S.items, i);
+  S.list && S.list.scrollToIndex(i);
+}
+
 function onSlotTap() {
   if (pui.isPreviewing()) return pui.expand();
   toast('Önizleme için bir kanala dokunun', 1800);
@@ -1404,7 +1454,8 @@ function renderSpInfo() {
     return;
   }
   const nn = S.epg.nowNext(it);
-  info.innerHTML = `<span class="sp-badge">CANLI TV</span><b>${esc(it.name)}</b>${nn.now ? `<span class="sp-now">${esc(nn.now.t)}</span><span class="sp-time">${fmtClock(nn.now.s)} – ${fmtClock(nn.now.e)}</span>` : ''}`;
+  const fav = isFav(it);
+  info.innerHTML = `<span class="sp-badge">CANLI TV</span><b>${esc(it.name)}</b>${nn.now ? `<span class="sp-now">${esc(nn.now.t)}</span><span class="sp-time">${fmtClock(nn.now.s)} – ${fmtClock(nn.now.e)}</span>` : ''}<div class="sp-acts"><button class="sp-act" data-sp="epg" aria-label="Program rehberi">${icon('list')}<span>EPG</span></button><button class="sp-act" data-sp="info" aria-label="Kanal bilgisi">${icon('info')}<span>Bilgi</span></button><button class="sp-act${fav ? ' on' : ''}" data-sp="fav" aria-label="${fav ? 'Favorilerden çıkar' : 'Favorilere ekle'}">${icon(fav ? 'star-on' : 'star')}<span>${fav ? 'Favori' : 'Ekle'}</span></button></div>`;
   const draw = (list) => {
     const now = Date.now();
     epgEl.innerHTML = list.length
@@ -1429,6 +1480,23 @@ function renderSpInfo() {
   }
 }
 
+// Kanal bilgisi: ad, kategori, numara, şimdi/sonra yayın ve yayın sunucusu (kullanıcı adı/parola gösterilmez)
+function channelInfoSheet(it) {
+  const nn = S.epg.nowNext(it);
+  let host = '';
+  try {
+    const t = playTargets(S.source, it)[0];
+    host = t ? new URL(typeof t === 'string' ? t : t.url).host : '';
+  } catch {
+    /* adres çözülemedi */
+  }
+  const rows = [['Kategori', it.group], ['Kanal no', it.num], ['Şimdi', nn.now && `${fmtClock(nn.now.s)} · ${nn.now.t}`], ['Sonra', nn.next && `${fmtClock(nn.next.s)} · ${nn.next.t}`], ['Yayın sunucusu', host]];
+  openSheet({
+    title: 'Kanal bilgisi',
+    html: `<div class="ci-head">${logo(it.logo, it.name)}<b>${esc(it.name)}</b></div><dl class="dt-facts ci-facts">${factsOf(rows)}</dl>`,
+  });
+}
+
 // Kategori geçişi: ‹ › okları komşu kategoriye atlar; ortadaki ada dokununca kategori listesine dönülür.
 function cycleCat(d) {
   const rows = categoryRows('live').filter((r) => !r.special || r.id !== '__recent' || r.count);
@@ -1442,7 +1510,7 @@ function cycleCat(d) {
 // ------------------------------------------------------------------ çoklu ekran
 
 // Aynı anda 2 ya da 4 canlı kanal; her kutu kendi oynatıcısında oynar, yalnız seçili kutu sesli.
-const M = { on: false, suspended: false, n: 2, sound: 0, slots: [], eng: null, obs: null };
+const M = { on: false, suspended: false, n: 2, sound: 0, fill: true, slots: [], eng: null, obs: null, hideTimer: 0 };
 const MAX_SLOTS = 4;
 
 const multiIdsKey = () => 'multi.ids.' + sid();
@@ -1502,11 +1570,12 @@ function multiStart(i) {
   const vid = $('.mp-vid', host);
   const r = vid.getBoundingClientRect();
   const rect = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
-  M.eng.start(i, sl.targets[sl.idx], { rect, muted: i !== M.sound, host: vid }).catch((e) => multiEvent({ slot: i, state: 'error', message: e && e.message }));
+  M.eng.start(i, sl.targets[sl.idx], { rect, muted: i !== M.sound, host: vid, fill: M.fill }).catch((e) => multiEvent({ slot: i, state: 'error', message: e && e.message }));
   syncHole();
 }
 
 function multiStop() {
+  clearTimeout(M.hideTimer);
   M.on = false;
   M.suspended = false;
   if (M.obs) M.obs.disconnect();
@@ -1611,9 +1680,33 @@ function renderMulti(v) {
   });
   if (!M.slots[M.sound] || M.sound >= M.n) M.sound = firstFilled();
   if (!M.eng) M.eng = createMultiEngine({ native: nativePlugin, Hls: window.Hls, on: multiEvent });
-  v.innerHTML = `<div class="mp"><div class="mp-bar"><b>Çoklu ekran</b><div class="mp-n" id="mp-n"><button data-n="2">2 kutu</button><button data-n="4">4 kutu</button></div></div><div class="mp-grid n${M.n}" id="mp-grid">${Array.from({ length: M.n }, (_, i) => `<div class="mp-cell" data-c="${i}" role="button" tabindex="0"><div class="mp-vid"></div><div class="mp-ovl"></div></div>`).join('')}</div><p class="hint mp-hint">Boş kutuya dokunup kanal seçin. Dinlemek istediğiniz kutuya dokunun: yalnız o kutunun sesi açık olur.</p></div>`;
-  const mark = () => $$('#mp-n button').forEach((b) => b.classList.toggle('on', Number(b.dataset.n) === M.n));
+  M.fill = store.pref('multi.fill', true) !== false;
+  // Tüm ekranı kaplar: üst çubuk ve alt sekmeler gizlenir (body.multi-full); denetimler kısa süre sonra kaybolan düğmelerdir.
+  v.innerHTML = `<div class="mp"><div class="mp-grid n${M.n}${M.fill ? ' fill' : ''}" id="mp-grid">${Array.from({ length: M.n }, (_, i) => `<div class="mp-cell" data-c="${i}" role="button" tabindex="0"><div class="mp-vid"></div><div class="mp-ovl"></div></div>`).join('')}</div><div class="mp-chips" id="mp-chips"><button class="mp-chip" id="mp-back" aria-label="Ana ekran">${icon('back')}</button><div class="mp-n" id="mp-n"><button data-n="2" aria-label="2 kutu">2</button><button data-n="4" aria-label="4 kutu">4</button></div><button class="mp-chip txt" id="mp-fit"></button></div></div>`;
+  const mark = () => {
+    $$('#mp-n button').forEach((b) => b.classList.toggle('on', Number(b.dataset.n) === M.n));
+    $('#mp-fit').textContent = M.fill ? 'Doldur' : 'Sığdır';
+    $('#mp-fit').setAttribute('aria-label', M.fill ? 'Görüntü dolduruyor; sığdırmak için dokunun' : 'Görüntü sığdırılıyor; doldurmak için dokunun');
+  };
   mark();
+  const chips = $('#mp-chips');
+  const showChips = () => {
+    chips.classList.remove('idle');
+    clearTimeout(M.hideTimer);
+    M.hideTimer = setTimeout(() => chips.classList.add('idle'), 5000);
+  };
+  showChips();
+  // Dokunuş bittikten sonra göster: basarken görünürlerse altındaki düğmenin üstünü örter ve tıklama kaybolur.
+  $('.mp').addEventListener('click', showChips, true);
+  $('.mp').addEventListener('keydown', showChips, true);
+  $('#mp-back').addEventListener('click', () => setTab('home'));
+  $('#mp-fit').addEventListener('click', () => {
+    M.fill = !M.fill;
+    store.setPref('multi.fill', M.fill);
+    $('#mp-grid').classList.toggle('fill', M.fill);
+    M.eng.fit(M.fill).catch(() => {});
+    mark();
+  });
   $('#mp-n').addEventListener('click', (e) => {
     const b = e.target.closest('[data-n]');
     if (!b || Number(b.dataset.n) === M.n) return;
@@ -1649,10 +1742,25 @@ function renderMulti(v) {
   layoutMulti();
 }
 
+// Sayfayı kapatır, geçmiş geri alındıktan sonra işi yapar: kapanışı beklemeden yeni katman (sekme, kategori, oynatıcı)
+// açılırsa, geri alma olayı onları da kapatırdı.
+function closeThen(api, fn) {
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    window.removeEventListener('popstate', run);
+    fn();
+  };
+  window.addEventListener('popstate', run); // nav.js'in kendi dinleyicisi önce çalışır: katmanlar zaten kapanmıştır
+  setTimeout(run, 600);
+  api.close();
+}
+
 // Kanal seçici: kategori ve arama ile süzülen tam ekran liste (on binlerce kanal için sanal liste).
-function channelPicker(onPick) {
+function channelPicker(onPick, { guide = false } = {}) {
   openPage({
-    title: 'Kanal seç',
+    title: guide ? 'TV Rehberi (EPG)' : 'Kanal seç',
     cls: 'pk-pg',
     html: '<div class="pk-bar"><select id="pk-cat" aria-label="Kategori"></select><input id="pk-q" type="search" placeholder="Kanal ara…" autocomplete="off"></div><div id="pk-list"></div>',
     mount: (body, api) => {
@@ -1661,14 +1769,24 @@ function channelPicker(onPick) {
       const rows = categoryRows('live').filter((r) => r.id !== '__recent' || r.count);
       sel.innerHTML = rows.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.count})</option>`).join('');
       let items = [];
+      // Rehber kipinde her satır şimdi/sonra yayınlananı gösterir
+      const guideRow = (it, i) => {
+        const nn = S.epg.nowNext(it);
+        const now = nn.now ? `${fmtClock(nn.now.s)} · ${nn.now.t}` : 'Program bilgisi yok';
+        const next = nn.next ? `Sonra ${fmtClock(nn.next.s)} · ${nn.next.t}` : '';
+        return `<div class="row gd" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(now)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}${next ? `<div class="sub nx"><span class="mq-i">${esc(next)}</span></div>` : ''}</div></div>`;
+      };
       const list = new VirtualList($('#pk-list', body), {
-        rowH: scaled(60),
-        render: (it, i) => `<div class="row" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(it.group || '')}</span></div></div></div>`,
+        rowH: scaled(guide ? 88 : 60),
+        render: guide
+          ? guideRow
+          : (it, i) => `<div class="row" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(it.group || '')}</span></div></div></div>`,
         onTap: (i) => {
           const it = items[i];
           if (!it) return;
+          if (guide) return closeThen(api, () => onPick(it, i, items));
           api.close();
-          onPick(it);
+          onPick(it, i, items);
         },
       });
       const draw = () => {
@@ -1678,6 +1796,50 @@ function channelPicker(onPick) {
       };
       sel.addEventListener('change', draw);
       q.addEventListener('input', debounce(draw, 120));
+      draw();
+    },
+  });
+}
+
+// Ana ekran "EPG": kanalların şimdi/sonra yayınları; dokununca tam ekran açılır.
+function guidePage() {
+  channelPicker((it, i, items) => playLive(items, i), { guide: true });
+}
+
+// Ana ekran "Kategoriler": üç türün tüm kategorileri tek yerde; seçilince o tür açılıp kategoriye girilir.
+function categoriesPage() {
+  const KINDS = [['live', 'Canlı TV', 'live'], ['movie', 'Filmler', 'movies'], ['series', 'Diziler', 'series']];
+  let kind = 'live';
+  openPage({
+    title: 'Kategoriler',
+    cls: 'pk-pg',
+    html: `<div class="seg" id="kc-seg">${KINDS.map(([k, t]) => `<button data-k="${k}">${t}</button>`).join('')}</div><div id="kc-list"></div>`,
+    mount: (body, api) => {
+      let rows = [];
+      const list = new VirtualList($('#kc-list', body), {
+        rowH: scaled(56),
+        render: (c, i) => `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`,
+        onTap: (i) => {
+          const c = rows[i];
+          if (!c) return;
+          const tab = KINDS.find(([k]) => k === kind)[2];
+          closeThen(api, () => {
+            setTab(tab);
+            enterGroup(kind, c.id);
+          });
+        },
+      });
+      const draw = () => {
+        $$('#kc-seg button', body).forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
+        rows = categoryRows(kind).filter((r) => r.id !== '__recent' || r.count);
+        list.setItems(rows);
+      };
+      $('#kc-seg', body).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-k]');
+        if (!b) return;
+        kind = b.dataset.k;
+        draw();
+      });
       draw();
     },
   });
@@ -1752,7 +1914,7 @@ function globalSearch() {
 // ------------------------------------------------------------------ ayarlar: genel, EPG, otomasyon
 
 const chkRow = (k, label, sub) => `<button class="chk${setting(k) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
-const optionsHtml = (pairs, cur) => pairs.map(([v, t]) => `<option value="${v}"${Number(cur) === v ? ' selected' : ''}>${t}</option>`).join('');
+const optionsHtml = (pairs, cur) => pairs.map(([v, t]) => `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${t}</option>`).join('');
 
 function generalSheet() {
   const lim = Number(store.pref('set.recentLimit', 40));
@@ -1762,6 +1924,8 @@ function generalSheet() {
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
+      `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
+      `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
     mount: (body) => {
       body.addEventListener('click', (e) => {
@@ -1775,6 +1939,19 @@ function generalSheet() {
           store.clearRecents(sid());
           toast('Son izlenenler temizlendi');
         }
+      });
+      $('#g-theme', body).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-theme]');
+        if (!b) return;
+        store.setPref('set.theme', applyTheme(b.dataset.theme));
+        $$('#g-theme .swatch', body).forEach((x) => {
+          x.classList.toggle('on', x === b);
+          x.setAttribute('aria-checked', String(x === b));
+        });
+      });
+      $('#g-tv', body).addEventListener('change', (e) => {
+        store.setPref('set.tvmode', normalizeTvMode(e.target.value));
+        applyTvMode();
       });
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
@@ -1931,13 +2108,6 @@ $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]');
   if (b) setTab(b.dataset.tab);
 });
-document.addEventListener('keydown', (e) => {
-  const t = e.target;
-  if ((e.key === 'Enter' || e.key === ' ') && t.getAttribute && t.getAttribute('role') === 'button' && !t.matches('input,textarea')) {
-    e.preventDefault();
-    t.click();
-  }
-});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return multiSuspend(); // arka planda kutu oynatıcıları (ses dahil) durur
   if (!pui.isOpen()) multiResume();
@@ -1960,6 +2130,25 @@ function applyInsets(i) {
 if (nativePlugin) {
   nativePlugin.getInsets().then(applyInsets).catch(() => {});
   nativePlugin.addListener('insets', applyInsets).catch(() => {});
+}
+
+// TV kumandası / klavye: yön tuşlarıyla gezinme, Tamam ile dokunma. Android TV'de (ya da ?tv=1 ile) kumanda kipi baştan açıktır.
+const dpad = initDpad({ topLayer });
+let tvDetected = /[?&]tv=1\b/.test(location.search);
+// TV modu (ayarlardan Otomatik/Açık/Kapalı): açıkken kumanda kipi, büyük yazı ve geniş kenar boşlukları; yerelde ayrıca yatay kilit.
+function applyTvMode() {
+  const on = resolveTv(store.pref('set.tvmode', DEFAULT_TV_MODE), tvDetected);
+  dpad.setTv(on);
+  if (nativePlugin) nativePlugin.setTvMode({ on }).catch(() => {});
+  layoutPreview();
+}
+applyTvMode();
+if (nativePlugin) {
+  nativePlugin.isTv().then((r) => {
+    tvDetected = tvDetected || !!(r && r.tv);
+    applyTvMode();
+  }).catch(() => {});
+  nativePlugin.addListener('remote', (e) => e && e.key && dpad.sendKey(e.key)).catch(() => {}); // kanal +/-, medya, menü tuşları
 }
 
 initNav();

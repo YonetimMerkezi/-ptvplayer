@@ -163,7 +163,9 @@ export function createPlayerUI({ engine, player, env }) {
   function scheduleHide() {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      if (!seeking) ui.classList.remove('show');
+      if (seeking) return;
+      ui.classList.remove('show');
+      if (ui.contains(document.activeElement)) document.activeElement.blur(); // gizli düğmede odak kalmasın: oklar yine kanal/sarma yapsın
     }, HIDE_MS);
   }
 
@@ -476,23 +478,71 @@ export function createPlayerUI({ engine, player, env }) {
     showUi(false);
   });
 
+  // Kumanda/klavye. Denetimler kapalıyken: ↑↓ kanal (canlı), ←→ sarma (film), Tamam denetimleri açar.
+  // Denetimler odaktayken oklar düğmeler arasında gezinir (gezinmeyi dpad.js yapar); arama çubuğunda ←→ sarar.
+  const kbdMode = () => document.documentElement.classList.contains('kbd');
+  const revealControls = () => {
+    showUi(false);
+    if (kbdMode()) q('#pl-play').focus({ preventScroll: true });
+  };
+  // Kumandanın medya/kanal tuşları önizlemede (bölmeli canlı TV) de çalışır; oklar ve Tamam orada listeye aittir.
+  const MEDIA_KEYS = new Set(['MediaPlayPause', 'MediaPlay', 'MediaPause', 'ChannelUp', 'ChannelDown', 'MediaTrackNext', 'MediaTrackPrevious']);
   document.addEventListener('keydown', (e) => {
-    if (!open || e.target.matches('input[type=search], input[type=text]')) return;
+    if (!open && !(previewing && MEDIA_KEYS.has(e.key))) return;
+    if (e.target.matches && e.target.matches('input[type=search], input[type=text]')) return;
     const st = player.state();
     const live = st.live;
     const k = e.key;
-    if (k === 'ArrowUp' && live) go(-1);
-    else if (k === 'ArrowDown' && live) go(1);
-    else if ((k === 'ArrowLeft' || k === 'MediaRewind' || k === 'Rewind') && !live) keySeek(-1);
-    else if ((k === 'ArrowRight' || k === 'MediaFastForward' || k === 'FastForward') && !live) keySeek(1);
-    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && live) hud('info', 'Canlı yayında sarma yok');
+    if (!open) {
+      // önizleme: kanal tuşları listedeki bir sonraki/önceki kanalı önizler (tam ekranı açmaz)
+      const step = k === 'ChannelUp' || k === 'MediaTrackNext' ? 1 : k === 'ChannelDown' || k === 'MediaTrackPrevious' ? -1 : 0;
+      if (step) {
+        if (env.onPreviewStep) env.onPreviewStep(step);
+        e.preventDefault();
+        return;
+      }
+    }
+    const inCtl = open && ui.classList.contains('show') && !!e.target.closest && !!e.target.closest('#pl-ui');
+    if (inCtl && k.startsWith('Arrow')) {
+      if (e.target.id === 'pl-seek' && !live && (k === 'ArrowLeft' || k === 'ArrowRight')) {
+        keySeek(k === 'ArrowLeft' ? -1 : 1);
+        showUi(false);
+        e.preventDefault();
+      } else showUi(false); // gezinme dpad.js'te; denetimler açık kalsın
+      return;
+    }
+    const seekKey = k === 'MediaFastForward' || k === 'FastForward' || k === 'MediaSkipForward' ? 1 : k === 'MediaRewind' || k === 'Rewind' || k === 'MediaSkipBackward' ? -1 : 0;
+    const visibleBtn = (id) => !q(id).hidden && !q(id).disabled;
+    if ((k === 'ArrowUp' || k === 'ChannelDown') && live) go(-1);
+    else if ((k === 'ArrowDown' || k === 'ChannelUp') && live) go(1);
+    else if (seekKey && !live) keySeek(seekKey);
+    else if (seekKey) hud('info', 'Canlı yayında sarma yok');
+    else if (k === 'ArrowLeft' && !live) keySeek(-1);
+    else if (k === 'ArrowRight' && !live) keySeek(1);
+    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && live) {
+      if (kbdMode()) revealControls();
+      else hud('info', 'Canlı yayında sarma yok');
+    } else if ((k === 'ArrowUp' || k === 'ArrowDown') && !live) revealControls();
+    else if (k === 'ChannelUp' || k === 'ChannelDown') go(k === 'ChannelUp' ? 1 : -1);
     else if (k === 'PageUp' || k === 'MediaTrackPrevious') go(-1);
     else if (k === 'PageDown' || k === 'MediaTrackNext') go(1);
     else if (k === ' ' || k === 'MediaPlayPause') player.toggle();
+    else if (k === 'MediaPlay') {
+      if (st.status === 'paused' || st.status === 'ended') player.toggle();
+    } else if (k === 'MediaPause') {
+      if (st.status === 'playing' || st.status === 'buffering') player.toggle();
+    } else if (k === 'MediaStop') popLayer('player');
+    else if (k === 'Info') showUi(true);
+    else if (k === 'Guide' && live) env.onEpgSheet(st.item);
+    else if (k === 'Captions' && visibleBtn('#pl-text')) trackSheet('text');
+    else if (k === 'AudioTrack' && visibleBtn('#pl-audio')) trackSheet('audio');
+    else if (k === 'ColorF0Red') q('#pl-fav').click();
+    else if (k === 'ColorF3Blue') q('#pl-aspect').click();
     else if (k === 'Enter' && !e.target.closest('button')) {
       if (ui.classList.contains('show')) player.toggle();
+      else revealControls();
     } else return;
-    showUi(false);
+    if (open) showUi(false);
     if (k !== 'Enter') e.preventDefault();
   });
 

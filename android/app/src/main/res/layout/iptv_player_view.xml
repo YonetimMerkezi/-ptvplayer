@@ -5,6 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
     android:visibility="gone"
     app:keep_content_on_player_reset="false"
     app:resize_mode="fit"

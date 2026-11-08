@@ -1,9 +1,12 @@
 package com.koruk.iptv;
 
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -90,6 +93,11 @@ public class IptvPlayerPlugin extends Plugin {
     public void load() {
         // Kamera çentiği payı değişince (dönme, klavye vb.) sayfaya bildirilir
         SafeArea.listen(px -> main.post(() -> notifyListeners("insets", insetsObject(px))));
+        RemoteKeys.listen(name -> {
+            JSObject o = new JSObject();
+            o.put("key", name);
+            main.post(() -> notifyListeners("remote", o));
+        });
         // Eski geçici indirmeleri temizle
         io.execute(() -> {
             File[] files = getContext().getCacheDir().listFiles();
@@ -352,7 +360,22 @@ public class IptvPlayerPlugin extends Plugin {
         final boolean on = call.getData().optBoolean("on", false);
         final boolean landscape = call.getData().optBoolean("landscape", on);
         main.post(() -> {
-            getActivity().setRequestedOrientation(on && landscape
+            getActivity().setRequestedOrientation((on && landscape) || tvMode
+                    ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            call.resolve();
+        });
+    }
+
+    // TV modu: tüm uygulama yatay kilitli (oynatıcıdan çıkınca da döner değil). MainActivity çift geri tuşuyla çıkış için okur.
+    static volatile boolean tvMode = false;
+
+    @PluginMethod
+    public void setTvMode(final PluginCall call) {
+        final boolean on = call.getData().optBoolean("on", false);
+        tvMode = on;
+        main.post(() -> {
+            getActivity().setRequestedOrientation(on
                     ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
             call.resolve();
@@ -368,6 +391,19 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("r", px[2] / d);
         o.put("b", px[3] / d);
         return o;
+    }
+
+    // Android TV / kumandalı cihaz mı? (arayüz odak halkasını ve geniş kenar boşluklarını açar)
+    @PluginMethod
+    public void isTv(final PluginCall call) {
+        UiModeManager um = (UiModeManager) getContext().getSystemService(Context.UI_MODE_SERVICE);
+        PackageManager pm = getContext().getPackageManager();
+        boolean tv = (um != null && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
+                || pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+                || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+        JSObject o = new JSObject();
+        o.put("tv", tv);
+        call.resolve(o);
     }
 
     @PluginMethod
@@ -394,11 +430,12 @@ public class IptvPlayerPlugin extends Plugin {
         }
         final String mime = call.getData().optString("mime", "auto");
         final boolean muted = call.getData().optBoolean("muted", true);
+        final boolean fill = call.getData().optBoolean("fill", true);
         final JSObject headers = call.getObject("headers");
         final double[] r = rectOf(call);
         main.post(() -> {
             try {
-                startSlot(id, url, mime, headers, r, muted);
+                startSlot(id, url, mime, headers, r, muted, fill);
                 call.resolve();
             } catch (Exception e) {
                 call.reject(String.valueOf(e.getMessage()));
@@ -412,7 +449,7 @@ public class IptvPlayerPlugin extends Plugin {
         return (w > 0 && h > 0) ? new double[] {call.getData().optDouble("x", 0), call.getData().optDouble("y", 0), w, h} : null;
     }
 
-    private void startSlot(final int id, String url, String mime, JSObject headers, double[] r, boolean muted) {
+    private void startSlot(final int id, String url, String mime, JSObject headers, double[] r, boolean muted, boolean fill) {
         stopSlot(id);
         // Tek oynatıcı ile çoklu ekran birlikte çalışmaz: tam ekran/önizleme oynatıcısı durdurulur.
         releasePlayer();
@@ -422,6 +459,7 @@ public class IptvPlayerPlugin extends Plugin {
         final Slot s = new Slot();
         s.view = (PlayerView) LayoutInflater.from(a).inflate(R.layout.iptv_player_view, parent, false);
         s.view.setVisibility(View.VISIBLE);
+        s.view.setResizeMode(fill ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM : AspectRatioFrameLayout.RESIZE_MODE_FIT); // doldur: şerit kalmaz, taşan kenarlar kırpılır
         parent.addView(s.view, 0); // WebView'in altında
         getBridge().getWebView().setBackgroundColor(Color.TRANSPARENT);
         placeView(s.view, r);
@@ -481,6 +519,18 @@ public class IptvPlayerPlugin extends Plugin {
     private void stopAllSlots() {
         for (Integer id : new java.util.ArrayList<>(slots.keySet())) stopSlot(id);
         if (player == null) getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    // Tüm kutularda görüntüyü doldur (kırp) / sığdır (şeritli) olarak değiştirir.
+    @PluginMethod
+    public void multiFit(final PluginCall call) {
+        final boolean fill = call.getData().optBoolean("fill", true);
+        main.post(() -> {
+            for (Slot s : slots.values()) {
+                if (s.view != null) s.view.setResizeMode(fill ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM : AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            }
+            call.resolve();
+        });
     }
 
     @PluginMethod

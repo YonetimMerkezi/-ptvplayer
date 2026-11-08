@@ -90,8 +90,9 @@ export function createMultiEngine({ native, Hls, on }) {
     native.addListener('multi', (e) => on({ slot: e.slot, state: e.state, message: e.state === 'error' ? describeError(e.message) : '' })).catch(() => {});
     return {
       kind: 'native',
-      start: (slot, target, { rect, muted }) =>
-        native.multiPlay({ slot, url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, x: rect.x, y: rect.y, w: rect.w, h: rect.h, muted: !!muted }),
+      start: (slot, target, { rect, muted, fill }) =>
+        native.multiPlay({ slot, url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, x: rect.x, y: rect.y, w: rect.w, h: rect.h, muted: !!muted, fill: fill !== false }),
+      fit: (fill) => native.multiFit({ fill: !!fill }),
       rect: (slot, r) => native.multiRect({ slot, x: r.x, y: r.y, w: r.w, h: r.h }),
       mute: (slot, muted) => native.multiMute({ slot, muted: !!muted }),
       stop: (slot) => native.multiStop({ slot }),
@@ -138,6 +139,7 @@ export function createMultiEngine({ native, Hls, on }) {
       }
     },
     rect: async () => {},
+    fit: async () => {}, // tarayıcıda doldur/sığdır CSS sınıfıyla (object-fit) yapılır
     mute: async (slot, muted) => {
       const v = vids.get(slot);
       if (v) v.video.muted = !!muted;

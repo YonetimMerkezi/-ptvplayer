@@ -3,9 +3,12 @@
 
 const stack = [];
 let busy = 0;
+// Sayfa yeniden yüklenince önceki yüklemeden kalan geçmiş girdileri (state.n) bu yüklemenin yığınıyla karışmasın diye
+// her girdiye yüklemeye özgü bir imza yazılır; imzası başka olan girdi "katman yok" sayılır.
+const SESSION = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 export function pushLayer(name, onClose) {
-  history.pushState({ layer: name, n: stack.length + 1 }, '');
+  history.pushState({ layer: name, n: stack.length + 1, s: SESSION }, '');
   stack.push({ name, onClose });
 }
 
@@ -30,7 +33,8 @@ export function topLayer() {
 export function initNav() {
   window.addEventListener('popstate', () => {
     // geçmişte geri gidilince, yığındaki fazla katmanları kapat
-    const want = (history.state && history.state.n) || 0;
+    const st = history.state;
+    const want = st && st.s === SESSION ? st.n || 0 : 0;
     while (stack.length > want) {
       const l = stack.pop();
       try {
