@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 12,
+    title: 'Çoklu ekran ve mini oynatıcı iyileştirmeleri',
+    items: [
+      'Canlı yayın ekranından geri çıkıldığında yayın kapanmadan uygulama içinde küçük oynatıcıya küçültülür; dokunarak yeniden büyütülebilir veya kapatılabilir',
+      'Çoklu ekrandaki kanal kontrol düğmeleri 2 saniye işlem yapılmadığında gizlenir; ekrana dokununca yeniden görünür',
+      'Çoklu ekran açılışında kontrol düğmelerinden kaynaklanan JavaScript hatası giderildi',
+    ],
+  },
+
+  {
     id: 11,
     title: 'Çoklu ekran',
     items: [
