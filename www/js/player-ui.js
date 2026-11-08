@@ -611,15 +611,14 @@ export function createPlayerUI({ engine, player, env }) {
     }
     fromPreview = false;
     const current = player.state();
-    // Canlı kanaldan çıkış, yayını kapatmak yerine Android PiP'ye taşır.
-    if (env.native && current.item && engine.enterPip) {
-      try {
-        await engine.enterPip();
-        if (env.onClose) env.onClose();
-        return;
-      } catch (e) {
-        toast(e && e.message ? e.message : 'PiP açılamadı', 2500);
-      }
+    // Android'de geri çıkışta yayını kapatma: uygulama içinde yüzen mini oynatıcıya küçült.
+    // Uygulama arka plana alınırsa Android'in sistem PiP akışı ayrıca çalışır.
+    if (env.native && current.item) {
+      if (env.onMiniPlayer) env.onMiniPlayer(true);
+      enterPreview();
+      engine.setImmersive(false, false).catch(() => {});
+      setTimeout(() => previewing && applyRect(), 250);
+      return;
     }
     await player.close();
     engine.setImmersive(false, false).catch(() => {});
