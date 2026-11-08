@@ -43,11 +43,43 @@ test('ses/altyazı parça değişimi JS tarafına bildiriliyor', () => {
   assert.match(kaynak, /onTracksChanged\(Tracks tracks\)[\s\S]*notifyListeners\("tracks"/);
 });
 
-test('tam ekranda pencere çentik alanına da çiziyor (yoksa Doldur/Yakınlaştır kenarda şerit bırakır)', () => {
+const oku = (ad) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/java/com/koruk/iptv/' + ad), 'utf8');
+
+test('uygulama tam ekran: kenardan kenara, çubuklar gizli, çentik alanına da çiziyor', () => {
+  const main = oku('MainActivity.java');
+  assert.match(main, /setDecorFitsSystemWindows\(\s*\w+,\s*false\s*\)/, 'pencere sistem çubuklarının arkasına çizilmiyor');
+  assert.match(main, /Build\.VERSION\.SDK_INT\s*>=\s*28[\s\S]*?layoutInDisplayCutoutMode\s*=\s*WindowManager\.LayoutParams\.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES/);
+  assert.match(main, /hide\(WindowInsetsCompat\.Type\.systemBars\(\)\)/, 'durum/gezinme çubukları gizlenmiyor');
+  assert.match(main, /BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE/, 'çubuklar kaydırınca geçici görünmeli');
+  assert.match(main, /onWindowFocusChanged[\s\S]*?hideSystemBars\(\)/, 'odak dönünce çubuklar yeniden gizlenmiyor');
+  // çentik payı sayfaya gerçek ölçüyle iletilir
+  assert.match(main, /Type\.displayCutout\(\)/);
+  assert.match(main, /SafeArea\.set\(/);
+  assert.match(main, /return WindowInsetsCompat\.CONSUMED/, 'tüketilmezse WebView kendi kenar boşluğunu ekler');
+});
+
+test('setImmersive artık yalnız yönü değiştirir (tam ekran uygulama genelinde ayarlı)', () => {
   const m = kaynak.match(/public void setImmersive[\s\S]*?\n    }\n/);
   assert.ok(m, 'setImmersive bulunamadı');
-  assert.match(m[0], /layoutInDisplayCutoutMode\s*=\s*on[\s\S]*?LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES[\s\S]*?LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT/);
-  assert.match(m[0], /Build\.VERSION\.SDK_INT\s*>=\s*28/);
+  assert.match(m[0], /setRequestedOrientation/);
+  assert.doesNotMatch(m[0], /WindowCompat|layoutInDisplayCutoutMode/, 'çentik/çubuk ayarı tekrar buraya taşınmış');
+});
+
+test('çentik payı eklenti üzerinden sayfaya gider: getInsets + "insets" olayı', () => {
+  assert.match(kaynak, /public void getInsets\(/);
+  assert.match(kaynak, /SafeArea\.listen\([\s\S]*?notifyListeners\("insets"/);
+  const safe = oku('SafeArea.java');
+  assert.match(safe, /static void set\(int l, int t, int r, int b\)/);
+});
+
+test('çoklu ekran: her kutu ayrı oynatıcı, yalnız seçili kutu sesli, sesli kutu odak almaz', () => {
+  for (const ad of ['multiPlay', 'multiRect', 'multiMute', 'multiStop', 'multiStopAll']) {
+    assert.match(kaynak, new RegExp('public void ' + ad + '\\('), ad + ' yok');
+  }
+  assert.match(kaynak, /setVolume\(/, 'kutu sesi kapatılamıyor');
+  assert.match(kaynak, /notifyListeners\("multi"/, 'kutu olayları sayfaya bildirilmiyor');
+  // eklenti kapanınca tüm kutu oynatıcıları bırakılmalı (sızıntı olmasın)
+  assert.match(kaynak, /handleOnDestroy[\s\S]*?stopAllSlots\(\)/);
 });
 
 test('uygulama içi güncelleme: APK yalnız kendi önbellek klasöründen kurulur, izin ve dosya sağlayıcı tanımlı', () => {

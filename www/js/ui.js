@@ -48,6 +48,33 @@ export function openSheet({ title, html = '', mount }) {
   return api;
 }
 
+// Tam ekran sayfa (film/dizi ayrıntısı, genel arama, kanal seçici): alt sayfadan farklı olarak tüm ekranı kaplar;
+// geri tuşu/geri oku onu kapatır, altındaki sayfa olduğu gibi kalır.
+export function openPage({ title = '', html = '', mount, cls = '' }) {
+  const id = 'page' + ++seq;
+  const el = document.createElement('div');
+  el.className = 'pg' + (cls ? ' ' + cls : '') + (document.body.classList.contains('player-open') ? ' over-player' : '');
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', title || 'Sayfa');
+  el.innerHTML = `<header class="pg-bar"><button class="icon-btn" data-close aria-label="Geri">${icon('back')}</button><h3>${esc(title)}</h3></header><div class="pg-body">${html}</div>`;
+  $('#sheets').append(el);
+  pushLayer(id, () => el.remove());
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) popLayer(id);
+  });
+  const body = $('.pg-body', el);
+  const api = {
+    el,
+    body,
+    close: () => popLayer(id),
+    setTitle: (t) => {
+      $('h3', el).textContent = t;
+    },
+  };
+  if (mount) mount(body, api);
+  return api;
+}
+
 export function fmtAgo(ts) {
   if (!ts) return 'hiç';
   const m = Math.round((Date.now() - ts) / 60000);

@@ -18,7 +18,10 @@ import {
 } from './cats.js';
 import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
-import { $, $$, icon, toast, logo, openSheet, fmtAgo } from './ui.js';
+import { $, $$, icon, toast, logo, openSheet, openPage, fmtAgo } from './ui.js';
+import { marquee } from './marquee.js';
+import { holeClip } from './hole.js';
+import { createMultiEngine, fitSlots, nextTargetIdx } from './multi.js';
 import { checkUpdate, fmtMB, shouldAutoCheck, versionCodeOf } from './update.js';
 
 const Cap = window.Capacitor;
@@ -36,6 +39,17 @@ const hoursMs = (k, d) => {
 const staleCatalogMs = () => hoursMs('auto.cat', 12);
 const staleEpgMs = () => hoursMs('auto.epg', 6);
 const setting = (k, d = true) => store.pref('set.' + k, d);
+// Yazı boyutu (Ayarlar → Genel ayarlar): tüm metinler rem ile yazıldığından kök ölçek yeter; sabit yükseklikli listeler de ölçeklenir.
+const FONT_SCALES = [[90, 'Küçük'], [100, 'Normal'], [115, 'Büyük'], [130, 'Çok büyük'], [150, 'Dev']];
+const fontScale = () => {
+  const p = Number(store.pref('set.fontScale', 100));
+  return p >= 80 && p <= 160 ? p / 100 : 1;
+};
+const scaled = (n) => Math.round(n * Math.max(1, fontScale()));
+function applyFontScale() {
+  document.documentElement.style.setProperty('--fs', String(fontScale()));
+}
+applyFontScale();
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
@@ -86,6 +100,7 @@ const pui = createPlayerUI({
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
     previewRect,
+    onClose: () => multiResume(), // tam ekrandan dönünce çoklu ekran kutuları yeniden başlar
     onPreviewBack: (item) => {
       if (item && item.kind === 'live') setPv(item);
       layoutPreview();
@@ -201,13 +216,13 @@ async function refreshCatalog({ quiet = false } = {}) {
     if (!S.source || S.source.id !== id) return;
     await store.cache.set('cat:' + id, catalogToStorable(cat));
     setCatalog(cat);
-    renderTab();
+    if (S.tab !== 'multi') renderTab(); // çoklu ekranda yayınlar kesilmesin
     banner(cat.warnings.length ? cat.warnings[0] : null, { err: cat.warnings.length > 0 });
     if (!quiet) toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi`);
     maybeRefreshEpg(true);
   } catch (e) {
     banner(`Liste alınamadı: ${e.message}`, { err: true });
-    if (S.tab !== 'sources') renderTab();
+    if (S.tab !== 'sources' && S.tab !== 'multi') renderTab();
   } finally {
     S.loading = false;
   }
@@ -278,6 +293,7 @@ function renderTab() {
   const v = $('#view');
   v.onclick = null;
   const split = S.tab === 'live' && S.split && !!S.source;
+  if (S.tab !== 'multi' && M.on) multiStop();
   if (!split && (pui.isPreviewing() || S.pv)) {
     pui.endPreview().then(syncHole);
     S.pv = null;
@@ -285,7 +301,7 @@ function renderTab() {
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
   document.body.classList.toggle('on-home', S.tab === 'home' && !!S.source);
   const browse = S.tab === 'live' || S.tab === 'movies' || S.tab === 'series';
-  $('#btn-search').hidden = !browse;
+  $('#btn-search').hidden = !(browse || S.tab === 'favs');
   $('#btn-refresh').hidden = !S.source;
   $('#btn-home').hidden = S.tab === 'home';
   tickClock();
@@ -293,6 +309,7 @@ function renderTab() {
   if (S.tab === 'home') return renderHome(v);
   if (S.tab === 'sources') return renderSources(v);
   if (S.tab === 'favs') return renderFavs(v);
+  if (S.tab === 'multi') return renderMulti(v);
   if (split) return renderSplit(v);
   renderBrowse(v, TAB_KIND[S.tab]);
 }
@@ -314,7 +331,10 @@ function renderOnboarding(v) {
 
 // Açık kategorinin (ya da kategori yoksa tüm içeriğin) öğeleri, sıralama uygulanmadan.
 function groupItems(kind) {
-  const g = S.group[kind];
+  return itemsOfGroup(kind, S.group[kind]);
+}
+
+function itemsOfGroup(kind, g) {
   if (g === '__recent') return recentItems(kind);
   if (g === '__cont') return continueItems(kind);
   if (g && g.startsWith('f:')) return folderItems(kind, folderOf(prefsOf(kind), g.slice(2)));
@@ -409,12 +429,12 @@ function categoryRows(kind) {
 function catRow(c, i) {
   const folderIc = c.folder ? icon('folder') : '';
   if (!S.catEdit || c.special) {
-    return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm">${folderIc}${esc(c.name)}</div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
+    return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
   }
   const move_ = S.catFilter
     ? ''
     : `<button class="act" data-act="top" aria-label="En üste al">${icon('top')}</button><button class="act" data-act="up" aria-label="Yukarı">${icon('up')}</button><button class="act" data-act="down" aria-label="Aşağı">${icon('down')}</button>`;
-  return `<div class="row cat edit${c.hidden ? ' hid' : ''}" role="button" tabindex="0" data-i="${i}"><button class="act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><div class="meta"><div class="nm">${folderIc}${esc(c.name)}</div></div><span class="n">${c.count}</span>${move_}</div>`;
+  return `<div class="row cat edit${c.hidden ? ' hid' : ''}" role="button" tabindex="0" data-i="${i}"><button class="act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><div class="meta"><div class="nm"><span class="mq-i">${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span>${move_}</div>`;
 }
 
 function onCatTap(kind, i, ev) {
@@ -505,11 +525,10 @@ function drawCrumb(kind) {
   qEl.placeholder = g != null ? 'Bu kategoride ara…' : `${label} ara…`;
 }
 
-function renderBrowse(v, kind) {
-  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small><button class="icon-btn" id="crumb-search" aria-label="Bu kategoride ara">${icon('search')}</button><button class="icon-btn" id="crumb-sort" aria-label="Sırala">${icon('sort')}</button></div><div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div><div id="list"></div><div id="empty" hidden></div>`;
-  $('#crumb-back').addEventListener('click', () => leaveGroup(kind));
-  $('#crumb-search').addEventListener('click', () => openSearch());
-  $('#crumb-sort').addEventListener('click', () => sortSheet(kind));
+const catbarHtml = () => `<div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div>`;
+
+// Kategori çubuğu (ara, klasör, sırala/gizle): dikey sayfada ve bölmeli ekranın sol bölmesinde aynı.
+function wireCatbar(kind) {
   $('#cat-q').value = S.catFilter;
   $('#cat-q').addEventListener(
     'input',
@@ -524,6 +543,21 @@ function renderBrowse(v, kind) {
   });
   $('#cat-new').addEventListener('click', () => nameSheet(kind));
   $('#cat-reset').addEventListener('click', () => resetSheet(kind));
+}
+
+function drawCatbar(kind, mode, all) {
+  $('#catbar').hidden = !(mode === 'cats' && all);
+  $('#catq').hidden = !(S.groups[kind].length > 8 || S.catFilter);
+  $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit;
+  $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
+}
+
+function renderBrowse(v, kind) {
+  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small><button class="icon-btn" id="crumb-search" aria-label="Bu kategoride ara">${icon('search')}</button><button class="icon-btn" id="crumb-sort" aria-label="Sırala">${icon('sort')}</button></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div>`;
+  $('#crumb-back').addEventListener('click', () => leaveGroup(kind));
+  $('#crumb-search').addEventListener('click', () => openSearch());
+  $('#crumb-sort').addEventListener('click', () => sortSheet(kind));
+  wireCatbar(kind);
   refreshList();
 }
 
@@ -533,13 +567,13 @@ function mountList(kind, mode = 'items') {
   const longPress = (i) => S.items[i] && folderSheet(kind, S.items[i]);
   if (mode === 'cats') {
     S.list = new VirtualList(el, {
-      rowH: 56,
+      rowH: scaled(56),
       render: (c, i) => catRow(c, i),
       onTap: (i, ev) => onCatTap(kind, i, ev),
     });
   } else if (kind === 'live') {
     S.list = new VirtualList(el, {
-      rowH: 64,
+      rowH: scaled(64),
       render: (it, i) => liveRow(it, i),
       onTap: (i, ev) => {
         const it = S.items[i];
@@ -555,7 +589,7 @@ function mountList(kind, mode = 'items') {
     S.list = new VirtualList(el, {
       minCellW: 104,
       gap,
-      cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + 42,
+      cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + Math.round(66 * fontScale()), // 66 px = 3 satırlık ad alanı (4,125 rem)
       render: (it, i) => card(it, i),
       onTap: (i) => (kind === 'movie' ? openMovie(S.items[i]) : openSeries(S.items[i])),
       onLongPress: longPress,
@@ -583,10 +617,7 @@ function refreshList(keepScroll = false) {
   drawCrumb(kind);
   const empty = $('#empty');
   const none = mode === 'cats' ? !all || !rows.length : !rows.length;
-  $('#catbar').hidden = !(mode === 'cats' && all);
-  $('#catq').hidden = !(S.groups[kind].length > 8 || S.catFilter);
-  $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit;
-  $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
+  drawCatbar(kind, mode, all);
   $('#list').hidden = none;
   empty.hidden = !none;
   if (none) fillEmpty(empty, kind, mode, all);
@@ -757,7 +788,7 @@ function liveRow(it, i) {
   const sub = nn.now ? nn.now.t : it.group || '';
   const sel = split && S.pv && S.pv.id === it.id;
   const num = split && setting('numbers') ? `<span class="num">${it.num || i + 1}</span>` : '';
-  return `<div class="row${sel ? ' sel' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm">${esc(it.name)}</div><div class="sub">${esc(sub)}</div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
+  return `<div class="row${sel ? ' sel' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
 }
 
 function card(it, i) {
@@ -781,10 +812,8 @@ function openSearch() {
   $('#searchbar').hidden = false;
   qEl.focus();
 }
-$('#btn-search').addEventListener('click', () => {
-  if ($('#searchbar').hidden) openSearch();
-  else closeSearch();
-});
+// Üstteki arama tüm içeriği (canlı, film, dizi; tüm kategoriler) arar; kategori içi arama kategori başlığındaki simgeyle yapılır.
+$('#btn-search').addEventListener('click', () => globalSearch());
 $('#q-clear').addEventListener('click', () => closeSearch());
 qEl.addEventListener(
   'input',
@@ -813,12 +842,20 @@ function startPlay(item, { ep = null, ctx = null, startAt } = {}) {
   pui.open(item, targets, { ep, startAt: item.kind === 'live' ? 0 : at, ctx });
 }
 
+// ---- ayrıntı sayfaları (tam ekran): film ve dizi ----
+
+const posterOf = (it) => (it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase()));
+const chipsOf = (parts) => parts.filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
+const factsOf = (rows) => rows.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+const yearOf = (y) => (y ? String(y).slice(0, 4) : '');
+const starsOf = (r) => (r ? `★ ${r}` : '');
+
 function openMovie(it) {
   const p = store.progress(sid(), it.id);
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
-  const sh = openSheet({
-    title: it.name,
-    html: `<div class="detail"><div class="pos">${it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(it.name)}</h2><div class="m" id="mv-meta">${esc(it.group || '')}${it.rating ? ` · ★ ${it.rating}` : ''}</div></div></div><p class="plot" id="mv-plot"></p><div class="btns" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div>`,
+  return openPage({
+    cls: 'dt-pg',
+    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
     mount: (body) => {
       $('#mv-play', body).addEventListener('click', () => startPlay(it));
       const st = $('#mv-start', body);
@@ -828,24 +865,29 @@ function openMovie(it) {
         toggleFav(it);
         $('#mv-fav', body).innerHTML = icon(isFav(it) ? 'star-on' : 'star') + 'Favori';
       });
+      const plot = $('#mv-plot', body);
       loadVodInfo(S.source, net, it)
         .then((info) => {
-          if (!info) return;
-          $('#mv-plot', body).textContent = info.plot;
-          const meta = [it.group, info.year && String(info.year).slice(0, 4), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`].filter(Boolean).join(' · ');
-          $('#mv-meta', body).textContent = meta;
+          if (!info) {
+            plot.textContent = it.plot || 'Bu kaynak film özeti sağlamıyor.';
+            return;
+          }
+          plot.textContent = info.plot || it.plot || 'Bu film için özet bulunamadı.';
+          $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
+          $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
         })
-        .catch(() => {});
+        .catch(() => {
+          plot.textContent = 'Özet alınamadı.';
+        });
     },
   });
-  return sh;
 }
 
 function openSeries(it) {
-  openSheet({
-    title: it.name,
+  return openPage({
+    cls: 'dt-pg',
     html: '<div class="empty"><div class="spinner" style="border-color:#fff3;border-top-color:var(--accent)"></div></div>',
-    mount: async (body, api) => {
+    mount: async (body) => {
       let info;
       try {
         info = await loadSeriesInfo(S.source, net, it);
@@ -870,8 +912,10 @@ function openSeries(it) {
         const ctx = { items: all, index, autoNext: true, play: (e, i) => startPlay(it, { ep: e, ctx: { ...ctx, index: i } }) };
         startPlay(it, { ep, ctx });
       };
+      const plotText = info.plot || it.plot || '';
       const draw = () => {
         const p = progressOf(it);
+        const cont = p ? all.find((x) => x.id === p.id) : null;
         const seasons = info.seasons.map((s) => `<button class="chip ${s.season === season ? 'on' : ''}" data-s="${s.season}">Sezon ${s.season}</button>`).join('');
         const eps = info.seasons.find((s) => s.season === season).episodes;
         const rows = eps
@@ -881,10 +925,13 @@ function openSeries(it) {
             return `<button class="epi" data-ep="${esc(e.id)}"><b>${e.episodeNum}</b><span class="t">${esc(e.title)}${e.durationSec ? `<small>${Math.round(e.durationSec / 60)} dk</small>` : ''}${pct ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${icon('play')}</button>`;
           })
           .join('');
-        const cont = p ? all.find((x) => x.id === p.id) : null;
-        body.innerHTML = `<div class="detail"><div class="pos">${it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(it.name)}</h2><div class="m">${esc([it.group, info.genre, info.year && String(info.year).slice(0, 4)].filter(Boolean).join(' · '))}</div><div style="display:flex;gap:8px;flex-wrap:wrap">${cont ? `<button class="btn sm" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : ''}<button class="btn sm ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn sm ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div></div>${info.plot || it.plot ? `<p class="plot">${esc(info.plot || it.plot)}</p>` : ''}<div class="chips" style="padding-left:0;padding-right:0">${seasons}</div>${rows}`;
+        const scroll = body.scrollTop;
+        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><div class="chips">${seasons}</div>${rows}</div></div></div>`;
+        body.scrollTop = scroll;
         const c = $('#sr-cont', body);
         if (c) c.addEventListener('click', () => play(cont));
+        const f = $('#sr-first', body);
+        if (f) f.addEventListener('click', () => play(all[0]));
         $('#sr-fold', body).addEventListener('click', () => folderSheet('series', it));
         $('#sr-fav', body).addEventListener('click', () => {
           toggleFav(it);
@@ -900,7 +947,6 @@ function openSeries(it) {
         const b = e.target.closest('[data-ep]');
         if (b) play(all.find((x) => x.id === b.dataset.ep));
       });
-      api.setTitle(it.name);
       draw();
     },
   });
@@ -993,7 +1039,7 @@ function renderSources(v) {
     })
     .join('');
   const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
-  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:12px;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:12px">Sürüm ${esc(VERSION)}</p></div>`;
+  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">IPTV Oynatıcı bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
 
@@ -1195,6 +1241,7 @@ function renderHome(v) {
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
       <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
       <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>Son izlenen</b><small>${recN || ''}</small></button>
+      <button class="tile mini t-multi" data-go="multi">${icon('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-set" data-go="sources">${icon('gear')}<b>Ayarlar</b></button>
     </div>
     <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
@@ -1220,10 +1267,7 @@ function renderHome(v) {
 }
 
 function showRecent() {
-  if (S.split) {
-    S.group.live = '__recent';
-    refreshList();
-  } else enterGroup('live', '__recent');
+  enterGroup('live', '__recent');
 }
 
 // ------------------------------------------------------------------ canlı TV: bölmeli ekran (yatay)
@@ -1238,33 +1282,34 @@ function previewRect() {
   return r.width > 0 && r.height > 0 ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null;
 }
 
-// Android'de önizleme yerel görünümde oynar: sayfa saydam, #bgfill önizleme yuvası dışındaki her yeri örter.
-function syncHole() {
-  const bg = $('#bgfill');
+// Android'de önizleme ve çoklu ekran yerel görünümlerde oynar: sayfa saydam, #bgfill video pencereleri dışındaki her yeri örter.
+function holeRects() {
+  if (M.on && nativePlugin) return multiRects();
   const r = pui.isPreviewing() ? previewRect() : null;
-  bg.style.clipPath = r
-    ? `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${r.x}px ${r.y}px, ${r.x}px ${r.y + r.h}px, ${r.x + r.w}px ${r.y + r.h}px, ${r.x + r.w}px ${r.y}px, ${r.x}px ${r.y}px)`
-    : '';
+  return r ? [r] : [];
+}
+
+function syncHole() {
+  $('#bgfill').style.clipPath = holeClip(holeRects());
 }
 
 function layoutPreview() {
   pui.syncPreview();
-  syncHole();
+  if (M.on) layoutMulti();
+  else syncHole();
 }
 
 function renderSplit(v) {
   if (spObs) spObs.disconnect();
   S.catFilter = '';
   S.catEdit = false;
-  if (S.group.live == null) {
-    const g = store.pref('live.cat', '__all');
-    S.group.live = groupExists('live', g) ? g : '__all';
-  }
-  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name" aria-label="Kategori seç"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button></div><div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
+  // Canlı TV her açılışta kategorilerle başlar (S.group.live null); kategoriye girince kanallar sol bölmede listelenir.
+  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
   $('#sp-prev').addEventListener('click', () => cycleCat(-1));
   $('#sp-next').addEventListener('click', () => cycleCat(1));
-  $('#sp-name').addEventListener('click', catPicker);
+  $('#sp-name').addEventListener('click', () => S.group.live != null && leaveGroup('live'));
   $('#sp-slot').addEventListener('click', onSlotTap);
+  wireCatbar('live');
   if (window.ResizeObserver) {
     spObs = new ResizeObserver(() => layoutPreview());
     spObs.observe($('#sp-slot'));
@@ -1277,17 +1322,29 @@ function renderSplit(v) {
 
 function refreshSplit(keepScroll = false) {
   pruneGroups();
-  if (S.group.live == null) S.group.live = '__all';
-  if (!S.list) mountList('live', 'items');
-  S.items = currentItems('live');
-  S.list.setItems(S.items, keepScroll);
-  $('#sp-name-t').textContent = groupTitle('live', S.group.live);
-  $('#sp-name-n').textContent = S.items.length;
-  const none = !S.items.length;
+  const mode = browseMode('live');
+  if (!S.list || S.listMode !== mode) {
+    if (S.list) S.list.destroy();
+    mountList('live', mode);
+    keepScroll = false;
+  }
+  const cats = mode === 'cats';
+  const all = S.cat.live.length;
+  S.items = cats ? [] : currentItems('live');
+  S.cats = cats ? categoryRows('live') : [];
+  const rows = cats ? S.cats : S.items;
+  S.list.setItems(rows, keepScroll);
+  $('#sp-prev').hidden = $('#sp-next').hidden = cats;
+  $('#sp-name').disabled = cats;
+  $('#sp-name').setAttribute('aria-label', cats ? 'Kategoriler' : 'Kategorilere dön');
+  $('#sp-name-t').textContent = cats ? 'Kategoriler' : groupTitle('live', S.group.live);
+  $('#sp-name-n').textContent = cats ? S.groups.live.length : S.items.length;
+  drawCatbar('live', mode, all);
+  const none = cats ? !all || !rows.length : !rows.length;
   $('#list').hidden = none;
   const empty = $('#empty');
   empty.hidden = !none;
-  if (none) fillEmpty(empty, 'live', 'items', S.cat.live.length);
+  if (none) fillEmpty(empty, 'live', mode, all);
 }
 
 function onSplitTap(i) {
@@ -1372,44 +1429,239 @@ function renderSpInfo() {
   }
 }
 
-// Kategori geçişi: ‹ › okları ve ortadaki ada dokununca açılan liste
-function setSplitCat(id) {
-  S.group.live = id;
-  store.setPref('live.cat', id);
-  closeSearch(true);
+// Kategori geçişi: ‹ › okları komşu kategoriye atlar; ortadaki ada dokununca kategori listesine dönülür.
+function cycleCat(d) {
+  const rows = categoryRows('live').filter((r) => !r.special || r.id !== '__recent' || r.count);
+  if (!rows.length || S.group.live == null) return;
+  let i = rows.findIndex((r) => r.id === S.group.live);
+  i = (i + d + rows.length) % rows.length;
+  S.group.live = rows[i].id;
   refreshList();
 }
 
-function cycleCat(d) {
-  const rows = categoryRows('live');
-  if (!rows.length) return;
-  let i = rows.findIndex((r) => r.id === (S.group.live || '__all'));
-  i = (i + d + rows.length) % rows.length;
-  setSplitCat(rows[i].id);
+// ------------------------------------------------------------------ çoklu ekran
+
+// Aynı anda 2 ya da 4 canlı kanal; her kutu kendi oynatıcısında oynar, yalnız seçili kutu sesli.
+const M = { on: false, suspended: false, n: 2, sound: 0, slots: [], eng: null, obs: null };
+const MAX_SLOTS = 4;
+
+const multiIdsKey = () => 'multi.ids.' + sid();
+const cellEl = (i) => $(`.mp-cell[data-c="${i}"]`);
+const mpCount = () => M.n;
+
+function multiRects() {
+  const out = [];
+  for (let i = 0; i < M.n; i++) {
+    const sl = M.slots[i];
+    const v = sl && sl.item && cellEl(i) ? $('.mp-vid', cellEl(i)) : null;
+    if (!v) continue;
+    const r = v.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) out.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), slot: i });
+  }
+  return out;
 }
 
-function catPicker() {
-  openSheet({
-    title: 'Kategori seç',
-    html: '<div class="sp-picker-q"><input id="cp-q" type="search" placeholder="Kategorilerde ara" autocomplete="off"></div><div id="cp-list"></div>',
+function layoutMulti() {
+  if (!M.on || !M.eng) return;
+  if (nativePlugin) for (const r of multiRects()) M.eng.rect(r.slot, r).catch(() => {});
+  syncHole();
+}
+
+function multiEvent({ slot, state, message }) {
+  const sl = M.slots[slot];
+  if (!sl || !sl.item || !M.on) return;
+  if (state === 'error') {
+    const next = nextTargetIdx(sl.idx, sl.targets.length);
+    if (next >= 0) {
+      sl.idx = next;
+      return multiStart(slot);
+    }
+    sl.status = 'error';
+    sl.msg = message || 'Yayın oynatılamadı';
+  } else if (state === 'playing') sl.status = 'playing';
+  else if (state === 'buffering') sl.status = sl.status === 'playing' ? 'playing' : 'loading';
+  else return;
+  drawCell(slot);
+}
+
+function multiStart(i) {
+  const sl = M.slots[i];
+  const host = cellEl(i);
+  if (!sl || !sl.item || !host || !M.on) return;
+  sl.status = 'loading';
+  sl.msg = '';
+  drawCell(i);
+  const vid = $('.mp-vid', host);
+  const r = vid.getBoundingClientRect();
+  const rect = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+  M.eng.start(i, sl.targets[sl.idx], { rect, muted: i !== M.sound, host: vid }).catch((e) => multiEvent({ slot: i, state: 'error', message: e && e.message }));
+  syncHole();
+}
+
+function multiStop() {
+  M.on = false;
+  M.suspended = false;
+  if (M.obs) M.obs.disconnect();
+  M.obs = null;
+  if (M.eng) M.eng.stopAll().catch(() => {});
+  document.documentElement.classList.remove('native-preview');
+  $('#bgfill').style.clipPath = '';
+}
+
+// Tam ekran oynatıcı açılırken ya da uygulama arka plana geçince kutular durdurulur (kanal seçimleri kalır).
+function multiSuspend() {
+  if (!M.on || M.suspended) return;
+  M.suspended = true;
+  if (M.eng) M.eng.stopAll().catch(() => {});
+  for (const sl of M.slots) if (sl && sl.item) sl.status = 'idle';
+  document.documentElement.classList.remove('native-preview');
+  $('#bgfill').style.clipPath = '';
+}
+
+function multiResume() {
+  if (!M.on || !M.suspended || S.tab !== 'multi') return;
+  M.suspended = false;
+  document.documentElement.classList.toggle('native-preview', !!nativePlugin);
+  M.slots.slice(0, M.n).forEach((sl, i) => sl && sl.item && multiStart(i));
+}
+
+function persistMulti() {
+  store.setPref(multiIdsKey(), M.slots.map((sl) => (sl && sl.item ? sl.item.id : null)));
+}
+
+function setSound(i) {
+  M.sound = i;
+  for (let j = 0; j < M.n; j++) {
+    if (M.slots[j] && M.slots[j].item) M.eng.mute(j, j !== i).catch(() => {});
+    drawCell(j);
+  }
+}
+
+function firstFilled() {
+  const i = M.slots.slice(0, M.n).findIndex((sl) => sl && sl.item);
+  return i < 0 ? 0 : i;
+}
+
+function multiAssign(i, item) {
+  const targets = playTargets(S.source, item);
+  if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
+  const hadSound = M.slots[M.sound] && M.slots[M.sound].item;
+  M.slots[i] = { item, targets, idx: 0, status: 'loading', msg: '' };
+  if (!hadSound) M.sound = i;
+  persistMulti();
+  multiStart(i);
+  for (let j = 0; j < M.n; j++) drawCell(j);
+}
+
+function multiRemove(i) {
+  M.eng.stop(i).catch(() => {});
+  M.slots[i] = null;
+  if (M.sound === i) M.sound = firstFilled();
+  persistMulti();
+  for (let j = 0; j < M.n; j++) drawCell(j);
+  syncHole();
+}
+
+function multiFull(i) {
+  const items = M.slots.slice(0, M.n).filter((sl) => sl && sl.item).map((sl) => sl.item);
+  const index = items.findIndex((it) => it.id === M.slots[i].item.id);
+  multiSuspend();
+  playLive(items, Math.max(0, index));
+}
+
+function drawCell(i) {
+  const el = cellEl(i);
+  if (!el) return;
+  const sl = M.slots[i];
+  const has = !!(sl && sl.item);
+  el.classList.toggle('has', has);
+  el.classList.toggle('snd', has && i === M.sound);
+  const ovl = $('.mp-ovl', el);
+  if (!has) {
+    ovl.innerHTML = `<div class="mp-add">${icon('plus')}<span>Kanal ekle</span></div>`;
+    return;
+  }
+  const st = sl.status === 'error' ? `<div class="mp-st"><span>${esc(sl.msg)}<br><small>Yeniden denemek için dokunun</small></span></div>` : sl.status === 'loading' ? '<div class="mp-st"><div class="spinner"></div></div>' : '';
+  ovl.innerHTML = `${st}<div class="mp-top"><span class="mp-snd${i === M.sound ? ' on' : ''}">${icon(i === M.sound ? 'audio' : 'mute')}</span><span class="mp-act"><button data-act="swap" aria-label="Kanalı değiştir">${icon('list')}</button><button data-act="full" aria-label="Tam ekran">${icon('aspect')}</button><button data-act="rm" aria-label="Kaldır">${icon('close')}</button></span></div><div class="mp-name"><span class="mq-i">${esc(sl.item.name)}</span></div>`;
+  marquee(ovl);
+}
+
+function renderMulti(v) {
+  multiStop();
+  S.items = [];
+  M.n = store.pref('multi.n', 2) === 4 ? 4 : 2;
+  const ids = fitSlots(store.pref(multiIdsKey(), []), MAX_SLOTS);
+  M.slots = ids.map((id) => {
+    const item = id ? S.idx.live.get(id) : null;
+    const targets = item ? playTargets(S.source, item) : [];
+    return item && targets.length ? { item, targets, idx: 0, status: 'idle', msg: '' } : null;
+  });
+  if (!M.slots[M.sound] || M.sound >= M.n) M.sound = firstFilled();
+  if (!M.eng) M.eng = createMultiEngine({ native: nativePlugin, Hls: window.Hls, on: multiEvent });
+  v.innerHTML = `<div class="mp"><div class="mp-bar"><b>Çoklu ekran</b><div class="mp-n" id="mp-n"><button data-n="2">2 kutu</button><button data-n="4">4 kutu</button></div></div><div class="mp-grid n${M.n}" id="mp-grid">${Array.from({ length: M.n }, (_, i) => `<div class="mp-cell" data-c="${i}" role="button" tabindex="0"><div class="mp-vid"></div><div class="mp-ovl"></div></div>`).join('')}</div><p class="hint mp-hint">Boş kutuya dokunup kanal seçin. Dinlemek istediğiniz kutuya dokunun: yalnız o kutunun sesi açık olur.</p></div>`;
+  const mark = () => $$('#mp-n button').forEach((b) => b.classList.toggle('on', Number(b.dataset.n) === M.n));
+  mark();
+  $('#mp-n').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-n]');
+    if (!b || Number(b.dataset.n) === M.n) return;
+    store.setPref('multi.n', Number(b.dataset.n));
+    renderMulti(v);
+  });
+  $('#mp-grid').addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-c]');
+    if (!cell) return;
+    const i = Number(cell.dataset.c);
+    const sl = M.slots[i];
+    const act = e.target.closest('[data-act]');
+    if (act) {
+      if (act.dataset.act === 'rm') return multiRemove(i);
+      if (act.dataset.act === 'swap') return channelPicker((it) => multiAssign(i, it));
+      if (act.dataset.act === 'full') return multiFull(i);
+    }
+    if (!sl || !sl.item) return channelPicker((it) => multiAssign(i, it));
+    if (sl.status === 'error') return multiStart(i);
+    if (i !== M.sound) setSound(i);
+  });
+  M.on = true;
+  document.documentElement.classList.toggle('native-preview', !!nativePlugin);
+  for (let i = 0; i < M.n; i++) drawCell(i);
+  if (window.ResizeObserver) {
+    M.obs = new ResizeObserver(() => layoutMulti());
+    M.obs.observe($('#mp-grid'));
+  }
+  M.slots.slice(0, M.n).forEach((sl, i) => sl && multiStart(i));
+  layoutMulti();
+}
+
+// Kanal seçici: kategori ve arama ile süzülen tam ekran liste (on binlerce kanal için sanal liste).
+function channelPicker(onPick) {
+  openPage({
+    title: 'Kanal seç',
+    cls: 'pk-pg',
+    html: '<div class="pk-bar"><select id="pk-cat" aria-label="Kategori"></select><input id="pk-q" type="search" placeholder="Kanal ara…" autocomplete="off"></div><div id="pk-list"></div>',
     mount: (body, api) => {
-      const q = $('#cp-q', body);
-      const list = $('#cp-list', body);
-      const draw = () => {
-        const f = fold(q.value);
-        const cur = S.group.live || '__all';
-        list.innerHTML = categoryRows('live')
-          .filter((r) => !f || fold(r.name).includes(f))
-          .map((r) => `<button class="list-item" data-id="${esc(r.id)}"><span class="t">${r.folder ? icon('folder') : ''}${esc(r.name)}</span><span class="n">${r.count}</span>${r.id === cur ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`)
-          .join('') || '<div class="empty">Eşleşen kategori yok</div>';
-      };
-      q.addEventListener('input', debounce(draw, 100));
-      list.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-id]');
-        if (!b) return;
-        api.close();
-        setSplitCat(b.dataset.id);
+      const sel = $('#pk-cat', body);
+      const q = $('#pk-q', body);
+      const rows = categoryRows('live').filter((r) => r.id !== '__recent' || r.count);
+      sel.innerHTML = rows.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.count})</option>`).join('');
+      let items = [];
+      const list = new VirtualList($('#pk-list', body), {
+        rowH: scaled(60),
+        render: (it, i) => `<div class="row" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(it.group || '')}</span></div></div></div>`,
+        onTap: (i) => {
+          const it = items[i];
+          if (!it) return;
+          api.close();
+          onPick(it);
+        },
       });
+      const draw = () => {
+        const base = itemsOfGroup('live', sel.value);
+        items = q.value.trim() ? search(base, q.value, 500) : base;
+        list.setItems(items);
+      };
+      sel.addEventListener('change', draw);
+      q.addEventListener('input', debounce(draw, 120));
       draw();
     },
   });
@@ -1418,9 +1670,15 @@ function catPicker() {
 // ------------------------------------------------------------------ genel arama (ana ekran)
 
 function globalSearch() {
-  openSheet({
+  const KINDS = [['live', 'Canlı TV'], ['movie', 'Filmler'], ['series', 'Diziler']];
+  const SHOW_ALL = 40; // “Tümü” görünümünde her türden en çok bu kadar sonuç
+  const SHOW_ONE = 300; // tek tür seçilince
+  const CAP = 3000;
+  let kind = 'all';
+  openPage({
     title: 'Ara',
-    html: '<div class="sp-picker-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off"></div><div id="gs-res"></div>',
+    cls: 'gs-pg',
+    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search"></div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button></div><div id="gs-res"></div>',
     mount: (body) => {
       const q = $('#gs-q', body);
       const res = $('#gs-res', body);
@@ -1429,15 +1687,36 @@ function globalSearch() {
       const draw = () => {
         const t = q.value.trim();
         if (!t) {
-          res.innerHTML = '<div class="empty">Aramak için yazın</div>';
+          res.innerHTML = '<div class="empty">Tüm canlı kanallar, filmler ve dizilerde aramak için yazın</div>';
           return;
         }
-        found = { live: search(visibleAll('live'), t, 20), movie: search(visibleAll('movie'), t, 20), series: search(visibleAll('series'), t, 20) };
-        const sec = (title, k) => (found[k].length ? `<div class="sect">${title}</div>` + found[k].map((it, i) => row(it, k, i)).join('') : '');
-        res.innerHTML = sec('Canlı TV', 'live') + sec('Filmler', 'movie') + sec('Diziler', 'series') || '<div class="empty">Sonuç yok</div>';
+        // Arama açık kategoriyle sınırlı değildir: tüm kategorilerdeki canlı, film ve dizilerde yapılır.
+        found = { live: search(visibleAll('live'), t, CAP), movie: search(visibleAll('movie'), t, CAP), series: search(visibleAll('series'), t, CAP) };
+        const parts = KINDS.filter(([k]) => kind === 'all' || kind === k).map(([k, title]) => {
+          const list = found[k];
+          if (!list.length) return '';
+          const cap = kind === 'all' ? SHOW_ALL : SHOW_ONE;
+          const n = `${list.length}${list.length >= CAP ? '+' : ''}`;
+          const more = list.length > cap && kind === 'all' ? `<button class="list-item more" data-more="${k}">${n} sonucun tamamını göster</button>` : '';
+          return `<div class="sect">${title}<small>${n}</small></div>${list.slice(0, cap).map((it, i) => row(it, k, i)).join('')}${more}`;
+        });
+        res.innerHTML = parts.join('') || '<div class="empty">Sonuç yok</div>';
       };
+      $('#gs-kind', body).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-k]');
+        if (!b) return;
+        kind = b.dataset.k;
+        $$('#gs-kind button', body).forEach((x) => x.classList.toggle('on', x === b));
+        draw();
+      });
       q.addEventListener('input', debounce(draw, 150));
       res.addEventListener('click', (e) => {
+        const more = e.target.closest('[data-more]');
+        if (more) {
+          kind = more.dataset.more;
+          $$('#gs-kind button', body).forEach((x) => x.classList.toggle('on', x.dataset.k === kind));
+          return draw();
+        }
         const b = e.target.closest('[data-k]');
         if (!b) return;
         const i = Number(b.dataset.i);
@@ -1467,7 +1746,7 @@ function generalSheet() {
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
-      `<div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
+      `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
     mount: (body) => {
       body.addEventListener('click', (e) => {
         const c = e.target.closest('.chk');
@@ -1482,6 +1761,11 @@ function generalSheet() {
         }
       });
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
+      $('#g-fs', body).addEventListener('change', (e) => {
+        store.setPref('set.fontScale', Number(e.target.value));
+        applyFontScale();
+        renderTab(); // sabit yükseklikli listeler yeni ölçüyle yeniden kurulur
+      });
     },
   });
 }
@@ -1606,7 +1890,11 @@ function updateSheet(info) {
 
 $('#btn-source').addEventListener('click', () => (store.sources().length ? sourceSwitcher() : sourceForm()));
 $('#btn-refresh').addEventListener('click', () => refreshCatalog());
-$('#btn-home').addEventListener('click', () => setTab('home'));
+$('#btn-home').addEventListener('click', () => {
+  const k = TAB_KIND[S.tab];
+  if (S.split && k && S.group[k] != null) return leaveGroup(k); // önce kategori listesine, sonra ana ekrana
+  setTab('home');
+});
 // Yatay geniş ekranda canlı TV üç bölmeli olur; yön değişince yeniden kurulur.
 const mqSplit = window.matchMedia('(orientation: landscape) and (min-width: 640px)');
 S.split = mqSplit.matches;
@@ -1620,6 +1908,8 @@ mqSplit.addEventListener('change', () => {
   }
 });
 window.addEventListener('resize', layoutPreview);
+// Listeler yalnız görünen satırları çizer; her çizimden sonra sığmayan adlar kayan yazıya çevrilir.
+document.addEventListener('vl-draw', (e) => marquee(e.target));
 setInterval(tickClock, 20000);
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]');
@@ -1633,13 +1923,28 @@ document.addEventListener('keydown', (e) => {
   }
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') return multiSuspend(); // arka planda kutu oynatıcıları (ses dahil) durur
+  if (!pui.isOpen()) multiResume();
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
 });
 setInterval(() => {
   if (S.list && S.tab === 'live' && document.visibilityState === 'visible' && !pui.isOpen()) S.list.refreshRows();
 }, 60000);
+
+// Kamera çentiği payı: Android'de eklentiden gerçek ölçü gelir (WebView'in env() değeri dönüşte bayat kalabiliyor).
+// Yan şeritlerin daha az yer kaplaması için çentik payının bir kısmı kartların iç boşluğuna bırakılır.
+const NOTCH_TRIM = 10;
+function applyInsets(i) {
+  if (!i) return;
+  const st = document.documentElement.style;
+  for (const k of ['l', 't', 'r', 'b']) st.setProperty('--na-' + k, Math.max(0, Math.round((Number(i[k]) || 0) - NOTCH_TRIM)) + 'px');
+  layoutPreview();
+}
+if (nativePlugin) {
+  nativePlugin.getInsets().then(applyInsets).catch(() => {});
+  nativePlugin.addListener('insets', applyInsets).catch(() => {});
+}
 
 initNav();
 window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ayıklama ve uçtan uca testler için

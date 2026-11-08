@@ -66,7 +66,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/Deneme M3U/.test(await page.textContent('#h-src')), 'kaynak adı ana ekranın altında');
   ok(/120 kanal/.test(await page.textContent('.t-live')) && /Son güncelleme/.test(await page.textContent('#h-upd')), 'ana ekranda Canlı TV kutusu: kanal sayısı ve son güncelleme');
   ok(/\d\d:\d\d/.test(await page.textContent('#h-clock')) && (await page.textContent('#h-date')).includes('2'), 'ana ekranda saat ve tarih');
-  ok((await page.$$eval('.tile', (e) => e.length)) === 6, 'ana ekranda altı kutu');
+  ok((await page.$$eval('.tile', (e) => e.length)) === 7, 'ana ekranda yedi kutu (canlı, film, dizi, favoriler, son izlenen, çoklu ekran, ayarlar)');
   await page.screenshot({ path: path.join(SHOTS, '00-ana-ekran-dikey.png') });
   await page.click('.t-live');
   await page.waitForSelector('.row.cat');
@@ -88,7 +88,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const rowCount = await page.$$eval('.row', (e) => e.length);
   ok(rowCount > 5 && rowCount < 40, `yalnız görünen satırlar çizildi (${rowCount} satır)`);
 
-  await page.click('#btn-search');
+  await page.click('#crumb-search');
   await page.fill('#q', 'seker');
   await page.waitForFunction(() => document.querySelectorAll('.row').length > 0 && [...document.querySelectorAll('.row .nm')].every((n) => /Şeker/.test(n.textContent)));
   ok(true, '“seker” araması “Şeker TV” kanallarını buluyor (Türkçe duyarsız)');
@@ -200,13 +200,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(JSON.stringify(names2) === JSON.stringify(names1), 'sıra ve gizleme yeniden açılışta korunuyor');
   await page.click('.row.cat:has-text("Tümü")');
   await page.waitForSelector('.row:not(.cat)');
-  await page.click('#btn-search');
+  await page.click('#crumb-search');
   await page.fill('#q', g1);
   await sleep(450);
   const hiddenInSearch = await page.evaluate((g) => window.__iptv.S.items.some((it) => it.group === g), g1);
-  ok(!hiddenInSearch, 'gizli kategorideki öğeler aramada da çıkmıyor');
+  ok(!hiddenInSearch, 'gizli kategorideki öğeler kategori içi aramada da çıkmıyor');
   await page.click('#q-clear');
   await page.waitForSelector('.row:not(.cat)');
+  await page.click('#btn-search');
+  await page.fill('#gs-q', g1);
+  await sleep(500);
+  const hiddenInGlobal = await page.$$eval('#gs-res .list-item small', (e, g) => e.some((x) => x.textContent === g), g1);
+  ok(!hiddenInGlobal, 'gizli kategorideki öğeler genel aramada da çıkmıyor');
+  await page.goBack();
+  await page.waitForSelector('.pg', { state: 'detached' });
 
   // klasör: oluştur, uzun basarak öğe ekle
   await page.click('#crumb-back');
@@ -386,7 +393,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const prog = await page.evaluate(() => Object.values(window.__iptv.store.progressAll(window.__iptv.S.source.id)));
   ok(prog.length === 1 && prog[0].pos > 10000, `kapanışta konum kaydedildi (${prog[0] && Math.round(prog[0].pos / 1000)} sn)`);
   await page.goBack(); // detay sayfası
-  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.waitForSelector('.pg', { state: 'detached' });
   await page.click('#crumb-back');
   await page.waitForSelector('.row.cat:has-text("Devam et")');
   ok(true, '“Devam et” kategorisi belirdi');
@@ -457,6 +464,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(true, 'Xtream bölümü oynuyor');
   await page.goBack();
   await page.goBack();
+  // film ayrıntısı: tam ekran sayfa, "Film hakkında" özeti okunur
+  await page.click('#tabs [data-tab=movies]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card');
+  await page.click('.card');
+  await page.waitForSelector('#mv-play');
+  await page.waitForFunction(() => /Filmin konusu burada/.test(document.querySelector('#mv-plot').textContent), null, { timeout: 8000 });
+  ok(/Film hakkında/.test(await page.textContent('.pg.dt-pg h2')), 'Xtream film ayrıntısında “Film hakkında” özeti gösteriliyor');
+  const dtBox = await page.$eval('.pg.dt-pg', (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); });
+  ok(dtBox.join() === '0,0,390,844', 'film ayrıntısı tam ekran sayfa: ' + dtBox.join(','));
+  ok((await page.$eval('#mv-plot', (e) => parseFloat(getComputedStyle(e).fontSize))) >= 16, 'özet yazısı okunaklı (≥ 16 px)');
+  ok((await page.$$eval('.dt-facts dt, .dt-facts dd', (e) => e.length)) > 0, 'ayrıntıda tür/yıl gibi bilgiler listeleniyor');
+  await sleep(350);
+  await page.screenshot({ path: path.join(SHOTS, '07c-film-detay-xtream.png') });
+  await page.goBack();
+  await page.waitForSelector('.pg', { state: 'detached' });
   await page.click('#btn-source');
   ok((await page.$$eval('.sheet .list-item', (e) => e.length)) === 3, 'kaynak değiştirici iki kaynak + “ekle” gösteriyor');
   await page.goBack();
@@ -543,6 +568,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       setVolume: async (a) => window.__calls.push(['volume', a.value]),
       setRect: async (a) => window.__calls.push(['rect', a.x, a.y, a.w, a.h]),
       clearRect: async () => window.__calls.push(['clearRect']),
+      getInsets: async () => window.__insets || { l: 0, t: 0, r: 0, b: 0 },
+      multiPlay: async (a) => {
+        window.__calls.push(['multiPlay', a.slot, a.url, !!a.muted, a.x, a.y, a.w, a.h]);
+        setTimeout(() => listeners.multi && listeners.multi({ slot: a.slot, state: 'playing' }), 50);
+      },
+      multiRect: async (a) => window.__calls.push(['multiRect', a.slot, a.x, a.y, a.w, a.h]),
+      multiMute: async (a) => window.__calls.push(['multiMute', a.slot, !!a.muted]),
+      multiStop: async (a) => window.__calls.push(['multiStop', a.slot]),
+      multiStopAll: async () => window.__calls.push(['multiStopAll']),
       downloadApk: async ({ url }) => {
         window.__calls.push(['downloadApk', url]);
         listeners.apkProgress && listeners.apkProgress({ loaded: 500000, total: 1000000 });
@@ -564,6 +598,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       },
       addListener: (pluginName, ev, cb) => ((listeners[ev] = cb), { remove: async () => {} }),
     };
+    window.__emit = (ev, d) => listeners[ev] && listeners[ev](d);
   };
   ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
   await page.waitForSelector('#f');
@@ -635,6 +670,87 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(await page.evaluate(() => !document.documentElement.classList.contains('native-playing') && window.__calls.some((c) => c[0] === 'stop')), 'kapanışta durduruldu, arayüz geri geldi');
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'brightness' && c[1] === -1)), 'kapanışta sistem parlaklığına dönüldü');
+
+  // tam ekran: çentik payı eklentiden gerçek ölçüyle gelir ve sayfa kenarlarına yansır
+  const naVar = (k) => page.evaluate((n) => document.documentElement.style.getPropertyValue(n), '--na-' + k);
+  ok((await naVar('l')) === '0px', 'çentik payı eklentiden okundu (çentiksiz ekranda 0)');
+  await page.evaluate(() => window.__emit('insets', { l: 44, t: 24, r: 0, b: 0 }));
+  ok((await naVar('l')) === '34px' && (await naVar('t')) === '14px', 'çentik payı olayı CSS değişkenlerine yansıdı (44 → 34 px, 24 → 14 px)');
+  const padL = await page.evaluate(() => { const d = document.createElement('div'); d.className = 'pg'; d.style.visibility = 'hidden'; document.body.append(d); const v = getComputedStyle(d).paddingLeft; d.remove(); return v; });
+  ok(padL === '34px', 'tam ekran sayfaların sol boşluğu çentik payına eşit: ' + padL);
+  await page.evaluate(() => window.__emit('insets', { l: 0, t: 0, r: 0, b: 0 }));
+  ok((await naVar('l')) === '0px', 'çentik kalkınca boşluk sıfırlandı');
+
+  // çoklu ekran: her kutu ayrı yerel oynatıcı, yalnız bir kutunun sesi açık
+  console.log('Çoklu ekran (yerel)');
+  await page.click('#tabs [data-tab=home]');
+  await page.waitForSelector('.tile.t-multi');
+  await page.click('.t-multi');
+  await page.waitForSelector('.mp-cell');
+  ok((await page.$$('.mp-cell')).length === 2, 'çoklu ekran iki kutuyla açıldı');
+  ok(await page.evaluate(() => document.documentElement.classList.contains('native-preview')), 'çoklu ekranda sayfa saydam (kutuların görüntüsü yerel oynatıcıda)');
+  await page.click('.mp-cell[data-c="0"]');
+  await page.waitForSelector('#pk-q');
+  ok((await page.$$eval('#pk-cat option', (o) => o.length)) > 3, 'kanal seçicide kategori listesi var');
+  await page.fill('#pk-q', 'seker');
+  await page.waitForFunction(() => document.querySelectorAll('#pk-list .row').length > 0);
+  await page.click('#pk-list .row');
+  await page.waitForSelector('#pk-q', { state: 'detached' });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'multiPlay'));
+  let mp = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiPlay'));
+  ok(mp.length === 1 && mp[0][1] === 0 && /\.m3u8$/.test(mp[0][2]) && mp[0][3] === false, 'ilk kutu yerel oynatıcıda başladı, sesi açık');
+  ok(mp[0][6] > 100 && mp[0][7] > 60, 'kutunun dikdörtgeni eklentiye iletildi: ' + mp[0].slice(4).join(','));
+  await page.click('.mp-cell[data-c="1"]');
+  await page.waitForSelector('#pk-q');
+  await page.fill('#pk-q', 'haber');
+  await page.waitForFunction(() => document.querySelectorAll('#pk-list .row').length > 0);
+  await page.click('#pk-list .row');
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'multiPlay').length === 2);
+  mp = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiPlay'));
+  ok(mp[1][1] === 1 && mp[1][3] === true, 'ikinci kutu sessiz başladı (aynı anda yalnız bir kutunun sesi açık)');
+  ok(await page.evaluate(() => document.querySelector('.mp-cell[data-c="0"]').classList.contains('snd') && !document.querySelector('.mp-cell[data-c="1"]').classList.contains('snd')), 'sesli kutu vurgulu');
+  await page.screenshot({ path: path.join(SHOTS, '12-coklu-ekran-yerel.png') });
+  await page.click('.mp-cell[data-c="1"] .mp-vid');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'multiMute' && c[1] === 1 && c[2] === false));
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'multiMute' && c[1] === 0 && c[2] === true)), 'kutuya dokununca ses o kutuya geçti, önceki kutu susturuldu');
+  ok(await page.$eval('.mp-cell[data-c="1"]', (e) => e.classList.contains('snd')), 'sesli kutu işareti yeni kutuya taşındı');
+  ok((await page.evaluate(() => window.__iptv.store.pref('multi.ids.' + window.__iptv.S.source.id, []).filter(Boolean).length)) === 2, 'seçilen kanallar kaydedildi');
+  const nPlay = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiPlay').length);
+  let n0 = await nPlay();
+  await page.click('#mp-n [data-n="4"]');
+  await page.waitForFunction(() => document.querySelectorAll('.mp-cell').length === 4);
+  const cells4 = await page.$$eval('.mp-vid', (e) => e.map((x) => { const r = x.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; }));
+  ok(cells4.every((c) => c.l >= 0 && c.t >= 0 && c.r <= 390 && c.b <= 844) && !cells4.some((a, i) => cells4.some((c, j) => j > i && a.l < c.r - 1 && c.l < a.r - 1 && a.t < c.b - 1 && c.t < a.b - 1)), 'dört kutu ekrana sığıyor, üst üste binmiyor');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiPlay').length >= n + 2, n0);
+  ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'multiStopAll')), 'kutu sayısı değişince eski oynatıcılar bırakıldı');
+  ok((await page.evaluate(() => window.__iptv.store.pref('multi.n', 2))) === 4, 'kutu sayısı kaydedildi');
+  // kutudan tam ekran
+  n0 = await nPlay();
+  const stops0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiStopAll').length);
+  await page.click('.mp-cell[data-c="0"] [data-act=full]');
+  await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
+  ok((await page.evaluate((n) => window.__calls.filter((c) => c[0] === 'multiStopAll').length > n, stops0)), 'tam ekrana geçerken kutu oynatıcıları durduruldu');
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiPlay').length >= n + 2, n0, { timeout: 5000 });
+  ok(true, 'tam ekrandan dönünce kutular yeniden başladı');
+  // uygulama arka plana geçince kutu oynatıcıları (ses dahil) durur, dönünce yeniden başlar
+  const stopsBg = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiStopAll').length);
+  n0 = await nPlay();
+  await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiStopAll').length > n, stopsBg);
+  ok(true, 'uygulama arka plana geçince kutu oynatıcıları durdu');
+  await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiPlay').length >= n + 2, n0, { timeout: 5000 });
+  ok(true, 'öne gelince kutular yeniden başladı');
+  await page.click('.mp-cell[data-c="1"] [data-act=rm]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'multiStop' && c[1] === 1));
+  ok(await page.$eval('.mp-cell[data-c="1"]', (e) => !e.classList.contains('has')), 'kutudan kanal kaldırılınca oynatıcısı bırakıldı');
+  const stops1 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'multiStopAll').length);
+  await page.click('#tabs [data-tab=live]');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'multiStopAll').length > n, stops1);
+  ok(!(await page.evaluate(() => document.documentElement.classList.contains('native-preview'))), 'çoklu ekrandan çıkınca tüm kutu oynatıcıları durdu, sayfa opak');
+
   ok((await page.$('#diag')) === null, 'ekranda hata bildirimi yok');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
@@ -700,21 +816,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
   ok(!(await page.isVisible('#tabs')), 'yatayda alt sekmeler yok');
   const tiles = await page.$$eval('.tile', (e) => e.filter((x) => x.offsetParent).map((x) => { const r = x.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, c: x.className }; }));
-  ok(tiles.length === 5, 'yatay ana ekranda beş kutu görünüyor: ' + tiles.length);
+  ok(tiles.length === 6, 'yatay ana ekranda altı kutu görünüyor (ayarlar kutusu yatayda gizli): ' + tiles.length);
   ok(tiles.every((t) => t.l >= 0 && t.t >= 0 && t.r <= 915 && t.b <= 412), 'kutular ekran dışına taşmıyor');
   const ov = tiles.some((a, i) => tiles.some((c, j) => j > i && a.l < c.r - 1 && c.l < a.r - 1 && a.t < c.b - 1 && c.t < a.b - 1));
   ok(!ov, 'kutular birbirinin üstüne binmiyor');
   await page.screenshot({ path: path.join(SHOTS, '00-ana-ekran-yatay.png') });
 
   await page.click('.t-live');
-  await page.waitForSelector('#split .row');
+  await page.waitForSelector('#split .row.cat');
   ok(await page.isVisible('#btn-home'), 'yatayda geri oku görünüyor');
-  ok((await page.textContent('#sp-name-t')) === 'Tümü', 'bölmeli ekran son kategoriyle (Tümü) açıldı');
+  ok((await page.textContent('#sp-name-t')) === 'Kategoriler', 'bölmeli canlı TV açılışta kategorilerle başlıyor');
+  ok((await page.$$('#split .row:not(.cat)')).length === 0, 'açılışta sol bölmede yalnız kategoriler var');
+  ok(!(await page.isVisible('#sp-prev')) && !(await page.isVisible('#sp-next')), 'kategori listesinde ‹ › okları gizli');
+  await page.screenshot({ path: path.join(SHOTS, '00a-canli-kategoriler.png') });
+  await page.click('#split .row.cat:has-text("Tümü")');
+  await page.waitForSelector('#split .row:not(.cat)');
+  ok((await page.textContent('#sp-name-t')) === 'Tümü', 'kategoriye girince kanallar sol bölmede listelendi');
   const geo = await page.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(); const l = g('.sp-left'); const sl = g('#sp-slot'); const i = g('#sp-info'); return { l: l.right, s: [sl.left, sl.width, sl.height], i: i.left, ib: i.bottom, h: innerHeight }; });
   ok(geo.s[0] >= geo.l && Math.abs(geo.s[1] / geo.s[2] - 16 / 9) < 0.05 && geo.i >= geo.s[0] + geo.s[1] - 1, 'üç bölme: solda liste, ortada 16:9 önizleme, sağında bilgi');
   ok(geo.ib <= geo.h, 'bölmeler ekrana sığıyor');
   await page.screenshot({ path: path.join(SHOTS, '00b-canli-bolmeli.png') });
-  const first = await page.$eval('.sp-left .row .nm', (e) => e.textContent);
   ok(await page.$eval('.sp-left .row .num', (e) => /^\d+$/.test(e.textContent)), 'kanal satırında numara var');
 
   await page.click('#sp-next');
@@ -724,29 +845,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#sp-prev');
   await page.waitForFunction(() => document.querySelector('#sp-name-t').textContent === 'Tümü');
   ok(true, 'sol ok önceki kategoriye döndü');
-  await page.click('#sp-name');
-  await page.waitForSelector('#cp-q');
-  await page.fill('#cp-q', 'spo');
-  await page.waitForFunction(() => [...document.querySelectorAll('#cp-list .list-item .t')].every((x) => /spo/i.test(x.textContent)) && document.querySelectorAll('#cp-list .list-item').length > 0);
-  await page.click('#cp-list .list-item');
-  await page.waitForSelector('.sheet-back', { state: 'detached' });
-  await page.waitForFunction(() => /spor/i.test(document.querySelector('#sp-name-t').textContent));
-  ok(true, 'kategori adına dokununca açılan listede arayıp kategori seçilebiliyor');
+  await page.click('#sp-name'); // kategori adı: kategori listesine dön
+  await page.waitForSelector('#split .row.cat');
+  ok((await page.textContent('#sp-name-t')) === 'Kategoriler', 'kategori adına dokununca kategori listesine dönüldü');
+  await page.click('#split .row.cat:has-text("Spor")');
+  await page.waitForFunction(() => /spor/i.test(document.querySelector('#sp-name-t').textContent) && document.querySelectorAll('#split .row:not(.cat)').length > 0);
+  ok(true, '“Spor” kategorisi kendi kanallarını listeledi');
+  await page.goBack();
+  await page.waitForSelector('#split .row.cat');
+  ok(true, 'Android geri tuşu kanal listesinden kategori listesine döndürdü');
   await page.reload();
   await page.waitForSelector('.t-live');
   await page.click('.t-live');
-  await page.waitForSelector('#split .row');
-  ok(/spor/i.test(await page.textContent('#sp-name-t')), 'seçilen kategori yeniden açılışta hatırlandı');
-  await page.click('#sp-name');
-  await page.waitForSelector('#cp-q');
-  await page.click('#cp-list .list-item:first-child');
-  await page.waitForSelector('.sheet-back', { state: 'detached' });
-  await page.waitForFunction(() => document.querySelector('#sp-name-t').textContent === 'Tümü');
+  await page.waitForSelector('#split .row.cat');
+  ok((await page.textContent('#sp-name-t')) === 'Kategoriler', 'yeniden açılışta da kategorilerle başlıyor');
+  await page.click('#split .row.cat:has-text("Tümü")');
+  await page.waitForSelector('#split .row:not(.cat)');
 
   // önizleme: kanala dokununca küçük pencerede oynar
   const rectOf = (sel) => page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); });
   const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 2);
-  await page.click('.sp-left .row:not(.sel) .nm');
+  await page.click('.sp-left .row:not(.cat):not(.sel) .nm');
   await page.waitForSelector('#player.preview:not([hidden])');
   await page.waitForFunction(() => document.querySelector('#vid').currentTime > 1, null, { timeout: 20000 });
   ok(near(await rectOf('#player'), await rectOf('#sp-slot')), 'önizleme, yuvanın tam üstüne oturuyor');
@@ -754,7 +873,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/./.test(await page.textContent('#sp-info b')), 'bilgi bölmesinde kanal adı');
   ok(!(await page.isVisible('#pl-ui')), 'önizlemede denetimler yok');
   await page.screenshot({ path: path.join(SHOTS, '00c-onizleme.png') });
-  await page.click('.sp-left .row:not(.sel) .nm');
+  await page.click('.sp-left .row:not(.cat):not(.sel) .nm');
   ok((await page.$$('#player.preview')).length === 1, 'başka kanala dokununca önizleme sürüyor');
   await page.waitForFunction(() => document.querySelector('#vid').currentTime > 1, null, { timeout: 20000 });
   const selName = await page.$eval('.sp-left .row.sel .nm', (e) => e.textContent);
@@ -776,24 +895,88 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(1200);
   ok((await page.$eval('#vid', (v) => v.currentTime)) > t1 || true, 'yayın önizlemede sürüyor');
   ok((await page.$eval('.sp-left .row.sel .nm', (e) => e.textContent)) === selName, 'seçili kanal aynı kaldı');
-  await page.click('#btn-home'); // geri oku: ana ekran, önizleme kapanır
+  await page.click('#btn-home'); // geri oku: önce kategori listesine döner (yayın önizlemede sürer)
+  await page.waitForSelector('#split .row.cat');
+  ok((await page.textContent('#sp-name-t')) === 'Kategoriler', 'geri oku önce kategori listesine döndürdü');
+  await page.click('#btn-home'); // ikinci basış: ana ekran, önizleme kapanır
   await page.waitForSelector('.tile.t-live');
   await page.waitForSelector('#player', { state: 'hidden' });
   ok(true, 'ana ekrana dönünce önizleme kapandı');
   await page.click('.t-live');
-  await page.waitForSelector('#split .row');
+  await page.waitForSelector('#split .row.cat');
   await page.goBack(); // Android geri tuşu: ana ekran
   await page.waitForSelector('.tile.t-live');
   ok(true, 'Android geri tuşu canlı TV ekranından ana ekrana döndürdü');
 
-  // genel arama
+  // genel arama: tüm kategorilerde ve üç türde (canlı, film, dizi) arar
   await page.click('#h-search');
   await page.waitForSelector('#gs-q');
   await page.fill('#gs-q', 'seker');
   await page.waitForFunction(() => document.querySelectorAll('#gs-res .list-item').length > 0 && [...document.querySelectorAll('#gs-res .list-item .t')].every((n) => /Şeker/.test(n.textContent)));
-  ok(true, 'ana ekrandan genel arama “Şeker TV” kanallarını buluyor');
+  const gsGroups = await page.$$eval('#gs-res .list-item small', (e) => new Set(e.map((x) => x.textContent)).size);
+  ok(gsGroups >= 3, `arama tek kategoriyle sınırlı değil: sonuçlar ${gsGroups} farklı kategoriden`);
+  await page.fill('#gs-q', 'isik');
+  await page.waitForFunction(() => [...document.querySelectorAll('#gs-res .sect')].map((x) => x.textContent).join('|').includes('Canlı TV') && [...document.querySelectorAll('#gs-res .sect')].map((x) => x.textContent).join('|').includes('Filmler'));
+  ok(true, 'aynı aramada hem canlı kanallar hem filmler bölüm bölüm listeleniyor');
+  await page.fill('#gs-q', 'kurtulus');
+  await page.waitForFunction(() => [...document.querySelectorAll('#gs-res .sect')].some((x) => /Diziler/.test(x.textContent)));
+  ok(true, 'diziler de aramaya dahil');
+  await page.fill('#gs-q', 'isik');
+  await page.waitForFunction(() => document.querySelectorAll('#gs-res .sect').length === 2);
+  await page.click('#gs-kind [data-k=movie]');
+  await page.waitForFunction(() => document.querySelectorAll('#gs-res .sect').length === 1 && /Filmler/.test(document.querySelector('#gs-res .sect').textContent));
+  ok(true, 'tür düğmesi sonuçları yalnız filmlerle sınırlıyor');
+  // sonuçtan film ayrıntısı tam ekran sayfada açılır, geri dönünce arama açık kalır
+  await page.click('#gs-res .list-item[data-k=movie]');
+  await page.waitForSelector('#mv-play');
+  const pgBox = await page.$eval('.pg.dt-pg', (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); });
+  ok(near(pgBox, [0, 0, 915, 412]), 'film ayrıntısı tüm ekranı kaplıyor: ' + pgBox.join(','));
+  await page.waitForFunction(() => !document.querySelector('#mv-plot .dt-load'), null, { timeout: 8000 });
+  ok(/özet/i.test(await page.textContent('#mv-plot')), 'film hakkında bölümü yüklendi: ' + (await page.textContent('#mv-plot')));
+  const plotFs = await page.$eval('#mv-plot', (e) => parseFloat(getComputedStyle(e).fontSize));
+  ok(plotFs >= 16, 'özet yazısı okunaklı büyüklükte: ' + plotFs + ' px');
+  await sleep(350);
+  await page.screenshot({ path: path.join(SHOTS, '07b-film-detay-yatay.png') });
   await page.goBack();
-  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.waitForSelector('#mv-play', { state: 'detached' });
+  ok(await page.isVisible('#gs-q'), 'ayrıntıdan dönünce arama sayfası ve sonuçlar duruyor');
+  await page.goBack();
+  await page.waitForSelector('.pg', { state: 'detached' });
+
+  // çoklu ekran (tarayıcıda her kutu bir <video>)
+  console.log('Çoklu ekran (tarayıcı)');
+  await page.click('.t-multi');
+  await page.waitForSelector('.mp-cell');
+  const mpCells = await page.$$eval('.mp-cell', (e) => e.map((x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; }));
+  ok(mpCells.length === 2 && mpCells[0][1] <= mpCells[1][0] + 2 && Math.abs(mpCells[0][2] - mpCells[1][2]) < 2, 'yatayda iki kutu yan yana');
+  await page.click('.mp-cell[data-c="0"]');
+  await page.waitForSelector('#pk-q');
+  await page.fill('#pk-q', 'seker');
+  await page.waitForFunction(() => document.querySelectorAll('#pk-list .row').length > 0);
+  await page.click('#pk-list .row');
+  await page.waitForSelector('#pk-q', { state: 'detached' });
+  await page.click('.mp-cell[data-c="1"]');
+  await page.waitForSelector('#pk-q');
+  await page.fill('#pk-q', 'haber');
+  await page.waitForFunction(() => document.querySelectorAll('#pk-list .row').length > 0);
+  await page.click('#pk-list .row');
+  await page.waitForSelector('#pk-q', { state: 'detached' });
+  await page.waitForFunction(() => [...document.querySelectorAll('.mp-cell video')].filter((v) => v.currentTime > 0.5).length === 2, null, { timeout: 25000 });
+  ok(true, 'iki kanal aynı anda oynuyor');
+  ok((await page.$$eval('.mp-cell video', (v) => v.map((x) => x.muted).join())) === 'false,true', 'yalnız ilk kutunun sesi açık');
+  await page.screenshot({ path: path.join(SHOTS, '12b-coklu-ekran.png') });
+  await page.click('.mp-cell[data-c="1"] .mp-vid');
+  await page.waitForFunction(() => [...document.querySelectorAll('.mp-cell video')].map((x) => x.muted).join() === 'true,false');
+  ok(true, 'ikinci kutuya dokununca ses ona geçti');
+  await page.reload();
+  await page.waitForSelector('.t-multi');
+  await page.click('.t-multi');
+  await page.waitForFunction(() => document.querySelectorAll('.mp-cell.has').length === 2);
+  ok(true, 'kutulardaki kanallar yeniden açılışta hatırlandı');
+  await page.waitForFunction(() => [...document.querySelectorAll('.mp-cell video')].filter((v) => v.currentTime > 0.5).length === 2, null, { timeout: 25000 });
+  await page.click('#btn-home');
+  await page.waitForSelector('.tile.t-live');
+  ok((await page.$$('video.mp-v')).length === 0, 'çoklu ekrandan çıkınca kutu videoları kaldırıldı');
 
   // ayarlar kutuları
   await page.click('#h-set');
@@ -806,6 +989,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(!(await page.evaluate(() => window.__iptv.store.pref('set.epgRows', true))), 'seçenek kapatılınca ayar kalıcı kaydedildi');
   await page.selectOption('#g-lim', '20');
   ok((await page.evaluate(() => window.__iptv.store.pref('set.recentLimit', 40))) === 20, 'son izlenen sınırı kaydedildi');
+  const rootFs = () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+  const fs0 = await rootFs();
+  await page.selectOption('#g-fs', '150');
+  ok((await page.evaluate(() => window.__iptv.store.pref('set.fontScale', 100))) === 150, 'yazı boyutu ayarı kaydedildi');
+  ok(Math.abs((await rootFs()) - fs0 * 1.5) < 0.5, 'yazı boyutu tüm uygulamaya uygulandı: ' + fs0 + ' → ' + (await rootFs()) + ' px');
   await page.goBack();
   await page.waitForSelector('.sheet-back', { state: 'detached' });
   await page.click('[data-set=auto]');
@@ -824,9 +1012,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // kapatılan “program göster” seçeneği canlı listeye yansır
   await page.click('#btn-home');
   await page.click('.t-live');
-  await page.waitForSelector('#split .row');
+  await page.waitForSelector('#split .row.cat');
+  await page.click('#split .row.cat:has-text("Tümü")');
+  await page.waitForSelector('#split .row:not(.cat)');
   await sleep(300);
-  ok(await page.$$eval('.sp-left .row .sub', (e) => e.every((n) => !/Program/.test(n.textContent))), 'program bilgisi kapalıyken kanal satırlarında “şimdi” yazısı yok');
+  ok(await page.$$eval('.sp-left .row:not(.cat) .sub', (e) => e.length > 0 && e.every((n) => !/Program/.test(n.textContent))), 'program bilgisi kapalıyken kanal satırlarında “şimdi” yazısı yok');
+  // büyük yazıda sığmayan kanal adları kesilmez, kayarak gösterilir
+  await page.waitForFunction(() => document.querySelectorAll('.sp-left .row:not(.cat) .nm.mq').length > 0, null, { timeout: 4000 });
+  ok(true, 'dev yazı boyutunda sığmayan kanal adları kayan yazıya geçti');
+  ok(await page.$eval('.sp-left .row:not(.cat) .nm.mq .mq-i', (e) => getComputedStyle(e).animationName !== 'none'), 'kayan yazı animasyonu çalışıyor');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 

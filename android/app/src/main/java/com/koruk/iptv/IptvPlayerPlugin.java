@@ -18,9 +18,6 @@ import android.view.WindowManager;
 import android.webkit.WebView;
 
 import androidx.core.content.FileProvider;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
@@ -91,6 +88,8 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     public void load() {
+        // Kamera çentiği payı değişince (dönme, klavye vb.) sayfaya bildirilir
+        SafeArea.listen(px -> main.post(() -> notifyListeners("insets", insetsObject(px))));
         // Eski geçici indirmeleri temizle
         io.execute(() -> {
             File[] files = getContext().getCacheDir().listFiles();
@@ -141,39 +140,9 @@ public class IptvPlayerPlugin extends Plugin {
         releasePlayer();
         ensureView();
 
-        Map<String, String> props = new HashMap<>();
-        String ua = UA;
-        if (headers != null) {
-            Iterator<String> keys = headers.keys();
-            while (keys.hasNext()) {
-                String k = keys.next();
-                String v = headers.optString(k, "");
-                if ("User-Agent".equalsIgnoreCase(k)) ua = v;
-                else if (!v.isEmpty()) props.put(k, v);
-            }
-        }
-
-        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(15000)
-                .setReadTimeoutMs(20000)
-                .setUserAgent(ua)
-                .setDefaultRequestProperties(props);
-
-        DefaultLoadControl load = new DefaultLoadControl.Builder()
+        player = buildExo(headers, true, new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15000, 60000, 2500, 5000)
-                .build();
-
-        AudioAttributes audio = new AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                .build();
-        player = new ExoPlayer.Builder(getContext())
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
-                .setLoadControl(load)
-                .setAudioAttributes(audio, true)
-                .setHandleAudioBecomingNoisy(true)
-                .build();
+                .build());
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -202,9 +171,7 @@ public class IptvPlayerPlugin extends Plugin {
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
 
-        MediaItem.Builder item = new MediaItem.Builder().setUri(url);
-        if ("hls".equals(mime)) item.setMimeType(MimeTypes.APPLICATION_M3U8);
-        player.setMediaItem(item.build());
+        player.setMediaItem(mediaItemOf(url, mime));
         if (startMs > 0) player.seekTo(startMs);
         player.setPlayWhenReady(true);
         player.prepare();
@@ -215,6 +182,44 @@ public class IptvPlayerPlugin extends Plugin {
             main.postDelayed(tick, 1000);
         }
         emitState();
+    }
+
+    // Ortak oynatıcı kurulumu: başlıklar (User-Agent dahil), arabellek ayarı, ses odağı.
+    // Çoklu ekran kutuları ses odağı istemez (yoksa birbirini duraklatırlar).
+    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load) {
+        Map<String, String> props = new HashMap<>();
+        String ua = UA;
+        if (headers != null) {
+            Iterator<String> keys = headers.keys();
+            while (keys.hasNext()) {
+                String k = keys.next();
+                String v = headers.optString(k, "");
+                if ("User-Agent".equalsIgnoreCase(k)) ua = v;
+                else if (!v.isEmpty()) props.put(k, v);
+            }
+        }
+        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(20000)
+                .setUserAgent(ua)
+                .setDefaultRequestProperties(props);
+        AudioAttributes audio = new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build();
+        return new ExoPlayer.Builder(getContext())
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
+                .setLoadControl(load)
+                .setAudioAttributes(audio, audioFocus)
+                .setHandleAudioBecomingNoisy(true)
+                .build();
+    }
+
+    private static MediaItem mediaItemOf(String url, String mime) {
+        MediaItem.Builder item = new MediaItem.Builder().setUri(url);
+        if ("hls".equals(mime)) item.setMimeType(MimeTypes.APPLICATION_M3U8);
+        return item.build();
     }
 
     private void ensureView() {
@@ -232,21 +237,25 @@ public class IptvPlayerPlugin extends Plugin {
     private double[] rect = null;
 
     private void applyRect() {
-        if (playerView == null) return;
-        ViewGroup.LayoutParams lp = playerView.getLayoutParams();
+        if (playerView != null) placeView(playerView, rect);
+    }
+
+    // Görünümü CSS piksel dikdörtgenine yerleştirir (null → tüm ekran).
+    private void placeView(PlayerView v, double[] r) {
+        ViewGroup.LayoutParams lp = v.getLayoutParams();
         if (!(lp instanceof ViewGroup.MarginLayoutParams)) return;
         ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) lp;
-        if (rect == null) {
+        if (r == null) {
             m.width = ViewGroup.LayoutParams.MATCH_PARENT;
             m.height = ViewGroup.LayoutParams.MATCH_PARENT;
             m.setMargins(0, 0, 0, 0);
         } else {
             float d = getContext().getResources().getDisplayMetrics().density;
-            m.width = Math.max(1, Math.round((float) (rect[2] * d)));
-            m.height = Math.max(1, Math.round((float) (rect[3] * d)));
-            m.setMargins(Math.round((float) (rect[0] * d)), Math.round((float) (rect[1] * d)), 0, 0);
+            m.width = Math.max(1, Math.round((float) (r[2] * d)));
+            m.height = Math.max(1, Math.round((float) (r[3] * d)));
+            m.setMargins(Math.round((float) (r[0] * d)), Math.round((float) (r[1] * d)), 0, 0);
         }
-        playerView.setLayoutParams(m);
+        v.setLayoutParams(m);
     }
 
     @PluginMethod
@@ -336,35 +345,180 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
-    // Tam ekran (sistem çubukları gizli) ve yatay yön
+    // Uygulama zaten tam ekran (MainActivity: çubuklar gizli, çentiğin altına çizim); burada yalnız yön değişir:
+    // oynatıcı yatayı kilitler, çıkınca yön serbest kalır.
     @PluginMethod
     public void setImmersive(final PluginCall call) {
         final boolean on = call.getData().optBoolean("on", false);
         final boolean landscape = call.getData().optBoolean("landscape", on);
         main.post(() -> {
-            Activity a = getActivity();
-            View decor = a.getWindow().getDecorView();
-            WindowCompat.setDecorFitsSystemWindows(a.getWindow(), !on);
-            WindowInsetsControllerCompat c = WindowCompat.getInsetsController(a.getWindow(), decor);
-            if (c != null) {
-                if (on) {
-                    c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                    c.hide(WindowInsetsCompat.Type.systemBars());
-                } else {
-                    c.show(WindowInsetsCompat.Type.systemBars());
-                }
-            }
-            a.setRequestedOrientation(on && landscape
+            getActivity().setRequestedOrientation(on && landscape
                     ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-            // Yatayda kamera çentiği/ada alanına da çiz; yoksa görüntü o şeritte kesilir ve “Doldur” bile tam doldurmaz.
-            if (Build.VERSION.SDK_INT >= 28) {
-                WindowManager.LayoutParams lp = a.getWindow().getAttributes();
-                lp.layoutInDisplayCutoutMode = on
-                        ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                        : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
-                a.getWindow().setAttributes(lp);
+            call.resolve();
+        });
+    }
+
+    // Kamera çentiği payı (CSS piksel). Sayfa bunu --na-* değişkenlerine yazar.
+    private JSObject insetsObject(int[] px) {
+        float d = getContext().getResources().getDisplayMetrics().density;
+        JSObject o = new JSObject();
+        o.put("l", px[0] / d);
+        o.put("t", px[1] / d);
+        o.put("r", px[2] / d);
+        o.put("b", px[3] / d);
+        return o;
+    }
+
+    @PluginMethod
+    public void getInsets(final PluginCall call) {
+        call.resolve(insetsObject(SafeArea.get()));
+    }
+
+    // ------------------------------------------------------------------ çoklu ekran
+
+    private static final class Slot {
+        PlayerView view;
+        ExoPlayer player;
+    }
+
+    private final Map<Integer, Slot> slots = new HashMap<>();
+
+    @PluginMethod
+    public void multiPlay(final PluginCall call) {
+        final int id = call.getData().optInt("slot", 0);
+        final String url = call.getData().optString("url", "");
+        if (url.isEmpty()) {
+            call.reject("url gerekli");
+            return;
+        }
+        final String mime = call.getData().optString("mime", "auto");
+        final boolean muted = call.getData().optBoolean("muted", true);
+        final JSObject headers = call.getObject("headers");
+        final double[] r = rectOf(call);
+        main.post(() -> {
+            try {
+                startSlot(id, url, mime, headers, r, muted);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
             }
+        });
+    }
+
+    private static double[] rectOf(PluginCall call) {
+        double w = call.getData().optDouble("w", 0);
+        double h = call.getData().optDouble("h", 0);
+        return (w > 0 && h > 0) ? new double[] {call.getData().optDouble("x", 0), call.getData().optDouble("y", 0), w, h} : null;
+    }
+
+    private void startSlot(final int id, String url, String mime, JSObject headers, double[] r, boolean muted) {
+        stopSlot(id);
+        // Tek oynatıcı ile çoklu ekran birlikte çalışmaz: tam ekran/önizleme oynatıcısı durdurulur.
+        releasePlayer();
+        if (playerView != null) playerView.setVisibility(View.GONE);
+        Activity a = getActivity();
+        ViewGroup parent = (ViewGroup) getBridge().getWebView().getParent();
+        final Slot s = new Slot();
+        s.view = (PlayerView) LayoutInflater.from(a).inflate(R.layout.iptv_player_view, parent, false);
+        s.view.setVisibility(View.VISIBLE);
+        parent.addView(s.view, 0); // WebView'in altında
+        getBridge().getWebView().setBackgroundColor(Color.TRANSPARENT);
+        placeView(s.view, r);
+        s.player = buildExo(headers, false, new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(5000, 20000, 1500, 3000)
+                .build());
+        s.player.setVolume(muted ? 0f : 1f);
+        s.player.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                emitSlot(id, s.player);
+            }
+
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                emitSlot(id, s.player);
+            }
+
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                JSObject o = new JSObject();
+                o.put("slot", id);
+                o.put("state", "error");
+                o.put("message", error.getErrorCodeName());
+                notifyListeners("multi", o);
+            }
+        });
+        s.view.setPlayer(s.player);
+        s.player.setMediaItem(mediaItemOf(url, mime));
+        s.player.setPlayWhenReady(true);
+        s.player.prepare();
+        slots.put(id, s);
+        a.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    private void emitSlot(int id, ExoPlayer p) {
+        int st = p.getPlaybackState();
+        String name;
+        if (st == Player.STATE_IDLE) name = "idle";
+        else if (st == Player.STATE_BUFFERING) name = "buffering";
+        else if (st == Player.STATE_ENDED) name = "ended";
+        else name = p.isPlaying() ? "playing" : "buffering";
+        JSObject o = new JSObject();
+        o.put("slot", id);
+        o.put("state", name);
+        notifyListeners("multi", o);
+    }
+
+    private void stopSlot(int id) {
+        Slot s = slots.remove(id);
+        if (s == null) return;
+        s.view.setPlayer(null);
+        s.player.release();
+        ((ViewGroup) s.view.getParent()).removeView(s.view);
+    }
+
+    private void stopAllSlots() {
+        for (Integer id : new java.util.ArrayList<>(slots.keySet())) stopSlot(id);
+        if (player == null) getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    @PluginMethod
+    public void multiRect(final PluginCall call) {
+        final int id = call.getData().optInt("slot", 0);
+        final double[] r = rectOf(call);
+        main.post(() -> {
+            Slot s = slots.get(id);
+            if (s != null && r != null) placeView(s.view, r);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void multiMute(final PluginCall call) {
+        final int id = call.getData().optInt("slot", 0);
+        final boolean muted = call.getData().optBoolean("muted", true);
+        main.post(() -> {
+            Slot s = slots.get(id);
+            if (s != null) s.player.setVolume(muted ? 0f : 1f);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void multiStop(final PluginCall call) {
+        final int id = call.getData().optInt("slot", 0);
+        main.post(() -> {
+            stopSlot(id);
+            if (slots.isEmpty() && player == null) getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void multiStopAll(final PluginCall call) {
+        main.post(() -> {
+            stopAllSlots();
             call.resolve();
         });
     }
@@ -729,6 +883,7 @@ public class IptvPlayerPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         main.removeCallbacksAndMessages(null);
+        stopAllSlots();
         releasePlayer();
         io.shutdownNow();
     }

@@ -1,9 +1,18 @@
 package com.koruk.iptv;
 
+import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -28,5 +37,46 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         });
+
+        setupFullscreen();
+    }
+
+    // Uygulamanın tamamı tam ekran: durum/gezinme çubukları gizli, pencere kamera çentiğinin altına da çizilir.
+    // Çentik payı CSS'e gerçek ölçüyle verilir (WebView'in env(safe-area-inset-*) değeri dönüşte bayat kalabiliyor).
+    private void setupFullscreen() {
+        Window w = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(w, false);
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(lp);
+        }
+        hideSystemBars();
+
+        View content = findViewById(android.R.id.content);
+        if (content == null) return;
+        ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
+            Insets cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            // Ekran klavyesi açılınca içerik klavyenin üstüne oturur (sistem çubukları gizli olduğundan kendimiz yaparız).
+            v.setPadding(0, 0, 0, Build.VERSION.SDK_INT >= 30 ? ime.bottom : 0); // eski sürümlerde klavye payı güvenilir ölçülemez
+            SafeArea.set(cut.left, cut.top, cut.right, cut.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        ViewCompat.requestApplyInsets(content);
+    }
+
+    private void hideSystemBars() {
+        Window w = getWindow();
+        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, w.getDecorView());
+        if (c == null) return;
+        c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        c.hide(WindowInsetsCompat.Type.systemBars());
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemBars(); // klavye/iletişim kutusundan dönünce çubuklar yeniden gizlenir
     }
 }

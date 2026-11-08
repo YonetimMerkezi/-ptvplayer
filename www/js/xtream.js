@@ -141,7 +141,16 @@ export function mapSeriesInfo(json) {
     .filter((s) => s.episodes.length)
     .sort((a, b) => a.season - b.season);
   for (const s of seasons) s.episodes.sort((a, b) => a.episodeNum - b.episodeNum);
-  return { plot: info.plot || '', cast: info.cast || '', genre: info.genre || '', year: info.releaseDate || info.release_date || '', logo: info.cover || '', seasons };
+  return {
+    plot: info.plot || '',
+    cast: info.cast || '',
+    director: info.director || '',
+    genre: info.genre || '',
+    year: info.releaseDate || info.release_date || '',
+    rating: info.rating_5based || info.rating || '',
+    logo: info.cover || '',
+    seasons,
+  };
 }
 
 export function mapVodInfo(json) {
@@ -152,6 +161,8 @@ export function mapVodInfo(json) {
     director: i.director || '',
     genre: i.genre || '',
     year: i.releasedate || i.release_date || '',
+    country: i.country || '',
+    rating: i.rating_5based || i.rating || '',
     durationSec: num(i.duration_secs),
     logo: i.movie_image || (Array.isArray(i.backdrop_path) ? i.backdrop_path[0] : '') || '',
   };

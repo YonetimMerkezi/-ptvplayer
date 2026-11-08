@@ -412,6 +412,7 @@ export function createPlayerUI({ engine, player, env }) {
     fromPreview = false;
     await player.close();
     engine.setImmersive(false, false).catch(() => {});
+    if (env.onClose) env.onClose();
   }
 
   // ---- olaylar ----
