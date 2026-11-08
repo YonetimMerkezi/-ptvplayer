@@ -270,6 +270,47 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const names3 = await page.$$eval('.row.cat .nm', (e) => e.map((x) => x.textContent));
   ok(JSON.stringify(names3) === JSON.stringify(names0), 'Sıfırla: varsayılan sıra ve gizlenenler geri geldi');
 
+  // içerik sıralama ve kategori içi arama
+  console.log('Sıralama ve kategori içi arama');
+  ok((await page.getAttribute('#q', 'placeholder')) === 'Kanal ara…', 'kategori listesindeyken arama kutusu tüm kanalları arıyor');
+  const coll = new Intl.Collator('tr', { sensitivity: 'base', numeric: true });
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.row:not(.cat)');
+  ok((await page.$$('#crumb-sort:not([hidden])')).length === 1, 'kategori başlığında sıralama düğmesi var');
+  await page.click('#crumb-sort');
+  ok((await page.$$eval('.sheet .list-item', (e) => e.length)) === 5, 'sıralama sayfasında 5 seçenek');
+  ok(/listedeki sıraya göre/.test(await page.textContent('.sheet')), 'M3U’da eklenme zamanı olmadığı belirtiliyor');
+  await page.click('.sheet [data-s=za]');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  let order = await page.evaluate(() => window.__iptv.S.items.map((i) => i.name));
+  ok(order.length === 120 && order.every((n, i) => i === 0 || coll.compare(order[i - 1], n) >= 0), 'Z → A sıralaması uygulandı');
+  ok((await page.$eval('.row .nm', (e) => e.textContent)) === order[0], 'listenin ilk satırı sıralı listeyle aynı');
+  await page.click('#crumb-sort');
+  await page.click('.sheet [data-s=az]');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  order = await page.evaluate(() => window.__iptv.S.items.map((i) => i.name));
+  ok(order.every((n, i) => i === 0 || coll.compare(order[i - 1], n) <= 0), 'A → Z sıralaması uygulandı');
+  ok((await page.evaluate(() => window.__iptv.store.pref('sort.live'))) === 'az', 'seçilen sıralama kaydedildi');
+  await page.click('#crumb-sort');
+  await page.click('.sheet [data-s=default]');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+
+  await page.click('#crumb-back');
+  await page.waitForSelector('.row.cat');
+  await page.click('.row.cat:has-text("Spor")');
+  await page.waitForSelector('.row:not(.cat)');
+  await page.click('#crumb-search');
+  ok((await page.getAttribute('#q', 'placeholder')) === 'Bu kategoride ara…', 'kategori içindeyken arama o kategoriyle sınırlı');
+  await page.keyboard.type('seker', { delay: 40 });
+  await page.waitForFunction(() => window.__iptv.S.query === 'seker');
+  const scoped = await page.evaluate(() => window.__iptv.S.items.map((i) => i.group));
+  ok(scoped.length > 0 && scoped.every((g) => g === 'Spor'), `yazdıkça yalnız “Spor” içindeki eşleşmeler kalıyor (${scoped.length})`);
+  ok((await page.$$('#crumb:not([hidden])')).length === 1, 'arama sırasında kategori başlığı görünür kalıyor');
+  await page.click('#q-clear');
+  await page.waitForSelector('.row:not(.cat)');
+  await page.goBack();
+  await page.waitForSelector('.row.cat');
+
   // ---------------------------------------------------------------- 4. film
   console.log('Film');
   await page.click('#tabs [data-tab=movies]');

@@ -36,6 +36,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 .src-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 22px; color: var(--text); flex: none; }
 .icon-btn:active { background: var(--raised); }
+.icon-btn.on { color: var(--accent); }
 #searchbar { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px 14px; }
 #q { flex: 1; min-width: 0; height: 44px; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 0 16px; }
 #q:focus { outline: none; border-color: var(--accent); }

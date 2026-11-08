@@ -11,6 +11,7 @@ import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
 import { VirtualList } from './vlist.js';
+import { sortItems, SORTS, isSortMode } from './sort.js';
 import {
   arrange, toggleHidden, move, resetOrderAndHidden, hiddenGroupNames, addFolder, renameFolder, deleteFolder,
   toggleInFolder, folderOf, groupKey, folderKey,
@@ -41,6 +42,7 @@ const S = {
   tab: store.pref('tab', 'live'),
   // Kategori ekranı: null = kategori listesi, '__all' / '__recent' / '__cont' = özel listeler, aksi hâlde grup adı
   group: { live: null, movie: null, series: null },
+  sort: Object.fromEntries(['live', 'movie', 'series'].map((k) => [k, isSortMode(store.pref('sort.' + k, 'default')) ? store.pref('sort.' + k, 'default') : 'default'])), // kategori içi sıralama (türe göre kalıcı)
   catFilter: '',
   catEdit: false, // kategori düzenleme kipi (sırala / gizle / klasör)
   cats: [],
@@ -250,14 +252,22 @@ function renderOnboarding(v) {
 
 // ------------------------------------------------------------------ göz atma (canlı / film / dizi)
 
-function currentItems(kind) {
-  if (S.query) return search(visibleAll(kind), S.query);
+// Açık kategorinin (ya da kategori yoksa tüm içeriğin) öğeleri, sıralama uygulanmadan.
+function groupItems(kind) {
   const g = S.group[kind];
   if (g === '__recent') return recentItems(kind);
   if (g === '__cont') return continueItems(kind);
   if (g && g.startsWith('f:')) return folderItems(kind, folderOf(prefsOf(kind), g.slice(2)));
   if (g && g.startsWith('g:')) return inGroup(S.cat[CAT_KEY[kind]], g.slice(2));
   return visibleAll(kind);
+}
+
+// Arama açık kategori içinde yapılır (kategori yoksa tümünde); arama sonuçları ilgiye göre, liste seçilen sıraya göre.
+function currentItems(kind) {
+  const base = groupItems(kind);
+  if (S.query) return search(base, S.query);
+  const g = S.group[kind];
+  return g === '__recent' || g === '__cont' ? base : sortItems(base, S.sort[kind]);
 }
 
 function recentItems(kind) {
@@ -419,17 +429,23 @@ function pruneGroups() {
 
 function drawCrumb(kind) {
   const g = S.group[kind];
-  const inGroupView = !S.query && g != null;
-  $('#crumb').hidden = !inGroupView;
-  if (inGroupView) {
+  $('#crumb').hidden = g == null;
+  if (g != null) {
     $('#crumb-t').textContent = groupTitle(kind, g);
     $('#crumb-n').textContent = S.items.length;
+    const sortable = !S.query && g !== '__recent' && g !== '__cont';
+    $('#crumb-sort').hidden = !sortable;
+    $('#crumb-sort').classList.toggle('on', S.sort[kind] !== 'default');
   }
+  const label = { live: 'Kanal', movie: 'Film', series: 'Dizi' }[kind];
+  qEl.placeholder = g != null ? 'Bu kategoride ara…' : `${label} ara…`;
 }
 
 function renderBrowse(v, kind) {
-  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small></div><div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div><div id="list"></div><div id="empty" hidden></div>`;
+  v.innerHTML = `<div class="crumb" id="crumb" hidden><button class="crumb-back" id="crumb-back" aria-label="Kategorilere dön">${icon('back')}</button><div class="t" id="crumb-t"></div><small id="crumb-n"></small><button class="icon-btn" id="crumb-search" aria-label="Bu kategoride ara">${icon('search')}</button><button class="icon-btn" id="crumb-sort" aria-label="Sırala">${icon('sort')}</button></div><div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div><div id="list"></div><div id="empty" hidden></div>`;
   $('#crumb-back').addEventListener('click', () => leaveGroup(kind));
+  $('#crumb-search').addEventListener('click', () => openSearch());
+  $('#crumb-sort').addEventListener('click', () => sortSheet(kind));
   $('#cat-q').value = S.catFilter;
   $('#cat-q').addEventListener(
     'input',
@@ -510,7 +526,7 @@ function refreshList(keepScroll = false) {
   if (none) {
     const label = { live: 'kanal', movie: 'film', series: 'dizi' }[kind];
     const g = S.group[kind];
-    if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${label} bulunamadı.`);
+    if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${g != null ? 'bu kategoride ' : ''}${label} bulunamadı.`);
     else if (!all && S.loading) empty.innerHTML = emptyHtml('Yükleniyor…', 'Liste indiriliyor, birazdan hazır olur.');
     else if (!all) empty.innerHTML = emptyHtml(`Bu kaynakta ${label} yok`, 'Listeyi yenilemeyi ya da başka bir kaynak seçmeyi deneyin.', '<button class="btn" id="e-refresh">Listeyi yenile</button>');
     else if (mode === 'cats') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
@@ -521,6 +537,24 @@ function refreshList(keepScroll = false) {
     const b = $('#e-refresh');
     if (b) b.addEventListener('click', () => refreshCatalog());
   }
+}
+
+// Sıralama seçimi (A→Z, Z→A, eklenme zamanı)
+function sortSheet(kind) {
+  const hint = S.source && S.source.type === 'xtream' ? '' : '<p class="hint">Bu listede eklenme tarihi bulunmuyor; “eklenme” seçenekleri listedeki sıraya göre çalışır (sona eklenen yeni sayılır).</p>';
+  const sh = openSheet({
+    title: 'Sırala',
+    html: SORTS.map(([k, label]) => `<button class="list-item" data-s="${k}"><span class="t">${esc(label)}</span>${S.sort[kind] === k ? tick() : ''}</button>`).join('') + hint,
+    mount: (body) =>
+      body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-s]');
+        if (!b || !isSortMode(b.dataset.s)) return;
+        S.sort[kind] = b.dataset.s;
+        store.setPref('sort.' + kind, b.dataset.s);
+        sh.close();
+        refreshList();
+      }),
+  });
 }
 
 // ---- özel klasörler ----
@@ -670,12 +704,13 @@ function closeSearch(keepList) {
   $('#searchbar').hidden = true;
   if (!keepList && had && S.list) refreshList();
 }
+function openSearch() {
+  $('#searchbar').hidden = false;
+  qEl.focus();
+}
 $('#btn-search').addEventListener('click', () => {
-  const bar = $('#searchbar');
-  if (bar.hidden) {
-    bar.hidden = false;
-    qEl.focus();
-  } else closeSearch();
+  if ($('#searchbar').hidden) openSearch();
+  else closeSearch();
 });
 $('#q-clear').addEventListener('click', () => closeSearch());
 qEl.addEventListener(
@@ -683,7 +718,7 @@ qEl.addEventListener(
   debounce(() => {
     S.query = qEl.value.trim();
     refreshList();
-  }, 200),
+  }, 120),
 );
 
 // ------------------------------------------------------------------ oynatma
