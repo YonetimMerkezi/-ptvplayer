@@ -40,7 +40,13 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          # Maven/Google depolarından kütüphane indirirken geçici ağ hataları olabiliyor; 3 kez denenir.
+          for deneme in 1 2 3; do
+            ./gradlew assembleDebug --no-daemon --stacktrace && exit 0
+            echo "Derleme $deneme. denemede başarısız oldu; 20 sn sonra yeniden denenecek."
+            sleep 20
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
