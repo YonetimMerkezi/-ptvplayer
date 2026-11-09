@@ -1,12 +1,15 @@
 // Telefon ↔ TV eşitleme: iki cihazdaki kaynaklar, favoriler, son izlenenler, izleme ilerlemesi ve kategori düzeni
-// karşılıklı birleştirilir. Kural: var olan hiçbir değer değiştirilmez ya da silinmez; her cihaz yalnız diğerinde olup
-// kendinde olmayanları ekler. Saf mantık: depo (store) dışarıdan verilir, ağ burada yok.
+// karşılıklı birleştirilir. Kaynaklar, son izlenenler ve kategori düzeni yalnız eklenir (var olan değişmez).
+// Favoriler ve izleme ilerlemesinde EN YENİ karar kazanır: her favori ekleme zamanını, her silme bir silme izini
+// (kimlik → zaman) taşır; izleme ilerlemesinde zamanı yeni olan kayıt geçerlidir, bitirilen filmin silme izi yayılır.
+// Saf mantık: depo (store) dışarıdan verilir, ağ burada yok.
 import { hashId } from './util.js';
 import { normalizePrefs } from './cats.js';
 
 export const SYNC_APP = 'iptv-oynatici-sync';
 export const SYNC_VERSION = 1;
-const PER_SOURCE = ['fav', 'rec', 'prog', 'cats'];
+const PER_SOURCE = ['fav', 'favx', 'rec', 'prog', 'progx', 'cats'];
+const MAX_TOMBS = 500;
 const MAX_RECENTS = 200;
 const MAX_PROGRESS = 300;
 const MAX_SOURCES = 30;
@@ -75,17 +78,64 @@ export function parseSnapshot(input) {
 
 // ---- birleştirme (hepsi yalnız ekler; var olanı değiştirmez) ----
 
-function mergeFavs(local, remote) {
-  const out = Array.isArray(local) ? local.slice() : [];
-  const ids = new Set(out.map((f) => f && f.id));
+// Silme izleri: { kimlik: zaman }. İki tarafın izleri birleşince her kimlik için en yeni zaman kalır.
+const cleanTombs = (v) => {
+  const o = {};
+  if (!isObj(v)) return o;
+  for (const [k, t] of Object.entries(v)) {
+    if (k && k.length <= 200 && k !== '__proto__' && num(t) > 0) o[k] = num(t);
+  }
+  return o;
+};
+const unionTombs = (a, b) => {
+  const out = cleanTombs(a);
+  for (const [k, t] of Object.entries(cleanTombs(b))) if (!(out[k] >= t)) out[k] = t;
+  return out;
+};
+// En yeni MAX_TOMBS iz kalır.
+const pruneTombs = (t) => {
+  const keys = Object.keys(t);
+  if (keys.length <= MAX_TOMBS) return t;
+  keys.sort((x, y) => t[y] - t[x]);
+  const o = {};
+  for (const k of keys.slice(0, MAX_TOMBS)) o[k] = t[k];
+  return o;
+};
+const sameTombs = (a, b) => {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+};
+
+// Favoriler: aynı kimlik için "ekleme zamanı" (at; eski kayıtlarda 0) ile silme izi karşılaştırılır, yeni olan kazanır.
+function mergeFavs(local, remote, localDel, remoteDel) {
+  const dl = cleanTombs(localDel);
+  const del = unionTombs(dl, remoteDel);
+  const out = [];
+  const ids = new Set();
+  let removed = 0;
   let added = 0;
+  for (const f of Array.isArray(local) ? local : []) {
+    if (!isObj(f)) continue;
+    if (typeof f.id === 'string' && del[f.id] > num(f.at)) {
+      removed++;
+      continue;
+    }
+    out.push(f);
+    ids.add(f.id);
+  }
   for (const r of Array.isArray(remote) ? remote : []) {
     if (!isObj(r) || typeof r.id !== 'string' || !r.id || !str(r.name) || ids.has(r.id)) continue;
+    if (del[r.id] > num(r.at)) continue; // eklendikten sonra silinmiş
     ids.add(r.id);
-    out.push({ id: r.id.slice(0, 200), kind: str(r.kind, 20), name: str(r.name, 200), logo: str(r.logo, 500) });
+    const e = { id: r.id.slice(0, 200), kind: str(r.kind, 20), name: str(r.name, 200), logo: str(r.logo, 500) };
+    if (num(r.at) > 0) e.at = num(r.at);
+    out.push(e);
     added++;
   }
-  return { value: out, added };
+  // Silinmesinden sonra yeniden eklenen favorinin eski izi gereksiz
+  for (const f of out) if (del[f.id] !== undefined && num(f.at) >= del[f.id]) delete del[f.id];
+  const tombs = pruneTombs(del);
+  return { value: out, added, removed, tombs, changed: added > 0 || removed > 0 || !sameTombs(tombs, dl) };
 }
 
 // Son izlenenler yeniden eskiye sıralıdır: eksikler zamanlarına göre araya girer, yerel sıra bozulmaz.
@@ -107,13 +157,31 @@ function mergeRecents(local, remote) {
   return { value: kept.map((x) => x.e), added: kept.filter((x) => !x.mine).length };
 }
 
-function mergeProgress(local, remote) {
-  const out = isObj(local) ? { ...local } : {};
+// İzleme ilerlemesi: aynı kimlikte zamanı yeni olan kazanır; bir cihazda bitirilen (silme izi) film diğerinde de kalkar.
+function mergeProgress(local, remote, localDel, remoteDel) {
+  const dl = cleanTombs(localDel);
+  const del = unionTombs(dl, remoteDel);
+  const out = {};
+  let removed = 0;
+  if (isObj(local)) {
+    for (const [k, v] of Object.entries(local)) {
+      if (isObj(v) && del[v.id] > num(v.at)) removed++;
+      else out[k] = v;
+    }
+  }
   const fresh = [];
+  let updated = 0;
   if (isObj(remote)) {
     for (const r of Object.values(remote)) {
-      if (!isObj(r) || typeof r.id !== 'string' || !r.id || r.id === '__proto__' || Object.prototype.hasOwnProperty.call(out, r.id) || !(num(r.pos) > 0) || !str(r.name)) continue;
-      fresh.push({ id: r.id.slice(0, 200), kind: str(r.kind, 20), name: str(r.name, 200), logo: str(r.logo, 500), parent: typeof r.parent === 'string' ? r.parent.slice(0, 200) : null, pos: num(r.pos), dur: num(r.dur), at: num(r.at) });
+      if (!isObj(r) || typeof r.id !== 'string' || !r.id || r.id === '__proto__' || !(num(r.pos) > 0) || !str(r.name)) continue;
+      if (del[r.id] >= num(r.at)) continue;
+      const mine = Object.prototype.hasOwnProperty.call(out, r.id) ? out[r.id] : null;
+      if (mine && num(mine.at) >= num(r.at)) continue;
+      const e = { id: r.id.slice(0, 200), kind: str(r.kind, 20), name: str(r.name, 200), logo: str(r.logo, 500), parent: typeof r.parent === 'string' ? r.parent.slice(0, 200) : null, pos: num(r.pos), dur: num(r.dur), at: num(r.at) };
+      if (mine) {
+        out[r.id] = e;
+        updated++;
+      } else fresh.push(e);
     }
   }
   // Sınır aşılırsa yalnız eklenenlerin en eskileri atılır; mevcut kayıtlara dokunulmaz.
@@ -121,7 +189,11 @@ function mergeProgress(local, remote) {
   const room = Math.max(0, MAX_PROGRESS - Object.keys(out).length);
   const take = fresh.slice(0, room);
   for (const p of take) out[p.id] = p;
-  return { value: out, added: take.length };
+  // Yeniden izlenmeye başlanan filmin eski silme izi gereksiz
+  for (const p of Object.values(out)) if (del[p.id] !== undefined && num(p.at) > del[p.id]) delete del[p.id];
+  const tombs = pruneTombs(del);
+  const added = take.length + updated;
+  return { value: out, added, removed, tombs, changed: added > 0 || removed > 0 || !sameTombs(tombs, dl) };
 }
 
 // Kategori düzeni: boş olan alanlar diğer cihazdan doldurulur, klasörler ada göre birleşir (aynı adlı klasöre eksik öğeler eklenir).
@@ -179,7 +251,7 @@ function mergeCats(local, remote) {
   return { value: out, added, changed };
 }
 
-export const emptyAdded = () => ({ sources: 0, favs: 0, recents: 0, progress: 0, folders: 0 });
+export const emptyAdded = () => ({ sources: 0, favs: 0, recents: 0, progress: 0, folders: 0, removed: 0 });
 
 // Diğer cihazın verisini bu cihaza ekler (var olanı değiştirmeden). Eklenenlerin sayısını döndürür.
 export function applySnapshot(store, snap) {
@@ -216,9 +288,26 @@ export function applySnapshot(store, snap) {
       return m.added;
     };
     const rd = (p) => snap.data[p + '.' + rid];
-    if (rd('fav') !== undefined) added.favs += put('fav', mergeFavs(store.get('fav.' + lid), rd('fav')));
+    // Favori/ilerleme: silme izleri ayrı anahtarda ('favx' / 'progx') tutulur.
+    if (rd('fav') !== undefined || rd('favx') !== undefined) {
+      const m = mergeFavs(store.get('fav.' + lid), rd('fav'), store.get('favx.' + lid), rd('favx'));
+      if (m.changed) {
+        store.put('fav.' + lid, m.value);
+        store.put('favx.' + lid, m.tombs);
+      }
+      added.favs += m.added;
+      added.removed += m.removed;
+    }
     if (rd('rec') !== undefined) added.recents += put('rec', mergeRecents(store.get('rec.' + lid), rd('rec')));
-    if (rd('prog') !== undefined) added.progress += put('prog', mergeProgress(store.get('prog.' + lid), rd('prog')));
+    if (rd('prog') !== undefined || rd('progx') !== undefined) {
+      const m = mergeProgress(store.get('prog.' + lid), rd('prog'), store.get('progx.' + lid), rd('progx'));
+      if (m.changed) {
+        store.put('prog.' + lid, m.value);
+        store.put('progx.' + lid, m.tombs);
+      }
+      added.progress += m.added;
+      added.removed += m.removed;
+    }
     if (rd('cats') !== undefined) {
       const m = mergeCats(store.get('cats.' + lid), rd('cats'));
       put('cats', m, m.changed);
@@ -228,7 +317,7 @@ export function applySnapshot(store, snap) {
   return added;
 }
 
-export const addedTotal = (a) => a.sources + a.favs + a.recents + a.progress + a.folders;
+export const addedTotal = (a) => a.sources + a.favs + a.recents + a.progress + a.folders + (a.removed || 0);
 
 const LABELS = [
   ['sources', 'kaynak'],
@@ -236,6 +325,7 @@ const LABELS = [
   ['recents', 'son izlenen'],
   ['progress', 'ilerleme'],
   ['folders', 'klasör'],
+  ['removed', 'silme'],
 ];
 
 // "2 kaynak, 5 favori" ya da boşsa "yeni bir şey yok"

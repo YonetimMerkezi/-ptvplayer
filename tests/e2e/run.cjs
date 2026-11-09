@@ -154,7 +154,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(true, 'kanal satırlarında “şimdi” programı görünüyor');
   await page.click('.row [data-epg]');
   await page.waitForSelector('.prog-row');
-  ok((await page.$$eval('.prog-row', (e) => e.length)) > 5, 'kanal program listesi açılıyor');
+  const progN = await page.$$eval('.prog-row', (e) => e.length);
+  // Rehber akışı günün kalan saatlerini listeler: gün sonuna yakın az satır olması normaldir
+  const hoursLeft = await page.evaluate(() => 24 - new Date().getHours());
+  ok(progN >= Math.min(5, hoursLeft), 'kanal program listesi açılıyor (' + progN + ' satır)');
   ok((await page.$$eval('.prog-row.now', (e) => e.length)) === 1, 'şimdiki program vurgulu');
   await sleep(350);
   await page.screenshot({ path: path.join(SHOTS, '03-rehber.png') });
@@ -860,6 +863,109 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.row.bad');
   ok(/Çalışmıyor olabilir/.test(await page.textContent('.row.bad .sub')) && /Yedekli Kanal HD/.test(await page.textContent('.row.bad .nm')), 'açılmayan kanal listede “Çalışmıyor olabilir” diye işaretlendi');
   ok((await page.$$('.row.bad')).length === 1, 'yalnız o kanal işaretli');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 7c2. tüm kaynaklarda arama + çocuk profili
+  console.log('Tüm kaynaklarda arama ve çocuk profili');
+  ({ page, ctx, errs } = await newPage());
+  await page.waitForSelector('#f');
+  await page.click('.sheet [data-close]');
+  await page.click('#ob-add');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.fill('input[name=name]', 'Ana');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('#src-add');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/alt.m3u');
+  await page.fill('input[name=name]', 'Yedekli');
+  await page.click('#f-go');
+  await page.waitForSelector('.sheet-back', { state: 'detached', timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.source && window.__iptv.S.source.name === 'Yedekli' && window.__iptv.S.cat.live.length === 3, null, { timeout: 15000 });
+  await page.click('.src:has-text("Ana") [data-a=use]');
+  await page.waitForFunction(() => window.__iptv.S.source.name === 'Ana' && window.__iptv.S.cat.live.length > 100, null, { timeout: 15000 });
+  await page.click('#tabs [data-tab=home]');
+  await page.click('#h-search');
+  await page.waitForSelector('#gs-q');
+  await page.fill('#gs-q', 'yedekli');
+  await page.waitForFunction(() => /Sonuç yok/.test(document.querySelector('#gs-res').textContent), null, { timeout: 5000 });
+  ok(/Sonuç yok/.test(await page.textContent('#gs-res')), 'etkin kaynakta olmayan içerik “Bu kaynak” aramasında çıkmıyor');
+  ok((await page.$('#gs-scope')) !== null, 'birden çok kaynak varken “Tüm kaynaklar” seçeneği görünüyor');
+  await page.click('#gs-scope [data-s=all]');
+  await page.waitForSelector('#gs-res .list-item[data-k=live]');
+  const allRows = await page.$$eval('#gs-res .list-item[data-k=live]', (e) => e.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+  ok(allRows.length === 2 && allRows.every((t) => /· Yedekli/.test(t)), 'tüm kaynaklarda aranınca diğer kaynağın kanalları kaynak adıyla geldi: ' + allRows.join(' | '));
+  await page.fill('#gs-q', 'kanal');
+  await sleep(400);
+  const both = await page.$$eval('#gs-res .list-item[data-k=live]', (e) => e.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+  ok(both.some((t) => /· Yedekli/.test(t)) && both.some((t) => !/· Yedekli/.test(t) && /· Ana/.test(t)), 'iki kaynağın sonuçları birlikte listelendi (etkin kaynak da etiketli)');
+  await page.fill('#gs-q', 'yedekli');
+  await sleep(400);
+  await page.click('#gs-res .list-item[data-k=live]:has-text("Yedekli Kanal"):not(:has-text("HD"))');
+  await page.waitForSelector('#player:not([hidden])', { timeout: 15000 });
+  ok(await page.evaluate(() => window.__iptv.S.source.name === 'Yedekli'), 'başka kaynağın sonucuna dokununca o kaynağa geçildi ve yayın açıldı');
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.goBack();
+  await page.waitForSelector('.pg.gs-pg', { state: 'detached' });
+
+  // Çocuk profili (etkin kaynak: Yedekli — Haber ve Yedek kategorileri)
+  const tapKid = async (digits) => {
+    for (const d of digits) await page.click(`#lock [data-k="${d}"]`);
+  };
+  await page.click('#tabs [data-tab=sources]');
+  await page.click('[data-set=kid]');
+  await page.waitForSelector('#kd-go');
+  await page.click('#kd-go');
+  ok(/en az bir kategori/.test(await page.textContent('#toast')), 'kategori seçilmeden çocuk moduna geçilmiyor');
+  await page.click('[data-kind=live]');
+  await page.waitForSelector('#kg-list .chk');
+  await page.click('#kg-list .chk:has-text("Yedek")');
+  await page.locator('.sheet-back [data-close]').last().click();
+  await sleep(200);
+  ok(/1 kategori izinli/.test(await page.textContent('#kd-body')), 'izinli kategori sayısı güncellendi');
+  await page.click('#kd-go');
+  await page.waitForSelector('#lock');
+  await tapKid('1234');
+  await page.click('#lock [data-k=ok]');
+  await page.waitForFunction(() => /tekrar/.test((document.querySelector('#lock .lk-t') || {}).textContent || ''));
+  await tapKid('1234');
+  await page.click('#lock [data-k=ok]');
+  await page.waitForSelector('#lock', { state: 'detached' });
+  await page.waitForFunction(() => document.body.classList.contains('kid-mode'));
+  const kidRec = await page.evaluate(() => window.__iptv.store.pref('kid.pin', null));
+  ok(kidRec && kidRec.hash && !JSON.stringify(kidRec).includes('1234') && !(await page.evaluate(() => !!window.__iptv.store.pref('lock.pin', null))), 'çocuk modu şifresi tuzlu özet olarak, uygulama şifresinden ayrı saklandı');
+  const kc = await page.evaluate(() => ({ live: window.__iptv.S.cat.live.map((x) => x.name), movies: window.__iptv.S.cat.movies.length, groups: window.__iptv.S.groups.live.map((g) => g.name) }));
+  ok(JSON.stringify(kc.live) === JSON.stringify(['Yedekli Kanal']) && kc.movies === 0 && JSON.stringify(kc.groups) === JSON.stringify(['Yedek']), 'çocuk modunda katalog yalnız izinli kategoriyi içeriyor: ' + JSON.stringify(kc));
+  ok(/Çıkış/.test(await page.textContent('#tabs [data-tab=sources]')), 'Ayarlar sekmesi “Çıkış” oldu');
+  ok(await page.$eval('#tabs [data-tab=movies]', (b) => b.hidden) && !(await page.$eval('#tabs [data-tab=live]', (b) => b.hidden)), 'izinli içeriği olmayan türün sekmesi gizlendi');
+  ok((await page.$$eval('.home .t-set b', (e) => e.map((x) => x.textContent)))[0] === 'Çıkış', 'ana ekrandaki Ayarlar kutusu da “Çıkış” oldu');
+  // arama çocuk modunda da yalnız izinli içeriği döndürür
+  await page.click('#h-search');
+  await page.waitForSelector('#gs-q');
+  await page.fill('#gs-q', 'kanal');
+  await sleep(400);
+  const kr = await page.$$eval('#gs-res .list-item', (e) => e.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+  ok(kr.length === 1 && /Yedekli Kanal/.test(kr[0]), 'çocuk modunda arama izinli kategoriyle sınırlı: ' + kr.join(' | '));
+  await page.goBack();
+  // yeniden başlatınca mod sürer
+  await page.reload();
+  await page.waitForSelector('.tile.t-live');
+  await page.waitForFunction(() => window.__iptv.S.source && window.__iptv.S.cat.live.length >= 1, null, { timeout: 15000 });
+  ok(await page.evaluate(() => document.body.classList.contains('kid-mode') && window.__iptv.S.cat.live.length === 1), 'uygulama yeniden açılınca çocuk modu sürüyor');
+  // çıkış: yanlış şifre reddedilir, doğrusu çıkarır
+  await page.click('#tabs [data-tab=sources]');
+  await page.waitForSelector('#lock');
+  await tapKid('9999');
+  await page.waitForFunction(() => /Yanlış şifre/.test(document.querySelector('#lk-h').textContent));
+  ok(await page.evaluate(() => document.body.classList.contains('kid-mode')), 'yanlış şifreyle çocuk modundan çıkılamıyor');
+  await tapKid('1234');
+  await page.waitForSelector('#lock', { state: 'detached' });
+  await page.waitForFunction(() => !document.body.classList.contains('kid-mode') && window.__iptv.S.cat.live.length === 3);
+  ok(/Ayarlar/.test(await page.textContent('#tabs [data-tab=sources]')), 'çıkınca katalog ve Ayarlar sekmesi eski haline döndü');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
@@ -1759,6 +1865,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => {
     const { store, S } = window.__iptv;
     const sid = S.source.id;
+    store.setPref('sync.auto', false); // elle eşitleme sınanıyor: kendiliğinden eşitleme araya girmesin
     store.setPref('cast.tvs', [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765, token: 'tok123' }]);
     window.__found = [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765 }];
     store.toggleFav(sid, { id: 'pf1', kind: 'live', name: 'Telefon Favori' });
@@ -1834,6 +1941,54 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await openSync();
   await page.waitForFunction(() => /eşleşmesi kaldırılmış/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
   ok(true, 'TV eşleşmeyi kaldırmışsa eşitleme bunu söyler');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // Kendiliğinden eşitleme (telefon): öne gelince eşleşmiş TV bulunursa sessizce eşitler; silmeler de taşınır; ayarla kapatılabilir
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    const sid = S.source.id;
+    store.setPref('cast.tvs', [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765, token: 'tok123' }]);
+    window.__found = [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765 }];
+    store.setPref('sync.try', Date.now()); // açılıştaki otomatik deneme araya girmesin
+    store.toggleFav(sid, { id: 'pf1', kind: 'live', name: 'Telefon Favori' });
+    store.toggleFav(sid, { id: 'pf2', kind: 'live', name: 'Telefon Favori 2' });
+    window.__tvSnap = {
+      app: 'iptv-oynatici-sync',
+      v: 1,
+      at: 1,
+      sources: [{ id: 'srcTV', type: 'm3u', url: S.source.url, name: 'TV listesi' }],
+      data: {
+        'fav.srcTV': [{ id: 'tf1', kind: 'live', name: 'TV Favori', logo: '', at: Date.now() }],
+        'favx.srcTV': { pf1: Date.now() + 60000 }, // TV'de pf1 sonradan silinmiş
+      },
+    };
+    window.__tvAdded = {};
+    store.setPref('sync.try', 0);
+  });
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForFunction(() => /TV ile eşitlendi/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
+  ok(/1 favori/.test(await page.textContent('#toast')) && /1 silme/.test(await page.textContent('#toast')), 'kendiliğinden eşitleme sessizce yapıldı ve değişikliği bildirdi');
+  const au = await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    return { favs: store.favs(S.source.id).map((f) => f.id).sort(), tomb: Object.keys(store.get('favx.' + S.source.id) || {}) };
+  });
+  ok(JSON.stringify(au.favs) === JSON.stringify(['pf2', 'tf1']) && au.tomb.includes('pf1'), 'TV’deki silme telefona yayıldı (pf1 kalktı), TV’nin yeni favorisi geldi');
+  // kapatılınca eşitlemez
+  await page.evaluate(() => {
+    window.__tv.synced = null;
+    window.__iptv.store.setPref('sync.auto', false);
+    window.__iptv.store.setPref('sync.try', 0);
+  });
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await sleep(1200);
+  ok(!(await page.evaluate(() => window.__tv.synced)), 'ayar kapalıyken kendiliğinden eşitleme yapılmaz');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
@@ -3029,7 +3184,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // ayarlar kutuları
   await page.click('#h-set');
   await page.waitForSelector('.set-grid');
-  ok((await page.$$('.set-tile')).length === 7, 'ayarlarda yedi kutu (genel, EPG, yayın kalitesi, planlananlar, otomasyon, yenilikler, güncelleme)');
+  ok((await page.$$('.set-tile')).length === 8, 'ayarlarda sekiz kutu (genel, EPG, yayın kalitesi, planlananlar, otomasyon, çocuk profili, yenilikler, güncelleme)');
   ok(await page.$eval('[data-set=plans] svg use', (u) => u.getAttribute('href') === '#i-bell' && !!document.getElementById('i-bell')), 'Planlananlar kutucuğunda simge var');
   await page.click('[data-set=general]');
   await page.waitForSelector('.chk');

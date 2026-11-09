@@ -92,7 +92,7 @@ test('aynı kaynak farklı kimliklerle: veriler kimlik eşleştirilerek birleşi
   assert.deepEqual(tv.favs('srcT').map((f) => f.id), ['b', 'a'], 'var olan başta, eksik sona eklendi');
 });
 
-test('var olan hiçbir değer değişmez: favori sırası, ilerleme konumu, son izlenen kaydı, klasör, sıra/gizli', () => {
+test('var olan değer korunur (favori sırası, son izlenen, klasör, sıra/gizli); ilerlemede yalnız daha yeni kayıt geçer', () => {
   const { phone, tv } = pair();
   tv.put('fav.srcT', [fav('x'), fav('y')]);
   phone.put('fav.srcP', [fav('y', 'FARKLI AD'), fav('x'), fav('n')]);
@@ -104,7 +104,7 @@ test('var olan hiçbir değer değişmez: favori sırası, ilerleme konumu, son 
   phone.put('cats.srcP', { live: { order: ['g:B', 'g:A'], hidden: ['g:X'], locked: ['g:Y'], folders: [{ id: 'fz', name: 'Spor', items: ['1', '2'] }, { id: 'fq', name: 'Çocuk', items: ['7'] }] } });
   sync(phone, tv);
   assert.deepEqual(tv.favs('srcT').map((f) => [f.id, f.name]), [['x', 'x'], ['y', 'y'], ['n', 'n']]);
-  assert.deepEqual(tv.progressAll('srcT').m1, prog('m1', 20000, 10), 'ilerleme üzerine yazılmadı');
+  assert.deepEqual(tv.progressAll('srcT').m1, prog('m1', 90000, 99), 'ilerleme: daha yeni (telefon) kayıt geçti');
   assert.ok(tv.progressAll('srcT').m2, 'eksik ilerleme eklendi');
   assert.equal(tv.recents('srcT').find((r) => r.id === 'r1').name, 'Eski ad');
   assert.deepEqual(tv.recents('srcT').map((r) => r.id), ['r2', 'r1'], 'eksik kayıt zamanına göre araya girdi');
@@ -143,8 +143,8 @@ test('iki yönlü: sırayla iki yöne uygulayınca iki cihaz aynı veriye varır
   tv.put('fav.srcM', [fav('m')]);
   const toTv = sync(phone, tv);
   const toPhone = sync(tv, phone);
-  assert.deepEqual(toTv, { sources: 0, favs: 2, recents: 0, progress: 1, folders: 0 });
-  assert.deepEqual(toPhone, { sources: 1, favs: 2, recents: 0, progress: 1, folders: 0 });
+  assert.deepEqual(toTv, { sources: 0, favs: 2, recents: 0, progress: 1, folders: 0, removed: 0 });
+  assert.deepEqual(toPhone, { sources: 1, favs: 2, recents: 0, progress: 1, folders: 0, removed: 0 });
   const ids = (s, sid) => s.favs(sid).map((f) => f.id).sort();
   assert.deepEqual(ids(phone, 'srcP'), ['a', 'b', 'c']);
   assert.deepEqual(ids(tv, 'srcT'), ['a', 'b', 'c']);
@@ -177,4 +177,92 @@ test('iletiler', () => {
   assert.equal(describeAdded({ ...z, favs: 5, sources: 1 }), '1 kaynak, 5 favori');
   assert.match(syncMessage(z, z), /Zaten eşit/);
   assert.equal(syncMessage({ ...z, favs: 2 }, { ...z, progress: 3 }), 'TV’ye eklenen: 2 favori. Telefona eklenen: 3 ilerleme.');
+});
+
+const NOW = 1_700_000_000_000;
+const withClock = (t, fn) => {
+  const real = Date.now;
+  Date.now = () => t;
+  try {
+    return fn();
+  } finally {
+    Date.now = real;
+  }
+};
+
+test('favori silme yayılır: bir cihazda silinen favori diğerinden de kalkar, silme izi iki yerde de durur', () => {
+  const { phone, tv } = pair();
+  withClock(NOW, () => {
+    phone.toggleFav('srcP', fav('a'));
+    phone.toggleFav('srcP', fav('b'));
+  });
+  sync(phone, tv);
+  assert.deepEqual(tv.favs('srcT').map((f) => f.id).sort(), ['a', 'b']);
+  withClock(NOW + 1000, () => tv.toggleFav('srcT', fav('a'))); // TV'de a silindi
+  const toPhone = sync(tv, phone);
+  assert.equal(toPhone.removed, 1);
+  assert.deepEqual(phone.favs('srcP').map((f) => f.id), ['b']);
+  assert.ok(phone.get('favx.srcP').a > NOW);
+  assert.equal(addedTotal(sync(phone, tv)) + addedTotal(sync(tv, phone)), 0, 'yakınsadı');
+  assert.deepEqual(tv.favs('srcT').map((f) => f.id), ['b'], 'silinen geri gelmedi');
+});
+
+test('favori: silindikten sonra yeniden eklenen kazanır; eski silme izi temizlenir', () => {
+  const { phone, tv } = pair();
+  withClock(NOW, () => tv.toggleFav('srcT', fav('a')));
+  withClock(NOW + 1000, () => tv.toggleFav('srcT', fav('a'))); // sil
+  withClock(NOW + 2000, () => phone.toggleFav('srcP', fav('a'))); // telefonda daha sonra yeniden eklendi
+  sync(tv, phone);
+  assert.deepEqual(phone.favs('srcP').map((f) => f.id), ['a'], 'telefondaki yeni ekleme silinmedi');
+  sync(phone, tv);
+  assert.deepEqual(tv.favs('srcT').map((f) => f.id), ['a'], 'TV de yeniden ekleneni aldı');
+  assert.equal(tv.get('favx.srcT') && tv.get('favx.srcT').a, undefined, 'eskimiş silme izi kalktı');
+});
+
+test('favori: eski kayıtlar (zamansız) yeni silme izine yenik düşer, zamansız uzak kayıt silinmişi geri getirmez', () => {
+  const { phone, tv } = pair();
+  phone.put('fav.srcP', [fav('old')]); // zamansız (eski sürüm)
+  withClock(NOW, () => tv.toggleFav('srcT', fav('old')));
+  withClock(NOW + 10, () => tv.toggleFav('srcT', fav('old')));
+  sync(tv, phone);
+  assert.deepEqual(phone.favs('srcP'), []);
+  phone.put('fav.srcP', [fav('old')]);
+  const a = sync(phone, tv);
+  assert.equal(a.favs, 0, 'silinmiş favori eski kayıttan geri gelmez');
+});
+
+test('ilerleme: yeni kayıt kazanır; bitirilen film diğer cihazın devam listesinden kalkar; yeniden izlenirse döner', () => {
+  const { phone, tv } = pair();
+  phone.put('prog.srcP', { m: prog('m', 20000, 100), k: prog('k', 30000, 100) });
+  tv.put('prog.srcT', { m: prog('m', 50000, 200), k: prog('k', 30000, 100) });
+  sync(phone, tv);
+  assert.equal(tv.progressAll('srcT').m.pos, 50000, 'TV daha yeni: korunur');
+  sync(tv, phone);
+  assert.equal(phone.progressAll('srcP').m.pos, 50000, 'telefon daha yeni olanı aldı');
+  withClock(NOW, () => tv.setProgress('srcT', { id: 'k', kind: 'movie', name: 'Fk' }, 99000, 100000)); // k bitti
+  assert.equal(tv.progressAll('srcT').k, undefined);
+  const r = sync(tv, phone);
+  assert.equal(r.removed, 1);
+  assert.equal(phone.progressAll('srcP').k, undefined);
+  assert.equal(addedTotal(sync(phone, tv)) + addedTotal(sync(tv, phone)), 0);
+  withClock(NOW + 5000, () => phone.setProgress('srcP', { id: 'k', kind: 'movie', name: 'Fk' }, 40000, 100000)); // yeniden izlendi
+  sync(phone, tv);
+  assert.equal(tv.progressAll('srcT').k.pos, 40000);
+  assert.equal((tv.get('progx.srcT') || {}).k, undefined, 'eski bitiş izi kalktı');
+});
+
+test('silme izleri: bozuk değerler ayıklanır, en yeni 500 iz tutulur, describeAdded silmeyi yazar', () => {
+  const { phone, tv } = pair();
+  const t = { __proto__: null };
+  const tombs = {};
+  for (let i = 0; i < 600; i++) tombs['id' + i] = NOW + i;
+  tombs.bad = 'x';
+  tombs[''] = 5;
+  phone.put('favx.srcP', tombs);
+  sync(phone, tv);
+  const got = tv.get('favx.srcT');
+  assert.equal(Object.keys(got).length, 500);
+  assert.ok(got.id599 && !got.id0 && got.bad === undefined);
+  assert.equal(describeAdded({ sources: 0, favs: 0, recents: 0, progress: 0, folders: 0, removed: 2 }), '2 silme');
+  assert.ok(t);
 });

@@ -45,6 +45,8 @@ import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 import { checkStreamHealth } from './health.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
+import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
+import { searchAll, totalOf } from './multisearch.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -52,6 +54,10 @@ const store = createStore();
 const net = createNet(nativePlugin ? { native: nativePlugin, convertFileSrc: (p) => Cap.convertFileSrc(p) } : {});
 
 const CAT_KEY = { live: 'live', movie: 'movies', series: 'series' };
+// Çocuk profili: açıkken katalog yalnız izinli kategorileri içerir (setCatalog), ayarlar/kaynaklar gizlenir, çıkış çocuk-modu şifresiyle olur.
+const kidPinRec = () => store.pref('kid.pin', null);
+const kidActive = () => kidActiveOf(store.pref('kid.on', false), kidPinRec());
+const kidAllow = () => normalizeAllow(store.pref('kid.allow', {}));
 const TAB_KIND = { live: 'live', movies: 'movie', series: 'series' };
 // Otomatik yenileme aralıkları (saat) Ayarlar → Otomasyon'dan değişir; 0 = kapalı.
 const hoursMs = (k, d) => {
@@ -204,9 +210,10 @@ let wnLast = 0;
 const WN_EVERY_MS = 60000;
 function syncWatchNext(now) {
   if (!nativePlugin || !nativePlugin.tvSyncWatchNext || !tvDetected || !S.source) return;
+  const kid = kidActive(); // çocuk modunda TV ana ekranına izleme geçmişi taşınmaz (satır boşaltılır)
   clearTimeout(wnTimer);
   const run = () => {
-    nativePlugin.tvSyncWatchNext({ items: watchNextPayload(watchNextItems(store.continueWatching(S.source.id)), S.source.id) }).catch(() => {});
+    nativePlugin.tvSyncWatchNext({ items: kid ? [] : watchNextPayload(watchNextItems(store.continueWatching(S.source.id)), S.source.id) }).catch(() => {});
   };
   if (now) run();
   else wnTimer = setTimeout(run, 2500);
@@ -243,9 +250,11 @@ function banner(text, { err = false, spin = false } = {}) {
 }
 
 function setCatalog(raw) {
+  // Çocuk modunda yalnız izinli kategoriler kalır (liste, arama, favoriler, rehber, yedek kanal hepsi bu kataloğu kullanır).
   // Gizlenen kanallar tüm görünümlerden (kategori sayıları, arama, rehber, yedek kanal) bir arada kalkar; ham katalog saklanır
+  const base = kidActive() && S.source ? applyKid(raw, kidAllow(), S.source.id) : raw;
   const hid = hiddenMap();
-  const cat = hiddenCount(hid) ? { ...raw, live: applyHidden(raw.live, hid) } : raw;
+  const cat = hiddenCount(hid) ? { ...base, live: applyHidden(base.live, hid) } : base;
   S.rawCat = raw;
   S.cat = cat;
   S.altIdx = null;
@@ -256,6 +265,7 @@ function setCatalog(raw) {
   };
   S.groups = { live: groupList(cat.live), movie: groupList(cat.movies), series: groupList(cat.series) };
   pruneGroups();
+  renderKidChrome();
 }
 
 // Oynatma adresleri; canlı kanalda aynı adlı kanallar yedek olarak sona eklenir.
@@ -300,7 +310,16 @@ function toggleFav(it) {
   if (S.list) S.list.refreshRows();
   if (S.tab === 'favs' && !on) refreshList();
   pui.refresh();
+  queueAutoSync();
   return on;
+}
+
+// Favori değişince birkaç saniye sonra (art arda değişiklikler tek eşitlemede) eşleşmiş TV ile kendiliğinden eşitlenir.
+let autoSyncTimer = null;
+function queueAutoSync() {
+  if (!nativePlugin || isTvUi() || tvDetected) return;
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(() => castUi.autoSync({ force: true }), 20000);
 }
 
 function progressOf(it) {
@@ -402,6 +421,8 @@ function pushTabLayer() {
 }
 
 function setTab(tab) {
+  if (tab === 'sources' && kidActive()) return kidExit(); // çocuk modunda Ayarlar yerine çıkış şifresi sorulur
+  if (tab === 'multi' && kidActive()) return;
   S.tab = tab;
   store.setPref('tab', tab);
   closeSearch(true);
@@ -419,6 +440,7 @@ function setTab(tab) {
 }
 
 function renderTab() {
+  if (kidActive() && (S.tab === 'sources' || S.tab === 'multi')) S.tab = 'home'; // çocuk modunda ayarlar ve çoklu ekran yok
   S.list && S.list.destroy();
   S.list = null;
   const v = $('#view');
@@ -1451,7 +1473,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1465,6 +1487,7 @@ function onSourcesClick(e) {
     if (k === 'health') return healthSheet();
     if (k === 'plans') return plansSheet();
     if (k === 'auto') return autoSheet();
+    if (k === 'kid') return kidSheet();
     if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
     if (k === 'cast') return castUi.receiverSheet();
@@ -1494,6 +1517,7 @@ function confirmDelete(id) {
       $('#del-ok', body).addEventListener('click', async () => {
         sh.close();
         store.removeSource(id);
+        store.setPref('kid.allow', pruneAllow(kidAllow(), store.sources().map((x) => x.id))); // silinen kaynağın çocuk izinleri de kalkar
         const next = store.activeSource();
         if (next) await activate(next.id);
         else {
@@ -1670,7 +1694,7 @@ function renderHome(v) {
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button>` : ''}
-      <button class="tile mini t-set" data-go="sources">${miniIc('gear')}<b>Ayarlar</b></button>
+      <button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>
     </div>
     <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
@@ -1682,7 +1706,7 @@ function renderHome(v) {
     if (e.target.closest('#h-search')) return globalSearch();
     if (e.target.closest('#h-set')) return setTab('sources');
     if (e.target.closest('#h-upd-chip')) return upd && updateSheet(upd);
-    if (e.target.closest('#h-src')) return store.sources().length ? sourceSwitcher() : sourceForm();
+    if (e.target.closest('#h-src')) return kidActive() ? undefined : store.sources().length ? sourceSwitcher() : sourceForm();
     const t = e.target.closest('[data-go]');
     if (t) goTo(t.dataset.go);
   };
@@ -1695,6 +1719,7 @@ function goTo(go) {
     setTab('live');
     return showRecent();
   }
+  if (kidActive() && (go === 'rec' || go === 'multi')) return; // çocuk modunda kayıtlar ve çoklu ekran yok
   if (go === 'rec') return recordingsSheet();
   if (go === 'cats') return categoriesPage();
   if (go === 'guide') return guidePage();
@@ -2672,29 +2697,77 @@ function globalSearch() {
   openPage({
     title: 'Ara',
     cls: 'gs-pg',
-    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search">' + (nativePlugin && nativePlugin.voiceSearch ? `<button class="icon-btn" id="gs-mic" aria-label="Sesle ara">${icon('mic')}</button>` : '') + '</div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button></div><div id="gs-res"></div>',
+    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search">' + (nativePlugin && nativePlugin.voiceSearch ? `<button class="icon-btn" id="gs-mic" aria-label="Sesle ara">${icon('mic')}</button>` : '') + '</div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button></div>' + (store.sources().length > 1 ? '<div class="seg" id="gs-scope"><button data-s="one" class="on">Bu kaynak</button><button data-s="all">Tüm kaynaklar</button></div>' : '') + '<div id="gs-res"></div>',
     mount: (body) => {
       const q = $('#gs-q', body);
       const res = $('#gs-res', body);
-      let found = { live: [], movie: [], series: [] };
-      const row = (it, k, i) => `<button class="list-item" data-k="${k}" data-i="${i}">${logo(it.logo, it.name)}<span class="t">${esc(it.name)}<small>${esc(it.group || '')}</small></span></button>`;
+      let scope = 'one'; // 'one' = etkin kaynak, 'all' = kayıtlı tüm kaynakların önbellekteki listeleri
+      let found = { live: [], movie: [], series: [] }; // [{ it, src }]
+      const cats = new Map(); // kaynak kimliği → yüklenmiş katalog (yalnız bu sayfa açıkken)
+      let loading = false;
+      let missing = 0; // listesi henüz hiç indirilmemiş kaynak sayısı
+      const srcLabel = (src) => (store.sources().length > 1 && scope === 'all' ? ` · ${esc(src.name)}` : '');
+      const row = (e, k, i) => `<button class="list-item" data-k="${k}" data-i="${i}">${logo(e.it.logo, e.it.name)}<span class="t">${esc(e.it.name)}<small>${esc(e.it.group || '')}${srcLabel(e.src)}</small></span></button>`;
+      // Başka kaynakta gizli/kilitli kategoriler, gizlenen kanallar ve çocuk modu izinleri burada da geçerlidir.
+      const visibleIn = (src) => (kind, list) => {
+        if (src.id === sid()) return visibleAll(kind);
+        const prefs = store.catPrefs(src.id, kind);
+        const hid = hiddenGroupNames(prefs);
+        if (lockEnabled()) for (const n of lockedGroupNames(prefs)) hid.add(n); // kilitli kategoriler başka kaynakta açılamaz
+        let out = hid.size ? list.filter((it) => !hid.has(it.group || 'Diğer')) : list;
+        if (kind === 'live') {
+          const hm = store.pref('hidch.' + src.id, {}) || {};
+          if (hiddenCount(hm)) out = applyHidden(out, hm);
+        }
+        if (kidActive()) out = filterAllowed(out, allowSet(kidAllow(), src.id, kind));
+        return out;
+      };
+      const loadAll = async () => {
+        loading = true;
+        missing = 0;
+        draw();
+        for (const src of store.sources()) {
+          if (src.id === sid() || cats.has(src.id)) continue;
+          let cat = null;
+          try {
+            cat = catalogFromStorable(await store.cache.get('cat:' + src.id));
+          } catch {
+            cat = null;
+          }
+          if (cat) cats.set(src.id, cat);
+        }
+        missing = store.sources().filter((x) => x.id !== sid() && !cats.has(x.id)).length;
+        loading = false;
+        draw();
+      };
+      const entries = () => {
+        if (!S.source) return [];
+        const list = [{ src: S.source, cat: S.cat, visible: visibleIn(S.source) }];
+        if (scope === 'all') for (const src of store.sources()) if (src.id !== sid() && cats.has(src.id)) list.push({ src, cat: cats.get(src.id), visible: visibleIn(src) });
+        return list;
+      };
       const draw = () => {
         const t = q.value.trim();
         if (!t) {
-          res.innerHTML = '<div class="empty">Tüm canlı kanallar, filmler ve dizilerde aramak için yazın</div>';
+          res.innerHTML = `<div class="empty">${scope === 'all' ? 'Kayıtlı tüm kaynaklarda' : 'Tüm canlı kanallar, filmler ve dizilerde'} aramak için yazın</div>`;
+          return;
+        }
+        if (scope === 'all' && loading) {
+          res.innerHTML = '<div class="empty">Kaynakların listeleri yükleniyor…</div>';
           return;
         }
         // Arama açık kategoriyle sınırlı değildir: tüm kategorilerdeki canlı, film ve dizilerde yapılır.
-        found = { live: search(visibleAll('live'), t, CAP), movie: search(visibleAll('movie'), t, CAP), series: search(visibleAll('series'), t, CAP) };
+        found = searchAll(entries(), t, CAP);
         const parts = KINDS.filter(([k]) => kind === 'all' || kind === k).map(([k, title]) => {
           const list = found[k];
           if (!list.length) return '';
           const cap = kind === 'all' ? SHOW_ALL : SHOW_ONE;
           const n = `${list.length}${list.length >= CAP ? '+' : ''}`;
           const more = list.length > cap && kind === 'all' ? `<button class="list-item more" data-more="${k}">${n} sonucun tamamını göster</button>` : '';
-          return `<div class="sect">${title}<small>${n}</small></div>${list.slice(0, cap).map((it, i) => row(it, k, i)).join('')}${more}`;
+          return `<div class="sect">${title}<small>${n}</small></div>${list.slice(0, cap).map((e, i) => row(e, k, i)).join('')}${more}`;
         });
-        res.innerHTML = parts.join('') || '<div class="empty">Sonuç yok</div>';
+        const note = scope === 'all' && missing ? `<p class="hint">${missing} kaynağın listesi henüz indirilmediği için aranamadı; o kaynağı bir kez açın.</p>` : '';
+        res.innerHTML = (parts.join('') || '<div class="empty">Sonuç yok</div>') + note;
       };
       $('#gs-kind', body).addEventListener('click', (e) => {
         const b = e.target.closest('[data-k]');
@@ -2703,9 +2776,39 @@ function globalSearch() {
         $$('#gs-kind button', body).forEach((x) => x.classList.toggle('on', x === b));
         draw();
       });
+      const sc = $('#gs-scope', body);
+      if (sc) {
+        sc.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-s]');
+          if (!b || b.dataset.s === scope) return;
+          scope = b.dataset.s;
+          $$('#gs-scope button', body).forEach((x) => x.classList.toggle('on', x === b));
+          if (scope === 'all') loadAll();
+          else draw();
+        });
+      }
       q.addEventListener('input', debounce(draw, 150));
       const gmic = $('#gs-mic', body);
       if (gmic) gmic.addEventListener('click', () => voiceInto(q));
+      // Başka kaynağın sonucuna dokununca o kaynağa geçilir, sonra içerik açılır (arama sayfası açık kalır).
+      const open = async (k, i) => {
+        const e = found[k][i];
+        if (!e) return;
+        let it = e.it;
+        if (e.src.id !== sid()) {
+          toast(`Kaynak: ${e.src.name}`, 1800);
+          await activate(e.src.id);
+          it = S.idx[CAT_KEY[k]].get(e.it.id);
+          if (!it) return toast('İçerik bulunamadı');
+        }
+        if (k === 'live') {
+          const same = found.live.filter((x) => x.src.id === e.src.id).map((x) => S.idx.live.get(x.it.id)).filter(Boolean);
+          const at = same.indexOf(it);
+          return at >= 0 ? playLive(same, at) : playLive([it], 0);
+        }
+        if (k === 'movie') return openMovie(it);
+        return openSeries(it);
+      };
       res.addEventListener('click', (e) => {
         const more = e.target.closest('[data-more]');
         if (more) {
@@ -2714,14 +2817,7 @@ function globalSearch() {
           return draw();
         }
         const b = e.target.closest('[data-k]');
-        if (!b) return;
-        const i = Number(b.dataset.i);
-        const it = found[b.dataset.k][i];
-        if (!it) return;
-        // Arama sayfası açık kalır: oynatıcı ya da ayrıntı üstüne açılır, geri dönünce sonuçlar durur.
-        if (b.dataset.k === 'live') playLive(found.live, i);
-        else if (b.dataset.k === 'movie') openMovie(it);
-        else openSeries(it);
+        if (b) open(b.dataset.k, Number(b.dataset.i));
       });
       draw();
       setTimeout(() => q.focus(), 60);
@@ -3430,8 +3526,18 @@ async function saveBackupFile() {
 function backupSheet() {
   const sh = openSheet({
     title: 'Yedekle / geri yükle',
-    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori, izleme geçmişi ve kategori düzenini karşılıklı tamamlar; iki cihazda var olan hiçbir şey değişmez</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
+    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori (silmeler dahil), izleme ilerlemesi ve kategori düzenini karşılıklı eşitler. Favori ve ilerlemede en yeni değişiklik geçerli olur</small></span></button><button class="chk' + (store.pref('sync.auto', true) !== false ? ' on' : '') + '" id="bk-auto" role="switch" aria-checked="' + (store.pref('sync.auto', true) !== false) + '"><i>' + icon('check') + '</i><span class="t">Kendiliğinden eşitle<small>Uygulama açılınca ve öne gelince, eşleşmiş TV aynı ağdaysa sessizce eşitler</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
     mount: (body) => {
+      const autoBtn = $('#bk-auto', body);
+      if (autoBtn) {
+        autoBtn.addEventListener('click', () => {
+          const on = store.pref('sync.auto', true) === false;
+          store.setPref('sync.auto', on);
+          autoBtn.classList.toggle('on', on);
+          autoBtn.setAttribute('aria-checked', String(on));
+          if (on) castUi.autoSync({ force: true });
+        });
+      }
       const syncBtn = $('#bk-sync', body);
       if (syncBtn) {
         syncBtn.addEventListener('click', () => {
@@ -3499,6 +3605,7 @@ const castUi = createCastUI({
     if (pui.isOpen()) pui.close();
   },
   guard: () => backupGuard(),
+  busy: () => pui.isOpen(),
   onSynced: () => afterSync(),
 });
 
@@ -3549,19 +3656,21 @@ const lockEnabled = () => !!(pinRec() && pinRec().hash);
 const catKey = (kind, id) => kind + '|' + id;
 
 // Şifre denemesi: art arda yanlışta bekleme süresi (yeniden başlatınca da sürer).
-async function pinCheck(pin) {
-  const st = store.pref('lock.fail', emptyFail());
+const pinCheckOf = (recKey, failKey) => async (pin) => {
+  const st = store.pref(failKey, emptyFail());
   const w = waitMs(st);
   if (w > 0) return { ok: false, msg: `Çok fazla yanlış deneme. ${fmtWait(w)} sonra deneyin.` };
-  if (await checkPin(pin, pinRec())) {
-    store.setPref('lock.fail', emptyFail());
+  if (await checkPin(pin, store.pref(recKey, null))) {
+    store.setPref(failKey, emptyFail());
     return { ok: true };
   }
   const next = registerFail(st);
-  store.setPref('lock.fail', next);
+  store.setPref(failKey, next);
   const w2 = waitMs(next);
   return { ok: false, msg: w2 > 0 ? `Çok fazla yanlış deneme. ${fmtWait(w2)} sonra deneyin.` : `Yanlış şifre (${5 - (next.n % 5)} deneme hakkı kaldı)` };
-}
+};
+const pinCheck = pinCheckOf('lock.pin', 'lock.fail');
+const kidPinCheck = pinCheckOf('kid.pin', 'kid.fail'); // çocuk modu şifresi uygulama şifresinden ayrıdır
 
 // Mevcut şifreyi sorar; doğru girilirse true.
 const askPin = (title, hint, cancelable = true) => pad.prompt({ title, hint, len: pinRec().len, cancelable, check: pinCheck }).then((p) => p != null);
@@ -3575,6 +3684,155 @@ async function createPin() {
   store.setPref('lock.pin', await makeRecord(a));
   store.setPref('lock.fail', emptyFail());
   return true;
+}
+
+// ------------------------------------------------------------------ çocuk profili
+
+// Çocuk-modu şifresi: iki kez girilir. Kaydedildiyse true.
+async function createKidPin() {
+  const a = await pad.prompt({ title: 'Çocuk modu şifresi', hint: `Çocuk modundan çıkmak için ${MIN_LEN}–6 rakamlı bir şifre belirleyin, sonra ✓`, check: (p) => (isValidPin(p) ? { ok: true } : { ok: false, msg: `En az ${MIN_LEN} rakam girin` }) });
+  if (a == null) return false;
+  const b = await pad.prompt({ title: 'Şifreyi tekrar girin', hint: 'Aynı şifreyi yeniden yazın, sonra ✓', check: (p) => (p === a ? { ok: true } : { ok: false, msg: 'Şifreler uyuşmuyor, yeniden deneyin' }) });
+  if (b == null) return false;
+  store.setPref('kid.pin', await makeRecord(a));
+  store.setPref('kid.fail', emptyFail());
+  return true;
+}
+
+const askKidPin = (title, hint) => pad.prompt({ title, hint, len: (kidPinRec() || {}).len, cancelable: true, check: kidPinCheck }).then((p) => p != null);
+
+// Çocuk modunun ekran kabuğu: Ayarlar sekmesi "Çıkış" olur, izinli içeriği olmayan türlerin sekmeleri kalkar.
+function renderKidChrome() {
+  const on = kidActive();
+  document.body.classList.toggle('kid-mode', on);
+  const t = $('#tabs [data-tab=sources]');
+  if (t) {
+    t.querySelector('span').textContent = on ? 'Çıkış' : 'Ayarlar';
+    t.querySelector('use').setAttribute('href', on ? '#i-lock' : '#i-gear');
+  }
+  for (const [tab, kind] of Object.entries(TAB_KIND)) {
+    const b = $(`#tabs [data-tab=${tab}]`);
+    if (b) b.hidden = on && !(S.cat && (S.cat[CAT_KEY[kind]] || []).length);
+  }
+}
+
+// Çocuk modunu açar/kapatır: katalog yeniden süzülür, ana ekrana dönülür.
+function applyKidMode(go = 'home') {
+  if (S.rawCat) setCatalog(S.rawCat);
+  renderKidChrome();
+  clearGroupState();
+  setTab(go);
+}
+
+async function kidEnter() {
+  if (!S.source) return toast('Önce bir kaynak ekleyin');
+  if (!hasAllowed(kidAllow(), sid())) return toast('Önce en az bir kategori seçin');
+  if (!(kidPinRec() && kidPinRec().hash) && !(await createKidPin())) return;
+  store.setPref('kid.on', true);
+  if (pui.isOpen()) pui.close();
+  applyKidMode('home');
+  toast('Çocuk modu açık', 2500);
+}
+
+async function kidExit() {
+  if (!(await askKidPin('Çocuk modundan çık', 'Çıkmak için çocuk modu şifresini girin'))) return;
+  store.setPref('kid.on', false);
+  applyKidMode('sources');
+  toast('Çocuk modundan çıkıldı', 2500);
+}
+
+// Bir türün izinli kategorilerini seçtirir (etkin kaynak için).
+function kidGroups(kind, title, done) {
+  const src = S.source;
+  const raw = (S.rawCat || S.cat)[CAT_KEY[kind]] || [];
+  const groups = groupList(raw).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const LIMIT = 300;
+  openSheet({
+    title: `${title}: izinli kategoriler`,
+    html: `<div class="sel-row"><input id="kg-q" type="search" placeholder="Kategori ara…" autocomplete="off"></div><div class="sel-row"><button class="btn ghost sm" id="kg-all">Görünenlerin hepsini seç</button><button class="btn ghost sm" id="kg-none">Hiçbirini seçme</button></div><div id="kg-list"></div>`,
+    mount: (body) => {
+      const list = $('#kg-list', body);
+      const q = $('#kg-q', body);
+      let shown = [];
+      const draw = () => {
+        const f = fold(q.value);
+        const all = groups.filter((g) => !f || fold(g.name).includes(f));
+        shown = all.slice(0, LIMIT);
+        const on = allowSet(kidAllow(), src.id, kind);
+        list.innerHTML =
+          (shown.map((g, i) => `<button class="chk${on.has(g.name) ? ' on' : ''}" data-i="${i}" role="switch" aria-checked="${on.has(g.name)}"><i>${icon('check')}</i><span class="t">${esc(g.name)}<small>${g.count} öğe</small></span></button>`).join('') || '<div class="empty">Kategori yok</div>') +
+          (all.length > LIMIT ? `<p class="hint">${all.length - LIMIT} kategori daha var; aramayla daraltın.</p>` : '');
+      };
+      const save = (names) => {
+        store.setPref('kid.allow', setAllowed(kidAllow(), src.id, kind, names));
+        draw();
+        if (done) done();
+      };
+      list.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-i]');
+        const g = b && shown[Number(b.dataset.i)];
+        if (!g) return;
+        store.setPref('kid.allow', toggleAllowed(kidAllow(), src.id, kind, g.name));
+        b.classList.toggle('on');
+        b.setAttribute('aria-checked', String(b.classList.contains('on')));
+        if (done) done();
+      });
+      $('#kg-all', body).addEventListener('click', () => save([...new Set([...allowSet(kidAllow(), src.id, kind), ...shown.map((g) => g.name)])]));
+      $('#kg-none', body).addEventListener('click', () => save([]));
+      q.addEventListener('input', debounce(draw, 120));
+      draw();
+    },
+  });
+}
+
+function kidSheet() {
+  if (!S.source) return toast('Önce bir kaynak ekleyin');
+  const sh = openSheet({
+    title: 'Çocuk profili',
+    html: '<div id="kd-body"></div>',
+    mount: (body) => {
+      const box = $('#kd-body', body);
+      const draw = () => {
+        const allow = kidAllow();
+        const hasPin = !!(kidPinRec() && kidPinRec().hash);
+        const rows = KID_KINDS.map(([k, t]) => {
+          const n = countAllowed(allow, sid(), k);
+          return `<button class="list-item" data-kind="${k}"><span class="t">${t}<small>${n ? `${n} kategori izinli` : 'Hiçbiri izinli değil'}</small></span></button>`;
+        }).join('');
+        box.innerHTML =
+          `<p class="hint">Çocuk moduna geçince yalnız seçtiğiniz kategoriler görünür; ayarlar, kaynaklar ve diğer içerikler gizlenir. Çıkmak için ayrı bir çocuk modu şifresi gerekir. Seçimler “${esc(S.source.name)}” kaynağı içindir; başka kaynak için o kaynağı seçip buraya yeniden gelin.</p>` +
+          `<div class="sect">İzinli kategoriler</div>${rows}` +
+          `<div class="sect">Şifre</div><button class="list-item" id="kd-pin"><span class="t">${hasPin ? 'Çocuk modu şifresini değiştir' : 'Çocuk modu şifresi belirle'}<small>${hasPin ? 'Önce mevcut şifre sorulur' : 'Çocuk modundan çıkmak için gerekir; uygulama şifresinden ayrıdır'}</small></span></button>` +
+          `<div style="margin-top:14px"><button class="btn" id="kd-go">${icon('lock')}Çocuk moduna geç</button></div>` +
+          (hasPin || hasAllowed(allow, sid()) ? '<div style="margin-top:10px"><button class="btn ghost sm" id="kd-reset">Çocuk profilini sıfırla</button></div>' : '');
+      };
+      box.addEventListener('click', async (e) => {
+        const k = e.target.closest('[data-kind]');
+        if (k) return kidGroups(k.dataset.kind, KID_KINDS.find(([x]) => x === k.dataset.kind)[1], draw);
+        if (e.target.closest('#kd-pin')) {
+          const had = !!(kidPinRec() && kidPinRec().hash);
+          if (had && !(await askKidPin('Çocuk modu şifresi', 'Önce mevcut çocuk modu şifresini girin'))) return;
+          if (await createKidPin()) toast('Çocuk modu şifresi kaydedildi', 2500);
+          return draw();
+        }
+        if (e.target.closest('#kd-reset')) {
+          if (kidPinRec() && kidPinRec().hash && !(await askKidPin('Çocuk profilini sıfırla', 'Çocuk modu şifresini girin'))) return;
+          store.setPref('kid.allow', {});
+          store.setPref('kid.pin', null);
+          store.setPref('kid.fail', emptyFail());
+          store.setPref('kid.on', false);
+          toast('Çocuk profili sıfırlandı', 2500);
+          return draw();
+        }
+        if (e.target.closest('#kd-go')) {
+          if (!hasAllowed(kidAllow(), sid())) return toast('Önce en az bir kategori seçin');
+          sh.close();
+          kidEnter();
+        }
+      });
+      draw();
+    },
+  });
 }
 
 let appLocked = false;
@@ -3655,7 +3913,7 @@ function lockSheet() {
 
 // ------------------------------------------------------------------ olaylar ve başlangıç
 
-$('#btn-source').addEventListener('click', () => (store.sources().length ? sourceSwitcher() : sourceForm()));
+$('#btn-source').addEventListener('click', () => !kidActive() && (store.sources().length ? sourceSwitcher() : sourceForm()));
 $('#btn-refresh').addEventListener('click', () => refreshCatalog());
 $('#btn-home').addEventListener('click', () => {
   const k = TAB_KIND[S.tab];
@@ -3689,9 +3947,11 @@ document.addEventListener('visibilitychange', () => {
   }
   if (shouldLock({ enabled: lockEnabled(), after: store.pref('lock.after', DEFAULT_AFTER), hiddenAt: S.hiddenAt })) return lockApp();
   if (!pui.isOpen()) multiResume();
+  castUi.autoSync();
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
 });
+setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
 setInterval(() => {
   if (S.list && S.tab === 'live' && document.visibilityState === 'visible' && !pui.isOpen()) S.list.refreshRows();
 }, 60000);
@@ -3726,6 +3986,7 @@ if (nativePlugin) {
     tvDetected = tvDetected || !!(r && r.tv);
     applyTvMode();
     setTimeout(() => syncWatchNext(true), 4000);
+    setTimeout(() => castUi.autoSync(), 6000); // telefonda: eşleşmiş TV aynı ağdaysa sessizce eşitle (TV'de işlem yapmaz)
     castUi.startReceiver(); // TV'de varsayılan açık: telefondan gelen oynatma isteklerini karşılar
   }).catch(() => {});
   nativePlugin.addListener('remote', (e) => e && e.key && dpad.sendKey(e.key)).catch(() => {}); // kanal +/-, medya, menü tuşları

@@ -693,3 +693,13 @@ html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px v
 .rm-red { background: #ef4444; } .rm-green { background: #22c55e; } .rm-yellow { background: #facc15; } .rm-blue { background: #3b82f6; }
 .gs-q { display: flex; align-items: center; gap: 4px; }
 .gs-q input { flex: 1; min-width: 0; }
+
+/* Çocuk modu: kaynak/ayar/kayıt/çoklu ekran ve hesap bilgisi gizli; Ayarlar sekmesi çıkış olur */
+body.kid-mode #btn-source { pointer-events: none; }
+body.kid-mode #btn-source .ic,
+body.kid-mode #btn-refresh,
+body.kid-mode .home .t-multi,
+body.kid-mode .home .t-recs,
+body.kid-mode .home .home-foot,
+body.kid-mode .home .hero .re,
+body.kid-mode #h-upd-chip { display: none !important; }

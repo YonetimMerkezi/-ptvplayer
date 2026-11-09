@@ -3,7 +3,9 @@
 import { CAST_PORT, CODE_LEN, buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, createRemote } from './cast.js';
 import { makeSnapshot, parseSnapshot, applySnapshot, emptyAdded, addedTotal, describeAdded, syncMessage } from './sync.js';
 
-// deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast(), guard()?, onSynced() }
+const AUTO_SYNC_MS = 3 * 60 * 1000; // kendiliğinden eşitleme denemeleri arası
+
+// deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast(), guard()?, busy()?, onSynced() }
 export function createCastUI(deps) {
   const { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration } = deps;
   const devices = createDevices(store);
@@ -182,23 +184,66 @@ export function createCastUI(deps) {
   }
 
   // Veri eşitleme (telefon başlatır): kaynaklar, favoriler, son izlenenler, ilerleme, kategori düzeni karşılıklı birleştirilir.
-  // Hiçbir cihazda var olan değer değişmez; her biri yalnız diğerinde olup kendinde olmayanları alır.
+  // Kaynak, son izlenen ve kategori düzeni yalnız eklenir; favori ve ilerlemede en yeni karar kazanır (silmeler de taşınır).
+  // → { ok, msg?, unpaired?, tv: TV'ye eklenenler, phone: telefona eklenenler }
+  async function runSync(dev) {
+    const res = syncResult(await request(dev, '/sync', 'POST', JSON.stringify(makeSnapshot(store)), { timeoutMs: 30000 }));
+    if (res.unpaired) devices.forget(dev.id);
+    if (!res.ok) return res;
+    const parsed = parseSnapshot(res.snapshot);
+    const mine = parsed.ok ? applySnapshot(store, parsed.snap) : emptyAdded();
+    if (addedTotal(mine) && deps.onSynced) deps.onSynced();
+    return { ok: true, tv: { ...emptyAdded(), ...res.added }, phone: mine };
+  }
+
   async function syncWithTv() {
     if (!plugin) return toast('TV ile eşitleme yalnız Android uygulamasında çalışır');
     if (deps.guard && !(await deps.guard())) return; // veriler kullanıcı adı/parola içerir
     const dev = await chooseTv('TV ile eşitle');
     if (!dev) return;
     toast('Eşitleniyor…', 15000);
-    const res = syncResult(await request(dev, '/sync', 'POST', JSON.stringify(makeSnapshot(store)), { timeoutMs: 30000 }));
-    if (res.unpaired) {
-      devices.forget(dev.id);
-      return toast(res.msg, 4000);
+    const r = await runSync(dev);
+    if (!r.ok) return toast(r.msg, 4000);
+    store.setPref('sync.last', Date.now());
+    toast(syncMessage(r.tv, r.phone), 7000);
+  }
+
+  // Kendiliğinden eşitleme (telefon): eşleşmiş TV aynı ağda bulunursa sessizce eşitler; yalnız bir şey değiştiyse haber verir.
+  // Eşleşme zaten kullanıcının izniyle yapıldığı için parola sorulmaz. Sık denemeyi throttle önler.
+  let autoBusy = false;
+  async function autoSync({ force = false } = {}) {
+    if (!plugin || deps.isTv() || autoBusy) return false;
+    if (store.pref('sync.auto', true) === false) return false;
+    const saved = devices.list();
+    if (!saved.length) return false;
+    if (deps.busy && deps.busy()) return false; // oynatıcı açıkken ekran yenilenmesin
+    const nowMs = Date.now();
+    if (!force && nowMs - Number(store.pref('sync.try', 0)) < AUTO_SYNC_MS) return false;
+    autoBusy = true;
+    store.setPref('sync.try', nowMs);
+    try {
+      let found = [];
+      try {
+        const r = await plugin.castDiscover({ timeoutMs: 1500 });
+        found = (r && r.devices) || [];
+      } catch {
+        found = [];
+      }
+      const online = mergeDevices(saved, found).filter((d) => d.saved && d.online);
+      let changed = emptyAdded();
+      let any = false;
+      for (const d of online) {
+        const r = await runSync(devices.get(d.id) || d);
+        if (!r.ok) continue;
+        any = true;
+        for (const k of Object.keys(changed)) changed[k] += (r.phone[k] || 0) + (r.tv[k] || 0);
+      }
+      if (any) store.setPref('sync.last', Date.now());
+      if (addedTotal(changed)) toast('TV ile eşitlendi: ' + describeAdded(changed), 4000);
+      return any;
+    } finally {
+      autoBusy = false;
     }
-    if (!res.ok) return toast(res.msg, 4000);
-    const parsed = parseSnapshot(res.snapshot);
-    const mine = parsed.ok ? applySnapshot(store, parsed.snap) : emptyAdded();
-    if (deps.onSynced) deps.onSynced();
-    toast(syncMessage({ ...emptyAdded(), ...res.added }, mine), 7000);
   }
 
   function remoteScreen(dev, sent, args) {
@@ -339,8 +384,10 @@ export function createCastUI(deps) {
         if (!parsed.ok) reply = { ok: false, body: JSON.stringify({ error: parsed.error }) };
         else {
           const added = applySnapshot(store, parsed.snap);
-          if (deps.onSynced) deps.onSynced();
-          if (addedTotal(added)) toast('Telefonla eşitlendi: ' + describeAdded(added), 5000);
+          if (addedTotal(added)) {
+            if (deps.onSynced) deps.onSynced();
+            toast('Telefonla eşitlendi: ' + describeAdded(added), 5000);
+          }
           reply = { ok: true, body: JSON.stringify({ ok: true, added, snapshot: makeSnapshot(store) }) };
         }
       } catch {
@@ -464,5 +511,5 @@ export function createCastUI(deps) {
     });
   }
 
-  return { sendToTv, syncWithTv, receiverSheet, startReceiver, listen, nowPlaying, devices };
+  return { sendToTv, syncWithTv, autoSync, receiverSheet, startReceiver, listen, nowPlaying, devices };
 }

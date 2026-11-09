@@ -128,7 +128,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   };
   api.removeSource = (id) => {
     write('sources', api.sources().filter((s) => s.id !== id));
-    for (const k of ['fav.', 'rec.', 'prog.', 'cats.', 'pref.bad.', 'pref.hidch.', 'pref.hhist.']) {
+    for (const k of ['fav.', 'favx.', 'rec.', 'prog.', 'progx.', 'cats.', 'pref.bad.', 'pref.hidch.', 'pref.hhist.']) {
       try {
         storage.removeItem(P + k + id);
       } catch {
@@ -151,11 +151,34 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   // ---- favoriler ----
   api.favs = (sid) => read('fav.' + sid, []);
   api.isFav = (sid, id) => api.favs(sid).some((f) => f.id === id);
+  // Silme izleri (kimlik → zaman): TV ile eşitlemede "silindi" kararının yayılması için; en yeni 500 iz tutulur.
+  const markGone = (key, id) => {
+    const t = read(key, {}) || {};
+    t[id] = Date.now();
+    const ks = Object.keys(t);
+    if (ks.length > 500) {
+      ks.sort((a, b) => t[a] - t[b]);
+      for (const k of ks.slice(0, ks.length - 500)) delete t[k];
+    }
+    write(key, t);
+  };
+  const unmarkGone = (key, id) => {
+    const t = read(key, null);
+    if (t && Object.prototype.hasOwnProperty.call(t, id)) {
+      delete t[id];
+      write(key, t);
+    }
+  };
   api.toggleFav = (sid, e) => {
     const list = api.favs(sid);
     const i = list.findIndex((f) => f.id === e.id);
-    if (i >= 0) list.splice(i, 1);
-    else list.unshift({ id: e.id, kind: e.kind, name: e.name, logo: e.logo || '' });
+    if (i >= 0) {
+      list.splice(i, 1);
+      markGone('favx.' + sid, e.id);
+    } else {
+      list.unshift({ id: e.id, kind: e.kind, name: e.name, logo: e.logo || '', at: Date.now() });
+      unmarkGone('favx.' + sid, e.id);
+    }
     write('fav.' + sid, list);
     return i < 0;
   };
@@ -175,9 +198,13 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   api.progress = (sid, id) => api.progressAll(sid)[id] || null;
   api.setProgress = (sid, e, pos, dur) => {
     const all = api.progressAll(sid);
-    if (dur > 0 && pos / dur > 0.95) delete all[e.id];
-    else if (pos >= 15000) all[e.id] = { id: e.id, kind: e.kind, name: e.name, logo: e.logo || '', parent: e.parent || null, pos, dur, at: Date.now() };
-    else return;
+    if (dur > 0 && pos / dur > 0.95) {
+      if (all[e.id]) markGone('progx.' + sid, e.id); // izleme bitti: diğer cihazda da "devam et"ten kalksın
+      delete all[e.id];
+    } else if (pos >= 15000) {
+      all[e.id] = { id: e.id, kind: e.kind, name: e.name, logo: e.logo || '', parent: e.parent || null, pos, dur, at: Date.now() };
+      unmarkGone('progx.' + sid, e.id);
+    } else return;
     const keys = Object.keys(all);
     if (keys.length > 300) {
       keys.sort((a, b) => all[a].at - all[b].at);

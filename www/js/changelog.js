@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 30,
+    title: 'Çocuk profili, tüm kaynaklarda arama, otomatik eşitleme',
+    items: [
+      'Çocuk profili: Ayarlar › Çocuk profili’nde izinli kategorileri seçin, ayrı bir şifre belirleyin; çocuk modunda yalnız bu kategoriler görünür, ayarlar ve kaynaklar gizlenir, çıkış şifreyle olur',
+      'Ara sayfasında “Tüm kaynaklar”: kayıtlı tüm kaynakların listelerinde birlikte arar; sonuçta kaynak adı yazar, dokununca o kaynağa geçip açar',
+      'TV ile eşitleme kendiliğinden: uygulama açılınca ve favori değişince, eşleşmiş TV aynı ağdaysa sessizce eşitler (Yedekle / geri yükle’den kapatılabilir)',
+      'Favori silmeleri artık diğer cihaza da yayılır; izleme ilerlemesinde en yeni kayıt geçerli olur, bitirilen film her iki cihazda “devam et”ten kalkar',
+    ],
+  },
+  {
     id: 29,
     title: 'TV düzeltmeleri',
     items: [
