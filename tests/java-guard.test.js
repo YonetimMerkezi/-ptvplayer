@@ -311,6 +311,16 @@ test('çevrimdışı indirme: hizmet bildirimli ön plan (dataSync), tek iş par
   assert.match(d, /notMedia\(type\)/, 'HTML/JSON yanıtı video diye kaydedilmemeli');
   assert.match(d, /isActiveNetworkMetered\(\)/, 'yalnız Wi-Fi seçeneği kotalı ağı denetlemeli');
   assert.match(d, /DOWNLOADING\.equals\(j\.state\)\) j\.state = QUEUED/, 'yarım kalan indirme açılışta sıraya dönmeli');
+  // hızlı (çok bağlantılı) indirme
+  assert.match(d, /"Range", "bytes=" \+ from \+ "-" \+ to/, 'parça isteği Range aralığıyla yapılmalı');
+  assert.match(d, /static volatile int fastConns = 4/, 'varsayılan bağlantı sayısı 4');
+  assert.match(d, /j\.fast && code == 206 && have == 0/, 'hızlı yöntem yalnız sunucu Range verince (206) başlar');
+  assert.match(d, /r\.rejected = true/, 'fazla bağlantı reddedilirse tek bağlantıya düşmeli');
+  assert.match(d, /if \(r\.rejected\) conns = 1/, 'reddedilince kalan parçalar tek bağlantıyla inmeli');
+  assert.match(d, /cr\[2\] > 0 && cr\[2\] != total/, 'sunucudaki dosya değiştiyse parçalar birleştirilmemeli');
+  assert.match(d, /resetSegs\(app, j, part, false\)[\s\S]*?FR_RESET/, 'tutarsız parça bilgisinde hızlı yöntem bırakılıp baştan başlanmalı (sonsuz döngü yok)');
+  assert.match(d, /segsFromString/, 'parça ilerlemesi yan dosyadan okunmalı');
+  assert.doesNotMatch(d, /ExecutorService|CompletableFuture/, 'minSdk 22: yalnız temel iş parçacıkları');
   // eklenti: olay + yöntemler, yok olurken dinleyici bırakılır
   assert.match(kaynak, /notifyListeners\("dlProgress", o\)/);
   assert.match(kaynak, /Downloads\.setListener\(null\)/);

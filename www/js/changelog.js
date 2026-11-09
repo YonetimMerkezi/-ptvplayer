@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 33,
+    title: 'Hızlı indirme, oynatıcıda İndir',
+    items: [
+      'Hızlı indirme (İndir sayfasından açılır, varsayılan kapalı): dosyayı birkaç bağlantıyla aynı anda indirir; sağlayıcı tek bağlantıyı yavaşlatıyorsa belirgin hızlanır, fazla bağlantıyı kabul etmezse kendiliğinden tek bağlantıya döner',
+      'Oynatıcıda İndir düğmesi: film ya da bölümü izlerken indirmeye ekleyin',
+      'Ayarlar › Oynatıcı ayarları: yayın bağlantısı, bölüm geçişi, altyazı ve kumanda ayarları Genel ayarlar’dan buraya taşındı; alt düğmelerden hangilerinin adı yazsın buradan seçilir',
+      'Oynatıcının alt düğmeleri ortalı, tek satırda ve varsayılan yalnız simge (ad göstermek istediklerinizi seçersiniz)',
+      'Oynatıcının sol üstündeki geri oku artık oynatıcıyı kapatır (telefonun geri hareketi yayını küçük oynatıcıya alır)',
+    ],
+  },
+  {
     id: 32,
     title: 'Yeni sürüm bildirimi',
     items: [

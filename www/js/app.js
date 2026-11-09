@@ -47,6 +47,7 @@ import { checkStreamHealth } from './health.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
 import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
 import { searchAll, totalOf } from './multisearch.js';
+import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 
 const Cap = window.Capacitor;
@@ -138,6 +139,9 @@ const pui = createPlayerUI({
     isTv: () => isTvUi() || tvDetected, // TV'de resim içinde resim ve küçük oynatıcı yok
     canCast: () => !!nativePlugin && !isTvUi(),
     castTo: (st, ctx) => castItem(st.item, st.ep, { startMs: st.pos, ctx, closePlayer: true }),
+    // Oynatıcıdaki İndir: film ya da dizi bölümü (indirilmiş yerel kopya, canlı ve kayıt hariç)
+    canDownload: (st) => dlOk() && !!st.item && (st.item.kind === 'movie' || (st.item.kind === 'series' && !!st.ep)) && !/^file:/i.test(((st.targets || [])[st.idx || 0] || {}).url || ''),
+    download: (st) => dlFromPlayer(st),
     epg: (it) => S.epg.nowNext(it),
     shortEpg: (it) => (S.source ? loadShortEpg(S.source, net, it, 4).catch(() => []) : Promise.resolve([])),
     isFav: (it) => !!S.source && store.isFav(S.source.id, it.id),
@@ -1510,7 +1514,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1520,6 +1524,7 @@ function onSourcesClick(e) {
   if (t) {
     const k = t.dataset.set;
     if (k === 'general') return generalSheet();
+    if (k === 'player') return playerSheet();
     if (k === 'epg') return epgSettingsSheet();
     if (k === 'health') return healthSheet();
     if (k === 'plans') return plansSheet();
@@ -2898,6 +2903,52 @@ function remoteSheet() {
   });
 }
 
+// Oynatıcı ayarları: yayın bağlantısı, bölüm geçişi, altyazı, kumanda ve alt düğme etiketleri (eskiden Genel ayarlar'daydı).
+const plLabels = () => new Set(normalizeLabels(store.pref('pl.labels', [])));
+function playerSheet() {
+  openSheet({
+    title: 'Oynatıcı ayarları',
+    html:
+      `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
+      `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
+      `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
+      chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
+      chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
+      `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
+      (nativePlugin ? `<div class="sel-row"><span>Altyazı görünümü<small id="g-sub-s">${esc(subLabel(store.pref('sub', DEFAULT_SUB)))}</small></span><button class="btn sm ghost" id="g-sub">Ayarla</button></div>` : '') +
+      `<div class="sel-row"><span>Kumanda renkli tuşları<small>Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin</small></span><button class="btn sm ghost" id="g-rm">Ayarla</button></div>` +
+      `<div class="sect">Alt düğmelerde adı yazsın<small class="hint" style="display:block">İşaretlenenlerin simgesinin yanında adı da yazar; diğerleri yalnız simge olur. Düğmeler ortada, tek satırdadır.</small></div>` +
+      PLAYER_TOOLS.map(([id, name]) => `<button class="chk${plLabels().has(id) ? ' on' : ''}" data-pl="${id}" role="switch" aria-checked="${plLabels().has(id)}"><i>${icon('check')}</i><span class="t">${esc(name)}</span></button>`).join(''),
+    mount: (body) => {
+      body.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-pl]');
+        if (t) {
+          const cur = plLabels();
+          if (cur.has(t.dataset.pl)) cur.delete(t.dataset.pl);
+          else cur.add(t.dataset.pl);
+          store.setPref('pl.labels', normalizeLabels([...cur]));
+          t.classList.toggle('on', cur.has(t.dataset.pl));
+          t.setAttribute('aria-checked', String(cur.has(t.dataset.pl)));
+          return;
+        }
+        const c = e.target.closest('.chk[data-k]');
+        if (c) {
+          const on = !setting(c.dataset.k);
+          store.setPref('set.' + c.dataset.k, on);
+          c.classList.toggle('on', on);
+        }
+      });
+      $('#g-rm', body).addEventListener('click', () => remoteSheet());
+      $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
+      $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
+      $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
+      $('#g-intro', body).addEventListener('change', (e) => store.setPref('set.intro', normalizeIntro(e.target.value)));
+      const gsub = $('#g-sub', body);
+      if (gsub) gsub.addEventListener('click', () => pui.subtitleSheet(() => ($('#g-sub-s', body).textContent = subLabel(store.pref('sub', DEFAULT_SUB)))));
+    },
+  });
+}
+
 function generalSheet() {
   const lim = Number(store.pref('set.recentLimit', 40));
   openSheet({
@@ -2908,14 +2959,6 @@ function generalSheet() {
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
-      `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
-      `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
-      `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
-      chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
-      chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
-      `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
-      (nativePlugin ? `<div class="sel-row"><span>Altyazı görünümü<small id="g-sub-s">${esc(subLabel(store.pref('sub', DEFAULT_SUB)))}</small></span><button class="btn sm ghost" id="g-sub">Ayarla</button></div>` : '') +
-      `<div class="sel-row"><span>Kumanda renkli tuşları<small>Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin</small></span><button class="btn sm ghost" id="g-rm">Ayarla</button></div>` +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
       `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
@@ -2945,15 +2988,8 @@ function generalSheet() {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));
         applyTvMode();
       });
-      $('#g-rm', body).addEventListener('click', () => remoteSheet());
       $('#g-lock', body).addEventListener('click', () => lockSheet());
       $('#g-bk', body).addEventListener('click', () => backupSheet());
-      $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
-      $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
-      $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
-      $('#g-intro', body).addEventListener('change', (e) => store.setPref('set.intro', normalizeIntro(e.target.value)));
-      const gsub = $('#g-sub', body);
-      if (gsub) gsub.addEventListener('click', () => pui.subtitleSheet(() => ($('#g-sub-s', body).textContent = subLabel(store.pref('sub', DEFAULT_SUB)))));
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
         store.setPref('set.fontScale', Number(e.target.value));
@@ -3499,6 +3535,7 @@ const DL = new Map(); // indirme kimliği → işin son durumu (yerel hizmetten 
 const dlWatchers = new Set(); // açık ekranlar: durum değişince kendini günceller
 const dlOk = () => !!engine.dl && !kidActive();
 const dlWifi = () => store.pref('dl.wifi', true) !== false;
+const dlFast = () => store.pref('dl.fast', false) === true; // hızlı indirme: aynı dosya birkaç bağlantıyla; varsayılan kapalı (sağlayıcı bağlantı sınırı)
 const dlJobOf = (it, ep) => DL.get(dlId(sid(), it.id, ep ? ep.id : ''));
 // Filmin indirmesi: başka bir sürümü (4K/FHD/SD kopyası) indirilmişse o da bu filmin durumu sayılır
 function dlMovieJob(it) {
@@ -3578,6 +3615,14 @@ function dlToggle(it, ep) {
   downloadsSheet();
 }
 
+// Oynatıcıdaki İndir düğmesi: daha önce eklenmişse İndirilenler açılır, değilse indirme seçenekleri (tek bölümde doğrudan sıraya).
+function dlFromPlayer(st) {
+  if (!dlOk() || !st.item) return;
+  const j = st.ep ? dlJobOf(st.item, st.ep) : dlMovieJob(st.item);
+  if (j) return downloadsSheet();
+  dlAsk(st.item, st.ep ? { eps: [st.ep] } : {});
+}
+
 // Tek bölüm ilk seferden sonra sormadan eklenir; film ve sezon için (sürüm, Wi-Fi, uyarı) seçenek sayfası açılır.
 function dlAsk(it, { eps = null, season = null } = {}) {
   if (!dlOk()) return;
@@ -3594,6 +3639,7 @@ async function dlQueueToast(entries) {
 // Her kayıt { item, ep } için oynatma adresini bulup yerel hizmete verir (sırayla iner).
 async function dlQueue(entries) {
   const wifiOnly = dlWifi();
+  const fast = dlFast();
   let ok = 0;
   let bad = 0;
   let why = '';
@@ -3607,7 +3653,7 @@ async function dlQueue(entries) {
     }
     const id = dlId(sid(), item.id, ep ? ep.id : '');
     try {
-      DL.set(id, await engine.dl.start({ id, url: t.url, headers: t.headers ? JSON.stringify(t.headers) : '', name: dlName({ item, ep }), ext: t.ext, meta: makeMeta({ src: sid(), item, ep }), wifiOnly }));
+      DL.set(id, await engine.dl.start({ id, url: t.url, headers: t.headers ? JSON.stringify(t.headers) : '', name: dlName({ item, ep }), ext: t.ext, meta: makeMeta({ src: sid(), item, ep }), wifiOnly, fast }));
       ok++;
     } catch (e) {
       bad++;
@@ -3635,7 +3681,7 @@ function dlSheet(it, { eps = null, season = null } = {}) {
       .join('');
   const sh = openSheet({
     title,
-    html: `<div class="dl-sheet"><p class="dl-what">${what}</p>${versions.length > 1 ? `<h4 class="dl-h">Sürüm</h4><div id="dl-vers" role="radiogroup" aria-label="Sürüm">${verRows()}</div>` : ''}<button class="chk${dlWifi() ? ' on' : ''}" id="dl-wifi" role="switch" aria-checked="${dlWifi()}"><i>${icon('check')}</i><span class="t">Yalnız Wi-Fi’de indir<small>Mobil veride indirmez; Wi-Fi gelince sürer</small></span></button><p class="hint" id="dl-free"></p><p class="hint">Dosya olduğu gibi iner. Ses dili ve altyazıyı izlerken oynatıcıdan seçersiniz.</p><p class="hint dl-tos">${esc(DL_TOS)}</p><div class="dl-btns">${movie || todo.length ? '<button class="btn" id="dl-go">İndir</button>' : ''}<button class="btn ghost" id="dl-no">${movie || todo.length ? 'Vazgeç' : 'Kapat'}</button></div></div>`,
+    html: `<div class="dl-sheet"><p class="dl-what">${what}</p>${versions.length > 1 ? `<h4 class="dl-h">Sürüm</h4><div id="dl-vers" role="radiogroup" aria-label="Sürüm">${verRows()}</div>` : ''}<button class="chk${dlWifi() ? ' on' : ''}" id="dl-wifi" role="switch" aria-checked="${dlWifi()}"><i>${icon('check')}</i><span class="t">Yalnız Wi-Fi’de indir<small>Mobil veride indirmez; Wi-Fi gelince sürer</small></span></button><button class="chk${dlFast() ? ' on' : ''}" id="dl-fast" role="switch" aria-checked="${dlFast()}"><i>${icon('check')}</i><span class="t">Hızlı indirme<small>Aynı dosyayı birkaç bağlantıyla indirir; sağlayıcı sınırlarsa tek bağlantıya döner</small></span></button><p class="hint" id="dl-free"></p><p class="hint">Dosya olduğu gibi iner. Ses dili ve altyazıyı izlerken oynatıcıdan seçersiniz.</p><p class="hint dl-tos">${esc(DL_TOS)}</p><div class="dl-btns">${movie || todo.length ? '<button class="btn" id="dl-go">İndir</button>' : ''}<button class="btn ghost" id="dl-no">${movie || todo.length ? 'Vazgeç' : 'Kapat'}</button></div></div>`,
     mount: (body) => {
       $('#dl-no', body).addEventListener('click', () => sh.close());
       $('#dl-wifi', body).addEventListener('click', (e) => {
@@ -3643,6 +3689,13 @@ function dlSheet(it, { eps = null, season = null } = {}) {
         store.setPref('dl.wifi', on);
         e.currentTarget.classList.toggle('on', on);
         e.currentTarget.setAttribute('aria-checked', String(on));
+      });
+      $('#dl-fast', body).addEventListener('click', (e) => {
+        const on = !dlFast();
+        store.setPref('dl.fast', on);
+        e.currentTarget.classList.toggle('on', on);
+        e.currentTarget.setAttribute('aria-checked', String(on));
+        if (on) toast('Sağlayıcınız aynı anda tek bağlantıya izin veriyorsa canlı yayın kesilebilir', 4500);
       });
       const vers = $('#dl-vers', body);
       if (vers) {
@@ -3716,7 +3769,7 @@ function downloadsSheet() {
         const sum = summary(list);
         shape = shapeOf();
         const bulk = sum.active ? '<button class="btn sm ghost" id="dl-pall">Tümünü duraklat</button>' : sum.paused || sum.failed ? '<button class="btn sm ghost" id="dl-rall">Tümünü sürdür</button>' : '';
-        box.innerHTML = `<div class="dl-head"><button class="chk${dlWifi() ? ' on' : ''}" id="dl-wifi" role="switch" aria-checked="${dlWifi()}"><i>${icon('check')}</i><span class="t">Yalnız Wi-Fi’de indir<small>Yeni indirmeler için</small></span></button>${bulk}</div>${list.length ? list.map(rowHtml).join('') : '<p class="hint">Henüz indirme yok. Bir film ya da dizi bölümünün sayfasındaki “İndir” ile çevrimdışı izlemek üzere indirin.</p>'}<p class="rec-info" id="dl-info"></p><p class="rec-info">${esc(DL_TOS)}</p>`;
+        box.innerHTML = `<div class="dl-head"><button class="chk${dlWifi() ? ' on' : ''}" id="dl-wifi" role="switch" aria-checked="${dlWifi()}"><i>${icon('check')}</i><span class="t">Yalnız Wi-Fi’de indir<small>Yeni indirmeler için</small></span></button><button class="chk${dlFast() ? ' on' : ''}" id="dl-fast" role="switch" aria-checked="${dlFast()}"><i>${icon('check')}</i><span class="t">Hızlı indirme<small>Birkaç bağlantıyla; yeni indirmeler için</small></span></button>${bulk}</div>${list.length ? list.map(rowHtml).join('') : '<p class="hint">Henüz indirme yok. Bir film ya da dizi bölümünün sayfasındaki “İndir” ile çevrimdışı izlemek üzere indirin.</p>'}<p class="rec-info" id="dl-info"></p><p class="rec-info">${esc(DL_TOS)}</p>`;
         info();
       };
       // İlerleme olayı: satır sayısı/durumu aynıysa yalnız metin ve çubuk güncellenir (odak bozulmaz)
@@ -3732,6 +3785,11 @@ function downloadsSheet() {
       body.addEventListener('click', (e) => {
         if (e.target.closest('#dl-wifi')) {
           store.setPref('dl.wifi', !dlWifi());
+          return draw();
+        }
+        if (e.target.closest('#dl-fast')) {
+          store.setPref('dl.fast', !dlFast());
+          if (dlFast()) toast('Sağlayıcınız aynı anda tek bağlantıya izin veriyorsa canlı yayın kesilebilir', 4500);
           return draw();
         }
         if (e.target.closest('#dl-pall')) return void engine.dl.pauseAll().catch(() => {});

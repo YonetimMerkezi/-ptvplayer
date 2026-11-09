@@ -15,6 +15,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +32,8 @@ import java.util.regex.Pattern;
 /**
  * Çevrimdışı izleme için film/bölüm indirme: tek dosyalık (mkv/mp4/…) adresleri sırayla indirir.
  * Bir seferde yalnız bir indirme çalışır (sağlayıcıların bağlantı sınırını aşmamak için). Kaldığı yerden sürer (HTTP Range).
+ * "Hızlı indirme" açıksa ve sunucu Range veriyorsa dosya parçalara bölünür, birkaç bağlantıyla aynı anda iner; sunucu fazla
+ * bağlantıyı reddederse kendiliğinden tek bağlantıya düşer (kalan parçalar sırayla iner).
  * Durum ve ayarlar özel klasördeki &lt;kimlik&gt;.json yan dosyasında tutulur; veri &lt;kimlik&gt;.part → bitince &lt;kimlik&gt;.&lt;uzantı&gt;.
  * İndirmeyi DownloadService (ön plan hizmeti) çalıştırır; uygulama kapalıyken de sürer.
  */
@@ -56,6 +59,14 @@ final class Downloads {
     private static final long MIN_FILE_BYTES = 64L * 1024L;
     private static final int MAX_RETRY = 5;
     private static final long WAIT_NET_MS = 30L * 60L * 1000L;
+    private static final int FAST_SEGS = 8;
+    private static final int FR_DONE = 0;
+    private static final int FR_STOP = 1;
+    private static final int FR_WAIT = 2;
+    private static final int FR_RESET = 3;
+    /** Hızlı indirmede aynı anda açılan bağlantı sayısı ve bu yöntemin kullanılacağı en küçük dosya boyutu (testler değiştirir). */
+    static volatile int fastConns = 4;
+    static volatile long fastMin = 32L * 1024L * 1024L;
 
     private static final int CMD_NONE = 0;
     private static final int CMD_PAUSE = 1;
@@ -72,6 +83,8 @@ final class Downloads {
         String error = "";
         String file = "";
         boolean wifiOnly;
+        boolean fast; // hızlı (çok bağlantılı) indirme istendi
+        Seg[] segs; // parçalı indirme: bölünmüş aralıklar ve her birinin ilerlemesi; null → tek parça
         long bytes;
         long total = -1;
         long speed;
@@ -119,6 +132,78 @@ final class Downloads {
         }
     }
 
+    /** Parçalı indirmede dosyanın [start, end) aralığı; pos bir sonraki yazılacak bayttır (yalnız sahibi iş parçacığı yazar). */
+    private static final class Seg {
+        final long start;
+        final long end;
+        volatile long pos;
+        boolean busy; // LOCK altında
+
+        Seg(long start, long end, long pos) {
+            this.start = start;
+            this.end = end;
+            this.pos = pos;
+        }
+
+        boolean complete() {
+            return pos >= end;
+        }
+    }
+
+    private static long segSum(Seg[] segs) {
+        long n = 0;
+        for (Seg x : segs) n += Math.max(0L, Math.min(x.pos, x.end) - x.start);
+        return n;
+    }
+
+    private static boolean allComplete(Seg[] segs) {
+        for (Seg x : segs) if (!x.complete()) return false;
+        return true;
+    }
+
+    private static int incompleteCount(Seg[] segs) {
+        int n = 0;
+        for (Seg x : segs) if (!x.complete()) n++;
+        return n;
+    }
+
+    private static String segsToString(Seg[] segs) {
+        if (segs == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Seg x : segs) {
+            if (sb.length() > 0) sb.append(';');
+            sb.append(x.start).append(',').append(x.end).append(',').append(Math.min(x.pos, x.end));
+        }
+        return sb.toString();
+    }
+
+    /** "başlangıç,bitiş,konum;…" → parçalar; boşluksuz kaplama ve toplam boyut tutmuyorsa null. */
+    private static Seg[] segsFromString(String str, long total) {
+        if (str == null || str.isEmpty() || total <= 0) return null;
+        try {
+            String[] parts = str.split(";");
+            Seg[] out = new Seg[parts.length];
+            long next = 0;
+            for (int i = 0; i < parts.length; i++) {
+                String[] f = parts[i].split(",");
+                long a = Long.parseLong(f[0]);
+                long b = Long.parseLong(f[1]);
+                long p = Long.parseLong(f[2]);
+                if (a != next || b <= a || p < a || p > b) return null;
+                out[i] = new Seg(a, b, p);
+                next = b;
+            }
+            return next == total ? out : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static long bytesOf(Job j, File part) {
+        Seg[] s = j.segs;
+        return s != null ? segSum(s) : (part.exists() ? part.length() : 0);
+    }
+
     private static final Object LOCK = new Object();
     private static final LinkedHashMap<String, Job> JOBS = new LinkedHashMap<>();
     private static boolean loaded;
@@ -156,9 +241,20 @@ final class Downloads {
     }
 
     static long usedBytes(Context c) {
-        File[] fs = dirOf(c).listFiles();
+        Context app = c.getApplicationContext();
+        File[] fs = dirOf(app).listFiles();
         long used = 0;
-        if (fs != null) for (File f : fs) used += f.length();
+        synchronized (LOCK) {
+            ensureLoaded(app);
+            if (fs != null) {
+                for (File f : fs) {
+                    String n = f.getName();
+                    Job j = n.endsWith(".part") ? JOBS.get(n.substring(0, n.length() - 5)) : null;
+                    // Parçalı indirmede dosya baştan tam boyda ayrılır: gerçekten inen kadarı sayılır
+                    used += j != null && j.segs != null ? segSum(j.segs) : f.length();
+                }
+            }
+        }
         return used;
     }
 
@@ -176,7 +272,9 @@ final class Downloads {
         j.error = o.optString("error", "");
         j.file = o.optString("file", "");
         j.wifiOnly = o.optBoolean("wifiOnly", false);
+        j.fast = o.optBoolean("fast", false);
         j.total = o.optLong("total", -1L);
+        j.segs = segsFromString(o.optString("segs", ""), j.total);
         j.createdAt = o.optLong("createdAt", 0L);
         j.order = o.optLong("order", 0L);
         return j;
@@ -195,6 +293,8 @@ final class Downloads {
             o.put("error", j.error);
             o.put("file", j.file);
             o.put("wifiOnly", j.wifiOnly);
+            o.put("fast", j.fast);
+            o.put("segs", segsToString(j.segs));
             o.put("total", j.total);
             o.put("createdAt", j.createdAt);
             o.put("order", j.order);
@@ -253,7 +353,8 @@ final class Downloads {
                 }
             } else {
                 File part = new File(dir, j.id + ".part");
-                j.bytes = part.exists() ? part.length() : 0;
+                if (j.segs != null && (!part.exists() || part.length() != j.total)) j.segs = null; // ayrılmış dosya yok/bozuk: baştan
+                j.bytes = bytesOf(j, part);
                 if (DOWNLOADING.equals(j.state)) j.state = QUEUED;
             }
             seq = Math.max(seq, j.order + 1);
@@ -316,6 +417,7 @@ final class Downloads {
             j.ext = cleanExt(req.optString("ext", ""));
             j.meta = req.optString("meta", "");
             j.wifiOnly = req.optBoolean("wifiOnly", false);
+            j.fast = req.optBoolean("fast", false);
             j.state = QUEUED;
             j.error = "";
             j.speed = 0;
@@ -641,7 +743,7 @@ final class Downloads {
         JSONObject ev;
         synchronized (LOCK) {
             File part = new File(dirOf(app), j.id + ".part");
-            if (!DONE.equals(state)) j.bytes = part.exists() ? part.length() : 0;
+            if (!DONE.equals(state)) j.bytes = bytesOf(j, part);
             j.state = state;
             j.error = error;
             j.speed = 0;
@@ -676,6 +778,11 @@ final class Downloads {
     // ------------------------------------------------------------------ indirme
 
     private static HttpURLConnection open(String url, String headersJson, long from) throws IOException {
+        return open(url, headersJson, from, -1L, false);
+    }
+
+    /** to ≥ 0: yalnız [from, to] aralığı istenir; forceRange: from 0 olsa da Range başlığı gönderilir (sunucunun Range desteğini yoklar). */
+    private static HttpURLConnection open(String url, String headersJson, long from, long to, boolean forceRange) throws IOException {
         String cur = url;
         for (int hop = 0; hop < 6; hop++) {
             HttpURLConnection conn = (HttpURLConnection) new URL(cur).openConnection();
@@ -697,7 +804,8 @@ final class Downloads {
             } catch (Exception ignored) {
                 // bozuk başlık verisi yok sayılır
             }
-            if (from > 0) conn.setRequestProperty("Range", "bytes=" + from + "-");
+            if (to >= 0) conn.setRequestProperty("Range", "bytes=" + from + "-" + to);
+            else if (from > 0 || forceRange) conn.setRequestProperty("Range", "bytes=" + from + "-");
             int code = conn.getResponseCode();
             if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
                 String loc = conn.getHeaderField("Location");
@@ -784,11 +892,19 @@ final class Downloads {
                 toWaiting = true;
                 break;
             }
-            long have = part.exists() ? part.length() : 0;
+            Seg[] fs = j.segs;
+            long have = fs != null ? segSum(fs) : (part.exists() ? part.length() : 0);
             HttpURLConnection conn = null;
             String problem = null;
             try {
-                conn = open(j.url, j.headers, have);
+                if (fs != null) { // yarım kalmış parçalı indirme: kalan parçalar sürdürülür
+                    int fr = fastRun(app, j, part, null, 0L);
+                    if (fr == FR_DONE) return;
+                    if (fr == FR_RESET) continue;
+                    if (fr == FR_WAIT) toWaiting = true;
+                    break;
+                }
+                conn = open(j.url, j.headers, have, -1L, j.fast && have == 0);
                 int code = conn.getResponseCode();
                 if (code == 416) {
                     if (j.total > 0 && have >= j.total) {
@@ -835,6 +951,13 @@ final class Downloads {
                     if (j.ext.isEmpty()) j.ext = extFor(type, j.url);
                     j.bytes = have;
                     save(app, j);
+                }
+                if (j.fast && code == 206 && have == 0 && total > 0 && total >= fastMin) { // sunucu Range veriyor: çok bağlantılı indir
+                    int fr = fastRun(app, j, part, conn, total);
+                    if (fr == FR_DONE) return;
+                    if (fr == FR_RESET) continue;
+                    if (fr == FR_WAIT) toWaiting = true;
+                    break;
                 }
                 long got = have;
                 long mark = have;
@@ -905,7 +1028,7 @@ final class Downloads {
             } finally {
                 if (conn != null) conn.disconnect();
             }
-            long now = part.exists() ? part.length() : 0;
+            long now = bytesOf(j, part);
             if (now > have) failures = 0;
             if (++failures > MAX_RETRY) {
                 err = "Bağlantı sorunu: " + problem;
@@ -922,6 +1045,278 @@ final class Downloads {
             return;
         }
         if (toWaiting) setState(app, j, WAITING, "");
+    }
+
+    // ------------------------------------------------------------------ hızlı (çok bağlantılı) indirme
+
+    /** Bir turda iş parçacıklarının ortak durumu. */
+    private static final class Round {
+        volatile boolean abort;
+        volatile boolean rejected; // fazladan bağlantı reddedildi: kalan parçalar tek bağlantıyla iner
+        volatile boolean mismatch; // sunucudaki dosya değişmiş
+        volatile boolean noRange; // sunucu aralık isteğini artık desteklemiyor
+        volatile Throwable primaryErr;
+        volatile HttpURLConnection first; // ilk (0'dan) yanıt: yalnız 0 numaralı iş parçacığı kullanır
+    }
+
+    private static void resetSegs(Context app, Job j, File part, boolean keepFast) {
+        synchronized (LOCK) {
+            j.segs = null;
+            j.bytes = 0;
+            if (!keepFast) j.fast = false;
+            save(app, j);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        part.delete();
+    }
+
+    /**
+     * Dosyayı FAST_SEGS parçaya bölüp fastConns bağlantıyla indirir. first: 0'dan istenmiş açık yanıt (yeni başlangıç) ya da
+     * null (kalan parçaları sürdür). Dönüş: FR_DONE (bitti, dosya adlandırıldı), FR_STOP (duraklat/sil/hizmet), FR_WAIT
+     * (Wi-Fi bekleniyor), FR_RESET (parça bilgisi geçersiz: tek parçadan yeniden başla). Hata IOException olarak atılır.
+     */
+    private static int fastRun(final Context app, final Job j, final File part, HttpURLConnection first, long totalNew) throws IOException {
+        final File dir = dirOf(app);
+        if (first != null) {
+            try (RandomAccessFile raf = new RandomAccessFile(part, "rw")) {
+                raf.setLength(totalNew); // yer baştan ayrılır; parçalar kendi aralıklarına yazar
+            }
+            long size = (totalNew + FAST_SEGS - 1) / FAST_SEGS;
+            List<Seg> list = new ArrayList<>();
+            for (long a = 0; a < totalNew; a += size) list.add(new Seg(a, Math.min(totalNew, a + size), a));
+            synchronized (LOCK) {
+                j.total = totalNew;
+                j.segs = list.toArray(new Seg[0]);
+                j.bytes = 0;
+                save(app, j);
+            }
+        } else if (j.total <= 0 || !part.exists() || part.length() != j.total) {
+            resetSegs(app, j, part, true);
+            return FR_RESET;
+        }
+        final Seg[] segs = j.segs;
+        final long total = j.total;
+        synchronized (LOCK) {
+            for (Seg x : segs) x.busy = false;
+        }
+        int conns = Math.max(1, fastConns);
+        long lastEmit = 0;
+        long lastSave = ms();
+        long lastNet = ms();
+        long spAt = ms();
+        long spBytes = segSum(segs);
+        while (!allComplete(segs)) {
+            if (stopped()) return FR_STOP;
+            final Round r = new Round();
+            if (first != null) {
+                r.first = first;
+                first = null; // yalnız ilk tur
+                synchronized (LOCK) {
+                    segs[0].busy = true; // 0 numaralı iş parçacığı bu parçayı hazır bağlantıyla alır
+                }
+            }
+            final long before = segSum(segs);
+            int n = Math.min(conns, incompleteCount(segs));
+            Thread[] ts = new Thread[n];
+            for (int i = 0; i < n; i++) {
+                final int idx = i;
+                ts[i] = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        fastWorker(j, part, segs, total, idx, r);
+                    }
+                }, "dl-" + i);
+                ts[i].start();
+            }
+            int code = -1;
+            boolean alive = true;
+            while (alive) {
+                try {
+                    Thread.sleep(250L);
+                } catch (InterruptedException ie) {
+                    r.abort = true;
+                }
+                alive = false;
+                for (Thread t : ts) if (t.isAlive()) alive = true;
+                long now = ms();
+                if (now - lastEmit >= 1000L) {
+                    long got = segSum(segs);
+                    JSONObject ev;
+                    int queued;
+                    synchronized (LOCK) {
+                        j.bytes = got;
+                        long dt = Math.max(1L, now - spAt);
+                        j.speed = (got - spBytes) * 1000L / dt;
+                        ev = j.toJson(dir);
+                        queued = queuedCountLocked(j.id);
+                        if (now - lastSave >= 5000L) {
+                            save(app, j);
+                            lastSave = now;
+                        }
+                    }
+                    if (now - spAt >= 3000L) {
+                        spAt = now;
+                        spBytes = got;
+                    }
+                    lastEmit = now;
+                    emit(ev);
+                    Notifier.downloadProgress(app, j.name, got, j.total, j.speed, queued);
+                }
+                if (now - lastNet >= 5000L) {
+                    lastNet = now;
+                    if (mustWait(app, j)) {
+                        code = FR_WAIT;
+                        r.abort = true;
+                    } else if (dir.getUsableSpace() < STOP_FREE_BYTES) {
+                        r.primaryErr = new Fatal("Depolama doldu");
+                        r.abort = true;
+                    }
+                }
+            }
+            for (Thread t : ts) {
+                try {
+                    t.join();
+                } catch (InterruptedException ignored) {
+                    // iş parçacığı zaten bitti
+                }
+            }
+            long after = segSum(segs);
+            synchronized (LOCK) {
+                j.bytes = after;
+                save(app, j); // parçaların son konumu yan dosyaya yazılır (duraklat/yeniden başlatma sonrası buradan sürer)
+            }
+            HttpURLConnection left = r.first;
+            if (left != null) left.disconnect();
+            if (code == FR_WAIT) return FR_WAIT;
+            if (allComplete(segs)) break;
+            if (stopped()) return FR_STOP;
+            if (r.noRange) {
+                resetSegs(app, j, part, false);
+                return FR_RESET;
+            }
+            if (r.mismatch) {
+                resetSegs(app, j, part, false); // dosya değişmiş: hızlı yöntem bırakılır, tek parçadan baştan (sonsuz döngü olmasın)
+                return FR_RESET;
+            }
+            if (r.rejected) conns = 1; // sunucu fazla bağlantıyı kabul etmiyor: kalan parçalar sırayla tek bağlantıyla
+            Throwable e = r.primaryErr;
+            if (e != null && (after == before || e instanceof Fatal)) {
+                if (e instanceof IOException) throw (IOException) e;
+                throw new IOException(String.valueOf(e.getMessage()));
+            }
+            if (after == before && !r.rejected) throw new IOException("Bağlantı koptu");
+        }
+        if (segSum(segs) < total || part.length() != total) throw new IOException("İndirilen dosya eksik");
+        synchronized (LOCK) {
+            j.segs = null;
+            j.bytes = total;
+        }
+        finish(app, j, part);
+        return FR_DONE;
+    }
+
+    private static Seg takeSeg(Seg[] segs) {
+        synchronized (LOCK) {
+            for (Seg x : segs) {
+                if (!x.busy && !x.complete()) {
+                    x.busy = true;
+                    return x;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void fastWorker(Job j, File part, Seg[] segs, long total, int idx, Round r) {
+        RandomAccessFile raf = null;
+        byte[] buf = new byte[64 * 1024];
+        try {
+            raf = new RandomAccessFile(part, "rw");
+            while (!r.abort && !stopped()) {
+                Seg s;
+                boolean useFirst = false;
+                if (idx == 0 && r.first != null) {
+                    s = segs[0];
+                    useFirst = true;
+                } else {
+                    s = takeSeg(segs);
+                }
+                if (s == null) break;
+                try {
+                    runSeg(j, raf, buf, s, total, idx, r, useFirst);
+                } finally {
+                    synchronized (LOCK) {
+                        s.busy = false;
+                    }
+                }
+                if (r.rejected && idx > 0) break;
+            }
+        } catch (Throwable t) {
+            if (idx == 0) {
+                if (r.primaryErr == null) r.primaryErr = t;
+            } else {
+                r.rejected = true; // fazladan bağlantı sorunu: bırakır, parçası kalan bağlantılara düşer
+            }
+        } finally {
+            try {
+                if (raf != null) raf.close();
+            } catch (IOException ignored) {
+                // kapatma hatası önemsiz
+            }
+        }
+    }
+
+    // Bir parçayı bitirene dek indirir. Fazladan bağlantılar (idx>0) veri almadan başarısız olursa parça bırakılır (reddedildi sayılır);
+    // 0 numaralı bağlantı hata verirse tur sonunda yeniden deneme/durum kararı verilir.
+    private static void runSeg(Job j, RandomAccessFile raf, byte[] buf, Seg s, long total, int idx, Round r, boolean useFirst) throws IOException {
+        while (s.pos < s.end && !r.abort && !stopped()) {
+            HttpURLConnection c = null;
+            boolean got = false;
+            try {
+                if (useFirst) {
+                    c = r.first;
+                    r.first = null;
+                    useFirst = false;
+                } else {
+                    c = open(j.url, j.headers, s.pos, s.end - 1, false);
+                    int code = c.getResponseCode();
+                    if (code == 200) {
+                        r.noRange = true; // Range'i yok saydı: parçalı yöntem sürdürülemez
+                        r.abort = true;
+                        return;
+                    }
+                    if (code != 206) throw new HttpError(code);
+                    long[] cr = contentRange(c.getHeaderField("Content-Range"));
+                    if (cr == null || cr[0] != s.pos) throw new IOException("Sunucunun aralık yanıtı geçersiz");
+                    if (cr[2] > 0 && cr[2] != total) {
+                        r.mismatch = true; // dosya sunucuda değişmiş
+                        r.abort = true;
+                        return;
+                    }
+                }
+                InputStream in = c.getInputStream();
+                while (!r.abort && !stopped() && s.pos < s.end) {
+                    int n = in.read(buf, 0, (int) Math.min(buf.length, s.end - s.pos));
+                    if (n < 0) break;
+                    raf.seek(s.pos);
+                    raf.write(buf, 0, n);
+                    s.pos = s.pos + n;
+                    got = true;
+                }
+            } catch (IOException e) {
+                if (e instanceof Fatal) throw e;
+                if (!got) {
+                    if (idx > 0) {
+                        r.rejected = true;
+                        return;
+                    }
+                    throw e;
+                }
+                // veri almışken koptu: aynı parça kaldığı yerden yeniden istenir
+            } finally {
+                if (c != null) c.disconnect();
+            }
+        }
     }
 
     private static void finish(Context app, Job j, File part) throws IOException {

@@ -254,8 +254,15 @@ html.native-playing #vid { display: none; }
 .pl-epgline { font-size: 0.8125rem; color: #dbe3f2; min-height: 18px; margin: 2px 0 4px; }
 .pl-epgline .bar { height: 3px; background: #fff3; border-radius: 2px; margin-top: 5px; overflow: hidden; max-width: 320px; }
 .pl-epgline .bar i { display: block; height: 100%; background: var(--accent); }
-.pl-tools { display: flex; flex-wrap: wrap; gap: 8px; }
-.tool { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 20px; background: #0007; font-size: 0.8125rem; }
+.pl-tools { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.pl-tools::-webkit-scrollbar { display: none; }
+/* Düğmeler ortada: boşluk varken iki yana eşit pay verilir, sığmayınca satır baştan yana kayar */
+.pl-tools::before, .pl-tools::after { content: ""; margin: auto; }
+.tool { display: flex; flex: none; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 20px; background: #0007; font-size: 0.8125rem; white-space: nowrap; }
+/* Oynatıcı düğmeleri varsayılan yalnız simge (adı title/aria-label'de); Ayarlar'dan seçilenlerin adı da yazar, kayıt süresi hep görünür */
+.pl-tools .tool span { display: none; }
+.pl-tools .tool:not(.lbl):not(.rec-on) { padding: 0 11px; }
+.pl-tools .tool.lbl span, .pl-tools .tool.rec-on span { display: inline; }
 .tool .ic { width: 20px; height: 20px; }
 .pl-status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; padding: 16px 20px; border-radius: 16px; background: #000b; max-width: 82%; pointer-events: auto; }
 .pl-status .btn { margin-top: 12px; }

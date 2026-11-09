@@ -2,6 +2,7 @@
 import { esc, fmtDuration, fmtClock } from './util.js';
 import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
+import { normalizeLabels } from './ptools.js';
 import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta, pinchMode, dist2 } from './gestures.js';
 import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
 import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
@@ -257,6 +258,27 @@ export function createPlayerUI({ engine, player, env }) {
 
   let lastStatus = '';
   let altShown = '';
+  // Alt düğmeler tek satırda ve ortada; yalnız Ayarlar'da seçilenlerin adı yazar, diğerleri simge (adı title/aria-label'de kalır).
+  let labelSig = '';
+  function scheduleFit() {
+    const bar = q('.pl-tools');
+    if (!bar) return;
+    const on = new Set(normalizeLabels(env.pref ? env.pref('pl.labels', []) : []));
+    // Yalnızca seçim ya da düğme yazıları değişince uygulanır (her çizimde DOM'a dokunulmaz)
+    const sig = [...on].join(',') + '|' + [...bar.children].map((b) => b.textContent.trim()).join('/');
+    if (sig === labelSig) return;
+    labelSig = sig;
+    for (const b of bar.querySelectorAll('.tool')) {
+      b.classList.toggle('lbl', on.has(b.id.replace(/^pl-/, '')));
+      const t = b.querySelector('span');
+      const name = t ? t.textContent.trim() : '';
+      if (name) {
+        b.title = name;
+        b.setAttribute('aria-label', name);
+      }
+    }
+  }
+
   function render(st) {
     if (!open || !st.item) return;
     const prev = lastStatus;
@@ -284,11 +306,13 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
     q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
+    q('#pl-dl').hidden = !(env.canDownload && env.canDownload(st));
     renderSyncLabel();
     renderNightLabel();
     q('#pl-golive').hidden = !(st.item.kind === 'recording' && ctx && ctx.items[ctx.index] && ctx.items[ctx.index].kind === 'live');
     renderRec(st);
     renderSleepLabel();
+    scheduleFit();
 
     const s = q('#pl-status');
     if (st.status === 'loading' || st.status === 'buffering') {
@@ -838,7 +862,11 @@ export function createPlayerUI({ engine, player, env }) {
     if (Date.now() - gest.tapAt < 600) return; // bu dokunuş pointer olaylarından zaten işlendi
     toggleUi();
   });
-  q('#pl-back').addEventListener('click', () => popLayer('player'));
+  // Ekrandaki geri oku oynatıcıyı kapatır (yayın durur); telefonun geri hareketi ise yayını mini oynatıcıya küçültür.
+  q('#pl-back').addEventListener('click', () => {
+    if (open) stopRequested = true;
+    popLayer('player');
+  });
   q('#pl-play').addEventListener('click', () => {
     player.toggle();
     showUi(false);
@@ -896,6 +924,10 @@ export function createPlayerUI({ engine, player, env }) {
   q('#pl-tv').addEventListener('click', () => {
     const st = player.state();
     if (st.item && env.castTo) env.castTo(st, ctx);
+  });
+  q('#pl-dl').addEventListener('click', () => {
+    const st = player.state();
+    if (st.item && env.download) env.download(st);
   });
   q('#pl-golive').addEventListener('click', () => {
     if (ctx && ctx.items[ctx.index]) ctx.play(ctx.items[ctx.index], ctx.index);
