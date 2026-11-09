@@ -56,7 +56,9 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.SubtitleView;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -116,6 +118,11 @@ public class IptvPlayerPlugin extends Plugin {
     // Ses senkronu (ms; + sesi geciktirir, − öne alır). Ana oynatıcı sıfırdan farklı değerle kurulursa ses işlemcisi takılır.
     private volatile int audioDelayMs = 0;
     private AudioDelayProcessor delayProc = null;
+    // Gece modu (off | light | medium | strong): açıkken (ya da ses gecikmesi varken) PCM ses işlemcileri takılır.
+    private volatile String nightLevel = "off";
+    // Altyazı görünümü (Genel ayarlar / oynatıcıdaki altyazı penceresi): {size, color, bgAlpha, bottom, outline}
+    private JSObject subStyle = null;
+    private NightAudioProcessor nightProc = null;
     private String lastMime = "auto";
     private JSObject lastHeaders = null;
     private String lastBuffer = "high";
@@ -221,6 +228,7 @@ public class IptvPlayerPlugin extends Plugin {
         final String buffer = call.getData().optString("buffer", "high");
         final boolean keepRec = call.getData().optBoolean("keepRecording", false);
         audioDelayMs = clampDelay(call.getData().optInt("audioDelay", audioDelayMs));
+        nightLevel = cleanNight(call.getData().optString("night", nightLevel));
         main.post(() -> {
             try {
                 startPlayback(url, mime, startMs, headers, buffer, keepRec);
@@ -290,6 +298,7 @@ public class IptvPlayerPlugin extends Plugin {
         });
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
+        applySubStyle();
 
         player.setMediaItem(mediaItemOf(url, mime));
         if (startMs > 0) player.seekTo(startMs);
@@ -332,17 +341,20 @@ public class IptvPlayerPlugin extends Plugin {
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
         if (tap) base = new TapDataSource.Factory(base);
         ExoPlayer.Builder eb;
-        if (delay && audioDelayMs != 0) {
-            // Gecikme PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
+        if (delay && (audioDelayMs != 0 || NightCompressor.isActive(nightLevel))) {
+            // Gecikme ve gece modu PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
+            // İkisi de takılır; kullanılmayan (0 ms / off) olan sesi olduğu gibi geçirir, böylece oynarken açılıp kapanabilir.
             final AudioDelayProcessor proc = new AudioDelayProcessor(audioDelayMs);
+            final NightAudioProcessor night = new NightAudioProcessor(nightLevel);
             delayProc = proc;
+            nightProc = night;
             eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()) {
                 @Override
                 protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
                     return new DefaultAudioSink.Builder()
                             .setEnableFloatOutput(enableFloatOutput)
                             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                            .setAudioProcessors(new AudioProcessor[] {proc})
+                            .setAudioProcessors(new AudioProcessor[] {proc, night})
                             .build();
                 }
             }.setEnableDecoderFallback(true));
@@ -424,6 +436,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     private void releasePlayer() {
         delayProc = null;
+        nightProc = null;
         castActive = false;
         castState = "idle";
         castPos = 0;
@@ -468,6 +481,58 @@ public class IptvPlayerPlugin extends Plugin {
                     player.seekTo(player.getCurrentPosition()); // sarma ses hattını boşaltır, yeni değer okunur
                 } else if (ms != 0 && !curUrl.isEmpty()) {
                     // oynatıcı ses işlemcisiz kurulmuştu: yeniden kur (canlıda yayın yeniden açılır, filmde konum korunur)
+                    long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
+                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
+                }
+            }
+            call.resolve();
+        });
+    }
+
+    // Altyazı görünümü: boyut (ekran yüksekliğine oran), renk, arka plan saydamsızlığı, alt boşluk. Açık ve sonraki oynatmalara uygulanır.
+    private void applySubStyle() {
+        if (subStyle == null || playerView == null) return;
+        SubtitleView sv = playerView.getSubtitleView();
+        if (sv == null) return;
+        try {
+            int fg = Color.parseColor(subStyle.optString("color", "#FFFFFF"));
+            double a = Math.max(0.0, Math.min(1.0, subStyle.optDouble("bgAlpha", 0.55)));
+            int bg = Color.argb((int) Math.round(a * 255.0), 0, 0, 0);
+            int edge = subStyle.optBoolean("outline", false) ? CaptionStyleCompat.EDGE_TYPE_OUTLINE : CaptionStyleCompat.EDGE_TYPE_NONE;
+            sv.setApplyEmbeddedStyles(false);
+            sv.setApplyEmbeddedFontSizes(false);
+            sv.setStyle(new CaptionStyleCompat(fg, bg, Color.TRANSPARENT, edge, Color.BLACK, null));
+            sv.setFractionalTextSize((float) subStyle.optDouble("size", 0.0533));
+            sv.setBottomPaddingFraction((float) subStyle.optDouble("bottom", 0.08));
+        } catch (Exception ignored) {
+            // geçersiz renk gibi bozuk değer: altyazı varsayılan görünümde kalır
+        }
+    }
+
+    @PluginMethod
+    public void setSubtitleStyle(final PluginCall call) {
+        subStyle = call.getData();
+        main.post(() -> {
+            applySubStyle();
+            call.resolve();
+        });
+    }
+
+    private static String cleanNight(String v) {
+        return "light".equals(v) || "medium".equals(v) || "strong".equals(v) ? v : "off";
+    }
+
+    // Gece modu: açık oynatıcıya anında uygulanır; işlemci takılı değilse oynatıcı yeniden kurulur (canlıda yayın yeniden açılır, filmde konum korunur).
+    @PluginMethod
+    public void setNightMode(final PluginCall call) {
+        final String level = cleanNight(call.getData().optString("level", "off"));
+        nightLevel = level;
+        main.post(() -> {
+            if (player != null) {
+                if (nightProc != null) {
+                    nightProc.setLevel(level);
+                    player.seekTo(player.getCurrentPosition()); // sarma ses hattını boşaltır, yeni düzey okunur
+                } else if (NightCompressor.isActive(level) && !curUrl.isEmpty()) {
                     long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
                     startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
                 }

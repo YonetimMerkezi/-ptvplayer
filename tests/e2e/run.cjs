@@ -1035,7 +1035,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         return { status: 200, ms: 30 + (n % 7), contentType: 'application/vnd.apple.mpegurl', bytes: 512, playlist: true };
       },
       play: async (a) => {
-        window.__calls.push(['play', a.url, a.mime, a.buffer, a.audioDelay]);
+        window.__calls.push(['play', a.url, a.mime, a.buffer, a.audioDelay, a.night]);
         if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm|\/rec\//.test(a.url) }), 50);
         setTimeout(() => listeners.time({ pos: 1000, dur: /webm|\/rec\//.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
         // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
@@ -1072,6 +1072,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       setAudioDelay: async (a) => {
         window.__calls.push(['audioDelay', a.ms]);
       },
+      setNightMode: async (a) => window.__calls.push(['night', a.level]),
+      setSubtitleStyle: async (a) => window.__calls.push(['subStyle', JSON.stringify(a)]),
       recordStart: async (a) => {
         window.__calls.push(['recStart', a.name, a.maxMs]);
         return { active: true };
@@ -1219,7 +1221,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'audio' && c[2] === '1:0')), 'ses izi seçimi eklentiye iletildi');
   await page.waitForSelector('.sheet-back', { state: 'detached' });
   await page.click('#pl-text');
-  ok((await page.$$eval('.sheet .list-item', (e) => e.map((x) => x.textContent.trim()).join('|'))) === 'Kapalı|Türkçe', 'altyazı sayfasında “Kapalı” ve diller listeleniyor');
+  ok((await page.$$eval('.sheet .list-item[data-id]', (e) => e.map((x) => x.textContent.trim()).join('|'))) === 'Kapalı|Türkçe', 'altyazı sayfasında “Kapalı” ve diller listeleniyor');
+  ok((await page.$$('.sheet .list-item[data-look]')).length === 1, 'altyazı sayfasının altında “Altyazı görünümü” girişi var');
   ok(await page.$eval('.sheet .list-item[data-id=""]', (b) => !!b.querySelector('.ic.ok')), 'altyazı kapalıyken “Kapalı” işaretli');
   await page.click('.sheet .list-item[data-id="2:0"]');
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'text' && c[2] === '2:0')), 'altyazı izi seçimi eklentiye iletildi');
@@ -2091,6 +2094,178 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
+  // ---------------------------------------------------------------- 9c. altyazı görünümü, gece modu, en-boy, sonraki bölüm, intro
+  console.log('Altyazı, gece modu, en-boy, sonraki bölüm, intro');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  const callsOf = (n) => page.evaluate((k) => window.__calls.filter((c) => c[0] === k), n);
+  const prefOf3 = (k, d) => page.evaluate(([k2, d2]) => window.__iptv.store.pref(k2, d2), [k, d]);
+  ok((await callsOf('subStyle')).length >= 1 && JSON.parse((await callsOf('subStyle'))[0][1]).color === '#FFFFFF', 'açılışta kayıtlı altyazı görünümü (varsayılan) eklentiye iletildi');
+  // genel ayarlar: altyazı satırı, intro, otomatik sonraki bölüm
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('#g-sub');
+  ok(/Normal · Beyaz/.test(await page.textContent('#g-sub-s')), 'genel ayarlarda altyazı görünümü özeti: ' + (await page.textContent('#g-sub-s')).trim());
+  ok(await page.$eval('.chk[data-k=autoNext]', (b) => b.classList.contains('on')), '“Sonraki bölümü otomatik oynat” varsayılan açık');
+  await page.selectOption('#g-intro', '60');
+  ok((await prefOf3('set.intro', 85)) === 60, 'intro atla süresi kaydedildi');
+  await page.selectOption('#g-intro', '85');
+  await page.click('#g-sub');
+  await page.waitForSelector('.sub-prev');
+  await page.click('.sub-seg[data-g=color] [data-v=yellow]');
+  await page.click('.sub-seg[data-g=bg] [data-v=none]');
+  ok(/Normal · Sarı · arka plansız/.test(await page.textContent('#g-sub-s')), 'pencere kapanmadan ayar özeti güncellendi');
+  await page.goBack();
+  await page.waitForSelector('.sub-prev', { state: 'detached' });
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('#btn-home');
+  // dizi bölümünü aç
+  await page.click('#tabs [data-tab=series]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card');
+  await page.click('.card');
+  await page.waitForSelector('.epi');
+  await page.click('.epi');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
+  const epLabel = (await page.textContent('#pl-sub')).trim();
+  const showUi = () => page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  const timeAt = (pos, dur = 1500000) => page.evaluate(([p2, d2]) => window.__emit('time', { pos: p2, dur: d2, buffered: 0 }), [pos, dur]);
+  await sleep(300);
+  // altyazı penceresi oynatıcıdan: görünüm seçimi anında eklentiye gider
+  await showUi();
+  await page.waitForSelector('#pl-text:not([hidden])', { timeout: 5000 });
+  await page.click('#pl-text');
+  await page.waitForSelector('.sheet [data-look]');
+  ok(/Altyazı görünümü/.test(await page.textContent('.sheet [data-look]')), 'altyazı penceresinde “Altyazı görünümü” girişi var');
+  await page.click('.sheet [data-look]');
+  await page.waitForSelector('.sub-prev');
+  ok(await page.$eval('.sub-seg[data-g=color] [data-v=yellow]', (b) => b.classList.contains('on')) && await page.$eval('.sub-seg[data-g=bg] [data-v=none]', (b) => b.classList.contains('on')), 'önceki seçimler (sarı, arka plansız) işaretli');
+  ok(/color:#FFE14D/.test(await page.getAttribute('#sub-pv', 'style')) && /text-shadow/.test(await page.getAttribute('#sub-pv', 'style')), 'ön izleme seçimi yansıtıyor (sarı, kenar çizgili)');
+  await page.click('.sub-seg[data-g=size] [data-v=large]');
+  await page.screenshot({ path: path.join(SHOTS, '00j-altyazi-gorunumu.png') });
+  await page.click('.sub-seg[data-g=bg] [data-v=solid]');
+  await page.click('.sub-seg[data-g=pos] [data-v=high]');
+  const sl = JSON.parse((await callsOf('subStyle')).pop()[1]);
+  ok(sl.size > 0.069 && sl.size < 0.07 && sl.color === '#FFE14D' && sl.bgAlpha === 1 && sl.bottom === 0.18 && sl.outline === false, 'seçimler eklentiye sayısal değerlerle iletildi: ' + JSON.stringify(sl));
+  ok(JSON.stringify(await prefOf3('sub', null)) === JSON.stringify({ size: 'large', color: 'yellow', bg: 'solid', pos: 'high' }), 'seçim kalıcı kaydedildi');
+  await page.click('.sub-reset');
+  ok(JSON.parse((await callsOf('subStyle')).pop()[1]).color === '#FFFFFF' && (await prefOf3('sub', null)).size === 'normal', '“Varsayılana dön” sıfırladı');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  // gece modu
+  await showUi();
+  ok(await page.$eval('#pl-night', (b) => !b.hidden) && /Gece modu/.test(await page.textContent('#pl-night-l')), 'oynatıcıda “Gece modu” düğmesi var (Android)');
+  await page.click('#pl-night');
+  await page.waitForSelector('.sheet [data-n]');
+  ok((await page.$$('.sheet [data-n]')).length === 4 && !!(await page.$('.sheet [data-n=off] .ic.ok')), 'dört düzey, “Kapalı” işaretli');
+  await page.click('.sheet [data-n=medium]');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  const nc = await callsOf('night');
+  ok(nc.length === 1 && nc[0][1] === 'medium', 'düzey açık oynatıcıya anında iletildi');
+  ok((await prefOf3('night', 'off')) === 'medium' && /Gece: Orta/.test(await page.textContent('#pl-night-l')) && (await page.getAttribute('#pl-night', 'aria-pressed')) === 'true', 'düzey kalıcı, düğme açık ve adlı');
+  await showUi();
+  // en-boy: düğme kalıcı kaydeder, iki parmakla yakınlaştırma kip değiştirir
+  ok(/Sığdır/.test(await page.textContent('#pl-aspect-l')), 'varsayılan görünüm “Sığdır”');
+  await page.click('#pl-aspect');
+  ok((await prefOf3('resize', 'fit')) === 'zoom' && /Yakınlaştır/.test(await page.textContent('#pl-aspect-l')) && (await callsOf('resize')).pop()[1] === 'zoom', 'düğme “Yakınlaştır” kipine geçirdi, eklentiye iletti, kaydetti');
+  ok(/Yakınlaştır/.test(await page.textContent('#pl-hud')), 'kip değişince ekranda adı görünüyor');
+  const pinchEv = (a0, a1, b0, b1) => page.evaluate(([x0, x1, y0, y1]) => {
+    const root = document.querySelector('#player');
+    const ev = (type, id, x) => root.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: 300, bubbles: true, cancelable: true }));
+    ev('pointerdown', 21, x0);
+    ev('pointerdown', 22, y0);
+    ev('pointermove', 21, x1);
+    ev('pointermove', 22, y1);
+    ev('pointerup', 21, x1);
+    ev('pointerup', 22, y1);
+  }, [a0, a1, b0, b1]);
+  await pinchEv(150, 90, 250, 330); // açılma: 100 → 240
+  ok((await prefOf3('resize', 'fit')) === 'fill' && (await callsOf('resize')).pop()[1] === 'fill', 'iki parmakla açma bir üst kipe (Doldur) geçirdi');
+  await pinchEv(90, 160, 330, 260); // kısılma: 240 → 100
+  ok((await prefOf3('resize', 'fit')) === 'zoom', 'iki parmakla kısma bir alt kipe geri döndü');
+  const r0 = (await callsOf('resize')).length;
+  await pinchEv(150, 140, 250, 262); // küçük oynama
+  ok((await callsOf('resize')).length === r0, 'küçük parmak oynaması kip değiştirmedi');
+  ok(await page.$eval('#player', (e) => !e.hidden), 'iki parmak hareketi oynatıcıyı kapatmadı/denetimleri bozmadı');
+  // intro atla: bölümün başında düğme çıkar, ayardaki süre kadar ileri sarar
+  await timeAt(1000);
+  ok(await page.$eval('#pl-intro', (b) => b.hidden), 'ilk saniyelerde intro düğmesi yok');
+  await timeAt(20000);
+  await page.waitForSelector('#pl-intro:not([hidden])', { timeout: 3000 });
+  // kumanda: denetimler gizliyken Tamam tuşu görünen intro düğmesine basar
+  await page.evaluate(() => { document.querySelector('#pl-ui').classList.remove('show'); document.activeElement && document.activeElement.blur(); });
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'seek'), null, { timeout: 3000 });
+  ok((await callsOf('seek')).pop()[1] === 105000, 'intro atla 85 sn ileri sardı (20 sn → 105 sn); denetimler gizliyken kumandada Tamam tuşuyla da çalışır');
+  await timeAt(105000);
+  ok(await page.$eval('#pl-intro', (b) => b.hidden), 'atladıktan sonra düğme bu bölümde tekrar çıkmıyor');
+  // sonraki bölüm kartı
+  await timeAt(1500000 - 20000);
+  ok(await page.$eval('#pl-nextup', (b) => b.hidden), 'bölümün sonuna 15 sn varken kart yok');
+  await timeAt(1500000 - 12000);
+  await page.waitForSelector('#pl-nextup:not([hidden])', { timeout: 3000 });
+  ok((await page.textContent('#nu-s')).trim() === '12 sn' && (await page.textContent('#nu-name')).trim().length > 0, 'kartta kalan süre ve sonraki bölümün adı: ' + (await page.textContent('#nu-name')).trim());
+  ok((await page.textContent('#nu-name')).trim() !== epLabel, 'kartta gösterilen bölüm şu anki bölümden farklı');
+  await page.screenshot({ path: path.join(SHOTS, '00j-sonraki-bolum.png') });
+  await page.click('#nu-no');
+  ok(await page.$eval('#pl-nextup', (b) => b.hidden), '“İptal” kartı kapattı');
+  await timeAt(1500000 - 5000);
+  ok(await page.$eval('#pl-nextup', (b) => b.hidden), 'iptal edilen bölümde kart yeniden çıkmıyor');
+  const pn0 = (await callsOf('play')).length;
+  await page.evaluate(() => window.__emit('state', { state: 'ended', live: false }));
+  await sleep(700);
+  ok((await callsOf('play')).length === pn0, 'iptalden sonra bölüm bitince sonraki bölüm kendiliğinden açılmadı');
+  // sonraki bölüme elle geç; yeni bölümde kart yeniden çıkar, “Şimdi oynat” hemen açar
+  await showUi();
+  await page.click('#pl-next');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, pn0, { timeout: 4000 });
+  ok(/medium/.test((await callsOf('play')).pop()[5]), 'yeni açılışta gece modu düzeyi eklentiye iletildi');
+  await sleep(300);
+  await timeAt(1500000 - 9000);
+  await page.waitForSelector('#pl-nextup:not([hidden])', { timeout: 3000 });
+  const pn1 = (await callsOf('play')).length;
+  await page.click('#nu-now');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, pn1, { timeout: 4000 });
+  ok(await page.$eval('#pl-nextup', (b) => b.hidden), '“Şimdi oynat” sonraki bölümü hemen açtı, kart kapandı');
+  // bölüm sonunda (kart iptal edilmediyse) sonraki bölüm kendiliğinden açılır; ayarla kapatılırsa açılmaz
+  await sleep(300);
+  const pn2 = (await callsOf('play')).length;
+  await page.evaluate(() => window.__iptv.store.setPref('set.autoNext', false));
+  await timeAt(1500000 - 8000);
+  await sleep(300);
+  ok(await page.$eval('#pl-nextup', (b) => b.hidden), 'ayardan kapalıyken kart çıkmıyor');
+  await page.evaluate(() => window.__emit('state', { state: 'ended', live: false }));
+  await sleep(700);
+  ok((await callsOf('play')).length === pn2, 'ayardan kapalıyken bölüm bitince sonraki bölüm açılmadı');
+  await page.evaluate(() => window.__iptv.store.setPref('set.autoNext', true));
+  await page.evaluate(() => window.__emit('state', { state: 'playing', playing: true, live: false }));
+  await timeAt(1500000 - 8000);
+  await page.waitForSelector('#pl-nextup:not([hidden])', { timeout: 3000 });
+  await page.evaluate(() => window.__emit('state', { state: 'ended', live: false }));
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, pn2, { timeout: 4000 });
+  ok(true, 'ayar açıkken bölüm bitince sonraki bölüm kendiliğinden açıldı');
+  // seçilen en-boy kipi oynatıcı yeniden açılınca da uygulanır
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.waitForSelector('.epi');
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.click('.epi');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  const rz = await callsOf('resize');
+  ok(rz.length >= 1 && rz[0][1] === 'zoom', 'kayıtlı en-boy kipi (Yakınlaştır) oynatıcı yeniden açılınca eklentiye uygulandı');
+  ok(/Yakınlaştır/.test(await page.textContent('#pl-aspect-l')), 'düğme kayıtlı kipi gösteriyor');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
   // ---------------------------------------------------------------- 9a. arşivden izleme, hatırlatıcı, zamanlı kayıt, program arama
   console.log('Planlananlar ve arşiv');
   ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
@@ -2593,7 +2768,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(await page.$eval('[data-set=plans] svg use', (u) => u.getAttribute('href') === '#i-bell' && !!document.getElementById('i-bell')), 'Planlananlar kutucuğunda simge var');
   await page.click('[data-set=general]');
   await page.waitForSelector('.chk');
-  ok((await page.$$('.chk.on')).length === 4, 'genel ayarlarda dört seçenek açık (yedek kanal dahil)');
+  ok((await page.$$('.chk.on')).length === 5, 'genel ayarlarda beş seçenek açık (yedek kanal ve otomatik sonraki bölüm dahil)');
+  ok((await page.inputValue('#g-intro')) === '85' && !(await page.$('#g-sub')), 'intro atla varsayılan 85 sn; altyazı görünümü satırı yalnız Android’de');
   ok((await page.inputValue('#g-rc')) === 'normal' && (await page.inputValue('#g-stall')) === 'normal', 'yeniden bağlanma ve takılma süresi varsayılan “Normal”');
   await page.click('.chk[data-k=epgRows]');
   ok(!(await page.evaluate(() => window.__iptv.store.pref('set.epgRows', true))), 'seçenek kapatılınca ayar kalıcı kaydedildi');

@@ -48,6 +48,8 @@ export function nativePlugin(name, win = globalThis.window) {
     recordList: call('recordList'),
     recordDelete: call('recordDelete'),
     setAudioDelay: call('setAudioDelay'),
+    setNightMode: call('setNightMode'),
+    setSubtitleStyle: call('setSubtitleStyle'),
     castSyncReply: call('castSyncReply'),
     castStart: call('castStart'),
     castStop: call('castStop'),

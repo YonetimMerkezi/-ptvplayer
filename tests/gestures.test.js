@@ -35,3 +35,20 @@ test('kumanda adımları art arda basışta büyür', () => {
   assert.equal(fmtDelta(25.4), '+25 sn');
   assert.equal(fmtDelta(-30), '−30 sn');
 });
+
+import { pinchMode, dist2 } from '../www/js/gestures.js';
+
+test('pinchMode: açma bir üst, kısma bir alt kip', () => {
+  assert.equal(pinchMode(1.3, 0, 3), 1);
+  assert.equal(pinchMode(1.3, 2, 3), 2); // üstte kalır
+  assert.equal(pinchMode(0.7, 2, 3), 1);
+  assert.equal(pinchMode(0.7, 0, 3), 0);
+  assert.equal(pinchMode(1.1, 1, 3), 1); // küçük oynama kip değiştirmez
+  assert.equal(pinchMode(0.9, 1, 3), 1);
+  assert.equal(pinchMode(NaN, 1, 3), 1);
+  assert.equal(pinchMode(2, 1, 0), 1);
+});
+
+test('dist2', () => {
+  assert.equal(dist2({ x: 0, y: 0 }, { x: 3, y: 4 }), 5);
+});

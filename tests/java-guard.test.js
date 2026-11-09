@@ -226,13 +226,33 @@ test('ses senkronu: yöntem köprüde, yalnız ana oynatıcıda ses işlemcisi, 
   assert.match(kaynak, /public void setAudioDelay\(/, 'setAudioDelay Java\'da yok');
   assert.equal(typeof pl.setAudioDelay, 'function', 'setAudioDelay köprüde yok');
   assert.match(kaynak, /optInt\("audioDelay", audioDelayMs\)/, 'play çağrısı gecikmeyi almalı');
-  assert.match(kaynak, /if \(delay && audioDelayMs != 0\)/, 'ses işlemcisi yalnız gecikme varken ve ana oynatıcıda takılmalı');
-  assert.match(kaynak, /new DefaultAudioSink\.Builder\(\)[\s\S]*?setAudioProcessors\(new AudioProcessor\[\] \{proc\}\)/, 'gecikme PCM ister: kodlu geçiş açık bırakılmamalı');
+  assert.match(kaynak, /if \(delay && \(audioDelayMs != 0 \|\| NightCompressor\.isActive\(nightLevel\)\)\)/, 'ses işlemcisi yalnız gecikme ya da gece modu varken ve ana oynatıcıda takılmalı');
+  assert.match(kaynak, /new DefaultAudioSink\.Builder\(\)[\s\S]*?setAudioProcessors\(new AudioProcessor\[\] \{proc, night\}\)/, 'gecikme ve gece modu PCM ister: kodlu geçiş açık bırakılmamalı');
   assert.match(kaynak, /Math\.max\(-1000, Math\.min\(2000, ms\)\)/, 'gecikme sınırlanmalı');
-  assert.match(kaynak, /private void releasePlayer\(\) \{\s*delayProc = null;/, 'oynatıcı bırakılınca işlemci referansı da bırakılmalı');
+  assert.match(kaynak, /private void releasePlayer\(\) \{\s*delayProc = null;\s*nightProc = null;/, 'oynatıcı bırakılınca işlemci referansları da bırakılmalı');
   const islemci = oku('AudioDelayProcessor.java');
   assert.match(islemci, /C\.ENCODING_PCM_16BIT\) return AudioProcessor\.AudioFormat\.NOT_SET/, 'PCM 16 bit dışında ses olduğu gibi geçmeli');
   assert.match(islemci, /protected void onFlush\(\)[\s\S]*?core\.reset\(/, 'değer her sarmada yeniden okunmalı');
+});
+
+test('gece modu ve altyazı görünümü: yöntemler köprüde, düzey her açılışta iletilir, işlemci yalnız PCM 16 bitle çalışır', () => {
+  const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
+  for (const m of ['setNightMode', 'setSubtitleStyle']) {
+    assert.match(kaynak, new RegExp('public void ' + m + '\\('), m + ' Java\'da yok');
+    assert.equal(typeof pl[m], 'function', m + ' köprüde yok');
+  }
+  assert.match(kaynak, /optString\("night", nightLevel\)/, 'play çağrısı gece modu düzeyini almalı');
+  assert.match(kaynak, /"light"\.equals\(v\) \|\| "medium"\.equals\(v\) \|\| "strong"\.equals\(v\)/, 'bilinmeyen düzey kapalı sayılmalı');
+  assert.match(kaynak, /nightProc\.setLevel\(level\);\s*player\.seekTo\(player\.getCurrentPosition\(\)\)/, 'takılı işlemciye düzey anında uygulanır (sarma ile)');
+  assert.match(kaynak, /subStyle = call\.getData\(\);/);
+  assert.match(kaynak, /playerView\.setVisibility\(View\.VISIBLE\);\s*applySubStyle\(\);/, 'altyazı görünümü her açılışta uygulanmalı');
+  assert.match(kaynak, /sv\.setApplyEmbeddedStyles\(false\)/, 'yayının kendi altyazı stili kullanıcı seçimini ezmemeli');
+  const isl = oku('NightAudioProcessor.java');
+  assert.match(isl, /C\.ENCODING_PCM_16BIT\) return AudioProcessor\.AudioFormat\.NOT_SET/, 'PCM 16 bit dışında ses olduğu gibi geçmeli');
+  assert.match(isl, /protected void onFlush\(\)[\s\S]*?NightCompressor\.isActive\(l\)/, 'düzey her sarmada yeniden okunmalı');
+  const core = oku('NightCompressor.java');
+  assert.match(core, /softClip/, 'tepe değerler yumuşak sınırlanmalı');
+  assert.match(core, /GATE_LO/, 'gürültü tabanı yükseltilmemeli');
 });
 
 test('veri eşitleme: sunucu /sync yolu yalnız eşleşmiş telefondan, büyük gövde yalnız /sync için; uygulama yanıtı beklenir', () => {

@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 27,
+    title: 'Altyazı görünümü, gece modu, sonraki bölüm',
+    items: [
+      'Altyazı görünümü: boyut, renk, arka plan, konum (Altyazı penceresinden ya da Genel ayarlardan)',
+      'Gece modu: sessiz konuşmayı yükseltir, patlamayı bastırır (oynatıcıda)',
+      'Bölüm bitmeden “Sonraki bölüm” geri sayımı ve “Intro atla”; Genel ayarlardan kapatılır',
+      'En-boy seçimi hatırlanır; iki parmakla açıp kısarak değişir',
+    ],
+  },
+  {
     id: 26,
     title: 'Bağlantı ayarları, yayın bilgisi ve kanal temizliği',
     items: [

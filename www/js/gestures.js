@@ -31,3 +31,14 @@ export function levelFrom(start, dyPx, heightPx, span = 0.85) {
 export const seekStep = (streak) => (streak <= 3 ? 10 : streak <= 6 ? 20 : streak <= 9 ? 30 : 60);
 
 export const fmtDelta = (sec) => `${sec >= 0 ? '+' : '−'}${Math.abs(Math.round(sec))} sn`;
+
+// İki parmakla yakınlaştırma: iki parmak arası mesafenin başlangıca oranı ≥ 1,25 ise bir üst görünüm kipine (sığdır → yakınlaştır → doldur),
+// ≤ 0,8 ise bir alt kipe geçilir. Kip sayısı n, geçerli kip index'i cur; yeni index döner (değişmediyse cur).
+export function pinchMode(ratio, cur, n) {
+  if (!(ratio > 0) || !(n > 0)) return cur;
+  if (ratio >= 1.25) return Math.min(n - 1, cur + 1);
+  if (ratio <= 0.8) return Math.max(0, cur - 1);
+  return cur;
+}
+
+export const dist2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);

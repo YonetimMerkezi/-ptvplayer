@@ -15,7 +15,7 @@ export function describeError(name) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
-export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0) {
+export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0, getNight = () => 'off') {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
@@ -30,7 +30,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     onPipChannel: (fn) => plugin.addListener('pipChannel', fn),
     // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
     load: (target, startMs = 0, keepRecording = false) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay() }),
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight() }),
     // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
     rec: {
       start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),
@@ -40,6 +40,10 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     },
     // Ses senkronu (ms): açık oynatıcıya anında uygulanır (yalnız Android)
     setAudioDelay: (ms) => plugin.setAudioDelay({ ms }),
+    // Gece modu (off | light | medium | strong): açık oynatıcıya anında uygulanır (yalnız Android)
+    setNightMode: (level) => plugin.setNightMode({ level }),
+    // Altyazı görünümü: { size, color, bgAlpha, bottom, outline } (yalnız Android)
+    setSubtitleStyle: (p) => plugin.setSubtitleStyle(p),
     pause: () => plugin.pause(),
     resume: () => plugin.resume(),
     seek: (ms) => plugin.seekTo({ ms: Math.max(0, Math.floor(ms)) }),

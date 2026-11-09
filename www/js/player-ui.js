@@ -2,12 +2,15 @@
 import { esc, fmtDuration, fmtClock } from './util.js';
 import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
-import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta } from './gestures.js';
+import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta, pinchMode, dist2 } from './gestures.js';
 import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
 import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
 import { REC_LIMITS, fmtElapsed } from './rec.js';
 import { DELAY_PRESETS, clampDelay, stepDelay, fmtDelay, describeDelay } from './avsync.js';
 import { statsRows } from './stats.js';
+import { NIGHT_LEVELS, normalizeNight, nightLabel, DEFAULT_NIGHT } from './night.js';
+import { nextUp, introSkip, DEFAULT_INTRO } from './nextup.js';
+import { SUB_SIZES, SUB_COLORS, SUB_BGS, SUB_POS, DEFAULT_SUB, normalizeSub, subParams, subPreviewStyle } from './subtitle.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
 const HIDE_MS = 2500;
@@ -26,7 +29,7 @@ export function createPlayerUI({ engine, player, env }) {
   let hideTimer = 0;
   let ctx = null; // { list, index } | { eps: [...], index }
   let open = false;
-  let resizeIdx = 0;
+  let resizeIdx = Math.max(0, RESIZE.findIndex(([id]) => id === (env.pref ? env.pref('resize', 'fit') : 'fit')));
   let seeking = false;
   let shortEpgFor = null;
   let tracksLoadedFor = null;
@@ -66,6 +69,46 @@ export function createPlayerUI({ engine, player, env }) {
     }
   }
 
+  // ---- iki parmakla yakınlaştırma: açınca bir üst görünüm kipi (sığdır → yakınlaştır → doldur), kısınca bir alt kip ----
+  const pts = new Map();
+  let pinch = null;
+  function pinchDown(e) {
+    if (!open || e.pointerType === 'mouse') return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinch = { d0: dist2(a, b), done: false };
+      gest.id = null; // tek parmak hareketi (kaydırma/dokunma) iptal
+      gest.mode = null;
+    }
+  }
+  function pinchMove(e) {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!pinch || pinch.done || pts.size !== 2 || !(pinch.d0 > 0)) return;
+    const [a, b] = [...pts.values()];
+    const n = pinchMode(dist2(a, b) / pinch.d0, resizeIdx, RESIZE.length);
+    if (n !== resizeIdx) {
+      pinch.done = true; // bir tutuşta tek kip değişir
+      applyResize(n, true);
+    }
+  }
+  function pinchEnd(e) {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+  }
+
+  // En-boy kipi: seçim kalıcıdır, her yayın açılışında yeniden uygulanır.
+  function applyResize(idx, announce = false) {
+    resizeIdx = idx;
+    engine.setResize(RESIZE[idx][0]).catch(() => {});
+    q('#pl-aspect-l').textContent = RESIZE[idx][1];
+    if (announce) {
+      if (env.setPref) env.setPref('resize', RESIZE[idx][0]);
+      hud('aspect', RESIZE[idx][1]);
+    }
+  }
+
   function applyLevel(kind, v) {
     if (kind === 'brightness') engine.setBrightness(v).catch(() => {});
     else engine.setVolume(v).catch(() => {});
@@ -73,7 +116,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   function gestureStart(e) {
     gest.swallow = false;
-    if (!open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn')) {
+    if (pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn')) {
       gest.id = null;
       return;
     }
@@ -241,6 +284,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
     renderSyncLabel();
+    renderNightLabel();
     q('#pl-golive').hidden = !(st.item.kind === 'recording' && ctx && ctx.items[ctx.index] && ctx.items[ctx.index].kind === 'live');
     renderRec(st);
     renderSleepLabel();
@@ -269,7 +313,30 @@ export function createPlayerUI({ engine, player, env }) {
     } else if (st.status !== 'error') {
       renderEpgLine(st);
     }
-    if (st.status === 'ended' && ctx && ctx.autoNext && ctx.index < ctx.items.length - 1) go(1);
+    renderNextUp(st);
+    renderIntro(st);
+    if (st.status === 'ended' && ctx && ctx.autoNext && autoNextOn() && epKey(st) !== nextDismissed && ctx.index < ctx.items.length - 1) go(1);
+  }
+
+  // ---- sonraki bölüm geri sayımı ve intro atla ----
+  let nextDismissed = '';
+  let introDone = '';
+  const epKey = (st) => (st && st.item ? st.item.id + ':' + (st.ep ? st.ep.id : '') : '');
+  const autoNextOn = () => (env.autoNext ? env.autoNext() : true);
+  function renderNextUp(st) {
+    const card = q('#pl-nextup');
+    const r = epKey(st) === nextDismissed ? { show: false } : nextUp(st, ctx, { enabled: autoNextOn() });
+    card.hidden = !r.show;
+    if (!r.show) return;
+    const nxt = ctx.items[ctx.index + 1];
+    q('#nu-name').textContent = (nxt && (nxt.label || nxt.title || nxt.name)) || '';
+    q('#nu-s').textContent = r.secs + ' sn';
+  }
+  function renderIntro(st) {
+    const b = q('#pl-intro');
+    const r = epKey(st) === introDone ? { show: false } : introSkip(st, { sec: env.intro ? env.intro() : DEFAULT_INTRO });
+    b.hidden = !r.show;
+    if (r.show) b.dataset.to = String(r.to);
   }
 
   async function loadTrackButtons(st) {
@@ -292,14 +359,84 @@ export function createPlayerUI({ engine, player, env }) {
       .map((x) => `<button class="list-item" data-id="${esc(x.id)}"><span class="t">${esc(x.label)}</span>${x.selected ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`)
       .join('');
     const off = type === 'text' ? `<button class="list-item" data-id=""><span class="t">Kapalı</span>${t.textOn ? '' : icon('check').replace('class="ic"', 'class="ic ok"')}</button>` : '';
+    const look = type === 'text' && engine.setSubtitleStyle ? '<button class="list-item" data-look><span class="t">Altyazı görünümü<small>Boyut, renk, arka plan, konum</small></span></button>' : '';
     const sh = openSheet({
       title: type === 'audio' ? 'Ses dili' : 'Altyazı',
-      html: off + rows,
+      html: off + rows + look,
       mount: (body) =>
         body.addEventListener('click', async (e) => {
+          if (e.target.closest('[data-look]')) {
+            sh.close();
+            return subtitleSheet();
+          }
           const b = e.target.closest('[data-id]');
           if (!b) return;
           await engine.selectTrack(type, b.dataset.id);
+          sh.close();
+        }),
+    });
+  }
+
+  // ---- altyazı görünümü: boyut, renk, arka plan, konum; seçim kalıcı, oynatıcıya anında iletilir (yalnız Android) ----
+  const subNow = () => normalizeSub(env.pref('sub', DEFAULT_SUB));
+  function subtitleSheet(onChange = () => {}) {
+    const groups = [
+      ['size', 'Boyut', SUB_SIZES],
+      ['color', 'Renk', SUB_COLORS],
+      ['bg', 'Arka plan', SUB_BGS],
+      ['pos', 'Konum', SUB_POS],
+    ];
+    const grp = ([key, label, list]) => `<div class="sub-grp"><b>${label}</b><div class="seg sub-seg" data-g="${key}">${list.map(([id, name]) => `<button data-v="${id}">${esc(name)}</button>`).join('')}</div></div>`;
+    openSheet({
+      title: 'Altyazı görünümü',
+      html: `<div class="sub-prev"><span id="sub-pv">Örnek altyazı metni</span></div>${groups.map(grp).join('')}<button class="btn ghost sub-reset" data-r>Varsayılana dön</button>`,
+      mount: (body) => {
+        const draw = () => {
+          const cur = subNow();
+          body.querySelectorAll('.sub-seg').forEach((g) => g.querySelectorAll('button').forEach((b) => b.classList.toggle('on', cur[g.dataset.g] === b.dataset.v)));
+          $('#sub-pv', body).setAttribute('style', subPreviewStyle(cur));
+        };
+        const save = (v) => {
+          env.setPref('sub', v);
+          draw();
+          if (engine.setSubtitleStyle) Promise.resolve(engine.setSubtitleStyle(subParams(v))).catch(() => toast('Altyazı görünümü uygulanamadı', 2500));
+          onChange();
+        };
+        body.addEventListener('click', (e) => {
+          const b = e.target.closest('.sub-seg [data-v]');
+          if (b) return save({ ...subNow(), [b.closest('.sub-seg').dataset.g]: b.dataset.v });
+          if (e.target.closest('[data-r]')) save({ ...DEFAULT_SUB });
+        });
+        draw();
+      },
+    });
+  }
+
+  // ---- gece modu (yalnız Android): sessiz konuşmayı yükseltir, patlamaları bastırır; seçim kalıcıdır ----
+  const nightNow = () => normalizeNight(env.pref('night', DEFAULT_NIGHT));
+  function renderNightLabel() {
+    const b = q('#pl-night');
+    b.hidden = !engine.setNightMode;
+    const n = nightNow();
+    q('#pl-night-l').textContent = n === 'off' ? 'Gece modu' : 'Gece: ' + nightLabel(n);
+    b.classList.toggle('on', n !== 'off');
+    b.setAttribute('aria-pressed', String(n !== 'off'));
+  }
+  function nightSheet() {
+    if (!engine.setNightMode) return;
+    const cur = nightNow();
+    const rows = NIGHT_LEVELS.map(([id, label]) => `<button class="list-item" data-n="${id}"><span class="t">${esc(label)}</span>${id === cur ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`).join('');
+    const sh = openSheet({
+      title: 'Gece modu',
+      html: `${rows}<p class="hint">Gece modu sessiz konuşmaları yükseltir, patlama ve müziği bastırır; komşuyu uyandırmadan izlemek içindir. Açıkken Dolby/DTS sesler çözülerek işlenir; ilk açışta yayın yeniden açılır.</p>`,
+      mount: (body) =>
+        body.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-n]');
+          if (!b) return;
+          const level = normalizeNight(b.dataset.n);
+          env.setPref('night', level);
+          renderNightLabel();
+          Promise.resolve(engine.setNightMode(level)).catch(() => toast('Gece modu uygulanamadı', 2500));
           sh.close();
         }),
     });
@@ -505,6 +642,9 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-audio').hidden = true;
     q('#pl-text').hidden = true;
     q('#pl-hud').hidden = true;
+    q('#pl-nextup').hidden = true;
+    q('#pl-intro').hidden = true;
+    applyResize(resizeIdx);
     loadLevels();
     engine.setImmersive(true, true).catch(() => {});
     showUi(true);
@@ -646,6 +786,8 @@ export function createPlayerUI({ engine, player, env }) {
     document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
     q('#pl-hud').hidden = true;
+    q('#pl-nextup').hidden = true;
+    q('#pl-intro').hidden = true;
     engine.setBrightness(-1).catch(() => {}); // oynatıcıdan çıkınca sistem parlaklığına dön
     if (fromPreview && env.previewRect && env.previewRect()) {
       // bölmeli ekrandan gelindi: yayın sürsün, önizleme yuvasına geri dön
@@ -674,9 +816,13 @@ export function createPlayerUI({ engine, player, env }) {
 
   // ---- olaylar ----
   player.on(render);
+  root.addEventListener('pointerdown', pinchDown);
   root.addEventListener('pointerdown', gestureStart);
+  root.addEventListener('pointermove', pinchMove);
   root.addEventListener('pointermove', gestureMove);
+  root.addEventListener('pointerup', pinchEnd);
   root.addEventListener('pointerup', gestureEnd);
+  root.addEventListener('pointercancel', pinchEnd);
   root.addEventListener('pointercancel', gestureEnd);
   root.addEventListener('click', (e) => {
     if (previewing) return expand();
@@ -752,11 +898,20 @@ export function createPlayerUI({ engine, player, env }) {
   });
   q('#pl-audio').addEventListener('click', () => trackSheet('audio'));
   q('#pl-text').addEventListener('click', () => trackSheet('text'));
-  q('#pl-aspect').addEventListener('click', async () => {
-    resizeIdx = (resizeIdx + 1) % RESIZE.length;
-    await engine.setResize(RESIZE[resizeIdx][0]);
-    q('#pl-aspect-l').textContent = RESIZE[resizeIdx][1];
+  q('#pl-night').addEventListener('click', nightSheet);
+  q('#nu-now').addEventListener('click', () => go(1));
+  q('#nu-no').addEventListener('click', () => {
+    nextDismissed = epKey(player.state());
+    q('#pl-nextup').hidden = true;
   });
+  q('#pl-intro').addEventListener('click', () => {
+    const st = player.state();
+    const to = Number(q('#pl-intro').dataset.to);
+    introDone = epKey(st);
+    q('#pl-intro').hidden = true;
+    if (to > 0) player.seek(to);
+  });
+  q('#pl-aspect').addEventListener('click', () => applyResize((resizeIdx + 1) % RESIZE.length, true));
   q('#pl-status').addEventListener('click', (e) => {
     if (e.target.id === 'pl-retry') player.retry();
   });
@@ -855,6 +1010,8 @@ export function createPlayerUI({ engine, player, env }) {
     else if (k === 'AudioTrack' && visibleBtn('#pl-audio')) trackSheet('audio');
     else if (k === 'ColorF0Red') q('#pl-fav').click();
     else if (k === 'ColorF3Blue') q('#pl-aspect').click();
+    else if (k === 'Enter' && !e.target.closest('button') && !ui.classList.contains('show') && !q('#pl-intro').hidden) q('#pl-intro').click(); // kumanda: Tamam, görünen intro düğmesine basar
+    else if (k === 'Enter' && !e.target.closest('button') && !ui.classList.contains('show') && !q('#pl-nextup').hidden) q('#nu-now').click(); // kumanda: Tamam, sonraki bölümü hemen açar
     else if (k === 'Enter' && !e.target.closest('button')) {
       if (ui.classList.contains('show')) player.toggle();
       else revealControls();
@@ -883,5 +1040,6 @@ export function createPlayerUI({ engine, player, env }) {
       renderRec(player.state());
     },
     toastError: (m) => toast(m),
+    subtitleSheet,
   };
 }
