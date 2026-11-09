@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 19,
+    title: 'Kategorili ve logolu TV rehberi',
+    items: [
+      'TV rehberi önce kanal kategorilerini gösterir; kategori seçilince o kategorinin kanalları açılır',
+      'Kanal logoları, şu anki ve sonraki programlar ile yayın ilerleme çizgisi gösterilir',
+      'Kanala dokunulduğunda mevcut ayrıntılı günlük yayın akışı açılır',
+      'Ana ekrandaki EPG kısayolu TV Rehberi olarak güncellendi',
+    ],
+  },
+
+  {
     id: 18,
     title: 'TV rehberi ve yayın kalitesi ekranları',
     items: [
