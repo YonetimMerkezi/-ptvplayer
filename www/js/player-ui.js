@@ -853,12 +853,14 @@ export function createPlayerUI({ engine, player, env }) {
   root.addEventListener('pointercancel', pinchEnd);
   root.addEventListener('pointercancel', gestureEnd);
   root.addEventListener('click', (e) => {
+    // Düğme tıklamaları (geri oku, kapat vb.) kök dinleyiciye de ulaşır; düğme oynatıcıyı bölmeli ekran önizlemesine
+    // döndürmüşse, aynı tıklama önizlemeyi hemen yeniden tam ekran yapmasın.
+    if (e.target.closest('button, input, #pl-status .btn')) return;
     if (previewing) return expand();
     if (gest.swallow) {
       gest.swallow = false; // kaydırmadan sonra gelen tıklama arayüzü açıp kapatmasın
       return;
     }
-    if (e.target.closest('button, input, #pl-status .btn')) return;
     if (Date.now() - gest.tapAt < 600) return; // bu dokunuş pointer olaylarından zaten işlendi
     toggleUi();
   });

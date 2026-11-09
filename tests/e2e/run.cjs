@@ -3108,6 +3108,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.mouse.click(460, 200);
   await page.waitForFunction(() => !document.querySelector('#pl-ui').classList.contains('show'));
   ok(true, 'dokununca denetimler açılıyor, tekrar dokununca kapanıyor');
+  // ekrandaki geri oku da tam ekrandan önizlemeye döndürür; aynı tıklama önizlemeyi yeniden tam ekran yapmamalı
+  await page.mouse.click(460, 200);
+  await page.waitForFunction(() => document.querySelector('#pl-ui').classList.contains('show'));
+  await page.click('#pl-back');
+  await page.waitForSelector('#player.preview');
+  await sleep(600);
+  ok(await page.evaluate(() => document.querySelector('#player').classList.contains('preview') && !document.body.classList.contains('player-open')), 'ekrandaki geri oku bölmeli ekranın tam ekranını kapattı, yeniden tam ekran olmadı');
+  await page.tap('.sp-left .row.sel .nm'); // yeniden tam ekran
+  await page.waitForSelector('#player:not(.preview)');
+  await page.waitForFunction(() => document.body.classList.contains('player-open'));
   await page.goBack();
   await page.waitForSelector('#player.preview');
   ok(near(await rectOf('#player'), await rectOf('#sp-slot')), 'geri tuşu tam ekrandan önizlemeye döndürdü');
