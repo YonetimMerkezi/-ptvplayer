@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 24,
+    title: 'Ana ekran kısayolları yatayda düzgün',
+    items: [
+      'Alt kısayol kutularında sayılar simgenin köşesinde rozet oldu; yatay ekranda yazı ve sayı taşmıyor',
+    ],
+  },
+  {
     id: 23,
     title: 'Yayın kalitesi testi: kategori, arama, toplu test',
     items: [

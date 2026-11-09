@@ -304,7 +304,9 @@ body.on-home #btn-search { display: none; }
 .tile.mini { flex-direction: row; justify-content: center; min-height: 54px; padding: 8px 10px; gap: 8px; background: var(--surface); border-radius: 12px; box-shadow: none; }
 .tile.mini .ic { width: 24px; height: 24px; }
 .tile.mini b { font-size: 0.875rem; }
-.tile.mini small { opacity: 0.9; margin-left: 2px; }
+.tile.mini b { line-height: 1.15; min-width: 0; overflow-wrap: break-word; text-align: center; }
+.tile.mini .t-ic { position: relative; display: inline-flex; flex: none; }
+.tile.mini .t-n { position: absolute; top: -8px; right: -9px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 0.6875rem; font-weight: 700; line-height: 18px; font-style: normal; text-align: center; box-shadow: 0 0 0 2px var(--surface); }
 .shortcuts .t-set { grid-column: 1 / -1; }
 .shortcuts.has-rec .t-set { grid-column: auto; }
 .home-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; font-size: 0.8125rem; color: var(--muted); }
@@ -325,7 +327,11 @@ body.on-home #btn-search { display: none; }
   .shortcuts.has-rec { grid-template-columns: repeat(6, 1fr); }
   .shortcuts .t-set { grid-column: auto; }
   .tile .ic { width: 54px; height: 54px; }
-  .tile.mini .ic { width: 24px; height: 24px; }
+  /* altı kısayol tek satıra sığsın: simge üstte, yazı altta; sayı rozeti simgenin köşesinde (yazıyla yarışmaz) */
+  .tile.mini { flex-direction: column; gap: 3px; padding: 8px 6px 6px; min-height: 50px; }
+  .tile.mini .ic { width: 20px; height: 20px; }
+  .tile.mini b { font-size: 0.6875rem; letter-spacing: 0; }
+  .tile.mini .t-n { top: -6px; right: -24px; }
   .home { padding-left: 18px; padding-right: 18px; }
 }
 @media (orientation: landscape) and (min-width: 640px) and (max-height: 520px) {

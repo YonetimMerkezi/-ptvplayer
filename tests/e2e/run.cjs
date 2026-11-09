@@ -1981,6 +1981,57 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(!ov, 'kutular birbirinin üstüne binmiyor');
   await page.screenshot({ path: path.join(SHOTS, '00-ana-ekran-yatay.png') });
 
+  // alt kısayol kutuları: sayı simgenin köşesinde rozet, yazı ve rozet kutudan taşmıyor (çeşitli ekran genişlikleri)
+  await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    for (let i = 0; i < 1234; i++) store.toggleFav(S.source.id, { id: 'fx' + i, kind: 'live', name: 'F' + i });
+    for (let i = 0; i < 12; i++) store.pushRecent(S.source.id, { id: 'rx' + i, kind: 'live', name: 'R' + i });
+  });
+  const shortcutFit = async (w, h, shot) => {
+    await page.setViewportSize({ width: w, height: h });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('.shortcuts .t-fav') && window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
+    // web kipinde “Kayıtlar” yok; Android'deki gibi altı kutu olsun
+    await page.evaluate(() => {
+      const sc = document.querySelector('.shortcuts');
+      if (sc.querySelector('.t-recs')) return;
+      sc.classList.add('has-rec');
+      sc.querySelector('.t-set').insertAdjacentHTML('beforebegin', '<button class="tile mini t-recs" data-go="rec"><span class="t-ic"><svg class="ic"><use href="#i-rec"/></svg></span><b>Kayıtlar</b></button>');
+    });
+    await sleep(150);
+    if (shot) await page.screenshot({ path: path.join(SHOTS, shot) });
+    return page.evaluate(() => [...document.querySelectorAll('.shortcuts .tile.mini')].map((t) => {
+      const r = t.getBoundingClientRect();
+      const b = t.querySelector('b');
+      const br = b.getBoundingClientRect();
+      const n = t.querySelector('.t-n');
+      const nr = n && n.getBoundingClientRect();
+      const lh = parseFloat(getComputedStyle(b).lineHeight) || br.height;
+      const lines = Math.round(br.height / lh);
+      const bad = [];
+      if (b.scrollWidth > b.clientWidth + 1 || br.left < r.left - 1 || br.right > r.right + 1) bad.push('yazı taşıyor');
+      if (!/\s/.test(b.textContent.trim()) && lines > 1) bad.push('tek sözcük bölündü');
+      if (lines > 2) bad.push('üç satır');
+      if (nr && (nr.left < r.left || nr.right > r.right || nr.top < r.top)) bad.push('rozet kutu dışında');
+      if (nr && nr.right > br.left + 1 && nr.left < br.right && nr.bottom > br.top && nr.top < br.bottom) bad.push('rozet yazıya biniyor');
+      return { name: b.textContent, n: n ? n.textContent : '', bad };
+    }));
+  };
+  for (const [w, h, shot] of [[915, 412, '00-ana-ekran-yatay-rozet.png'], [844, 390, null], [740, 360, '00-ana-ekran-dar-yatay.png'], [390, 844, null]]) {
+    const fit = await shortcutFit(w, h, shot);
+    const probs = fit.filter((f) => f.bad.length).map((f) => f.name + ': ' + f.bad.join(', '));
+    ok(!probs.length, `kısayol kutuları ${w}×${h} ekranda taşmıyor` + (probs.length ? ' → ' + probs.join(' | ') : ''));
+    if (w === 915) ok(fit.find((f) => /Favoriler/i.test(f.name)).n === '99+' && fit.find((f) => /İzleme/i.test(f.name)).n === '12', 'favori ve izleme sayıları rozette (99+ ve 12)');
+  }
+  await page.evaluate(() => {
+    const { store, S } = window.__iptv;
+    for (let i = 0; i < 1234; i++) store.toggleFav(S.source.id, { id: 'fx' + i, kind: 'live', name: 'F' + i });
+    store.clearRecents(S.source.id);
+  });
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('.tile.t-live') && window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
+
   await page.click('.t-live');
   await page.waitForSelector('#split .row.cat');
   ok(await page.isVisible('#btn-home'), 'yatayda geri oku görünüyor');

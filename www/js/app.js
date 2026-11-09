@@ -1357,6 +1357,9 @@ function tickClock() {
   if (u) u.textContent = 'Son güncelleme: ' + fmtAgo(S.cat.fetchedAt);
 }
 
+
+// Ana ekran kısayol kutusunun simgesi; sayı (favori/izleme) yazıyla yarışmasın diye simgenin köşesinde rozet olur.
+const miniIc = (name, n) => `<span class="t-ic">${icon(name)}${n ? `<i class="t-n">${n > 99 ? '99+' : n}</i>` : ''}</span>`;
 function renderHome(v) {
   const c = S.cat;
   const src = S.source;
@@ -1377,12 +1380,12 @@ function renderHome(v) {
       <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec' : ''}">
-      <button class="tile mini t-guide" data-go="guide">${icon('guide')}<b>TV Rehberi</b></button>
-      <button class="tile mini t-multi" data-go="multi">${icon('grid')}<b>Çoklu ekran</b></button>
-      <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>İzleme listesi</b><small>${recN || ''}</small></button>
-      <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
-      ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${icon('rec')}<b>Kayıtlar</b></button>` : ''}
-      <button class="tile mini t-set" data-go="sources">${icon('gear')}<b>Ayarlar</b></button>
+      <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
+      <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
+      <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
+      <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
+      ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button>` : ''}
+      <button class="tile mini t-set" data-go="sources">${miniIc('gear')}<b>Ayarlar</b></button>
     </div>
     <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
