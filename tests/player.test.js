@@ -276,6 +276,22 @@ test('hata çevirisi ve yerel motor olay aktarımı', async () => {
   listeners.recording({ active: true, elapsedMs: 5 });
   assert.deepEqual(rec, [{ active: true, elapsedMs: 5 }], 'kayıt olayı ayrı geri çağırmaya gider');
   assert.ok(eng2.rec && typeof eng2.rec.start === 'function');
+  // indirmeler: olay ayrı geri çağırmaya, işlemler eklenti yöntemlerine gider
+  const dlEv = [];
+  const calls = [];
+  const plug2 = { ...plugin, dlStart: async (j) => calls.push(['start', j]), dlList: async () => ({ items: [] }), dlPause: async (a) => calls.push(['pause', a]), dlPauseAll: async () => calls.push(['pauseAll']), dlResume: async (a) => calls.push(['resume', a]), dlResumeAll: async (a) => calls.push(['resumeAll', a]), dlRemove: async (a) => calls.push(['remove', a]) };
+  const eng3 = createNativeEngine(plug2, () => {}, () => 'high', () => {}, () => 0, () => 'off', (e) => dlEv.push(e));
+  await new Promise((r) => setTimeout(r, 0));
+  listeners.dlProgress({ id: 'd1', state: 'downloading', bytes: 5 });
+  assert.deepEqual(dlEv, [{ id: 'd1', state: 'downloading', bytes: 5 }], 'indirme olayı onDl geri çağırmasına gider');
+  await eng3.dl.start({ id: 'd1', url: 'u' });
+  await eng3.dl.pause('d1');
+  await eng3.dl.pauseAll();
+  await eng3.dl.resume('d1');
+  await eng3.dl.resumeAll();
+  await eng3.dl.resumeAll(true);
+  await eng3.dl.remove('d1');
+  assert.deepEqual(calls, [['start', { id: 'd1', url: 'u' }], ['pause', { id: 'd1' }], ['pauseAll'], ['resume', { id: 'd1' }], ['resumeAll', { paused: false }], ['resumeAll', { paused: true }], ['remove', { id: 'd1' }]]);
 });
 
 test('yeniden bağlanma ve yedek adres denemesi süren kaydı korur, yeni açılış korumaz', async () => {

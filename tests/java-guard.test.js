@@ -290,3 +290,36 @@ test('veri eşitleme: sunucu /sync yolu yalnız eşleşmiş telefondan, büyük 
   assert.match(plugin, /Math\.min\(30000, d\.optInt\("timeoutMs", 4000\)\)/, 'eşitleme isteği için uzun zaman aşımı');
   assert.match(bridge, /castSyncReply: call\('castSyncReply'\)/);
 });
+
+test('çevrimdışı indirme: hizmet bildirimli ön plan (dataSync), tek iş parçacığı, kaldığı yerden devam, minSdk 22 uyumlu', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const manifest = readFileSync(join(here, '../android/app/src/main/AndroidManifest.xml'), 'utf8');
+  assert.match(manifest, /<service\s+android:name="\.DownloadService"\s+android:exported="false"\s+android:foregroundServiceType="dataSync"/, 'indirme hizmeti manifestte yok');
+  assert.match(manifest, /FOREGROUND_SERVICE_DATA_SYNC/);
+  const hizmet = oku('DownloadService.java');
+  assert.match(hizmet, /startForeground\(Notifier\.DL_ID, n, ServiceInfo\.FOREGROUND_SERVICE_TYPE_DATA_SYNC\)/, 'ön plan türü manifestle uyuşmuyor');
+  assert.match(hizmet, /if \(!Downloads\.claim\(\)\) return/, 'ikinci iş parçacığı başlatılmamalı (sağlayıcı bağlantı sınırı)');
+  assert.match(hizmet, /if \(!Downloads\.busy\(\)\)[\s\S]*?stopSelf\(\)/, 'iş kalmayınca hizmet kapanmalı');
+  const d = oku('Downloads.java');
+  assert.match(d, /"Range", "bytes=" \+ from \+ "-"/, 'kaldığı yerden devam (Range) yok');
+  assert.match(d, /"Accept-Encoding", "identity"/, 'sıkıştırma Content-Length/Range bilgisini bozar');
+  assert.match(d, /code == 206[\s\S]*?cr\[0\] != have/, '206 yanıtının başlangıcı doğrulanmalı');
+  assert.match(d, /code == 416/, 'aralık reddi (416) işlenmeli');
+  assert.match(d, /renameTo\(fin\)/, 'tamamlanınca .part → son ad');
+  assert.doesNotMatch(d, /getContentLengthLong|java\.nio\.file/, 'minSdk 22: API 24+/26+ çağrıları kullanılamaz');
+  assert.match(d, /endsWith\("\.m3u8"\)/, 'm3u8 (canlı/parçalı) indirilemez');
+  assert.match(d, /notMedia\(type\)/, 'HTML/JSON yanıtı video diye kaydedilmemeli');
+  assert.match(d, /isActiveNetworkMetered\(\)/, 'yalnız Wi-Fi seçeneği kotalı ağı denetlemeli');
+  assert.match(d, /DOWNLOADING\.equals\(j\.state\)\) j\.state = QUEUED/, 'yarım kalan indirme açılışta sıraya dönmeli');
+  // eklenti: olay + yöntemler, yok olurken dinleyici bırakılır
+  assert.match(kaynak, /notifyListeners\("dlProgress", o\)/);
+  assert.match(kaynak, /Downloads\.setListener\(null\)/);
+  const bridge = readFileSync(join(here, '../www/js/bridge.js'), 'utf8');
+  for (const m of ['dlStart', 'dlList', 'dlPause', 'dlPauseAll', 'dlResume', 'dlResumeAll', 'dlRemove']) {
+    assert.match(kaynak, new RegExp('public void ' + m + '\\('), m + ' eklentide yok');
+    assert.match(bridge, new RegExp(m + ": call\\('" + m + "'\\)"), m + ' köprüde yok');
+  }
+  const notifier = oku('Notifier.java');
+  assert.match(notifier, /CH_DL/);
+  assert.match(notifier, /setProgress\(100/);
+});

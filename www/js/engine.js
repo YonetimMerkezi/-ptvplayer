@@ -15,7 +15,7 @@ export function describeError(name) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
-export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0, getNight = () => 'off') {
+export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0, getNight = () => 'off', onDl = () => {}) {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
@@ -23,6 +23,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   add('error', (e) => on({ type: 'error', message: describeError(e.message) }));
   add('tracks', () => on({ type: 'tracks' }));
   add('recording', (e) => onRec(e));
+  add('dlProgress', (e) => onDl(e));
   return {
     kind: 'native',
     enterPip: () => plugin.enterPip(),
@@ -37,6 +38,16 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
       stop: () => plugin.recordStop(),
       list: () => plugin.recordList(),
       remove: (id) => plugin.recordDelete({ id }),
+    },
+    // Çevrimdışı indirmeler (yalnız Android): arka plan hizmeti sırayla indirir, ilerleme 'dlProgress' olayıyla gelir.
+    dl: {
+      start: (job) => plugin.dlStart(job),
+      list: () => plugin.dlList(),
+      pause: (id) => plugin.dlPause({ id }),
+      pauseAll: () => plugin.dlPauseAll(),
+      resume: (id) => plugin.dlResume({ id }),
+      resumeAll: (paused = false) => plugin.dlResumeAll({ paused }),
+      remove: (id) => plugin.dlRemove({ id }),
     },
     // Ses senkronu (ms): açık oynatıcıya anında uygulanır (yalnız Android)
     setAudioDelay: (ms) => plugin.setAudioDelay({ ms }),

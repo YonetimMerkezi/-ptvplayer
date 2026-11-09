@@ -47,6 +47,7 @@ import { checkStreamHealth } from './health.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
 import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
 import { searchAll, totalOf } from './multisearch.js';
+import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -116,7 +117,7 @@ let player;
 let engine;
 const video = $('#vid');
 const onEngine = (ev) => player.handle(ev);
-engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0)), () => normalizeNight(store.pref('night', DEFAULT_NIGHT))) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
+engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0)), () => normalizeNight(store.pref('night', DEFAULT_NIGHT)), (e) => dlEvent(e)) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
 // Yeniden bağlanma davranışı Genel ayarlar › Yayın bağlantısı'ndan okunur (her denemede güncel değer)
 const policy = () => retryPolicy({ reconnect: store.pref('set.reconnect', DEFAULT_RECONNECT), stall: store.pref('set.stall', DEFAULT_STALL) });
 player = createPlayer({ engine, policy });
@@ -258,6 +259,7 @@ function setCatalog(raw) {
   S.rawCat = raw;
   S.cat = cat;
   S.altIdx = null;
+  S.verIdx = null; // film sürümleri dizini (indirme seçenekleri) yeniden kurulur
   S.idx = {
     live: new Map(cat.live.map((i) => [i.id, i])),
     movies: new Map(cat.movies.map((i) => [i.id, i])),
@@ -1068,9 +1070,10 @@ function playLive(items, index) {
   startPlay(items[index], { ctx });
 }
 
-function startPlay(item, { ep = null, ctx = null, startAt } = {}) {
+function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const isRec = item.kind === 'recording'; // cihazdaki kayıt: yerel dosya, kaynaktan bağımsız
-  const targets = isRec ? [{ url: item.url, mime: 'auto' }] : targetsOf(item, ep);
+  const localUrl = local || (ep && ep.dlUrl) || ''; // indirilmiş film/bölüm: ağsız yerel dosyadan oynar, ilerleme yine kaynağın öğesine yazılır
+  const targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto' }] : targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   if (item.kind !== 'series' && !isRec) store.pushRecent(sid(), item);
   let at = startAt;
@@ -1225,7 +1228,7 @@ function openMovie(it) {
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   return openPage({
     cls: 'dt-pg',
-    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
+    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
     mount: (body) => {
       $('#mv-play', body).addEventListener('click', () => startPlay(it));
       const st = $('#mv-start', body);
@@ -1237,6 +1240,18 @@ function openMovie(it) {
         toggleFav(it);
         $('#mv-fav', body).innerHTML = icon(isFav(it) ? 'star-on' : 'star') + 'Favori';
       });
+      if (dlOk()) {
+        const paintDl = () => {
+          const b = $('#mv-dl', body);
+          if (!b) return;
+          const j = dlMovieJob(it);
+          b.innerHTML = dlBtnLabel(j);
+          b.classList.toggle('on', !!j && j.state === 'done');
+        };
+        paintDl();
+        watchDl(body, paintDl);
+        $('#mv-dl', body).addEventListener('click', () => dlToggle(it, null));
+      }
       const plot = $('#mv-plot', body);
       loadVodInfo(S.source, net, it)
         .then((info) => {
@@ -1295,6 +1310,23 @@ function openSeries(it) {
       }
       const play = seriesPlayer(it, all);
       const plotText = info.plot || it.plot || '';
+      const dlUi = dlOk();
+      const byId = new Map(all.map((e) => [e.id, e]));
+      // Bölüm simgeleri ve “Sezonu indir” düğmesi: sayfa yeniden çizilmeden yerinde güncellenir (odak/kaydırma bozulmasın)
+      const paintDl = () => {
+        for (const b of $$('[data-dl]', body)) {
+          const j = dlJobOf(it, byId.get(b.dataset.dl));
+          b.innerHTML = dlEpGlyph(j);
+          b.setAttribute('aria-label', dlEpAria(j));
+          b.classList.toggle('on', !!j && j.state === 'done');
+        }
+        const sb = $('#sr-dls', body);
+        if (!sb) return;
+        const eps = all.filter((x) => x.season === season);
+        const done = eps.filter((x) => isDone(dlJobOf(it, x))).length;
+        sb.innerHTML = done === eps.length ? `${icon('check')}Sezon ${season} indirildi` : done || eps.some((x) => isActive(dlJobOf(it, x))) ? `${icon('dl')}Sezon ${season} · ${done}/${eps.length} indirildi` : `${icon('dl')}Sezonu indir`;
+      };
+      if (dlUi) watchDl(body, paintDl);
       const draw = () => {
         const p = progressOf(it);
         const cont = p ? all.find((x) => x.id === p.id) : null;
@@ -1304,12 +1336,14 @@ function openSeries(it) {
           .map((e) => {
             const pr = S.prog[e.id];
             const pct = pr && pr.dur > 0 ? Math.round((pr.pos / pr.dur) * 100) : 0;
-            return `<button class="epi" data-ep="${esc(e.id)}"><b>${e.episodeNum}</b><span class="t">${esc(e.title)}${e.durationSec ? `<small>${Math.round(e.durationSec / 60)} dk</small>` : ''}${pct ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${icon('play')}</button>`;
+            const row = `<button class="epi" data-ep="${esc(e.id)}"><b>${e.episodeNum}</b><span class="t">${esc(e.title)}${e.durationSec ? `<small>${Math.round(e.durationSec / 60)} dk</small>` : ''}${pct ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${icon('play')}</button>`;
+            return dlUi ? `<div class="epi-w">${row}<button class="icon-btn epi-dl" data-dl="${esc(e.id)}"></button></div>` : row;
           })
           .join('');
         const scroll = body.scrollTop;
-        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><div class="chips">${seasons}</div>${rows}</div></div></div>`;
+        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
         body.scrollTop = scroll;
+        if (dlUi) paintDl();
         const c = $('#sr-cont', body);
         if (c) c.addEventListener('click', () => play(cont));
         const f = $('#sr-first', body);
@@ -1326,6 +1360,9 @@ function openSeries(it) {
           season = Number(s.dataset.s);
           return draw();
         }
+        const d = e.target.closest('[data-dl]');
+        if (d) return dlToggle(it, byId.get(d.dataset.dl));
+        if (e.target.closest('#sr-dls')) return dlAsk(it, { eps: all.filter((x) => x.season === season), season });
         const b = e.target.closest('[data-ep]');
         if (b) play(all.find((x) => x.id === b.dataset.ep));
       });
@@ -1473,7 +1510,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1490,6 +1527,7 @@ function onSourcesClick(e) {
     if (k === 'kid') return kidSheet();
     if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
+    if (k === 'dl') return downloadsSheet();
     if (k === 'cast') return castUi.receiverSheet();
     if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
   }
@@ -1688,12 +1726,12 @@ function renderHome(v) {
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
       <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
     </div>
-    <div class="shortcuts${nativePlugin ? ' has-rec' : ''}">
+    <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
-      ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button>` : ''}
+      ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       <button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>
     </div>
     <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
@@ -1719,8 +1757,9 @@ function goTo(go) {
     setTab('live');
     return showRecent();
   }
-  if (kidActive() && (go === 'rec' || go === 'multi')) return; // çocuk modunda kayıtlar ve çoklu ekran yok
+  if (kidActive() && (go === 'rec' || go === 'multi' || go === 'dl')) return; // çocuk modunda kayıtlar, indirilenler ve çoklu ekran yok
   if (go === 'rec') return recordingsSheet();
+  if (go === 'dl') return downloadsSheet();
   if (go === 'cats') return categoriesPage();
   if (go === 'guide') return guidePage();
   setTab(go);
@@ -3427,6 +3466,300 @@ function deleteRecSheet(r, after) {
   });
 }
 
+// ------------------------------------------------------------------ çevrimdışı indirmeler (Android)
+// Film ve bölümler tek dosya olarak telefona iner (arka plan hizmeti, sırayla, kaldığı yerden sürer) ve internetsiz oynatılır.
+// Dosya olduğu gibi iner: ses dili ve altyazı izlerken oynatıcıdan seçilir. Parçalı (m3u8) yayınlar indirilemez.
+
+const DL = new Map(); // indirme kimliği → işin son durumu (yerel hizmetten gelir)
+const dlWatchers = new Set(); // açık ekranlar: durum değişince kendini günceller
+const dlOk = () => !!engine.dl && !kidActive();
+const dlWifi = () => store.pref('dl.wifi', true) !== false;
+const dlJobOf = (it, ep) => DL.get(dlId(sid(), it.id, ep ? ep.id : ''));
+// Filmin indirmesi: başka bir sürümü (4K/FHD/SD kopyası) indirilmişse o da bu filmin durumu sayılır
+function dlMovieJob(it) {
+  const own = dlJobOf(it);
+  if (own) return own;
+  for (const v of versionsOf(S.verIdx || (S.verIdx = buildVersionIndex(S.cat.movies)), it)) {
+    const j = dlJobOf(v.it);
+    if (j) return j;
+  }
+  return null;
+}
+
+// Ekran kapanınca (öğe belgeden ayrılınca) izleyici kendini kaldırır
+function watchDl(el, fn) {
+  const f = (e) => {
+    if (!el.isConnected) return void dlWatchers.delete(f);
+    fn(e);
+  };
+  dlWatchers.add(f);
+}
+const dlTouch = (e) => [...dlWatchers].forEach((f) => f(e));
+
+// Yerel hizmetten gelen durum/ilerleme olayı
+function dlEvent(e) {
+  if (!e || !e.id) return;
+  const prev = DL.get(e.id);
+  if (e.state === 'removed') DL.delete(e.id);
+  else DL.set(e.id, e);
+  if (e.state === 'done' && (!prev || prev.state !== 'done')) toast(`İndirildi: ${e.name}`, 3200);
+  else if (e.state === 'error' && (!prev || prev.state !== 'error')) toast(`İndirilemedi: ${e.name} · ${e.error}`, 4800);
+  dlTouch(e);
+}
+
+async function dlLoad() {
+  if (!engine.dl) return null;
+  const res = await engine.dl.list();
+  DL.clear();
+  for (const j of res.items || []) DL.set(j.id, j);
+  dlTouch(null);
+  return res;
+}
+
+const dlBtnLabel = (j) => {
+  if (!j) return `${icon('dl')}İndir`;
+  switch (j.state) {
+    case 'done':
+      return `${icon('check')}İndirildi · Oynat`;
+    case 'downloading':
+      return `${icon('dl')}İndiriliyor %${pctOf(j)}`;
+    case 'queued':
+      return `${icon('timer')}İndirme sırasında`;
+    case 'waiting':
+      return `${icon('timer')}Wi-Fi bekleniyor`;
+    case 'paused':
+      return `${icon('pause')}Duraklatıldı · Sürdür`;
+    default:
+      return `${icon('refresh')}İndirilemedi · Tekrar dene`;
+  }
+};
+const dlEpGlyph = (j) => {
+  if (!j) return icon('dl');
+  if (j.state === 'done') return icon('check');
+  if (j.state === 'downloading') return `<small class="dl-pct">%${pctOf(j)}</small>`;
+  if (j.state === 'queued' || j.state === 'waiting') return icon('timer');
+  return icon(j.state === 'paused' ? 'pause' : 'refresh');
+};
+const dlEpAria = (j) => (!j ? 'İndir' : { done: 'İndirildi, oynat', downloading: 'İndiriliyor, duraklat', queued: 'Sırada, duraklat', waiting: 'Wi-Fi bekleniyor, duraklat', paused: 'Duraklatıldı, sürdür' }[j.state] || 'İndirilemedi, tekrar dene');
+
+// Film düğmesi / bölüm simgesi: duruma göre başlatır, oynatır, sürdürür ya da durdurur.
+function dlToggle(it, ep) {
+  if (!dlOk()) return;
+  const j = ep ? dlJobOf(it, ep) : dlMovieJob(it);
+  if (!j) return dlAsk(it, ep ? { eps: [ep] } : {});
+  if (j.state === 'done') return playDownload(j);
+  if (j.state === 'paused' || j.state === 'error') return void engine.dl.resume(j.id).catch(() => {});
+  if (ep) return void engine.dl.pause(j.id).catch(() => {}); // bölüm simgesine tekrar dokunmak duraklatır
+  downloadsSheet();
+}
+
+// Tek bölüm ilk seferden sonra sormadan eklenir; film ve sezon için (sürüm, Wi-Fi, uyarı) seçenek sayfası açılır.
+function dlAsk(it, { eps = null, season = null } = {}) {
+  if (!dlOk()) return;
+  if (eps && season == null && store.pref('dl.ack', false)) return void dlQueueToast(eps.map((ep) => ({ item: it, ep })));
+  dlSheet(it, { eps, season });
+}
+
+async function dlQueueToast(entries) {
+  const r = await dlQueue(entries);
+  if (r.ok) toast(r.ok === 1 ? 'İndirme sıraya eklendi' : `${r.ok} indirme sıraya eklendi`, 2400);
+  if (r.bad) toast(r.why || 'İndirilemedi', 4200);
+}
+
+// Her kayıt { item, ep } için oynatma adresini bulup yerel hizmete verir (sırayla iner).
+async function dlQueue(entries) {
+  const wifiOnly = dlWifi();
+  let ok = 0;
+  let bad = 0;
+  let why = '';
+  ensurePlanPermissions(); // Android 13+: ilerleme bildirimi için bildirim izni
+  for (const { item, ep } of entries) {
+    const t = pickTarget(playTargets(S.source, item, ep), (ep && ep.ext) || item.ext);
+    if (!t) {
+      bad++;
+      why = why || 'Bu içerik indirilemez (parçalı/m3u8 yayın)';
+      continue;
+    }
+    const id = dlId(sid(), item.id, ep ? ep.id : '');
+    try {
+      DL.set(id, await engine.dl.start({ id, url: t.url, headers: t.headers ? JSON.stringify(t.headers) : '', name: dlName({ item, ep }), ext: t.ext, meta: makeMeta({ src: sid(), item, ep }), wifiOnly }));
+      ok++;
+    } catch (e) {
+      bad++;
+      why = why || String((e && e.message) || e);
+      if (/depolama/i.test(why)) break; // yer yoksa kalanları denemenin anlamı yok
+    }
+  }
+  dlTouch(null);
+  return { ok, bad, why };
+}
+
+const DL_TOS = 'İndirme yalnızca sağlayıcınızın izin verdiği durumlarda ve kişisel kullanım içindir. Sağlayıcı şartlarınızı kontrol edin; indirilen dosyaları paylaşmayın.';
+
+// İndirme seçenekleri: sürüm (kalite), yalnız Wi-Fi, boş alan ve sağlayıcı uyarısı
+function dlSheet(it, { eps = null, season = null } = {}) {
+  const movie = !eps;
+  const versions = movie ? versionsOf(S.verIdx || (S.verIdx = buildVersionIndex(S.cat.movies)), it) : [];
+  const todo = movie ? [] : eps.filter((e) => !isActive(dlJobOf(it, e)) && !isDone(dlJobOf(it, e)));
+  const title = movie ? 'Filmi indir' : season != null ? `Sezon ${season} · indir` : 'Bölümü indir';
+  const what = movie ? esc(it.name) : season != null ? `${esc(it.name)}<small>${todo.length} bölüm indirilecek${eps.length > todo.length ? ` · ${eps.length - todo.length} bölüm zaten indirildi ya da sırada` : ''}</small>` : `${esc(it.name)}<small>${esc(eps[0].label || 'Bölüm')}</small>`;
+  let pick = it.id;
+  const verRows = () =>
+    versions
+      .map((v) => `<button class="list-item" role="radio" aria-checked="${v.it.id === pick}" data-v="${esc(v.it.id)}"><span class="t">${esc(v.label)}<small>${esc(v.it.name)}${v.group ? ' · ' + esc(v.group) : ''}</small></span>${v.it.id === pick ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`)
+      .join('');
+  const sh = openSheet({
+    title,
+    html: `<div class="dl-sheet"><p class="dl-what">${what}</p>${versions.length > 1 ? `<h4 class="dl-h">Sürüm</h4><div id="dl-vers" role="radiogroup" aria-label="Sürüm">${verRows()}</div>` : ''}<button class="chk${dlWifi() ? ' on' : ''}" id="dl-wifi" role="switch" aria-checked="${dlWifi()}"><i>${icon('check')}</i><span class="t">Yalnız Wi-Fi’de indir<small>Mobil veride indirmez; Wi-Fi gelince sürer</small></span></button><p class="hint" id="dl-free"></p><p class="hint">Dosya olduğu gibi iner. Ses dili ve altyazıyı izlerken oynatıcıdan seçersiniz.</p><p class="hint dl-tos">${esc(DL_TOS)}</p><div class="dl-btns">${movie || todo.length ? '<button class="btn" id="dl-go">İndir</button>' : ''}<button class="btn ghost" id="dl-no">${movie || todo.length ? 'Vazgeç' : 'Kapat'}</button></div></div>`,
+    mount: (body) => {
+      $('#dl-no', body).addEventListener('click', () => sh.close());
+      $('#dl-wifi', body).addEventListener('click', (e) => {
+        const on = !dlWifi();
+        store.setPref('dl.wifi', on);
+        e.currentTarget.classList.toggle('on', on);
+        e.currentTarget.setAttribute('aria-checked', String(on));
+      });
+      const vers = $('#dl-vers', body);
+      if (vers) {
+        vers.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-v]');
+          if (!b) return;
+          pick = b.dataset.v;
+          vers.innerHTML = verRows();
+        });
+      }
+      engine.dl
+        .list()
+        .then((r) => {
+          const f = $('#dl-free', body);
+          if (f) f.textContent = `Boş alan: ${fmtBytes(r.freeBytes || 0)}`;
+        })
+        .catch(() => {});
+      const go = $('#dl-go', body);
+      if (go) {
+        go.addEventListener('click', () => {
+          store.setPref('dl.ack', true);
+          sh.close();
+          const entries = movie ? [{ item: (versions.find((v) => v.it.id === pick) || { it }).it, ep: null }] : todo.map((ep) => ({ item: it, ep }));
+          dlQueueToast(entries);
+        });
+      }
+    },
+  });
+}
+
+// Çevrimdışı oynat: asıl öğenin kimliğiyle (ilerleme ve “Devam et” kaynağın öğesine yazılır). Kaynak silinmişse düz yerel dosya olarak açılır.
+async function playDownload(job) {
+  if (!job || !job.url) return toast('İndirilen dosya bulunamadı');
+  const m = parseMeta(job.meta);
+  const haveSrc = !!m && store.sources().some((s) => s.id === m.src);
+  if (!haveSrc) return startPlay({ id: 'dl:' + job.id, kind: 'recording', name: job.name, logo: (m && m.item.logo) || '', url: job.url });
+  if (m.src !== sid()) await activate(m.src);
+  const item = m.item;
+  if (!m.ep) return startPlay(item, { local: job.url });
+  // Bölüm: aynı dizinin indirilmiş bölümleri sırayla (otomatik sonraki bölüm de çevrimdışı çalışır)
+  const eps = seriesDone([...DL.values()], m.src, item.id).map((x) => ({ ...x.meta.ep, dlUrl: x.job.url }));
+  const index = Math.max(0, eps.findIndex((e) => e.id === m.ep.id));
+  const ctx = { items: eps, index, autoNext: true, play: (e, i) => startPlay(item, { ep: e, ctx: { ...ctx, index: i } }) };
+  startPlay(item, { ep: eps[index], ctx });
+}
+
+function downloadsSheet() {
+  if (!engine.dl) return toast('İndirme yalnız Android uygulamasında çalışır');
+  const sh = openSheet({
+    title: 'İndirilenler',
+    html: '<div id="dl-body"><p class="hint">Yükleniyor…</p></div>',
+    mount: (body) => {
+      const box = $('#dl-body', body);
+      let stat = { free: 0, used: 0 };
+      let shape = '';
+      const jobs = () => sortJobs([...DL.values()]);
+      const shapeOf = () => jobs().map((j) => j.id + j.state).join();
+      const rowHtml = (j) => {
+        const act = isActive(j);
+        const done = j.state === 'done';
+        const tg = act ? ['pause', 'Duraklat'] : j.state === 'error' ? ['refresh', 'Tekrar dene'] : ['play', 'Sürdür'];
+        return `<div class="rec-row dl-row${act ? ' on' : ''}" data-row="${esc(j.id)}"><button class="rec-play" data-main="${esc(j.id)}"><span class="t">${esc(j.name)}</span><small class="dl-sub">${esc(dlSub(j))}</small>${done ? '' : `<span class="dl-bar"><i style="width:${pctOf(j)}%"></i></span>`}</button>${done ? '' : `<button class="icon-btn" data-tg="${esc(j.id)}" aria-label="${tg[1]}">${icon(tg[0])}</button>`}<button class="icon-btn" data-del="${esc(j.id)}" aria-label="Sil">${icon('trash')}</button></div>`;
+      };
+      const info = () => {
+        const el = $('#dl-info', box);
+        if (el) el.textContent = `İndirilenler: ${fmtBytes(stat.used)} · Boş alan: ${fmtBytes(stat.free)}`;
+      };
+      const draw = () => {
+        if (!box.isConnected) return;
+        const list = jobs();
+        const sum = summary(list);
+        shape = shapeOf();
+        const bulk = sum.active ? '<button class="btn sm ghost" id="dl-pall">Tümünü duraklat</button>' : sum.paused || sum.failed ? '<button class="btn sm ghost" id="dl-rall">Tümünü sürdür</button>' : '';
+        box.innerHTML = `<div class="dl-head"><button class="chk${dlWifi() ? ' on' : ''}" id="dl-wifi" role="switch" aria-checked="${dlWifi()}"><i>${icon('check')}</i><span class="t">Yalnız Wi-Fi’de indir<small>Yeni indirmeler için</small></span></button>${bulk}</div>${list.length ? list.map(rowHtml).join('') : '<p class="hint">Henüz indirme yok. Bir film ya da dizi bölümünün sayfasındaki “İndir” ile çevrimdışı izlemek üzere indirin.</p>'}<p class="rec-info" id="dl-info"></p><p class="rec-info">${esc(DL_TOS)}</p>`;
+        info();
+      };
+      // İlerleme olayı: satır sayısı/durumu aynıysa yalnız metin ve çubuk güncellenir (odak bozulmaz)
+      watchDl(box, (e) => {
+        if (shapeOf() !== shape) return draw();
+        const j = e && e.id && DL.get(e.id);
+        const row = j && box.querySelector(`[data-row="${CSS.escape(j.id)}"]`);
+        if (!row) return;
+        $('.dl-sub', row).textContent = dlSub(j);
+        const bar = $('.dl-bar i', row);
+        if (bar) bar.style.width = pctOf(j) + '%';
+      });
+      body.addEventListener('click', (e) => {
+        if (e.target.closest('#dl-wifi')) {
+          store.setPref('dl.wifi', !dlWifi());
+          return draw();
+        }
+        if (e.target.closest('#dl-pall')) return void engine.dl.pauseAll().catch(() => {});
+        if (e.target.closest('#dl-rall')) return void engine.dl.resumeAll(true).catch(() => {});
+        const del = e.target.closest('[data-del]');
+        if (del) return deleteDownloadSheet(DL.get(del.dataset.del));
+        const tg = e.target.closest('[data-tg]');
+        const main = e.target.closest('[data-main]');
+        const j = tg || main ? DL.get(tg ? tg.dataset.tg : main.dataset.main) : null;
+        if (!j) return;
+        if (j.state === 'done') {
+          if (main) {
+            sh.close();
+            playDownload(j);
+          }
+          return;
+        }
+        if (isActive(j)) engine.dl.pause(j.id).catch(() => {});
+        else engine.dl.resume(j.id).catch(() => {});
+      });
+      dlLoad()
+        .then((r) => {
+          stat = { free: (r && r.freeBytes) || 0, used: (r && r.usedBytes) || 0 };
+          draw();
+          engine.dl.resumeAll(false).catch(() => {}); // Wi-Fi gelmiş olabilir: bekleyenler yeniden denenir
+        })
+        .catch(() => {
+          box.innerHTML = '<p class="err-text">İndirilenler okunamadı</p>';
+        });
+    },
+  });
+}
+
+function deleteDownloadSheet(j) {
+  if (!j) return;
+  const sh = openSheet({
+    title: 'İndirmeyi sil',
+    html: `<p>“${esc(j.name)}” ${isActive(j) || j.state === 'paused' ? 'indirmesi iptal edilip' : 'cihazdan'} silinecek.</p><div style="display:flex;gap:8px"><button class="btn danger" id="dd-yes">Sil</button><button class="btn ghost" id="dd-no">Vazgeç</button></div>`,
+    mount: (body) => {
+      $('#dd-no', body).addEventListener('click', () => sh.close());
+      $('#dd-yes', body).addEventListener('click', async () => {
+        sh.close();
+        try {
+          await engine.dl.remove(j.id);
+          toast('İndirme silindi', 1800);
+        } catch (err) {
+          toast(String((err && err.message) || 'Silinemedi'), 3000);
+        }
+      });
+    },
+  });
+}
+
 // Planlananlar: bekleyen hatırlatıcılar ve zamanlı kayıtlar; izin durumu ve kaldırma burada.
 function plansSheet() {
   const sh = openSheet({
@@ -4007,6 +4340,8 @@ if (nativePlugin) {
   setTimeout(() => nativePlugin.planLaunch().then(launchPlan).catch(() => {}), 1500);
 }
 setTimeout(syncPlans, 2500); // alarmları kayıtlı listeyle eşitle (yeniden başlatma, güncelleme sonrası)
+// Yarım kalan indirmeler (süreç öldürülmüş ya da telefon yeniden başlamış) uygulama açılınca kaldığı yerden sürer
+if (nativePlugin) setTimeout(() => dlLoad().then(() => engine.dl.resumeAll(false)).catch(() => {}), 2000);
 
 initNav();
 window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ayıklama ve uçtan uca testler için

@@ -3276,7 +3276,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await focused()) === 'cats', 'sağ ok ×2: Kategoriler');
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowDown');
-  ok(['guide', 'multi', 'recent', 'favs', 'sources'].includes(await focused()), 'aşağı ok: kısayol çubuğuna iner: ' + (await focused()));
+  ok(['guide', 'multi', 'recent', 'favs', 'rec', 'dl', 'sources'].includes(await focused()), 'aşağı ok: kısayol çubuğuna iner: ' + (await focused()));
   await page.keyboard.press('ArrowUp');
   ok(['live', 'movies', 'series', 'cats'].includes(await focused()), 'yukarı ok: büyük kutulara döner');
   // Tamam (Enter) odaktaki kutuyu açar, Esc/geri kapatır
@@ -3478,6 +3478,225 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => !document.body.classList.contains('player-open'));
   ok(true, 'Durdur tuşu oynatıcıyı kapattı (önizlemeye dönüldü)');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 12. çevrimdışı indirme (taklit eklenti)
+  console.log('Çevrimdışı indirme');
+  const dlInit = () => {
+    // Gerçek eklentinin dl* yöntemlerini taklit eder; durumu testten __dlStep ile ilerletilir.
+    const base = window.Capacitor.nativePromise;
+    const jobs = new Map();
+    window.__dl = { jobs, calls: [] };
+    const view = (j) => ({ id: j.id, name: j.name, ext: j.ext, meta: j.meta, state: j.state, error: j.error || '', wifiOnly: !!j.wifiOnly, bytes: j.bytes || 0, total: j.total || -1, speed: j.speed || 0, createdAt: j.createdAt, url: j.state === 'done' ? 'file:///dl/' + j.id + '.' + (j.ext || 'mp4') : undefined });
+    const emit = (j) => setTimeout(() => window.__emit('dlProgress', view(j)), 0);
+    const rec = (n, a) => window.__dl.calls.push([n, a]);
+    const api = {
+      dlStart: async (o) => {
+        rec('start', o);
+        if (window.__dlFail) throw new Error(window.__dlFail);
+        let j = jobs.get(o.id);
+        if (!j) jobs.set(o.id, (j = { ...o, state: 'queued', bytes: 0, total: 1000, createdAt: Date.now() + jobs.size }));
+        else if (j.state === 'paused' || j.state === 'error') j.state = 'queued';
+        emit(j);
+        return view(j);
+      },
+      dlList: async () => ({ items: [...jobs.values()].map(view), freeBytes: 5e9, usedBytes: 1e9 }),
+      dlPause: async ({ id }) => {
+        rec('pause', id);
+        const j = jobs.get(id);
+        if (j) { j.state = 'paused'; j.speed = 0; emit(j); }
+      },
+      dlPauseAll: async () => rec('pauseAll'),
+      dlResume: async ({ id }) => {
+        rec('resume', id);
+        const j = jobs.get(id);
+        if (j && j.state !== 'done') { j.state = 'queued'; emit(j); }
+      },
+      dlResumeAll: async (o) => rec('resumeAll', o && o.paused),
+      dlRemove: async ({ id }) => {
+        rec('remove', id);
+        jobs.delete(id);
+        setTimeout(() => window.__emit('dlProgress', { id, state: 'removed' }), 0);
+      },
+    };
+    window.__dlStep = (id, patch) => {
+      const j = jobs.get(id);
+      Object.assign(j, patch);
+      emit(j);
+    };
+    window.Capacitor.nativePromise = (pn, m, o) => (api[m] ? api[m](o || {}) : base(pn, m, o));
+  };
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.addInitScript(dlInit);
+  await page.reload();
+  await page.waitForSelector('#f');
+  await page.fill('input[name=server]', mock.url);
+  await page.fill('input[name=user]', 'u');
+  await page.fill('input[name=pass]', 'p');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  const dlCalls = (n) => page.evaluate((x) => window.__dl.calls.filter((c) => c[0] === x).map((c) => c[1]), n);
+  ok((await page.$$eval('.shortcuts .tile', (e) => e.length)) === 7, 'ana ekranda yedi kısayol (İndirilenler dahil)');
+  ok(/İndirilenler/.test(await page.textContent('.tile.t-dl')), 'ana ekranda “İndirilenler” kutusu');
+  await page.screenshot({ path: path.join(SHOTS, '40-indirme-ana-ekran.png') });
+  // aynı filmin 4K ve SD kopyaları katalogda var (sürüm seçimi için)
+  await page.evaluate(() => {
+    const S = window.__iptv.S;
+    const f = S.cat.movies.find((m) => m.name === 'Film 1 Işıkları');
+    S.cat.movies.push({ ...f, id: 'm9001', streamId: '9001', name: 'Film 1 Işıkları 4K' }, { ...f, id: 'm9002', streamId: '9002', name: 'TR - Film 1 Işıkları SD' });
+    S.verIdx = null;
+  });
+  await page.click('#tabs [data-tab=movies]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card');
+  await page.evaluate(() => {
+    const c = [...document.querySelectorAll('.card')].find((x) => /Film 1 Işıkları/.test(x.textContent));
+    c.click();
+  });
+  await page.waitForSelector('#mv-dl');
+  ok(/İndir/.test(await page.textContent('#mv-dl')), 'film sayfasında “İndir” düğmesi');
+  await page.click('#mv-dl');
+  await page.waitForSelector('.dl-sheet');
+  const vers = await page.$$eval('#dl-vers [data-v]', (e) => e.map((x) => x.querySelector('.t').firstChild.textContent));
+  ok(vers.join() === '4K,Standart,SD', 'seçenek sayfasında sürümler kalite sırasıyla: ' + vers.join());
+  ok(/Sağlayıcı|sağlayıcı/.test(await page.textContent('.dl-tos')) && /izlerken/.test(await page.textContent('.dl-sheet')), 'sağlayıcı uyarısı ve ses/altyazı notu var');
+  await page.waitForFunction(() => /Boş alan: 4,7 GB/.test(document.querySelector('#dl-free').textContent));
+  ok(true, 'boş alan gösteriliyor');
+  ok((await page.$eval('#dl-wifi', (b) => b.classList.contains('on'))), '“Yalnız Wi-Fi” varsayılan açık');
+  await sleep(450);
+  await page.screenshot({ path: path.join(SHOTS, '41-indirme-secenekleri.png') });
+  await page.click('#dl-vers [data-v="m9001"]');
+  ok(await page.$eval('#dl-vers [data-v="m9001"]', (b) => b.getAttribute('aria-checked') === 'true'), '4K sürümü seçildi');
+  await page.click('#dl-go');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  const dlst1 = await dlCalls('start');
+  ok(dlst1.length === 1 && /\/movie\/u\/p\/9001\.webm$/.test(dlst1[0].url) && dlst1[0].wifiOnly === true && dlst1[0].name === 'Film 1 Işıkları 4K' && dlst1[0].ext === 'webm', 'seçilen sürüm doğru adresle ve yalnız-Wi-Fi ile sıraya eklendi: ' + JSON.stringify(dlst1[0]));
+  ok(/^d_[A-Za-z0-9_-]+$/.test(dlst1[0].id) && JSON.parse(dlst1[0].meta).item.id === 'm9001' && JSON.parse(dlst1[0].meta).src === (await page.evaluate(() => window.__iptv.S.source.id)), 'kimlik güvenli, meta kaynak ve öğeyi taşıyor');
+  await page.waitForFunction(() => /sırasında/.test(document.querySelector('#mv-dl').textContent));
+  ok(true, 'düğme “sırasında” oldu (ayrıntı sayfası yerinde güncellendi)');
+  const jid = dlst1[0].id;
+  await page.evaluate((id) => window.__dlStep(id, { state: 'downloading', bytes: 500, speed: 2097152 }), jid);
+  await page.waitForFunction(() => /İndiriliyor %50/.test(document.querySelector('#mv-dl').textContent));
+  ok(true, 'ilerleme düğmede: %50');
+  // İndirilenler sayfası
+  await page.click('#mv-dl');
+  await page.waitForSelector('.dl-row');
+  ok(/%50/.test(await page.textContent('.dl-row .dl-sub')) && /2,0 MB\/sn/.test(await page.textContent('.dl-row .dl-sub')), 'satırda yüzde ve hız: ' + (await page.textContent('.dl-row .dl-sub')));
+  await page.waitForFunction(() => /İndirilenler: 954 MB · Boş alan: 4,7 GB/.test(document.querySelector('#dl-info').textContent));
+  ok(true, 'kullanılan ve boş alan satırı');
+  await page.evaluate((id) => window.__dlStep(id, { bytes: 750 }), jid);
+  await page.waitForFunction(() => /%75/.test(document.querySelector('.dl-row .dl-sub').textContent) && document.querySelector('.dl-bar i').style.width === '75%');
+  ok(true, 'ilerleme olayı satırı ve çubuğu yerinde güncelledi');
+  await sleep(450);
+  await page.screenshot({ path: path.join(SHOTS, '42-indirilenler.png') });
+  await page.click('[data-tg]');
+  await page.waitForFunction(() => /Duraklatıldı/.test(document.querySelector('.dl-row .dl-sub').textContent));
+  ok((await dlCalls('pause')).length === 1, 'duraklat düğmesi eklentiye iletildi, satır “Duraklatıldı”');
+  await page.click('[data-tg]');
+  await page.waitForFunction(() => /Sırada/.test(document.querySelector('.dl-row .dl-sub').textContent));
+  ok((await dlCalls('resume')).length === 1, 'sürdür düğmesi eklentiye iletildi');
+  await page.evaluate((id) => window.__dlStep(id, { state: 'done', bytes: 1000, total: 1000 }), jid);
+  await page.waitForFunction(() => /İndirildi/.test(document.querySelector('.dl-row .dl-sub').textContent) && !document.querySelector('.dl-bar'));
+  ok(true, 'biten indirmede çubuk ve duraklat düğmesi yok');
+  // çevrimdışı oynat: asıl öğenin kimliğiyle, yerel dosya adresiyle
+  await page.click('[data-main]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play' && /^file:\/\/\/dl\//.test(c[1])));
+  const dlpl = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop());
+  ok(dlpl[1] === `file:///dl/${jid}.webm`, 'indirilen dosya yerel adresten oynatıldı');
+  ok(await page.evaluate(() => document.body.classList.contains('player-open')), 'oynatıcı açıldı');
+  await page.evaluate(() => window.__emit('state', { state: 'playing', live: false }));
+  await sleep(10500); // ilerleme kaydı oynatmanın ilk 10 saniyesinden sonra başlar
+  await page.evaluate(() => window.__emit('time', { pos: 300000, dur: 600000, buffered: 0 }));
+  await sleep(250);
+  ok(await page.evaluate(() => !!window.__iptv.store.progress(window.__iptv.S.source.id, 'm9001')), 'ilerleme kaynağın film kaydına yazıldı (Devam et çalışır)');
+  await page.goBack();
+  await page.waitForFunction(() => !document.body.classList.contains('player-open'));
+  ok(/İndirildi/.test(await page.textContent('#mv-dl')), 'film sayfasında düğme “İndirildi”');
+  await page.goBack();
+  await page.waitForSelector('.card');
+  // sil (Ana ekran › İndirilenler)
+  await page.click('#tabs [data-tab=home]');
+  await page.click('.tile.t-dl');
+  await page.waitForSelector('.dl-row');
+  await page.click('[data-del]');
+  await page.waitForSelector('#dd-yes');
+  await page.click('#dd-yes');
+  await page.waitForFunction(() => !document.querySelector('.dl-row'));
+  ok((await dlCalls('remove')).length === 1, 'silme eklentiye iletildi, satır kalktı');
+  await page.goBack();
+  await page.click('#tabs [data-tab=movies]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card');
+  await page.evaluate(() => { const c = [...document.querySelectorAll('.card')].find((x) => /Film 1 Işıkları/.test(x.textContent)); c.click(); });
+  await page.waitForSelector('#mv-dl');
+  ok(/İndir$/.test((await page.textContent('#mv-dl')).trim()), 'silinince film sayfasındaki düğme yeniden “İndir”');
+  await page.goBack();
+  // yer yoksa eklentinin hatası kullanıcıya gösterilir
+  await page.waitForSelector('.card');
+  await page.evaluate(() => { window.__dlFail = 'Yetersiz depolama alanı (en az 200 MB boş yer gerekir)'; });
+  await page.evaluate(() => { const c = [...document.querySelectorAll('.card')].find((x) => /Film 2 /.test(x.textContent)); c.click(); });
+  await page.waitForSelector('#mv-dl');
+  await page.click('#mv-dl');
+  await page.waitForSelector('#dl-go');
+  await page.click('#dl-go');
+  await page.waitForFunction(() => /Yetersiz depolama/.test(document.querySelector('#toast').textContent));
+  ok(true, 'depolama yetersizse hata iletisi gösterildi');
+  await page.evaluate(() => { window.__dlFail = ''; });
+  await page.goBack();
+  // dizi: bölüm simgeleri, sezonu indir
+  await page.click('#tabs [data-tab=series]');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.click('.card');
+  await page.waitForSelector('.epi-w');
+  ok((await page.$$eval('.epi-w [data-dl]', (e) => e.length)) === 3 && !!(await page.$('#sr-dls')), 'her bölümün yanında indirme simgesi ve “Sezonu indir”');
+  await page.waitForFunction(() => /Sezonu indir/.test(document.querySelector('#sr-dls').textContent));
+  const nStart0 = (await dlCalls('start')).length;
+  await page.click('.epi-w >> nth=0 >> [data-dl]'); // yenilikte onay yok: film indirirken “dl.ack” verildi
+  await page.waitForFunction((n) => window.__dl.calls.filter((c) => c[0] === 'start').length > n, nStart0);
+  const ep1 = (await dlCalls('start')).pop();
+  ok(/\/series\/u\/p\/\d+\.webm$/.test(ep1.url) && /Kurtuluş Yolu · S1 B1/.test(ep1.name), 'bölüm indirmesi sıraya eklendi: ' + ep1.name);
+  await page.waitForFunction(() => document.querySelectorAll('.epi-w')[0].querySelector('[data-dl] svg'));
+  await page.click('#sr-dls');
+  await page.waitForSelector('.dl-sheet');
+  ok(/2 bölüm indirilecek/.test(await page.textContent('.dl-what')) && /1 bölüm zaten/.test(await page.textContent('.dl-what')), 'sezon penceresi yalnız eksik bölümleri sayıyor: ' + (await page.textContent('.dl-what')));
+  await page.click('#dl-go');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.waitForFunction((n) => window.__dl.calls.filter((c) => c[0] === 'start').length === n + 3, nStart0);
+  const sNames = (await dlCalls('start')).slice(-3).map((x) => x.name.replace(/^.* · /, ''));
+  ok(sNames.length === 3 && new Set(sNames).size === 3, 'sezonun kalan iki bölümü de sıraya girdi (aynı bölüm iki kez eklenmedi)');
+  await page.waitForFunction(() => /0\/3 indirildi/.test(document.querySelector('#sr-dls').textContent));
+  ok(true, 'sezon düğmesi “0/3 indirildi” gösteriyor');
+  await sleep(400);
+  await page.screenshot({ path: path.join(SHOTS, '43-dizi-indirme.png') });
+  const sj = await page.evaluate(() => [...window.__dl.jobs.keys()].slice(-3));
+  for (const id of sj) await page.evaluate((x) => window.__dlStep(x, { state: 'done', bytes: 1000 }), id);
+  await page.waitForFunction(() => /Sezon 1 indirildi/.test(document.querySelector('#sr-dls').textContent));
+  ok(true, 'hepsi bitince “Sezon 1 indirildi”');
+  await page.click('.epi-w >> nth=1 >> [data-dl]');
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'play').pop()[1].startsWith('file:///dl/'));
+  ok(true, 'indirilmiş bölüm simgesine dokununca yerel dosyadan oynadı');
+  ok(/S1 B2/.test(await page.textContent('#pl-sub')), 'oynatıcıda bölüm etiketi: ' + (await page.textContent('#pl-sub')));
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+  // yatay telefon: yedi kısayol tek satıra sığar
+  ({ page, ctx, errs } = await newPage({ width: 844, height: 390 }, nativeInit));
+  await page.addInitScript(dlInit);
+  await page.reload();
+  await page.waitForSelector('#f');
+  await page.fill('input[name=server]', mock.url);
+  await page.fill('input[name=user]', 'u');
+  await page.fill('input[name=pass]', 'p');
+  await page.click('#f-go');
+  await page.waitForSelector('.shortcuts .tile', { timeout: 15000 });
+  const dlsc = await page.$$eval('.shortcuts .tile', (e) => e.map((x) => { const r = x.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.right), Math.round(r.width)]; }));
+  ok(dlsc.length === 7 && dlsc.every((r) => r[0] === dlsc[0][0]) && dlsc.every((r) => r[1] <= 844), 'yatay ekranda yedi kısayol tek satırda ve ekrana sığıyor: ' + JSON.stringify(dlsc));
+  await page.screenshot({ path: path.join(SHOTS, '44-indirme-yatay-ana-ekran.png') });
   await ctx.close();
 
   await browser.close();

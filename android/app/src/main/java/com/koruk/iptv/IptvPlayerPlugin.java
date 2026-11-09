@@ -170,6 +170,15 @@ public class IptvPlayerPlugin extends Plugin {
             o.put("key", name);
             main.post(() -> notifyListeners("remote", o));
         });
+        // İndirme ilerlemesi/durumu (hizmet arka planda çalışır; uygulama açıkken sayfaya iletilir)
+        Downloads.setListener(job -> {
+            try {
+                JSObject o = new JSObject(job.toString());
+                main.post(() -> notifyListeners("dlProgress", o));
+            } catch (JSONException ignored) {
+                // geçersiz JSON üretilemez
+            }
+        });
         // Eski geçici indirmeleri temizle
         io.execute(() -> {
             File[] files = getContext().getCacheDir().listFiles();
@@ -1218,6 +1227,85 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // ------------------------------------------------------------------ çevrimdışı indirmeler
+
+    // Yeni indirme: {id, url, headers, name, ext, meta, wifiOnly} → işin durumu. Sıraya girer, hizmet arka planda indirir.
+    @PluginMethod
+    public void dlStart(final PluginCall call) {
+        final JSObject data = call.getData();
+        io.execute(() -> {
+            try {
+                call.resolve(new JSObject(Downloads.add(getContext(), data).toString()));
+            } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    // {items: [iş durumları], freeBytes, usedBytes}
+    @PluginMethod
+    public void dlList(final PluginCall call) {
+        io.execute(() -> {
+            try {
+                JSArray items = new JSArray();
+                for (JSONObject o : Downloads.list(getContext())) items.put(o);
+                File dir = Downloads.dirOf(getContext());
+                JSObject res = new JSObject();
+                res.put("items", items);
+                res.put("freeBytes", dir.getUsableSpace());
+                res.put("usedBytes", Downloads.usedBytes(getContext()));
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void dlPause(final PluginCall call) {
+        final String id = call.getData().optString("id", "");
+        io.execute(() -> {
+            Downloads.pause(getContext(), id);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void dlPauseAll(final PluginCall call) {
+        io.execute(() -> {
+            Downloads.pauseAll(getContext());
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void dlResume(final PluginCall call) {
+        final String id = call.getData().optString("id", "");
+        io.execute(() -> {
+            Downloads.resume(getContext(), id);
+            call.resolve();
+        });
+    }
+
+    // Uygulama açılışı: yarım kalanları sürdürür; {paused:true} → kullanıcının durdurduklarını da başlatır.
+    @PluginMethod
+    public void dlResumeAll(final PluginCall call) {
+        final boolean paused = call.getData().optBoolean("paused", false);
+        io.execute(() -> {
+            Downloads.resumeAll(getContext(), paused);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void dlRemove(final PluginCall call) {
+        final String id = call.getData().optString("id", "");
+        io.execute(() -> {
+            Downloads.remove(getContext(), id);
+            call.resolve();
+        });
+    }
+
     // ------------------------------------------------------------------ olaylar
 
     private void emitState() {
@@ -2217,6 +2305,7 @@ public class IptvPlayerPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         if (activePlugin == this) activePlugin = null;
+        Downloads.setListener(null);
         main.removeCallbacksAndMessages(null);
         if (cast != null) cast.stop();
         holdMulticast(false);

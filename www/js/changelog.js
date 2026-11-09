@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 31,
+    title: 'Çevrimdışı izleme: film ve bölüm indirme',
+    items: [
+      'Film sayfasında “İndir”, dizide her bölümün yanındaki simge ve “Sezonu indir” ile internetsiz izlemek için indirin; hepsi Ayarlar › İndirilenler’de',
+      'İndirme arka planda ve bildirimle sürer: sırayla iner, duraklatılabilir, bağlantı kopsa da kaldığı yerden devam eder',
+      'Aynı filmin 4K / FHD / SD gibi sürümleri listede varsa indirirken sürümü seçersiniz; “Yalnız Wi-Fi’de indir” seçeneği vardır',
+      'Dosya olduğu gibi iner: ses dilini ve altyazıyı izlerken seçersiniz. Canlı ve parçalı (m3u8) yayınlar indirilemez',
+    ],
+  },
+  {
     id: 30,
     title: 'Çocuk profili, tüm kaynaklarda arama, otomatik eşitleme',
     items: [
