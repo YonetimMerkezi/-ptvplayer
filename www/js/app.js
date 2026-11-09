@@ -42,7 +42,7 @@ import { PLAYER_ACTIONS, HOME_ACTIONS, DEFAULT_PLAYER, DEFAULT_HOME, COLORS, nor
 import { watchNextItems, watchNextPayload, parseDeepLink } from './tvhome.js';
 import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
-import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
+import { AUTO_CHECK_MS, LAUNCH_CHECK_MS, checkUpdate, explainError, fmtMB, isNewer, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 import { checkStreamHealth } from './health.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
 import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
@@ -81,7 +81,7 @@ function applyFontScale() {
 applyFontScale();
 applyTheme(store.pref('set.theme', DEFAULT_THEME));
 let VERSION = 'geliştirme';
-import('./version.js').then((m) => { VERSION = m.VERSION; if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
+import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
 const S = {
   source: null,
@@ -1715,10 +1715,9 @@ function renderHome(v) {
   const favN = store.favs(sid()).length;
   const recN = store.recents(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
-  const chip = upd && upd.status === 'available' ? `<button class="btn sm" id="h-upd-chip">${icon('refresh')}Yeni sürüm</button>` : '';
   const catN = S.groups.live.length + S.groups.movie.length + S.groups.series.length;
   v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div>${chip}<div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
     <div class="hero"><div class="hero-t"><small>Hoş Geldiniz</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
     <div class="tiles">
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
@@ -1743,7 +1742,6 @@ function renderHome(v) {
     }
     if (e.target.closest('#h-search')) return globalSearch();
     if (e.target.closest('#h-set')) return setTab('sources');
-    if (e.target.closest('#h-upd-chip')) return upd && updateSheet(upd);
     if (e.target.closest('#h-src')) return kidActive() ? undefined : store.sources().length ? sourceSwitcher() : sourceForm();
     const t = e.target.closest('[data-go]');
     if (t) goTo(t.dataset.go);
@@ -3304,28 +3302,58 @@ function healthDetail(item, results, changed, note = () => {}) {
 
 let upd = null; // son denetimin sonucu
 let updBusy = false;
+let updNoteOff = false; // şerit bu açılış için kapatıldı
 
-async function checkForUpdate({ manual = false } = {}) {
+// Yeni sürüm varsa ekranın üstünde bildirim şeridi: “Güncelle” pencereyi açar, × bu açılış için gizler.
+function updNote() {
+  const el = $('#upd-note');
+  if (!el) return;
+  const show = !!upd && upd.status === 'available' && !updNoteOff; // çocuk modunda CSS gizler
+  el.hidden = !show;
+  el.innerHTML = show
+    ? `<span class="un-t">${icon('refresh')}<span>Yeni sürüm <b>${esc(upd.name)}</b> hazır</span></span><button class="btn sm" id="upd-note-go">Güncelle</button><button class="btn sm ghost" id="upd-note-x" aria-label="Kapat">${icon('close')}</button>`
+    : '';
+}
+
+// Önceki denetimde bulunan yeni sürüm hatırlanır: şerit açılışta hemen (ağ beklemeden) görünür.
+function restoreUpd() {
+  const last = store.pref('upd.last', null);
+  if (!last || upd || !isNewer(last.code, versionCodeOf(VERSION))) return;
+  upd = { status: 'available', local: versionCodeOf(VERSION), ...last };
+  updNote();
+}
+
+// launch: açılışta denetler (yalnız son denetim bir dakikadan eskiyse); uygulamaya geri dönüşlerde 6 saatte bir.
+async function checkForUpdate({ manual = false, launch = false } = {}) {
   if (updBusy) return;
   if (!nativePlugin) return manual ? toast('Güncelleme yalnızca Android uygulamasında kullanılır') : undefined;
-  if (!manual && !shouldAutoCheck(store.pref('upd.at', 0))) return;
+  if (!manual && !shouldAutoCheck(store.pref('upd.at', 0), Date.now(), launch ? LAUNCH_CHECK_MS : AUTO_CHECK_MS)) return;
   updBusy = true;
   try {
     const r = await checkUpdate({ net, localVersion: VERSION });
     store.setPref('upd.at', Date.now());
     if (r.status === 'unsupported') return manual ? toast('Bu geliştirme sürümünde güncelleme denetimi yok') : undefined;
     upd = r;
-    if (r.status === 'available') {
-      if (S.tab === 'home' && S.source) renderTab(); // “Yeni sürüm” düğmesi görünsün
-      const busy = pui.isOpen() || pui.isPreviewing();
-      if (manual || (!busy && store.pref('upd.skip', 0) !== r.code)) updateSheet(r);
-    } else if (manual) toast(`Uygulama güncel (sürüm ${r.name})`);
+    store.setPref('upd.last', r.status === 'available' ? { code: r.code, name: r.name, size: r.size, notes: r.notes, apkUrl: r.apkUrl } : null);
+    updNote();
+    if (manual) {
+      if (r.status === 'available') updateSheet(r);
+      else toast(`Uygulama güncel (sürüm ${r.name})`);
+    }
   } catch (e) {
     if (manual) toast('Güncelleme denetlenemedi: ' + explainError(e), 4500);
   } finally {
     updBusy = false;
   }
 }
+
+$('#upd-note').addEventListener('click', (e) => {
+  if (e.target.closest('#upd-note-x')) {
+    updNoteOff = true;
+    return updNote();
+  }
+  if (e.target.closest('#upd-note-go') && upd) updateSheet(upd);
+});
 
 function updateSheet(info) {
   let path = null;
@@ -3337,10 +3365,7 @@ function updateSheet(info) {
       const go = $('#up-go', body);
       const bar = $('#up-bar', body);
       const msg = $('#up-msg', body);
-      $('#up-later', body).addEventListener('click', () => {
-        store.setPref('upd.skip', info.code);
-        api.close();
-      });
+      $('#up-later', body).addEventListener('click', () => api.close());
       const install = async () => {
         go.disabled = true;
         try {
@@ -4344,7 +4369,7 @@ setTimeout(syncPlans, 2500); // alarmları kayıtlı listeyle eşitle (yeniden b
 if (nativePlugin) setTimeout(() => dlLoad().then(() => engine.dl.resumeAll(false)).catch(() => {}), 2000);
 
 initNav();
-window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ayıklama ve uçtan uca testler için
+window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdate, restoreUpd }; // hata ayıklama ve uçtan uca testler için
 
 (async function boot() {
   if (lockEnabled()) lockApp(); // açılışta şifre ekranı
@@ -4356,7 +4381,7 @@ window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ay�
     renderTab();
     return sourceForm();
   }
-  setTimeout(() => checkForUpdate(), 4000); // açılışta sessizce yeni sürüm var mı bak
+  setTimeout(() => checkForUpdate({ launch: true }), 2500); // açılışta yeni sürüm var mı bak; varsa üstte şerit çıkar
   setTimeout(() => maybeWhatsNew(), 1800);
   await activate(src.id);
 })();

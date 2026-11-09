@@ -100,6 +100,7 @@ export async function checkUpdate({ net, localVersion, base = UPDATE_BASE, fallb
 
 export const fmtMB = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`.replace('.', ',');
 
-// Otomatik denetimin sıklığı: en çok 6 saatte bir.
+// Otomatik denetimin sıklığı: uygulamaya geri dönüşlerde en çok 6 saatte bir; açılışta en çok dakikada bir.
 export const AUTO_CHECK_MS = 6 * 3600e3;
-export const shouldAutoCheck = (lastAt, now = Date.now()) => !lastAt || now - lastAt > AUTO_CHECK_MS;
+export const LAUNCH_CHECK_MS = 60e3;
+export const shouldAutoCheck = (lastAt, now = Date.now(), every = AUTO_CHECK_MS) => !lastAt || now - lastAt > every;

@@ -2886,6 +2886,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.route('**/releases/download/latest/version.json*', (r) => (mainDown ? r.fulfill({ status: 504, headers: cors, body: 'gateway timeout' }) : r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(manifest) })));
   await page.route('**/releases/latest/download/version.json*', (r) => (fallbackDown ? r.fulfill({ status: 504, headers: cors, body: 'gateway timeout' }) : r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(manifest) })));
   await page.evaluate(() => { window.__iptv.store.setPref('upd.at', Date.now()); window.__iptv.setVersion('1.0.5'); }); // otomatik denetim araya girmesin
+  ok(await page.isHidden('#upd-note'), 'yeni sürüm bilinmiyorsa bildirim şeridi yok');
+  // açılış denetimi: yeni sürüm varsa üstte şerit çıkar, büyük pencere kendiliğinden açılmaz
+  await page.evaluate(() => { window.__iptv.store.setPref('upd.at', 0); return window.__iptv.checkForUpdate({ launch: true }); });
+  await page.waitForSelector('#upd-note:not([hidden])', { timeout: 10000 });
+  ok(/1\.0\.9/.test(await page.textContent('#upd-note')) && (await page.$('.sheet-back')) === null, 'açılışta yeni sürüm şeritle bildirildi, pencere kendiliğinden açılmadı');
+  ok((await page.evaluate(() => window.__iptv.store.pref('upd.last', null))).code === 9, 'bulunan yeni sürüm hatırlandı (sonraki açılışta ağ beklemeden gösterilir)');
+  await sleep(400);
+  await page.screenshot({ path: path.join(SHOTS, '12a-guncelleme-seridi.png') });
+  await page.click('#upd-note-go');
+  await page.waitForSelector('#up-go', { timeout: 10000 });
+  ok(/1\.0\.9/.test(await page.textContent('.sheet')), 'şeritteki “Güncelle” güncelleme penceresini açtı');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('#upd-note-x');
+  ok(await page.isHidden('#upd-note'), '× şeridi bu açılış için gizledi');
+  // uygulama yeniden açılınca (ağdan önce) şerit hatırlanan sürümle hemen çıkar
+  await page.reload();
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => { window.__iptv.setVersion('1.0.5'); window.__iptv.store.setPref('upd.at', Date.now()); window.__iptv.restoreUpd(); }); // sürüm bilgisi yüklenince çalışan adım
+  ok(await page.isVisible('#upd-note') && /1\.0\.9/.test(await page.textContent('#upd-note')), 'yeniden açılışta şerit, hatırlanan sürümle ağ beklemeden göründü');
   await page.click('#tabs [data-tab=sources]');
   await page.waitForSelector('.set-grid');
   await page.click('[data-set=update]');
@@ -2908,12 +2928,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'installApk').length)) === 2 && (await page.evaluate(() => window.__calls.filter((c) => c[0] === 'downloadApk').length)) === 1, 'izinden dönünce yeniden indirilmeden kuruluma geçildi');
   await page.goBack();
   await page.waitForSelector('.sheet-back', { state: 'detached' });
-  // “Sonra” bu sürümü otomatik bildirimden çıkarır; elle denetimde yine görünür
+  // “Sonra” pencereyi kapatır; şerit ve ayarlardaki “Yeni sürüm var” karesi yerinde kalır
   await page.click('[data-set=update]');
   await page.waitForSelector('#up-later');
   await page.click('#up-later');
   await page.waitForSelector('.sheet-back', { state: 'detached' });
-  ok((await page.evaluate(() => window.__iptv.store.pref('upd.skip', 0))) === 9, '“Sonra” bu sürümü sessize aldı');
+  ok(/Yeni sürüm var/.test(await page.textContent('[data-set=update]')), '“Sonra”dan sonra yeni sürüm bilgisi korunuyor');
   // güncel sürüm: pencere açılmaz, bilgi verilir
   await page.reload();
   await page.waitForSelector('.tile', { timeout: 15000 });

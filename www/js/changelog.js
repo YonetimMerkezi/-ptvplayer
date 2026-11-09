@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 32,
+    title: 'Yeni sürüm bildirimi',
+    items: [
+      'Uygulama açılınca yeni sürüm varsa ekranın üstünde bildirim şeridi çıkar; “Güncelle”ye dokununca güncelleme açılır, × o açılış için gizler',
+      'Büyük “Yeni sürüm hazır” penceresi artık kendiliğinden açılmaz; yeni sürüm bilgisi bir sonraki açılışta ağ beklemeden hemen gösterilir',
+    ],
+  },
+  {
     id: 31,
     title: 'Çevrimdışı izleme: film ve bölüm indirme',
     items: [

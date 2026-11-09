@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { versionCodeOf, parseManifest, isNewer, checkUpdate, fmtMB, shouldAutoCheck, AUTO_CHECK_MS, UPDATE_BASE, UPDATE_FALLBACKS, isTransient, explainError, retry } from '../www/js/update.js';
+import { versionCodeOf, parseManifest, isNewer, checkUpdate, fmtMB, shouldAutoCheck, AUTO_CHECK_MS, LAUNCH_CHECK_MS, UPDATE_BASE, UPDATE_FALLBACKS, isTransient, explainError, retry } from '../www/js/update.js';
 
 test('sürüm numarası "1.0.N" biçiminden çıkarılır, tanınmayan 0 olur', () => {
   assert.equal(versionCodeOf('1.0.57'), 57);
@@ -57,6 +57,9 @@ test('boyut biçimi ve otomatik denetim sıklığı', () => {
   assert.equal(shouldAutoCheck(0), true);
   assert.equal(shouldAutoCheck(1000, 1000 + AUTO_CHECK_MS - 1), false);
   assert.equal(shouldAutoCheck(1000, 1000 + AUTO_CHECK_MS + 1), true);
+  // açılışta sıklık sınırı bir dakika
+  assert.equal(shouldAutoCheck(1000, 1000 + LAUNCH_CHECK_MS - 1, LAUNCH_CHECK_MS), false);
+  assert.equal(shouldAutoCheck(1000, 1000 + LAUNCH_CHECK_MS + 1, LAUNCH_CHECK_MS), true);
 });
 
 const noSleep = () => {
