@@ -11,15 +11,20 @@
 <script>
 // Açılışta bir betik hatası olursa sessiz kalmak yerine ekranda göster.
 (function () {
+  var hideTimer = 0;
   function show(msg) {
     var d = document.getElementById('diag');
     if (!d) {
       d = document.createElement('pre');
       d.id = 'diag';
-      d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;margin:0;padding:12px;max-height:45%;overflow:auto;background:#3a1d22;color:#fecaca;font:12px/1.4 monospace;white-space:pre-wrap';
+      d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;margin:0;padding:12px;max-height:45%;overflow:auto;background:#3a1d22;color:#fecaca;font:12px/1.4 monospace;white-space:pre-wrap;cursor:pointer';
+      d.title = 'Kapatmak için dokunun';
+      d.addEventListener('click', function () { d.remove(); clearTimeout(hideTimer); });
       (document.body || document.documentElement).appendChild(d);
     }
     d.textContent += msg + '\n';
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () { if (d.isConnected) d.remove(); }, 8000);
   }
   window.addEventListener('error', function (e) { show('Hata: ' + (e.message || 'bilinmeyen') + (e.filename ? '\n' + e.filename.split('/').slice(-2).join('/') + ':' + e.lineno : '')); });
   window.addEventListener('unhandledrejection', function (e) { show('Hata: ' + ((e.reason && e.reason.message) || e.reason)); });

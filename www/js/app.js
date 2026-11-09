@@ -1997,11 +1997,23 @@ function guidePage() {
         const it = S.idx.live.get(b.dataset.id);
         if (it) epgSheet(it);
       });
-      $('#guide-refresh', body).addEventListener('click', async (e) => {
-        e.currentTarget.disabled = true;
-        e.currentTarget.textContent = 'Yenileniyor…';
-        await maybeRefreshEpg(true);
-        if (body.isConnected) { e.currentTarget.disabled = false; e.currentTarget.textContent = 'EPG yenile'; draw(); }
+      const refreshButton = $('#guide-refresh', body);
+      refreshButton.addEventListener('click', async () => {
+        if (refreshButton.disabled) return;
+        refreshButton.disabled = true;
+        refreshButton.textContent = 'Yenileniyor…';
+        try {
+          await maybeRefreshEpg(true);
+          if (body.isConnected) draw();
+        } catch (error) {
+          toast('EPG yenilenemedi: ' + ((error && error.message) || 'Bilinmeyen hata'), 3500);
+        } finally {
+          // await sonrasında event.currentTarget null olur; buton referansını önceden sakla.
+          if (body.isConnected && refreshButton.isConnected) {
+            refreshButton.disabled = false;
+            refreshButton.textContent = 'EPG yenile';
+          }
+        }
       });
       draw();
     },
