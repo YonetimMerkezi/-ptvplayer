@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fitSlots, createSlotSupervisor } from '../www/js/multi.js';
 import { holeClip } from '../www/js/hole.js';
+import { retryPolicy } from '../www/js/retry.js';
 
 test('kayıtlı kanallar kutu sayısına sığdırılır', () => {
   assert.deepEqual(fitSlots(['a', 'b', 'c', 'd'], 2), ['a', 'b']);
@@ -46,7 +47,7 @@ test('holeClip: birden çok delik yalnız kendi dikdörtgenlerini açar', () => 
   }
 });
 
-function supSetup() {
+function supSetup(policy) {
   const log = [];
   let t = 0;
   const timers = {
@@ -61,6 +62,7 @@ function supSetup() {
   const sup = createSlotSupervisor({
     restart: (slot, rotate) => { log.push(['restart', slot, rotate]); sup.begin(slot, 2); },
     status: (slot, st, msg, n) => log.push(['status', slot, st, msg, n]),
+    ...(policy ? { policy } : {}),
     timers,
     now: () => t,
   });
@@ -196,4 +198,14 @@ test('kutu bekçisi: görüntü biçimi cihazca desteklenmiyorsa yedek adres yok
   b.sup.event(0, 'video', '', { has: true, supported: false, info: 'hevc' });
   b.timers.fire();
   assert.deepEqual(restarts(b.log), [['restart', 0, true]], 'yedek adrese geçildi');
+});
+
+test('kutu bekçisi: yeniden bağlanma kapalıysa kopan kutu hemen hata gösterir', () => {
+  const { sup, log, timers } = supSetup(() => retryPolicy({ reconnect: 'off' }));
+  sup.begin(0, 1);
+  sup.event(0, 'playing');
+  sup.event(0, 'error', 'koptu');
+  assert.equal(restarts(log).length, 0);
+  assert.ok(log.some((l) => l[0] === 'status' && l[2] === 'error'));
+  assert.equal(timers.lastMs(), null);
 });

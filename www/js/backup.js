@@ -1,9 +1,9 @@
 // Yedekle / geri yükle: kaynaklar (kullanıcı adı/parola dahil), favoriler, son izlenenler, ilerleme, kategori düzeni ve ayarlar.
-// Yedeğe girmeyenler: uygulama şifresi, "çalışmıyor" işaretleri, TV eşleşmeleri ve dosyadan eklenen listeler (içeriği cihazda).
+// Yedeğe girmeyenler: uygulama şifresi, "çalışmıyor" işaretleri ve yayın kalitesi geçmişi, TV eşleşmeleri ve dosyadan eklenen listeler (içeriği cihazda).
 export const BACKUP_APP = 'iptv-oynatici';
 export const BACKUP_VERSION = 1;
 
-const SKIP = [/^pref\.lock\./, /^pref\.bad\./, /^pref\.cast\./];
+const SKIP = [/^pref\.lock\./, /^pref\.bad\./, /^pref\.hhist\./, /^pref\.cast\./];
 const PER_SOURCE = /^(fav|rec|prog|cats)\.(.+)$/;
 const skipped = (k) => SKIP.some((re) => re.test(k));
 

@@ -467,6 +467,37 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.sheet-back', { state: 'detached' });
   await page.waitForSelector('.row.cat.edit .nm:has-text("Haber saati")');
   ok(true, 'klasör yeniden adlandırıldı');
+  // klasör içi sıra: boş/tek öğeli klasörde düğme kapalı, çok öğelide yukarı/aşağı/en üste taşıma kalıcı
+  await page.click('.row.cat.edit:has-text("Haber saati")');
+  await page.waitForSelector('#fm-ord');
+  ok(await page.$eval('#fm-ord', (b) => b.disabled), 'boş klasörde “Sırayı düzenle” kapalı');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  const fo = await page.evaluate(() => {
+    const { S, store } = window.__iptv;
+    const p = store.catPrefs(S.source.id, 'live');
+    const f = p.folders.find((x) => x.name === 'Haber saati');
+    const three = S.cat.live.slice(0, 3);
+    f.items = three.map((c) => c.id);
+    store.setCatPrefs(S.source.id, 'live', p);
+    return { ids: f.items.slice(), names: three.map((c) => c.name) };
+  });
+  await page.click('.row.cat.edit:has-text("Haber saati")');
+  await page.click('#fm-ord');
+  await page.waitForSelector('.fo-row');
+  const foNames = () => page.$$eval('.fo-row .t', (e) => e.map((x) => x.textContent.replace(/^\d+\.\s*/, '')));
+  const foIds = () => page.evaluate(() => { const { S, store } = window.__iptv; return store.catPrefs(S.source.id, 'live').folders.find((x) => x.name === 'Haber saati').items; });
+  ok(JSON.stringify(await foNames()) === JSON.stringify(fo.names), 'sıra penceresi klasör öğelerini kayıtlı sırayla listeliyor');
+  await page.click('.fo-row:nth-child(3) [data-m=top]');
+  ok(JSON.stringify(await foNames()) === JSON.stringify([fo.names[2], fo.names[0], fo.names[1]]), '“En üste al” üçüncü öğeyi başa taşıdı');
+  await page.click('.fo-row:nth-child(1) [data-m=down]');
+  ok(JSON.stringify(await foNames()) === JSON.stringify([fo.names[0], fo.names[2], fo.names[1]]), '“Aşağı” öğeyi bir basamak indirdi');
+  await page.click('.fo-row:nth-child(3) [data-m=up]');
+  ok(JSON.stringify(await foIds()) === JSON.stringify([fo.ids[0], fo.ids[1], fo.ids[2]]), '“Yukarı” ile sıra geri döndü ve klasör kaydı güncel: ' + JSON.stringify(await foIds()));
+  await page.click('.fo-row:nth-child(2) [data-m=top]');
+  ok(JSON.stringify(await foIds()) === JSON.stringify([fo.ids[1], fo.ids[0], fo.ids[2]]), 'klasör sırası kalıcı kaydedildi');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
   await page.click('.row.cat.edit:has-text("Haber saati")');
   await page.click('#fm-del');
   await page.click('#fm-yes');
@@ -978,6 +1009,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         return { path: p, size: 1 };
       },
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
+      // Yayın bilgisi: gerçek eklenti ExoPlayer ölçümlerini verir
+      getStats: async () => {
+        window.__statsN = (window.__statsN || 0) + 1;
+        return window.__stats || { bufferMs: 12400, width: 1280, height: 720, fps: 25, videoBps: 3500000, audioBps: 128000, bandwidthBps: 8200000, videoCodec: 'avc1.64001f', audioCodec: 'mp4a.40.2', dropped: 2, rendered: 1000 };
+      },
       // Planlananlar: yerel alarm listesi (gerçek eklentide AlarmManager); izin durumu testten değiştirilebilir
       planSync: async (a) => {
         window.__plans = a.plans || [];
@@ -1867,6 +1903,45 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => document.querySelectorAll('#health-list .row').length > 0);
   ok(await page.$$eval('#health-list .row', (r) => r.length > 0 && r.every((x) => x.classList.contains('ok'))), '“Çalışan” süzgeci yalnız çalışanları gösteriyor');
   await page.click('#health-f [data-f=all]');
+  // çalışmayanları gizle: vazgeç hiçbir şey yapmaz, gizle kanalları katalogdan süzer, “Gizlenenler”den geri gelir
+  const hsum = /Çalışan (\d+) · Çalışmayan (\d+)/.exec(await page.textContent('#health-sum'));
+  const badN = Number(hsum[2]);
+  ok(badN >= 1 && (await page.isVisible('#health-hide')) && new RegExp('Çalışmayanları gizle \\(' + badN + '\\)').test(await page.textContent('#health-hide')), '“Çalışmayanları gizle” düğmesi çalışmayan sayısını gösteriyor (' + badN + ')');
+  ok(!(await page.isVisible('#health-hidden')), 'gizlenen yokken “Gizlenenler” düğmesi görünmüyor');
+  const live0 = await page.evaluate(() => window.__iptv.S.cat.live.length);
+  await page.click('#health-hide');
+  await page.waitForSelector('#hh-yes');
+  ok(new RegExp(badN + ' çalışmayan kanal').test(await page.textContent('.sheet')), 'onay penceresi kaç kanalın gizleneceğini söylüyor');
+  await page.click('#hh-no');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  ok((await page.evaluate(() => window.__iptv.S.cat.live.length)) === live0, 'Vazgeç hiçbir kanalı gizlemedi');
+  await page.click('#health-hide');
+  await page.click('#hh-yes');
+  await page.waitForFunction((n) => window.__iptv.S.cat.live.length === n, live0 - badN, { timeout: 4000 });
+  ok(true, badN + ' çalışmayan kanal katalogdan kalktı (' + live0 + ' → ' + (live0 - badN) + ')');
+  ok(await page.evaluate(() => window.__iptv.S.rawCat.live.length) === live0, 'kaynak verisi silinmedi, yalnız süzüldü');
+  await page.waitForFunction((n) => new RegExp('\\(' + n + '\\)\\s*$').test(document.querySelector('#health-cat option:checked').textContent), catN - badN, { timeout: 3000 });
+  ok(true, 'kategori sayısı güncellendi (' + catN + ' → ' + (catN - badN) + ')');
+  ok(await page.isVisible('#health-hidden') && new RegExp('Gizlenenler \\(' + badN + '\\)').test(await page.textContent('#health-hidden')), '“Gizlenenler (' + badN + ')” düğmesi göründü');
+  ok(!(await page.isVisible('#health-hide')), 'gizlendikten sonra çalışmayan kalmadığı için gizle düğmesi kapandı');
+  const hid = await page.evaluate(() => {
+    const { S, store } = window.__iptv;
+    const map = store.pref('hidch.' + S.source.id, {});
+    const ids = Object.keys(map);
+    return { n: ids.length, gone: ids.every((id) => !S.cat.live.some((c) => String(c.id) === id)), kept: ids.every((id) => S.rawCat.live.some((c) => String(c.id) === id)) };
+  });
+  ok(hid.n === badN && hid.gone && hid.kept, 'gizlenenler kaynağa bağlı kalıcı kayıtta (' + hid.n + '), katalogda yok, ham veride duruyor');
+  await page.click('#health-hidden');
+  await page.waitForSelector('#hc-all');
+  ok((await page.$$('.sheet [data-back]')).length === badN, 'Gizlenenler penceresi her kanalı adıyla listeliyor');
+  await page.click('.sheet [data-back]');
+  await page.waitForFunction((n) => window.__iptv.S.cat.live.length === n, live0 - badN + 1, { timeout: 3000 });
+  ok(true, 'tek kanal geri getirildi');
+  await page.click('#hc-all');
+  await page.waitForFunction((n) => window.__iptv.S.cat.live.length === n, live0, { timeout: 3000 });
+  ok(true, '“Hepsini geri getir” tüm kanalları geri getirdi');
+  await page.waitForSelector('.sheet-back', { state: 'detached', timeout: 3000 });
+  ok(!(await page.isVisible('#health-hidden')), 'hepsi dönünce “Gizlenenler” düğmesi kalktı');
   // dar dikey ekran: yatay taşma yok, özet satıra sığmazsa alta iner
   const vp0 = page.viewportSize();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1896,6 +1971,123 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.keyboard.press('Escape');
   await page.waitForSelector('.health-pg', { state: 'detached' });
   ok(true, 'Geri yayın kalitesi sayfasını kapattı');
+  // geçmiş: sonuçlar kalıcı saklanır, sayfa yeniden açılınca satırda “Son test” görünür
+  await page.waitForFunction(() => Object.keys(localStorage).some((k) => k.startsWith('iptv.pref.hhist.')), null, { timeout: 6000 });
+  ok(true, 'test sonuçları saklandı');
+  await page.click('[data-set=health]');
+  await page.waitForSelector('#health-cat');
+  await page.selectOption('#health-cat', cat[0]);
+  await page.waitForSelector('#health-list .row.hs.old', { timeout: 4000 });
+  ok(/^Son test .+ · (çalışıyordu|çalışmıyordu)/.test((await page.textContent('#health-list .row.hs.old .sub')).trim()), 'yeniden açılınca satırda önceki testin sonucu yazıyor: ' + (await page.textContent('#health-list .row.hs.old .sub')).trim());
+  ok(/Çalışan \d+ · Çalışmayan \d+/.test(await page.textContent('#health-sum')), 'özet önceki sonuçlardan hesaplandı: ' + (await page.textContent('#health-sum')).trim());
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.health-pg', { state: 'detached' });
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 9b. yeniden bağlanma ayarı, yedek kanal ayarı, yayın bilgisi
+  console.log('Yeniden bağlanma, yedek kanal, yayın bilgisi');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/alt.m3u');
+  await page.fill('input[name=name]', 'Yedekli');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  const prefOf = (k, d) => page.evaluate(([k2, d2]) => window.__iptv.store.pref(k2, d2), [k, d]);
+  const playUrls = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').map((c) => c[1]));
+  // ayarlar: seçimler kaydedilir
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('#g-rc');
+  ok(await page.$eval('.chk[data-k=altCh]', (b) => b.classList.contains('on')), '“Açılmayan kanal yerine yedek kanalı dene” varsayılan açık');
+  ok((await page.$$eval('#g-rc option', (o) => o.map((x) => x.value).join())) === 'normal,endless,off', 'yeniden bağlanma seçenekleri: normal, sürekli, kapalı');
+  ok((await page.$$eval('#g-stall option', (o) => o.map((x) => x.value).join())) === 'fast,normal,patient', 'takılma süresi seçenekleri: hızlı, normal, sabırlı');
+  await page.selectOption('#g-rc', 'off');
+  await page.selectOption('#g-stall', 'fast');
+  ok((await prefOf('set.reconnect', 'normal')) === 'off' && (await prefOf('set.stall', 'normal')) === 'fast', 'seçimler kalıcı kaydedildi');
+  await page.click('.chk[data-k=altCh]');
+  ok((await prefOf('set.altCh', true)) === false, 'yedek kanal denemesi kapatıldı');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('#btn-home');
+  // yedek kanal kapalı: açılmayan kanal yalnız kendi adresini dener
+  await page.click('.tile.t-live');
+  await page.waitForSelector('.row.cat');
+  await page.click('.row.cat:has-text("Haber")');
+  await page.waitForSelector('.row:not(.cat)');
+  await page.evaluate(() => { window.__noPlay = true; });
+  await page.click('.row:not(.cat):has-text("Yedekli Kanal HD") .nm');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  await page.evaluate(() => window.__emit('error', { message: 'ERROR_CODE_IO_BAD_HTTP_STATUS' }));
+  await page.waitForSelector('#pl-retry', { timeout: 3000 });
+  await sleep(600);
+  const off1 = await playUrls();
+  ok(off1.length === 1 && /bozuk\.m3u8$/.test(off1[0]), 'yedek kanal kapalıyken yalnız kanalın kendi adresi denendi (' + off1.length + ' deneme)');
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  // yedek kanal açık: aynı adlı kanalın adresine geçilir
+  await page.evaluate(() => window.__iptv.store.setPref('set.altCh', true));
+  await page.evaluate(() => { window.__calls.length = 0; window.__noPlay = true; });
+  await page.click('.row:not(.cat):has-text("Yedekli Kanal HD") .nm');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  await page.evaluate(() => window.__emit('error', { message: 'ERROR_CODE_IO_BAD_HTTP_STATUS' }));
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'play').length >= 2, null, { timeout: 3000 });
+  const on1 = await playUrls();
+  ok(on1.length === 2 && /bozuk\.m3u8$/.test(on1[0]) && /\/7\.m3u8$/.test(on1[1]), 'yedek kanal açıkken ikinci deneme yedek kanalın adresi: ' + on1.map((u) => u.split('/').pop()).join(' → '));
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  // yeniden bağlanma kapalı: oynarken kopunca hemen hata gösterilir, yeniden denenmez
+  await page.evaluate(() => { window.__calls.length = 0; window.__noPlay = false; });
+  await page.click('.row:not(.cat):has-text("Başka Kanal") .nm');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
+  await sleep(400);
+  await page.evaluate(() => {
+    window.__noPlay = true;
+    window.__emit('error', { message: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' });
+  });
+  await page.waitForSelector('#pl-retry', { timeout: 2000 });
+  await sleep(1300);
+  ok((await playUrls()).length === 1, 'yeniden bağlanma kapalıyken kopan yayına yeniden bağlanılmadı, hata gösterildi');
+  await page.evaluate(() => { window.__noPlay = false; });
+  await page.click('#pl-retry');
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'play').length === 2, null, { timeout: 3000 });
+  await page.waitForSelector('#pl-retry', { state: 'detached', timeout: 4000 });
+  ok(true, '“Yeniden dene” elle yeniden bağlandı');
+  // yeniden bağlanma normal: aynı kopma bu kez kendiliğinden yeniden denenir
+  await page.evaluate(() => window.__iptv.store.setPref('set.reconnect', 'normal'));
+  await sleep(400);
+  const nBefore = (await playUrls()).length;
+  await page.evaluate(() => {
+    window.__noPlay = true;
+    window.__emit('error', { message: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' });
+  });
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, nBefore, { timeout: 2500 });
+  ok(await page.$$eval('#pl-retry', (e) => e.length === 0), 'yeniden bağlanma “Normal”ken kopan yayın kendiliğinden yeniden denendi');
+  await page.evaluate(() => { window.__noPlay = false; });
+  await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
+  // yayın bilgisi paneli
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  ok(await page.$eval('#pl-stats-box', (b) => b.hidden), 'yayın bilgisi paneli kapalı başlıyor');
+  await page.click('#pl-stats');
+  await page.waitForFunction(() => !document.querySelector('#pl-stats-box').hidden && /1280×720/.test(document.querySelector('#pl-stats-box').textContent), null, { timeout: 4000 });
+  const sbox = (await page.textContent('#pl-stats-box')).replace(/\s+/g, ' ');
+  ok(/Durum.*Oynuyor/.test(sbox) && /Görüntü.*1280×720.*25 k\/sn.*H\.264/.test(sbox), 'panelde durum, çözünürlük, kare hızı ve codec var: ' + sbox.slice(0, 120));
+  ok(/Tampon.*12,4 sn/.test(sbox) && /Bit hızı.*3,5 Mb\/sn.*AAC/.test(sbox) && /Bağlantı hızı.*8,2 Mb\/sn/.test(sbox), 'tampon, bit hızı ve bağlantı hızı okunur biçimde');
+  ok(/Düşen kare.*2/.test(sbox), 'düşen kare sayısı görünüyor');
+  ok(await page.$eval('#pl-stats', (b) => b.classList.contains('on') && b.getAttribute('aria-pressed') === 'true'), 'düğme açık durumda işaretli');
+  const st0 = await page.evaluate(() => window.__statsN);
+  await page.evaluate(() => { window.__stats = { bufferMs: 1500, width: 1920, height: 1080, fps: 50, videoCodec: 'hvc1.1.6.L93', dropped: 0, rendered: 500 }; });
+  await page.waitForFunction(() => /1920×1080.*H\.265/.test(document.querySelector('#pl-stats-box').textContent), null, { timeout: 4000 });
+  ok((await page.evaluate(() => window.__statsN)) > st0 && (await page.$$eval('#pl-stats-box .lv-low', (e) => e.length)) === 1, 'panel her saniye yenileniyor, tampon azalınca uyarı renginde');
+  await page.screenshot({ path: path.join(SHOTS, '00i-yayin-bilgisi.png') });
+  await page.click('#pl-stats');
+  ok(await page.$eval('#pl-stats-box', (b) => b.hidden), 'düğmeye yeniden dokununca panel kapandı');
+  const st1 = await page.evaluate(() => window.__statsN);
+  await sleep(1500);
+  ok((await page.evaluate(() => window.__statsN)) === st1, 'panel kapalıyken ölçüm istenmiyor');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
@@ -2401,7 +2593,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(await page.$eval('[data-set=plans] svg use', (u) => u.getAttribute('href') === '#i-bell' && !!document.getElementById('i-bell')), 'Planlananlar kutucuğunda simge var');
   await page.click('[data-set=general]');
   await page.waitForSelector('.chk');
-  ok((await page.$$('.chk.on')).length === 3, 'genel ayarlarda üç seçenek açık');
+  ok((await page.$$('.chk.on')).length === 4, 'genel ayarlarda dört seçenek açık (yedek kanal dahil)');
+  ok((await page.inputValue('#g-rc')) === 'normal' && (await page.inputValue('#g-stall')) === 'normal', 'yeniden bağlanma ve takılma süresi varsayılan “Normal”');
   await page.click('.chk[data-k=epgRows]');
   ok(!(await page.evaluate(() => window.__iptv.store.pref('set.epgRows', true))), 'seçenek kapatılınca ayar kalıcı kaydedildi');
   await page.selectOption('#g-lim', '20');

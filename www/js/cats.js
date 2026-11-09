@@ -97,6 +97,18 @@ export function deleteFolder(prefs, id) {
   };
 }
 
+// Klasörde öğenin sırasını değiştirir: 'up' | 'down' | 'top' | 'bottom'. Klasör sırası "Varsayılan sıra" ile listede görünür.
+export function moveInFolder(prefs, id, itemId, dir) {
+  const f = prefs.folders.find((x) => x.id === id);
+  const i = f ? f.items.indexOf(itemId) : -1;
+  if (i < 0) return prefs;
+  const items = f.items.slice();
+  items.splice(i, 1);
+  const to = dir === 'top' ? 0 : dir === 'bottom' ? items.length : dir === 'up' ? Math.max(0, i - 1) : Math.min(items.length, i + 1);
+  items.splice(to, 0, itemId);
+  return { ...prefs, folders: prefs.folders.map((x) => (x.id === id ? { ...x, items } : x)) };
+}
+
 export const folderOf = (prefs, id) => prefs.folders.find((f) => f.id === id) || null;
 export const inFolder = (prefs, id, itemId) => {
   const f = folderOf(prefs, id);

@@ -46,6 +46,7 @@ import androidx.media3.common.VideoSize;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.analytics.AnalyticsListener;
@@ -53,6 +54,7 @@ import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
 
@@ -800,6 +802,47 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     // ------------------------------------------------------------------ ses / altyazı
+
+    // Oynatıcıdaki "Yayın bilgisi": tampon süresi, görüntü/ses biçimi, bit hızı, tahmini bağlantı hızı, düşen kare.
+    @PluginMethod
+    public void getStats(final PluginCall call) {
+        main.post(() -> {
+            JSObject o = new JSObject();
+            try {
+                if (player != null) {
+                    o.put("bufferMs", Math.max(0L, player.getTotalBufferedDuration()));
+                    Format v = player.getVideoFormat();
+                    if (v != null) {
+                        if (v.width > 0 && v.height > 0) {
+                            o.put("width", v.width);
+                            o.put("height", v.height);
+                        }
+                        if (v.frameRate > 0) o.put("fps", Math.round(v.frameRate * 10f) / 10.0);
+                        if (v.bitrate > 0) o.put("videoBps", v.bitrate);
+                        if (v.sampleMimeType != null) o.put("videoMime", v.sampleMimeType);
+                        if (v.codecs != null) o.put("videoCodec", v.codecs);
+                    }
+                    Format a = player.getAudioFormat();
+                    if (a != null) {
+                        if (a.bitrate > 0) o.put("audioBps", a.bitrate);
+                        if (a.sampleMimeType != null) o.put("audioMime", a.sampleMimeType);
+                        if (a.codecs != null) o.put("audioCodec", a.codecs);
+                    }
+                    DecoderCounters dc = player.getVideoDecoderCounters();
+                    if (dc != null) {
+                        dc.ensureUpdated();
+                        o.put("dropped", dc.droppedBufferCount);
+                        o.put("rendered", dc.renderedOutputBufferCount);
+                    }
+                    long bw = DefaultBandwidthMeter.getSingletonInstance(getContext()).getBitrateEstimate();
+                    if (bw > 0) o.put("bandwidthBps", bw);
+                }
+            } catch (Exception ignored) {
+                // ölçüm alınamadıysa eldeki alanlarla dönülür
+            }
+            call.resolve(o);
+        });
+    }
 
     @PluginMethod
     public void getTracks(final PluginCall call) {

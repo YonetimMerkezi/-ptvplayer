@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 26,
+    title: 'Bağlantı ayarları, yayın bilgisi ve kanal temizliği',
+    items: [
+      'Genel ayarlar: yayın koparsa yeniden bağlanma (normal/sürekli/kapalı), takılma süresi, yedek kanal denemesi',
+      'Oynatıcıda “Yayın bilgisi”: tampon, çözünürlük, bit hızı, codec, bağlantı hızı',
+      'Yayın kalitesi: önceki test sonucu satırda görünür; çalışmayanları gizle, Gizlenenler’den geri getir',
+      'Klasördeki kanalların sırası düzenlenebilir',
+    ],
+  },
+  {
     id: 25,
     title: 'Geriye dönük izleme, hatırlatıcı ve zamanlı kayıt',
     items: [

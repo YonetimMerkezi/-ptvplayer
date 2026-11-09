@@ -1,11 +1,11 @@
 // Oynatma denetleyicisi: motor üstünde yedek adres denemesi, hızlı yeniden bağlanma, takılma bekçisi,
 // ilerleme bildirimi. Motordan bağımsızdır (sahte motorla test edilir).
-import { LIVE_STALL_MS, VOD_STALL_MS, LIVE_MAX_RECONNECT, VOD_MAX_RECONNECT, STEADY_MS, reconnectDelay } from './retry.js';
+import { STEADY_MS, reconnectDelay, retryPolicy } from './retry.js';
 
 const STALL_MS = 25000; // ilk açılışta yayının gelmesi için
 const PROGRESS_EVERY_MS = 10000;
 
-export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
+export function createPlayer({ engine, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
   const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0 };
   const listeners = new Set();
   let progressCb = null;
@@ -27,7 +27,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
     retryTimer = null;
   };
   // Oynamış bir yayında takılma kısa sürede yeniden bağlanmayı tetikler; ilk açılışta daha sabırlı bekler.
-  const stallMs = () => (!everPlayed ? STALL_MS : st.live ? LIVE_STALL_MS : VOD_STALL_MS);
+  const stallMs = () => (!everPlayed ? STALL_MS : st.live ? policy().liveStallMs : policy().vodStallMs);
   const armStall = () => {
     clearStall();
     stallTimer = timers.set(() => fail('Yayın başlamadı (zaman aşımı)'), stallMs());
@@ -69,7 +69,7 @@ export function createPlayer({ engine, timers = { set: (f, ms) => setTimeout(f, 
 
   function fail(message) {
     if (st.status === 'idle' || retryTimer) return; // yeniden bağlanma zaten planlı
-    if (everPlayed && reconnects < (st.live ? LIVE_MAX_RECONNECT : VOD_MAX_RECONNECT)) return scheduleReconnect();
+    if (everPlayed && reconnects < (st.live ? policy().liveMax : policy().vodMax)) return scheduleReconnect();
     if (!everPlayed && st.idx + 1 < st.targets.length) {
       st.idx++;
       startTarget(startMs, true);

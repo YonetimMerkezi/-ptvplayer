@@ -21,7 +21,13 @@ test('kaynak ekle, etkin kaynak, sil', () => {
   assert.equal(store.sources().length, 2);
   assert.equal(store.activeSource().name, 'B2');
   store.toggleFav(b.id, { id: 'x1', kind: 'live', name: 'K' });
+  store.setPref('hidch.' + b.id, { x1: 'K' });
+  store.setPref('hhist.' + b.id, { x1: [1, 5, 1] });
+  store.setPref('bad.' + b.id, { x1: 1 });
   store.removeSource(b.id);
+  assert.deepEqual(store.pref('hidch.' + b.id, null), null, 'kaynakla birlikte gizlenen kanallar da silinir');
+  assert.deepEqual(store.pref('hhist.' + b.id, null), null);
+  assert.deepEqual(store.pref('bad.' + b.id, null), null);
   assert.equal(store.sources().length, 1);
   assert.equal(store.activeId(), a.id);
   assert.deepEqual(store.favs(b.id), []);

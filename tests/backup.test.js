@@ -25,6 +25,8 @@ function fill(store) {
   store.setPref('set.buffer', 'max');
   store.setPref('lock.pin', { salt: 's', hash: 'h', len: 4 });
   store.setPref('bad.' + a.id, { x1: 1 });
+  store.setPref('hhist.' + a.id, { x1: [1, 10, 1] });
+  store.setPref('hidch.' + a.id, { x1: 'Gizli Kanal' });
   return { a, loc };
 }
 
@@ -39,7 +41,9 @@ test('yedek: kaynaklar, favoriler, kategori düzeni ve ayarlar girer; şifre, i�
   assert.equal(b.data['pref.set.buffer'], 'max');
   assert.equal(b.data['pref.lock.pin'], undefined, 'şifre özeti yedekte olmaz');
   assert.equal(b.data['pref.bad.' + a.id], undefined);
-  assert.deepEqual(summarize(b), { sources: 1, favs: 1, folders: 1, prefs: 1, at: 1000 });
+  assert.equal(b.data['pref.hhist.' + a.id], undefined, 'yayın kalitesi geçmişi yedeğe girmez');
+  assert.deepEqual(b.data['pref.hidch.' + a.id], { x1: 'Gizli Kanal' }, 'gizlenen kanallar yedeğe girer');
+  assert.deepEqual(summarize(b), { sources: 1, favs: 1, folders: 1, prefs: 2, at: 1000 });
 });
 
 test('geri yükleme: yedekteki duruma döner, yerel liste ve şifre korunur', () => {

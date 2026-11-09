@@ -2,7 +2,7 @@
 // Android'de her kutu ayrı bir Media3 oynatıcısıdır (WebView'ın altında, kutunun dikdörtgenine yerleşir);
 // tarayıcıda kutuya bir <video> eklenir.
 import { describeError } from './engine.js';
-import { LIVE_STALL_MS, LIVE_MAX_RECONNECT, STEADY_MS, reconnectDelay } from './retry.js';
+import { STEADY_MS, reconnectDelay, retryPolicy } from './retry.js';
 
 const FIRST_STALL_MS = 15000; // ilk açılışta yayının gelmesi için
 const VIDEO_FRAME_MS = 8000; // oynuyor görünüp bu sürede ilk görüntü karesi gelmezse "ses var görüntü yok" sayılır
@@ -16,7 +16,7 @@ export const fitSlots = (ids, n) => Array.from({ length: n }, (_, i) => (Array.i
 // status(slot, 'loading' | 'playing' | 'error', mesaj, deneme): kutunun görünümünü güncelle.
 // Yerel oynatıcı görüntü izi olduğunu ('video') ve ilk kare çizildiğini ('frame') bildirir; ses gelip kare gelmezse
 // kutu yeniden bağlanır, tekrarlanırsa neden (görüntü biçimi, kod çözücü) hata iletisinde gösterilir.
-export function createSlotSupervisor({ restart, status, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
+export function createSlotSupervisor({ restart, status, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
   const all = new Map();
   const get = (slot) => {
     let e = all.get(slot);
@@ -50,7 +50,7 @@ export function createSlotSupervisor({ restart, status, timers = { set: (f, ms) 
     e.watch = timers.set(() => {
       e.watch = null;
       problem(slot, 'Yayın başlamadı (zaman aşımı)');
-    }, e.played ? LIVE_STALL_MS : FIRST_STALL_MS);
+    }, e.played ? policy().liveStallMs : FIRST_STALL_MS);
   };
   function problem(slot, message, fatal = false, rotateNow = false) {
     const e = get(slot);
@@ -61,7 +61,7 @@ export function createSlotSupervisor({ restart, status, timers = { set: (f, ms) 
     e.since = null;
     if (fatal) return status(slot, 'error', message || 'Yayın oynatılamadı', e.rc);
     const n = e.rc++;
-    if (n >= LIVE_MAX_RECONNECT) return status(slot, 'error', message || 'Yayın oynatılamadı', n);
+    if (n >= policy().liveMax) return status(slot, 'error', message || 'Yayın oynatılamadı', n);
     const rotate = rotateNow || (e.n > 1 && (!e.played || n >= 2));
     status(slot, 'loading', '', n + 1);
     e.retry = timers.set(() => {

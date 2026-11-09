@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPlayer } from '../www/js/player.js';
 import { describeError, createNativeEngine } from '../www/js/engine.js';
+import { retryPolicy } from '../www/js/retry.js';
 
-function setup() {
+function setup(policy) {
   const calls = [];
   const engine = {
     failLoad: null,
@@ -25,7 +26,7 @@ function setup() {
     lastMs() { const i = this.fns.map((f, k) => (f ? k : -1)).filter((k) => k >= 0).pop(); return i === undefined ? null : this.ms[i]; },
   };
   let t = 0;
-  const p = createPlayer({ engine, timers, now: () => t });
+  const p = createPlayer({ engine, timers, now: () => t, ...(policy ? { policy } : {}) });
   return { p, engine, calls, timers, tick: (ms) => (t += ms) };
 }
 const live = { id: 'l1', kind: 'live', name: 'K' };
@@ -298,4 +299,46 @@ test('parça listesi değişince arayüze haber verilir (sürüm artar, olay yay
   p.handle({ type: 'tracks' });
   assert.equal(p.state().tracksVer, 2);
   assert.deepEqual(seen, [1, 2]);
+});
+
+test('ayar: yeniden bağlanma kapalıysa oynarken kopunca hemen hata gösterilir', async () => {
+  const { p, calls, timers } = setup(() => retryPolicy({ reconnect: 'off' }));
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'error', message: 'Sunucuya bağlanılamadı' });
+  assert.equal(p.state().status, 'error');
+  assert.equal(p.state().error, 'Sunucuya bağlanılamadı');
+  assert.equal(loads(calls), 1, 'yeniden bağlanılmadı');
+  assert.equal(timers.lastMs(), null);
+});
+
+test('ayar: sürekli kipte 60 denemeden sonra da vazgeçilmez', async () => {
+  const { p, timers } = setup(() => retryPolicy({ reconnect: 'endless' }));
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  for (let i = 0; i < 90; i++) {
+    p.handle({ type: 'error', message: 'x' });
+    timers.fire();
+  }
+  p.handle({ type: 'error', message: 'x' });
+  assert.notEqual(p.state().status, 'error');
+});
+
+test('ayar: takılma bekleme süresi bekçiye yansır (hızlı 4 sn)', async () => {
+  const { p, timers } = setup(() => retryPolicy({ stall: 'fast' }));
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'state', state: 'buffering' });
+  assert.equal(timers.lastMs(), 4000);
+});
+
+test('ayar her denemede güncel okunur (oynarken değiştirilebilir)', async () => {
+  let mode = 'normal';
+  const { p, calls } = setup(() => retryPolicy({ reconnect: mode }));
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  mode = 'off';
+  p.handle({ type: 'error', message: 'x' });
+  assert.equal(p.state().status, 'error');
+  assert.equal(loads(calls), 1);
 });

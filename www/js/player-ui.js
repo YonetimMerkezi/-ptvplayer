@@ -7,6 +7,7 @@ import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
 import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
 import { REC_LIMITS, fmtElapsed } from './rec.js';
 import { DELAY_PRESETS, clampDelay, stepDelay, fmtDelay, describeDelay } from './avsync.js';
+import { statsRows } from './stats.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
 const HIDE_MS = 2500;
@@ -602,6 +603,32 @@ export function createPlayerUI({ engine, player, env }) {
     render(player.state());
   }
 
+  // ---- yayın bilgisi: saniyede bir ölçüm (tampon, çözünürlük, bit hızı, bağlantı hızı, düşen kare) ----
+  let statsOn = false;
+  let statsTimer = 0;
+  async function drawStats() {
+    if (!statsOn || !open) return;
+    let raw = null;
+    try {
+      raw = engine.stats ? await engine.stats() : null;
+    } catch {
+      /* ölçüm okunamadı: yalnız durum satırları görünür */
+    }
+    if (!statsOn || !open) return;
+    q('#pl-stats-box').innerHTML = statsRows(player.state(), raw).map((r) => `<div${r.level ? ` class="lv-${r.level}"` : ''}><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('');
+  }
+  function setStats(on) {
+    statsOn = on;
+    clearInterval(statsTimer);
+    q('#pl-stats').classList.toggle('on', on);
+    q('#pl-stats').setAttribute('aria-pressed', String(on));
+    q('#pl-stats-box').hidden = !on;
+    if (on) {
+      drawStats();
+      statsTimer = setInterval(drawStats, 1000);
+    }
+  }
+
   // Geri tuşu yayını mini oynatıcıya küçültür; kilit, uyku zamanlayıcısı, TV'ye gönderme ve TV'de durdurma ise yayını tamamen kapatır.
   let stopRequested = false;
   async function closeUi() {
@@ -610,6 +637,7 @@ export function createPlayerUI({ engine, player, env }) {
     if (!open) return;
     open = false;
     layerOpen = false;
+    setStats(false);
     clearTimeout(hideTimer);
     num.cancel();
     sleep.cancel();
@@ -686,6 +714,10 @@ export function createPlayerUI({ engine, player, env }) {
     showUi(false);
   });
   q('#pl-sleep').addEventListener('click', () => sleepSheet());
+  q('#pl-stats').addEventListener('click', () => {
+    setStats(!statsOn);
+    showUi(false);
+  });
   q('#pl-sync').addEventListener('click', () => syncSheet());
   q('#pl-rec').addEventListener('click', () => recSheet());
   q('#pl-pip').hidden = engine.kind !== 'native';

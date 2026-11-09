@@ -34,6 +34,7 @@ export function nativePlugin(name, win = globalThis.window) {
     selectTrack: call('selectTrack'),
     download: call('download'),
     probe: call('probe'),
+    getStats: call('getStats'),
     planSync: call('planSync'),
     planStatus: call('planStatus'),
     planPermissions: call('planPermissions'),

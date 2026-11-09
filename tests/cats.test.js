@@ -87,3 +87,22 @@ test('kilitli kategoriler: kilitle/aç, grup adları, klasör silinince temizlen
   const q = normalizePrefs({ locked: ['g:A', 'g:A', 5, 'f:9'], folders: [{ id: '9', name: 'K', items: [] }] });
   assert.deepEqual(q.locked, ['g:A', 'f:9']);
 });
+
+test('klasör içi sıra: yukarı, aşağı, en üste, en alta; uçlarda yerinde kalır; bilinmeyen öğe değişmez', async () => {
+  const { moveInFolder, addFolder, toggleInFolder, folderOf } = await import('../www/js/cats.js');
+  let p = { order: [], hidden: [], locked: [], folders: [] };
+  const created = addFolder(p, 'Çocuk', 'f1');
+  p = created.prefs;
+  for (const id of ['a', 'b', 'c', 'd']) p = toggleInFolder(p, 'f1', id).prefs;
+  const ids = (x) => folderOf(x, 'f1').items.join('');
+  assert.equal(ids(p), 'abcd');
+  assert.equal(ids(moveInFolder(p, 'f1', 'c', 'up')), 'acbd');
+  assert.equal(ids(moveInFolder(p, 'f1', 'b', 'down')), 'acbd');
+  assert.equal(ids(moveInFolder(p, 'f1', 'd', 'top')), 'dabc');
+  assert.equal(ids(moveInFolder(p, 'f1', 'a', 'bottom')), 'bcda');
+  assert.equal(ids(moveInFolder(p, 'f1', 'a', 'up')), 'abcd', 'ilk öğe yukarı çıkamaz');
+  assert.equal(ids(moveInFolder(p, 'f1', 'd', 'down')), 'abcd', 'son öğe aşağı inemez');
+  assert.equal(moveInFolder(p, 'f1', 'zzz', 'top'), p);
+  assert.equal(moveInFolder(p, 'yok', 'a', 'top'), p);
+  assert.equal(ids(p), 'abcd', 'özgün tercihler bozulmaz');
+});

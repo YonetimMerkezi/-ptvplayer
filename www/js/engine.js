@@ -53,6 +53,8 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     selectTrack: (type, id) => plugin.selectTrack({ type, id: id || '' }),
     // async: eklentide metot yoksa bile eşzamanlı hata fırlatmak yerine reddedilen söz döner
     levels: async () => plugin.getLevels(),
+    // Yayın bilgisi: tampon, çözünürlük, bit hızı, bağlantı hızı, düşen kare (Media3'ten)
+    stats: async () => plugin.getStats(),
     setBrightness: async (v) => plugin.setBrightness({ value: v }),
     setVolume: async (v) => plugin.setVolume({ value: v }),
     destroy: () => {
@@ -125,6 +127,25 @@ export function createWebEngine({ video, Hls, on }) {
     selectTrack: async () => {},
     // Tarayıcıda ekran parlaklığı ayarlanamaz: videoya parlaklık süzgeci uygulanır (negatif → kaldır).
     levels: async () => ({ brightness: webBrightness, volume: video.volume }),
+    // Yayın bilgisi: <video> ve hls.js'ten okunabilenler
+    stats: async () => {
+      const t = video.currentTime;
+      let ahead = 0;
+      for (let i = 0; i < video.buffered.length; i++) if (video.buffered.start(i) <= t + 0.2 && video.buffered.end(i) >= t) ahead = (video.buffered.end(i) - t) * 1000;
+      const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+      const lv = hls && hls.levels && hls.currentLevel >= 0 ? hls.levels[hls.currentLevel] : null;
+      return {
+        bufferMs: ahead,
+        width: video.videoWidth || 0,
+        height: video.videoHeight || 0,
+        dropped: q ? q.droppedVideoFrames : undefined,
+        rendered: q ? q.totalVideoFrames - q.droppedVideoFrames : undefined,
+        bandwidthBps: hls && hls.bandwidthEstimate > 0 ? hls.bandwidthEstimate : undefined,
+        videoBps: lv ? lv.bitrate : undefined,
+        videoCodec: lv ? lv.videoCodec : undefined,
+        audioCodec: lv ? lv.audioCodec : undefined,
+      };
+    },
     setBrightness: async (v) => {
       webBrightness = v < 0 ? 1 : v;
       video.style.filter = v < 0 ? '' : `brightness(${(0.25 + 0.75 * v).toFixed(2)})`;

@@ -128,7 +128,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   };
   api.removeSource = (id) => {
     write('sources', api.sources().filter((s) => s.id !== id));
-    for (const k of ['fav.', 'rec.', 'prog.', 'cats.']) {
+    for (const k of ['fav.', 'rec.', 'prog.', 'cats.', 'pref.bad.', 'pref.hidch.', 'pref.hhist.']) {
       try {
         storage.removeItem(P + k + id);
       } catch {

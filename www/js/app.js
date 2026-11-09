@@ -20,7 +20,7 @@ import { VirtualList } from './vlist.js';
 import { sortItems, SORTS, isSortMode } from './sort.js';
 import {
   arrange, toggleHidden, move, resetOrderAndHidden, hiddenGroupNames, addFolder, renameFolder, deleteFolder,
-  toggleInFolder, folderOf, groupKey, folderKey, isLocked, toggleLocked, lockedGroupNames,
+  toggleInFolder, moveInFolder, folderOf, groupKey, folderKey, isLocked, toggleLocked, lockedGroupNames,
 } from './cats.js';
 import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
@@ -31,6 +31,7 @@ import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
+import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
 import { clampDelay } from './avsync.js';
@@ -38,6 +39,7 @@ import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, make
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 import { checkStreamHealth } from './health.js';
+import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -104,7 +106,9 @@ let engine;
 const video = $('#vid');
 const onEngine = (ev) => player.handle(ev);
 engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0))) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
-player = createPlayer({ engine });
+// Yeniden bağlanma davranışı Genel ayarlar › Yayın bağlantısı'ndan okunur (her denemede güncel değer)
+const policy = () => retryPolicy({ reconnect: store.pref('set.reconnect', DEFAULT_RECONNECT), stall: store.pref('set.stall', DEFAULT_STALL) });
+player = createPlayer({ engine, policy });
 const pui = createPlayerUI({
   engine,
   player,
@@ -205,7 +209,11 @@ function banner(text, { err = false, spin = false } = {}) {
   b.innerHTML = (spin ? '<span class="spin"></span>' : '') + `<span>${esc(text)}</span>`;
 }
 
-function setCatalog(cat) {
+function setCatalog(raw) {
+  // Gizlenen kanallar tüm görünümlerden (kategori sayıları, arama, rehber, yedek kanal) bir arada kalkar; ham katalog saklanır
+  const hid = hiddenMap();
+  const cat = hiddenCount(hid) ? { ...raw, live: applyHidden(raw.live, hid) } : raw;
+  S.rawCat = raw;
   S.cat = cat;
   S.altIdx = null;
   S.idx = {
@@ -220,6 +228,7 @@ function setCatalog(cat) {
 // Oynatma adresleri; canlı kanalda aynı adlı kanallar yedek olarak sona eklenir.
 function targetsOf(item, ep) {
   if (item.kind !== 'live') return playTargets(S.source, item, ep);
+  if (!setting('altCh')) return playTargets(S.source, item, ep); // Genel ayarlar: yedek kanal denemesi kapalı
   if (!S.altIdx) S.altIdx = buildAltIndex(S.cat.live);
   return playTargets(S.source, item, ep, altsOf(S.altIdx, item));
 }
@@ -227,6 +236,9 @@ function targetsOf(item, ep) {
 // Çalışmayan kanal işareti: son 7 günde açılamayan kanallar listede "Çalışmıyor olabilir" görünür; açılınca kalkar.
 const BAD_TTL = 7 * 86400000;
 const badKey = () => 'bad.' + sid();
+// Gizlenen kanallar (Yayın kalitesi › çalışmayanları gizle): katalog yüklenirken süzülür; { kanalNo: ad }
+const hiddenMap = () => store.pref('hidch.' + sid(), {}) || {};
+const histKey = () => 'hhist.' + sid();
 const isBad = (id) => {
   const t = (store.pref(badKey(), {}) || {})[id];
   return !!t && Date.now() - t < BAD_TTL;
@@ -823,6 +835,34 @@ function nameSheet(kind) {
   });
 }
 
+// Klasör içi sıra: öğeler yukarı/aşağı ya da en üste taşınır; liste "Varsayılan sıra"da bu sırayla görünür.
+function folderOrderSheet(kind, id) {
+  const LIMIT = 300;
+  openSheet({
+    title: 'Sırayı düzenle',
+    html: '<p class="hint">Klasördeki sıra, listede “Varsayılan sıra” seçiliyken geçerlidir.</p><div id="fo-list"></div>',
+    mount: (body) => {
+      const box = $('#fo-list', body);
+      const draw = () => {
+        const f = folderOf(prefsOf(kind), id);
+        const items = folderItems(kind, f);
+        box.innerHTML = items.slice(0, LIMIT).map((it, i) => `<div class="rec-row fo-row" data-id="${esc(it.id)}"><div class="rec-play"><span class="t">${i + 1}. ${esc(it.name)}</span></div><button class="act" data-m="top" aria-label="En üste al">${icon('top')}</button><button class="act" data-m="up" aria-label="Yukarı">${icon('up')}</button><button class="act" data-m="down" aria-label="Aşağı">${icon('down')}</button></div>`).join('') + (items.length > LIMIT ? `<p class="hint">İlk ${LIMIT} öğe gösteriliyor.</p>` : '');
+      };
+      box.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-m]');
+        const row = b && b.closest('[data-id]');
+        if (!row) return;
+        savePrefs(kind, moveInFolder(prefsOf(kind), id, row.dataset.id, b.dataset.m));
+        draw();
+        const again = box.querySelector(`[data-id="${CSS.escape(row.dataset.id)}"] [data-m="${b.dataset.m}"]`);
+        if (again && document.documentElement.classList.contains('kbd')) again.focus(); // kumandada odak taşınan satırın aynı düğmesinde kalır
+        if (S.list && TAB_KIND[S.tab] === kind) refreshList(true);
+      });
+      draw();
+    },
+  });
+}
+
 // Klasör: yeniden adlandır / sil (aynı sayfa içinde adım adım)
 function folderMenu(kind, id) {
   const f0 = folderOf(prefsOf(kind), id);
@@ -832,7 +872,11 @@ function folderMenu(kind, id) {
     mount: (body, sh) => {
       const menu = () => {
         const f = folderOf(prefsOf(kind), id);
-        body.innerHTML = `<p class="hint">${f.items.length} öğe</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="fm-ren">Yeniden adlandır</button><button class="btn ghost danger" id="fm-del">${icon('trash')}Klasörü sil</button></div>`;
+        body.innerHTML = `<p class="hint">${f.items.length} öğe</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="fm-ord"${f.items.length > 1 ? '' : ' disabled'}>${icon('sort')}Sırayı düzenle</button><button class="btn" id="fm-ren">Yeniden adlandır</button><button class="btn ghost danger" id="fm-del">${icon('trash')}Klasörü sil</button></div>`;
+        $('#fm-ord', body).addEventListener('click', () => {
+          sh.close();
+          folderOrderSheet(kind, id);
+        });
         $('#fm-ren', body).addEventListener('click', rename);
         $('#fm-del', body).addEventListener('click', confirmDel);
       };
@@ -1839,6 +1883,7 @@ function layoutMulti() {
 
 // Takılan ya da kopan kutu hızla yeniden bağlanır (tek oynatıcıdaki gibi); art arda başarısızsa yedek adrese geçilir.
 const SUP = createSlotSupervisor({
+  policy,
   restart: (i, rotate) => {
     const sl = M.slots[i];
     if (!sl || !sl.item || !M.on || M.suspended) return;
@@ -2596,6 +2641,9 @@ function generalSheet() {
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
+      `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
+      `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
+      chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
       `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
@@ -2628,6 +2676,8 @@ function generalSheet() {
       $('#g-lock', body).addEventListener('click', () => lockSheet());
       $('#g-bk', body).addEventListener('click', () => backupSheet());
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
+      $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
+      $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
         store.setPref('set.fontScale', Number(e.target.value));
@@ -2698,7 +2748,7 @@ function healthSheet() {
   openPage({
     title: 'Yayın kalitesi',
     cls: 'pk-pg health-pg',
-    html: '<p class="hint">Kategori seçip kanala dokunarak ya da “Kategoriyi test et” ile sunucu yanıtını ve bağlantı süresini sınayın. Görüntü/codec çözümlemesi garanti edilmez; bağlantı sınırı olan hesaplarda toplu test oynayan yayını kesebilir.</p><div class="pk-bar"><select id="health-cat" aria-label="Kategori"></select><input id="health-q" type="search" placeholder="Kanal ara…" autocomplete="off"></div><div class="health-run"><button class="btn sm" id="health-all">Kategoriyi test et</button><span class="health-sum" id="health-sum" aria-live="polite"></span></div><div class="health-prog" id="health-prog" hidden><i></i></div><div class="seg" id="health-f"><button data-f="all" class="on">Tümü</button><button data-f="ok">Çalışan</button><button data-f="bad">Çalışmayan</button></div><div id="health-list"></div>',
+    html: '<p class="hint">Kategori seçip kanala dokunarak ya da “Kategoriyi test et” ile sunucu yanıtını ve süreyi sınayın; sonuç satırda saklanır, çalışmayanlar gizlenebilir. Codec çözümlemesi garanti edilmez; toplu test oynayan yayını kesebilir.</p><div class="pk-bar"><select id="health-cat" aria-label="Kategori"></select><input id="health-q" type="search" placeholder="Kanal ara…" autocomplete="off"></div><div class="health-run"><button class="btn sm" id="health-all">Kategoriyi test et</button><button class="btn sm ghost" id="health-hide" hidden></button><button class="btn sm ghost" id="health-hidden" hidden></button><span class="health-sum" id="health-sum" aria-live="polite"></span></div><div class="health-prog" id="health-prog" hidden><i></i></div><div class="seg" id="health-f"><button data-f="all" class="on">Tümü</button><button data-f="ok">Çalışan</button><button data-f="bad">Çalışmayan</button></div><div id="health-list"></div>',
     mount: (body) => {
       const sel = $('#health-cat', body);
       const q = $('#health-q', body);
@@ -2706,23 +2756,33 @@ function healthSheet() {
       const sum = $('#health-sum', body);
       const prog = $('#health-prog', body);
       const results = new Map(); // kanal no → { busy } | { ok, status, ms, format, message }
+      let hist = pruneHist(store.pref(histKey(), {})); // önceki oturumların sonuçları: kanal no → [durum, ms, zaman]
+      const eff = (id) => results.get(id) || lastResult(hist, id); // bu oturumdaki sonuç, yoksa son kayıtlı
+      let saveT = 0;
+      const note = (id, r) => {
+        hist = recordResult(hist, id, r);
+        clearTimeout(saveT);
+        saveT = setTimeout(() => store.setPref(histKey(), hist), 1500);
+      };
+      const hideBtn = $('#health-hide', body);
+      const hiddenBtn = $('#health-hidden', body);
       const cats = categoryRows('live').filter((r) => r.id !== '__recent' || r.count);
       sel.innerHTML = cats.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.count})</option>`).join('');
       let items = []; // kategori + arama
       let shown = []; // + sonuç süzgeci
       let filter = 'all';
       let runner = null;
-      const line = (r) => (r.busy ? 'Test ediliyor…' : r.ok === true ? `Çalışıyor · ${r.ms == null ? '?' : r.ms + ' ms'} · ${r.format || ''}` : r.ok === false ? `Çalışmıyor · ${r.message || ''}` : r.message || 'HTTP ile doğrulanamadı');
+      const line = (r) => (r.hist ? `Son test ${fmtAgo(r.at)} · ${r.ok === true ? 'çalışıyordu' + (r.ms == null ? '' : ' · ' + r.ms + ' ms') : r.ok === false ? 'çalışmıyordu' : 'doğrulanamadı'}` : r.busy ? 'Test ediliyor…' : r.ok === true ? `Çalışıyor · ${r.ms == null ? '?' : r.ms + ' ms'} · ${r.format || ''}` : r.ok === false ? `Çalışmıyor · ${r.message || ''}` : r.message || 'HTTP ile doğrulanamadı');
       const list = new VirtualList($('#health-list', body), {
         rowH: scaled(60),
         render: (it, i) => {
-          const r = results.get(it.id);
+          const r = eff(it.id);
           const st = healthStatus(r);
-          return `<div class="row hs ${st}" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(r ? line(r) : it.group || '')}</span></div></div>${st ? `<span class="hs-dot ${st}" aria-hidden="true"></span>` : ''}</div>`;
+          return `<div class="row hs ${st}${r && r.hist ? ' old' : ''}" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(r ? line(r) : it.group || '')}</span></div></div>${st ? `<span class="hs-dot ${st}" aria-hidden="true"></span>` : ''}</div>`;
         },
         onTap: (i) => {
           const it = shown[i];
-          if (it) healthDetail(it, results, () => redraw(true));
+          if (it) healthDetail(it, results, () => redraw(true), note);
         },
       });
       const tally = () => {
@@ -2730,7 +2790,7 @@ function healthSheet() {
         let bad = 0;
         let ms = 0;
         for (const it of items) {
-          const r = results.get(it.id);
+          const r = eff(it.id);
           if (!r || r.busy) continue;
           if (r.ok === true) {
             ok++;
@@ -2742,10 +2802,15 @@ function healthSheet() {
       const summary = () => {
         const t = tally();
         sum.textContent = t.ok + t.bad ? `Çalışan ${t.ok} · Çalışmayan ${t.bad}${t.ok ? ' · ort. ' + t.avg + ' ms' : ''}` : '';
+        hideBtn.hidden = !t.bad || !!runner;
+        hideBtn.textContent = `Çalışmayanları gizle (${t.bad})`;
+        const hn = hiddenCount(hiddenMap());
+        hiddenBtn.hidden = !hn;
+        hiddenBtn.textContent = `Gizlenenler (${hn})`;
       };
       const applyFilter = () => {
         shown = filter === 'all' ? items : items.filter((it) => {
-          const r = results.get(it.id);
+          const r = eff(it.id);
           return !!r && !r.busy && (filter === 'ok' ? r.ok === true : r.ok === false);
         });
       };
@@ -2815,6 +2880,7 @@ function healthSheet() {
             } catch (e) {
               results.set(it.id, { ok: false, message: (e && e.message) || 'Test başarısız' });
             }
+            note(it.id, results.get(it.id));
             done++;
             tick();
             redraw(true);
@@ -2840,13 +2906,86 @@ function healthSheet() {
         applyFilter();
         list.setItems(shown);
       });
+      // Çalışmayanları gizle: listedeki (kategori + arama) çalışmadığı bilinen kanallar katalogdan süzülür; "Gizlenenler"den geri gelir.
+      const afterHideChange = () => {
+        const keep = sel.value;
+        const rows = categoryRows('live').filter((r) => r.id !== '__recent' || r.count);
+        sel.innerHTML = rows.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.count})</option>`).join('');
+        sel.value = rows.some((r) => r.id === keep) ? keep : (rows[0] && rows[0].id) || '';
+        draw();
+      };
+      hideBtn.addEventListener('click', () => {
+        const bad = items.filter((it) => {
+          const r = eff(it.id);
+          return !!r && !r.busy && r.ok === false;
+        });
+        if (!bad.length) return;
+        const sh = openSheet({
+          title: 'Çalışmayanları gizle',
+          html: `<p>${bad.length} çalışmayan kanal listeden, aramadan ve rehberden kalkacak. Kaynağı silmez; <b>Gizlenenler</b>’den istediğiniz an geri getirebilirsiniz. Liste yenilense de gizli kalırlar.</p><div style="display:flex;gap:8px"><button class="btn danger" id="hh-yes">Gizle</button><button class="btn ghost" id="hh-no">Vazgeç</button></div>`,
+          mount: (b2) => {
+            $('#hh-no', b2).addEventListener('click', () => sh.close());
+            $('#hh-yes', b2).addEventListener('click', () => {
+              sh.close();
+              hideChannelsNow(bad);
+              toast(`${bad.length} kanal gizlendi`, 2500);
+              afterHideChange();
+            });
+          },
+        });
+      });
+      hiddenBtn.addEventListener('click', () => hiddenChannelsSheet(afterHideChange));
+      draw();
+    },
+  });
+}
+
+// Gizlenen kanalları kaydeder ve katalog görünümünü yeniler.
+function hideChannelsNow(items) {
+  store.setPref('hidch.' + sid(), hideChannels(hiddenMap(), items));
+  setCatalog(S.rawCat);
+  if (S.tab !== 'multi') renderTab();
+}
+
+// Gizlenen kanallar: tek tek ya da hepsi birden geri getirilir.
+function hiddenChannelsSheet(changed) {
+  const LIMIT = 300;
+  const sh = openSheet({
+    title: 'Gizlenen kanallar',
+    html: '<div id="hc-body"></div>',
+    mount: (body) => {
+      const box = $('#hc-body', body);
+      const draw = () => {
+        const entries = Object.entries(hiddenMap());
+        if (!entries.length) {
+          box.innerHTML = '<p class="hint">Gizlenen kanal yok.</p>';
+          return;
+        }
+        box.innerHTML = `<div style="margin:0 0 8px"><button class="btn sm" id="hc-all">Hepsini geri getir (${entries.length})</button></div>${entries.slice(0, LIMIT).map(([id, name]) => `<div class="rec-row"><div class="rec-play"><span class="t">${esc(name || id)}</span></div><button class="btn sm ghost" data-back="${esc(id)}">Geri getir</button></div>`).join('')}${entries.length > LIMIT ? `<p class="hint">İlk ${LIMIT} kanal gösteriliyor.</p>` : ''}`;
+      };
+      const apply = (map) => {
+        store.setPref('hidch.' + sid(), map);
+        setCatalog(S.rawCat);
+        if (S.tab !== 'multi') renderTab();
+        draw();
+        changed();
+        if (!hiddenCount(map)) setTimeout(() => body.isConnected && sh.close(), 400);
+      };
+      body.addEventListener('click', (e) => {
+        const one = e.target.closest('[data-back]');
+        if (one) return apply(restoreChannels(hiddenMap(), [one.dataset.back]));
+        if (e.target.closest('#hc-all')) {
+          toast('Gizlenen kanalların hepsi geri getirildi', 2200);
+          apply(restoreChannels(hiddenMap()));
+        }
+      });
       draw();
     },
   });
 }
 
 // Tek kanalın ayrıntılı sonucu: üç adrese birden bakılır; sonuç listedeki satıra da yansır.
-function healthDetail(item, results, changed) {
+function healthDetail(item, results, changed, note = () => {}) {
   openSheet({
     title: item.name,
     html: '<div id="hd-res" class="health-result"></div><button class="btn" id="hd-run">Yeniden test et</button>',
@@ -2862,10 +3001,12 @@ function healthDetail(item, results, changed) {
         try {
           const { best, checks } = await probeChannel(item, { all: true });
           results.set(item.id, { ok: best.ok, status: best.status, ms: best.latencyMs, format: best.format, message: best.message });
+          note(item.id, results.get(item.id));
           if (!body.isConnected) return;
           result.innerHTML = `<div class="list-item"><span class="t">${best.ok === true ? 'Sunucu yanıt veriyor' : best.ok === false ? 'Bağlantı başarısız' : 'HTTP ile doğrulanamadı'}<small>${esc(item.group || '')}</small></span></div><div class="list-item"><span class="t">Bağlantı süresi<small>${best.latencyMs == null ? 'Ölçülemedi' : best.latencyMs + ' ms'}</small></span></div><div class="list-item"><span class="t">HTTP yanıtı<small>${best.status == null ? 'Yok' : best.status}</small></span></div><div class="list-item"><span class="t">Yayın biçimi<small>${esc(best.format || 'Bilinmiyor')}</small></span></div><p class="hint">${esc(best.message || '')}</p>${checks.length > 1 ? `<p class="hint">${checks.length} adres denendi; ${checks.filter((x) => x.ok === true).length} adres yanıt verdi.</p>` : ''}`;
         } catch (error) {
           results.set(item.id, { ok: false, message: (error && error.message) || 'Test başarısız' });
+          note(item.id, results.get(item.id));
           if (body.isConnected) result.innerHTML = `<div class="empty">${esc((error && error.message) || 'Test başarısız')}</div>`;
         } finally {
           changed();
