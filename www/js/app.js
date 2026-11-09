@@ -1377,7 +1377,7 @@ function renderHome(v) {
       <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec' : ''}">
-      <button class="tile mini t-guide" data-go="guide">${icon('calendar')}<b>TV Rehberi</b></button>
+      <button class="tile mini t-guide" data-go="guide">${icon('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${icon('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>İzleme listesi</b><small>${recN || ''}</small></button>
       <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
@@ -2020,12 +2020,14 @@ function guidePage() {
       const q = $('#guide-q', body);
       const list = $('#guide-list', body);
       const nowLabel = $('#guide-now', body);
-      let expanded = null;
+      let expanded = null; // açık kategori: kanallar zaman çizelgesinde, sayfada tek kaydırma alanı
+      let catLayer = false; // açık kategori geri tuşunun bir adımıdır (Geri → kategori listesi)
       let shown = GUIDE_CHUNK; // açık kategoride çizilen kanal sayısı
       let scrollX = null; // null → şimdiye kaydır
       let ws = 0;
       let rows = []; // açık kategorinin süzülmüş kanalları
       let categories = categoryRows('live').filter((r) => !r.special && r.count > 0);
+      const kbd = () => document.documentElement.classList.contains('kbd');
       const scroller = () => $('.tl-scroll', list);
       const ppm = () => {
         const t = $('.tl', list);
@@ -2049,38 +2051,44 @@ function guidePage() {
       };
       const moreRows = () => {
         const sc = scroller();
-        if (!sc || shown >= rows.length) return;
+        if (!sc || shown >= rows.length) return false;
         const from = shown;
         shown = Math.min(rows.length, shown + GUIDE_CHUNK);
         const now = Date.now();
         $('.tl-body', sc).insertAdjacentHTML('beforeend', rows.slice(from, shown).map((it) => guideRowHtml(it, ws, ws + GUIDE_SPAN * 60000, now)).join(''));
         if (shown >= rows.length) $('.tl-more', sc)?.remove();
+        return true;
       };
       const draw = (keepScroll = false) => {
         const old = scroller();
         if (keepScroll && old) scrollX = old.scrollLeft;
         const term = fold(q.value.trim());
         ws = Math.floor((Date.now() - 45 * 60000) / (GUIDE_STEP * 60000)) * GUIDE_STEP * 60000;
-        const we = ws + GUIDE_SPAN * 60000;
         const now = Date.now();
-        const filtered = categories.filter((c) => !term || fold(c.name).includes(term) ||
-          itemsOfGroup('live', c.id).some((it) => fold(it.name).includes(term)));
-        if (expanded && !filtered.some((c) => c.id === expanded)) expanded = null;
-        rows = expanded ? itemsOfGroup('live', expanded).filter((it) => !term || fold(it.name).includes(term)) : [];
-        list.innerHTML = filtered.map((c) => {
-          const isOpen = expanded === c.id;
-          const timeline = isOpen
-            ? rows.length
-              ? `<div class="tl" style="--span:${GUIDE_SPAN};--now:${((now - ws) / 60000).toFixed(2)}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-head"><div class="tl-corner"></div><div class="tl-axis">${guideAxisHtml(ws)}</div></div><div class="tl-body">${rows.slice(0, shown).map((it) => guideRowHtml(it, ws, we, now)).join('')}</div>${rows.length > shown ? `<button class="tl-more btn sm ghost">Daha fazla kanal (${rows.length - shown})</button>` : ''}<div class="tl-nowline"></div></div></div></div>`
-              : '<div class="empty">Bu kategoride kanal bulunamadı.</div>'
-            : '';
-          return '<section class="guide-category' + (isOpen ? ' open' : '') + '">' +
-            '<button class="guide-category-head" data-category="' + esc(c.id) + '" aria-expanded="' + isOpen + '">' +
+        const cat = expanded && categories.find((c) => c.id === expanded);
+        if (expanded && !cat) {
+          expanded = null;
+          if (catLayer) popLayer('guide-cat');
+        }
+        list.classList.toggle('tlmode', !!cat);
+        if (cat) {
+          const all = itemsOfGroup('live', cat.id);
+          rows = term ? all.filter((it) => fold(it.name).includes(term)) : all;
+          if (term && !rows.length && fold(cat.name).includes(term)) rows = all; // kategori adıyla eşleşti: tüm kanalları göster
+          const we = ws + GUIDE_SPAN * 60000;
+          const timeline = rows.length
+            ? `<div class="tl" style="--span:${GUIDE_SPAN};--now:${((now - ws) / 60000).toFixed(2)}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-head"><div class="tl-corner"></div><div class="tl-axis">${guideAxisHtml(ws)}</div></div><div class="tl-body">${rows.slice(0, shown).map((it) => guideRowHtml(it, ws, we, now)).join('')}</div>${rows.length > shown ? `<button class="tl-more btn sm ghost">Daha fazla kanal (${rows.length - shown})</button>` : ''}<div class="tl-nowline"></div></div></div></div>`
+            : '<div class="empty">Eşleşen kanal bulunamadı.</div>';
+          list.innerHTML = `<button class="guide-category-head open" data-back aria-label="Kategorilere dön"><span class="chev">‹</span><span class="guide-category-icon">${icon('folder')}</span><span class="guide-category-title">${esc(cat.name)}</span><span class="guide-category-count">${rows.length} kanal</span></button>${timeline}`;
+        } else {
+          rows = [];
+          const filtered = categories.filter((c) => !term || fold(c.name).includes(term) ||
+            itemsOfGroup('live', c.id).some((it) => fold(it.name).includes(term)));
+          list.innerHTML = filtered.map((c) => '<button class="guide-category-head" data-category="' + esc(c.id) + '">' +
             '<span class="guide-category-icon">' + icon('folder') + '</span><span class="guide-category-title">' + esc(c.name) + '</span>' +
-            '<span class="guide-category-count">' + c.count + ' kanal</span><span class="chev">' + (isOpen ? '⌃' : '›') + '</span></button>' +
-            (isOpen ? '<div class="guide-category-channels">' + timeline + '</div>' : '') +
-            '</section>';
-        }).join('') || '<div class="empty">Kategori veya kanal bulunamadı.</div>';
+            '<span class="guide-category-count">' + c.count + ' kanal</span><span class="chev">›</span></button>').join('') ||
+            '<div class="empty">Kategori veya kanal bulunamadı.</div>';
+        }
         clock();
         const sc = scroller();
         if (sc) {
@@ -2090,17 +2098,118 @@ function guidePage() {
           }, { passive: true });
         }
       };
+      const closeCat = () => {
+        const id = expanded;
+        catLayer = false;
+        expanded = null;
+        shown = GUIDE_CHUNK;
+        scrollX = null;
+        if (!body.isConnected) return;
+        draw();
+        const back = id && $('[data-category="' + CSS.escape(id) + '"]', list);
+        if (back && kbd()) back.focus({ preventScroll: false }); // kumandada odak açtığımız kategoriye döner
+      };
+      const openCat = (id) => {
+        expanded = id;
+        shown = GUIDE_CHUNK;
+        scrollX = null;
+        if (!catLayer) {
+          catLayer = true;
+          pushLayer('guide-cat', closeCat);
+        }
+        draw();
+        if (kbd()) {
+          const first = $('.tl-prog.now', list) || $('.tl-prog[data-s]', list) || $('.tl-ch', list);
+          if (first) focusTl(first);
+        }
+      };
+
+      // ---- kumanda: yön tuşlarıyla satır/program gezinmesi ----
+      // Zaman çizelgesinin görünen alanı: sabit kanal sütunu ve zaman cetveli hariç
+      const view = () => {
+        const sc = scroller();
+        const r = sc.getBoundingClientRect();
+        return { sc, left: r.left + $('.tl-corner', sc).getBoundingClientRect().width, right: r.right, top: r.top + $('.tl-head', sc).getBoundingClientRect().height, bottom: r.bottom };
+      };
+      const reveal = (el) => {
+        const v = view();
+        const b = el.getBoundingClientRect();
+        if (el.classList.contains('tl-prog')) {
+          if (b.left < v.left + 4) v.sc.scrollLeft -= v.left + 4 - b.left;
+          else if (b.right > v.right) v.sc.scrollLeft += Math.min(b.right - v.right + 4, b.left - v.left - 4); // başlangıcı görünür kalsın
+        }
+        if (b.top < v.top) v.sc.scrollTop -= v.top - b.top;
+        else if (b.bottom > v.bottom) v.sc.scrollTop += b.bottom - v.bottom;
+      };
+      function focusTl(el) {
+        el.focus({ preventScroll: true });
+        reveal(el);
+      }
+      const progsOf = (row) => $$('.tl-prog[data-s]', row);
+      // Hedef satırda, verilen yatay konumdaki (yoksa en yakın) program
+      const nearestProg = (row, x) => {
+        let best = null;
+        let bd = Infinity;
+        for (const p of progsOf(row)) {
+          const b = p.getBoundingClientRect();
+          const d = x >= b.left && x <= b.right ? 0 : Math.min(Math.abs(b.left - x), Math.abs(b.right - x));
+          if (d < bd) {
+            bd = d;
+            best = p;
+          }
+        }
+        return best;
+      };
+      const rowKey = (e) => {
+        const dir = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
+        const el = e.target.closest && e.target.closest('.tl-prog, .tl-ch');
+        if (!dir || !el || e.altKey || e.ctrlKey || e.metaKey) return false;
+        const row = el.closest('.tl-row');
+        const isCh = el.classList.contains('tl-ch');
+        const v = view();
+        if (dir === 'left' || dir === 'right') {
+          if (isCh) {
+            if (dir === 'left') return false;
+            const first = progsOf(row).find((p) => p.getBoundingClientRect().right > v.left + 8);
+            if (!first) return false;
+            focusTl(first);
+            return true;
+          }
+          if (!el.dataset.s) return true;
+          const ps = progsOf(row);
+          const i = ps.indexOf(el);
+          if (dir === 'right') {
+            if (ps[i + 1]) focusTl(ps[i + 1]);
+            return true; // satır sonu: yerinde kal
+          }
+          if (ps[i - 1]) focusTl(ps[i - 1]);
+          else focusTl($('.tl-ch', row));
+          return true;
+        }
+        let target = dir === 'down' ? row.nextElementSibling : row.previousElementSibling;
+        if (!target && dir === 'down' && moreRows()) target = row.nextElementSibling;
+        if (!target || !target.classList.contains('tl-row')) return dir === 'down'; // üstte satır yok: üstteki denetimlere geç
+        const x = Math.max(el.getBoundingClientRect().left, v.left) + 1;
+        focusTl(isCh ? $('.tl-ch', target) : nearestProg(target, x) || $('.tl-ch', target));
+        return true;
+      };
+      list.addEventListener('keydown', (e) => {
+        if (e.defaultPrevented) return;
+        if (e.key === 'MediaFastForward' || e.key === 'MediaRewind') {
+          e.preventDefault();
+          return step(e.key === 'MediaFastForward' ? 1 : -1);
+        }
+        if (rowKey(e)) e.preventDefault(); // dpad.js defaultPrevented görünce yalnız kumanda kipini açar, odağı bize bırakır
+      });
+
       list.addEventListener('click', (e) => {
+        if (e.target.closest('[data-back]')) return popLayer('guide-cat');
         const head = e.target.closest('[data-category]');
-        if (head) {
-          const id = head.dataset.category;
-          expanded = expanded === id ? null : id;
-          shown = GUIDE_CHUNK;
-          scrollX = null;
-          draw();
+        if (head) return openCat(head.dataset.category);
+        if (e.target.closest('.tl-more')) {
+          moreRows();
           return;
         }
-        if (e.target.closest('.tl-more')) return moreRows();
         const cell = e.target.closest('.tl-prog[data-s]');
         const ch = e.target.closest('.tl-ch');
         const id = (cell || ch) && (cell || ch).dataset.ch;
@@ -2113,19 +2222,26 @@ function guidePage() {
         } else epgSheet(rows[idx]);
       });
       q.addEventListener('input', debounce(() => {
-        if (q.value.trim()) {
-          const term = fold(q.value.trim());
-          const match = categories.find((c) => itemsOfGroup('live', c.id).some((it) => fold(it.name).includes(term)));
-          expanded = match ? match.id : null;
-        }
         shown = GUIDE_CHUNK;
-        scrollX = null;
-        draw();
+        draw(true);
       }, 160));
-      const step = (dir) => {
+      function step(dir) {
         const sc = scroller();
-        if (sc) sc.scrollBy({ left: dir * 180 * ppm(), behavior: 'smooth' });
-      };
+        if (!sc) return;
+        sc.scrollBy({ left: dir * 180 * ppm(), behavior: 'smooth' });
+        const f = document.activeElement;
+        if (f && f.classList && f.classList.contains('tl-prog')) setTimeout(() => nearestVisible(f), 350);
+      }
+      // 3 saat kayınca odaklı program görünümden çıktıysa odak görünen en yakın programa taşınır
+      function nearestVisible(f) {
+        if (!f.isConnected) return;
+        const v = view();
+        const b = f.getBoundingClientRect();
+        if (b.right > v.left && b.left < v.right) return;
+        const row = f.closest('.tl-row');
+        const p = nearestProg(row, b.right <= v.left ? v.left + 1 : v.right - 1);
+        if (p) p.focus({ preventScroll: true });
+      }
       $('#guide-back', body).addEventListener('click', () => step(-1));
       $('#guide-fwd', body).addEventListener('click', () => step(1));
       $('#guide-today', body).addEventListener('click', () => {

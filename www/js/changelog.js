@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 22,
+    title: 'TV rehberi kumandayla ve tek kaydırmayla',
+    items: [
+      'TV Rehberi kutucuğuna simge eklendi',
+      'Kumanda okları programdan programa ve kanaldan kanala gezer; Geri önce kategorilere, sonra ana ekrana döner',
+      'Kategori seçince çizelge ekranı doldurur; tek kaydırma alanı var, sayfa kaymaz',
+    ],
+  },
+  {
     id: 21,
     title: 'Zaman çizelgeli rehber ve kalıcı mini oynatıcı',
     items: [

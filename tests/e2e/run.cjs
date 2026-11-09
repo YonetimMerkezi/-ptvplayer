@@ -154,11 +154,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // zaman çizelgeli TV rehberi: kategori → kanal satırları, zaman cetveli, program blokları, şimdi çizgisi
   await page.click('#tabs [data-tab=home]');
   await page.waitForSelector('[data-go=guide]');
+  const gIcon = await page.evaluate(() => {
+    const u = document.querySelector('.t-guide svg use');
+    const b = u && u.closest('svg').getBoundingClientRect();
+    return { href: u && u.getAttribute('href'), sym: !!(u && document.getElementById('i-guide')), w: b ? b.width : 0 };
+  });
+  ok(gIcon.href === '#i-guide' && gIcon.sym && gIcon.w > 8, 'TV Rehberi kutucuğunda simge var ve çiziliyor');
   await page.click('[data-go=guide]');
   await page.waitForSelector('.guide-category-head');
   ok(!(await page.$('.tl')), 'rehber önce yalnız kategorileri gösteriyor');
   await page.click('.guide-category-head');
   await page.waitForSelector('.tl-row');
+  // kaydırma: sayfa gövdesi kaymaz, tek kaydırma alanı çizelgenin kendisi
+  const scr = await page.evaluate(() => {
+    const pg = document.querySelector('.guide-pg');
+    const bodyEl = pg.querySelector('.pg-body');
+    const scrollers = [...pg.querySelectorAll('*')].filter((el) => {
+      const o = getComputedStyle(el);
+      return /(auto|scroll)/.test(o.overflowY + o.overflowX) && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    }).map((el) => el.className.split(' ')[0]);
+    const pgb = pg.getBoundingClientRect();
+    const tl = document.querySelector('.tl').getBoundingClientRect();
+    return { bodyScrolls: bodyEl.scrollHeight > bodyEl.clientHeight + 1, scrollers, fits: tl.bottom <= pgb.bottom + 1 && tl.height > 150 };
+  });
+  ok(!scr.bodyScrolls && scr.scrollers.length === 1 && scr.scrollers[0] === 'tl-scroll' && scr.fits, 'tek kaydırma alanı var (çizelge); sayfa gövdesi kaymıyor: ' + JSON.stringify(scr.scrollers));
   ok((await page.$$('.tl-row')).length > 0 && (await page.$$('.tl-ch')).length > 0, 'kategori açılınca kanal satırları ve sabit kanal sütunu var');
   ok((await page.$$('.tl-tick:not(.half)')).length >= 20 && /\d\d:\d\d/.test(await page.textContent('.tl-axis')), 'yarım saatlik zaman cetveli var');
   ok((await page.$$('.tl-prog:not(.none)')).length > 0, 'programlar süresine göre bloklar olarak çizildi');
@@ -168,11 +187,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const s = sc.getBoundingClientRect();
     const ch = document.querySelector('.tl-ch').getBoundingClientRect();
     const cur = document.querySelector('.tl-prog.now');
-    const wide = [...document.querySelectorAll('.tl-prog:not(.none)')].map((b) => b.getBoundingClientRect().width);
-    return { scrolled: sc.scrollLeft, lineIn: line.left >= s.left && line.left <= s.right, lineAfterCh: line.left >= ch.right - 1, hasNow: !!cur, widths: wide.length ? [Math.min(...wide), Math.max(...wide)] : [0, 0] };
+    const ppm = parseFloat(getComputedStyle(document.querySelector('.tl')).getPropertyValue('--tl-ppm')) || 0;
+    const err = [...document.querySelectorAll('.tl-prog:not(.none)')].map((b) => Math.abs(b.getBoundingClientRect().width - parseFloat(b.style.getPropertyValue('--d')) * ppm));
+    return { scrolled: sc.scrollLeft, lineIn: line.left >= s.left && line.left <= s.right, lineAfterCh: line.left >= ch.right - 1, hasNow: !!cur, ppm, maxErr: err.length ? Math.max(...err) : 99 };
   });
   ok(tlg.scrolled > 0 && tlg.lineIn && tlg.lineAfterCh, 'açılışta şimdiye kaydırıldı, şimdi çizgisi kanal sütununun yanında görünür');
-  ok(tlg.hasNow && tlg.widths[1] > tlg.widths[0], 'şimdiki program vurgulu, blok genişlikleri süreye göre değişiyor');
+  ok(tlg.hasNow && tlg.ppm > 0 && tlg.maxErr <= 6, 'şimdiki program vurgulu, blok genişliği süre × dakika genişliği ile orantılı ' + JSON.stringify([tlg.hasNow, tlg.ppm, tlg.maxErr]));
   await sleep(350);
   await page.screenshot({ path: path.join(SHOTS, '03b-rehber-cizelge.png') });
   await page.click('#guide-fwd');
@@ -194,6 +214,68 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(true, 'kanal adına dokununca günlük yayın akışı açıldı');
   await page.goBack();
   await page.waitForSelector('.sheet-back', { state: 'detached' });
+
+  // kumanda: oklar program program gezer, sabit kanal sütunu/cetvelin altında kalmaz
+  const act = () => page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body) return null;
+    const row = a.closest('.tl-row');
+    const rows = [...document.querySelectorAll('.tl-row')];
+    const b = a.getBoundingClientRect();
+    const sc = document.querySelector('.tl-scroll').getBoundingClientRect();
+    const chW = document.querySelector('.tl-corner').getBoundingClientRect().width;
+    const headH = document.querySelector('.tl-head').getBoundingClientRect().height;
+    return {
+      kind: a.classList.contains('tl-ch') ? 'ch' : a.classList.contains('tl-prog') ? 'prog' : a.className.split(' ')[0],
+      row: rows.indexOf(row), s: a.dataset.s ? Number(a.dataset.s) : null,
+      visible: b.right > sc.left + chW + 2 && b.left < sc.right - 2 && b.top >= sc.top + headH - 2 && b.bottom <= sc.bottom + 2,
+      chVisible: a.classList.contains('tl-ch') ? b.top >= sc.top + headH - 2 && b.bottom <= sc.bottom + 2 : true,
+    };
+  });
+  await page.focus('.tl-prog.now');
+  const k0 = await act();
+  await page.keyboard.press('ArrowRight');
+  const k1 = await act();
+  ok(k0 && k1 && k1.kind === 'prog' && k1.row === k0.row && k1.s > k0.s, 'sağ ok aynı satırda sonraki programa geçti');
+  ok(await page.evaluate(() => document.documentElement.classList.contains('kbd')), 'ok tuşu kumanda kipini açtı (odak halkası görünür)');
+  await page.keyboard.press('ArrowLeft');
+  const k2 = await act();
+  ok(k2.row === k0.row && k2.s === k0.s, 'sol ok önceki programa döndü');
+  await page.keyboard.press('ArrowDown');
+  const k3 = await act();
+  ok(k3.row === k0.row + 1 && k3.kind === 'prog' && k3.visible, 'aşağı ok alttaki kanalın programına indi ve görünür');
+  await page.keyboard.press('ArrowUp');
+  const k4 = await act();
+  ok(k4.row === k0.row && k4.kind === 'prog', 'yukarı ok üstteki satıra çıktı');
+  for (let i = 0; i < 40; i++) {
+    const c = await act();
+    if (c.kind === 'ch') break;
+    await page.keyboard.press('ArrowLeft');
+  }
+  const k5 = await act();
+  ok(k5.kind === 'ch' && k5.chVisible, 'sola basa basa kanal adına ulaşılır');
+  await page.keyboard.press('ArrowRight');
+  const k6 = await act();
+  ok(k6.kind === 'prog' && k6.row === k5.row && k6.visible, 'kanal adından sağ ok görünen ilk programa geçti');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.gp [data-a=watch]');
+  ok(true, 'Tamam tuşu odaktaki programın ayrıntısını açtı');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await sleep(300);
+  const kf = await act();
+  ok(kf && kf.kind === 'prog', 'ayrıntı kapanınca odak programa döndü ' + JSON.stringify(kf));
+  // uzun gezinme: alt satırlara inerken odak hep görünür kalır, sayfa gövdesi kaymaz
+  for (let i = 0; i < 14; i++) await page.keyboard.press('ArrowDown');
+  const kd = await act();
+  const bodyShift = await page.evaluate(() => document.querySelector('.guide-pg .pg-body').scrollTop);
+  ok(kd && kd.row >= 1 && (kd.kind === 'ch' ? kd.chVisible : kd.visible) && bodyShift === 0, 'aşağı ok çizelgeyi kaydırıp odağı görünür tuttu ' + JSON.stringify([kd, bodyShift]));
+
+  // Geri: önce kategori listesi, sonra rehber kapanır
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.tl', { state: 'detached' });
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('guide-category-head')), 'Geri çizelgeden kategorilere döndü, odak kategori düğmesinde');
+  ok(!!(await page.$('.guide-pg')), 'kategori listesinde rehber hâlâ açık');
   await page.goBack();
   await page.waitForSelector('.guide-pg', { state: 'detached' });
   // sonraki bölümler için Canlı › Tümü listesine dön
@@ -2095,6 +2177,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(true, 'kategoriye dokununca kanallar zaman çizelgesinde açıldı');
   await sleep(400);
   await page.screenshot({ path: path.join(SHOTS, '00g-rehber-tv.png') });
+  const tvFoc = await page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || !a.classList.contains('tl-prog')) return { on: false };
+    const o = getComputedStyle(a);
+    return { on: true, outline: o.outlineStyle !== 'none' && parseFloat(o.outlineWidth) >= 2, ch: document.querySelector('.tl-corner').getBoundingClientRect().width };
+  });
+  ok(tvFoc.on && tvFoc.outline, 'TV kipinde kategori açılınca odak şimdiki programda ve halka belirgin');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  ok(await page.evaluate(() => { const a = document.activeElement; return a && a.classList.contains('tl-prog'); }), 'TV kipinde oklar programlar arasında gezindi');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.tl', { state: 'detached' });
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('guide-category-head')), 'TV: Geri/Esc önce kategori listesine döndü');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.pg', { state: 'detached' });
 

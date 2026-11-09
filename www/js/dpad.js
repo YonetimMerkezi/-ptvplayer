@@ -163,8 +163,10 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
   const isText = (el) => el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|url|email|tel|password|number)$/.test(el.type));
 
   function onKey(e) {
-    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
     const dir = DIRS[e.key];
+    if (dir) setKbd(true); // oku başka bileşen (ör. TV rehberi çizelgesi) işlese de kumanda kipi açılır, odak halkası görünür
+    if (e.defaultPrevented) return;
     const el = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : null;
     if (dir) {
       setKbd(true);
