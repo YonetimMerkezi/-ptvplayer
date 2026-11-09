@@ -42,6 +42,7 @@ import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.VideoSize;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
@@ -264,6 +265,11 @@ public class IptvPlayerPlugin extends Plugin {
                 emitState();
             }
 
+            @Override
+            public void onVideoSizeChanged(VideoSize size) {
+                updatePipParams(); // PiP penceresi yayının en-boy oranına uysun
+            }
+
             // Ses/altyazı parçaları yayın çözüldükçe sonradan da ortaya çıkabilir (özellikle TS yayınlarda).
             @Override
             public void onTracksChanged(Tracks tracks) {
@@ -368,7 +374,8 @@ public class IptvPlayerPlugin extends Plugin {
     private double[] rect = null;
 
     private void applyRect() {
-        if (playerView != null) placeView(playerView, rect);
+        // Sistem PiP penceresinde görüntü pencereyi doldurur; uygulama içi küçük pencere ölçüsü çıkınca geri uygulanır.
+        if (playerView != null) placeView(playerView, pipMode ? null : rect);
     }
 
     // Görünümü CSS piksel dikdörtgenine yerleştirir (null → tüm ekran).
@@ -422,6 +429,7 @@ public class IptvPlayerPlugin extends Plugin {
             player.release();
             player = null;
         }
+        updatePipParams(); // oynatıcı yokken Ana ekrana çıkınca boş PiP penceresi açılmasın
     }
 
     @PluginMethod
@@ -1732,11 +1740,29 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // Ana ekrana çıkınca PiP'e geçilebilir mi: oynayan (ya da yüklenen) bir yayın var ve çoklu ekran açık değil.
+    private boolean pipWanted() {
+        return player != null && player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED;
+    }
+
+    // PiP penceresinin en-boy oranı yayından alınır; Android yalnız 1:2,39 – 2,39:1 aralığını kabul eder.
+    private Rational pipRatio() {
+        if (player != null) {
+            VideoSize v = player.getVideoSize();
+            if (v.width > 0 && v.height > 0) {
+                double r = (double) v.width * (v.pixelWidthHeightRatio > 0 ? v.pixelWidthHeightRatio : 1f) / v.height;
+                r = Math.max(1 / 2.39, Math.min(2.39, r));
+                return new Rational(Math.round((float) (r * 1000)), 1000);
+            }
+        }
+        return new Rational(16, 9);
+    }
+
     private PictureInPictureParams buildPipParams() {
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(16, 9))
+                .setAspectRatio(pipRatio())
                 .setActions(pipActions());
-        if (Build.VERSION.SDK_INT >= 31) builder.setAutoEnterEnabled(player != null);
+        if (Build.VERSION.SDK_INT >= 31) builder.setAutoEnterEnabled(pipWanted());
         return builder.build();
     }
 
@@ -1764,7 +1790,7 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     private void updatePipParams() {
-        if (Build.VERSION.SDK_INT < 26 || player == null || getActivity().isFinishing()) return;
+        if (Build.VERSION.SDK_INT < 26 || getActivity() == null || getActivity().isFinishing()) return;
         try {
             getActivity().setPictureInPictureParams(buildPipParams());
         } catch (RuntimeException ignored) {
@@ -1772,9 +1798,10 @@ public class IptvPlayerPlugin extends Plugin {
         }
     }
 
-    public static void enterPipFromUserLeave() {
+    // Ana ekran / Geri ile uygulamadan çıkılırken yayın varsa PiP'e geçilir (Android 12+ bunu kendisi yapar). true → PiP istendi.
+    public static boolean enterPipFromUserLeave() {
         IptvPlayerPlugin plugin = activePlugin;
-        if (plugin == null || plugin.player == null || Build.VERSION.SDK_INT < 26) return;
+        if (plugin == null || Build.VERSION.SDK_INT < 26 || !plugin.pipWanted()) return false;
         plugin.main.post(() -> {
             try {
                 plugin.updatePipParams();
@@ -1783,6 +1810,7 @@ public class IptvPlayerPlugin extends Plugin {
                 // PiP kullanılamıyorsa normal arka plan davranışı korunur.
             }
         });
+        return true;
     }
 
     public static void onPipModeChanged(boolean inPip) {
@@ -1793,7 +1821,25 @@ public class IptvPlayerPlugin extends Plugin {
             WebView web = plugin.getBridge() != null ? plugin.getBridge().getWebView() : null;
             if (web != null) web.setVisibility(inPip ? View.GONE : View.VISIBLE);
             if (plugin.playerView != null) plugin.playerView.setVisibility(plugin.player == null ? View.GONE : View.VISIBLE);
+            plugin.applyRect(); // PiP'te görüntü pencereyi doldurur, çıkınca küçük pencere ölçüsüne döner
+            JSObject o = new JSObject();
+            o.put("active", inPip);
+            plugin.notifyListeners("pip", o);
         });
+    }
+
+    // PiP penceresi X ile kapatıldı: etkinlik görünmez kaldı, yayın duraklatılır (sesi arka planda sürmez).
+    public static void onPipDismissed() {
+        IptvPlayerPlugin plugin = activePlugin;
+        if (plugin == null) return;
+        plugin.main.post(plugin::pauseForBackground);
+    }
+
+    // Uygulama görünmez oldu: kayıt sürerken yayın sessiz akar, yoksa duraklatılır.
+    private void pauseForBackground() {
+        if (player == null) return;
+        if (StreamRecorder.active()) player.setVolume(0f);
+        else player.setPlayWhenReady(false);
     }
 
     public static void handlePipAction(Intent intent) {
@@ -1820,11 +1866,14 @@ public class IptvPlayerPlugin extends Plugin {
     @Override
     protected void handleOnStop() {
         foreground = false;
-        if (Build.VERSION.SDK_INT >= 26 && getActivity().isInPictureInPictureMode()) return;
-        if (player == null) return;
-        // Kayıt sürerken yayın arka planda da akar (sessiz); yoksa duraklatılır.
-        if (StreamRecorder.active()) player.setVolume(0f);
-        else player.setPlayWhenReady(false);
+        if (Build.VERSION.SDK_INT >= 26 && getActivity().isInPictureInPictureMode()) {
+            // PiP'e geçişte etkinlik görünür kalır; X ile kapatmada ise kısa süre sonra PiP'ten çıkılmış olur.
+            main.postDelayed(() -> {
+                if (!foreground && !getActivity().isInPictureInPictureMode()) pauseForBackground();
+            }, 500);
+            return;
+        }
+        pauseForBackground();
     }
 
     @Override

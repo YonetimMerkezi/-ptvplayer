@@ -17,6 +17,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.lifecycle.Lifecycle;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -40,7 +41,11 @@ public class MainActivity extends BridgeActivity {
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
         IptvPlayerPlugin.onPipModeChanged(isInPictureInPictureMode);
-        if (!isInPictureInPictureMode) hideSystemBars();
+        if (!isInPictureInPictureMode) {
+            hideSystemBars();
+            // Pencere X ile kapatıldıysa etkinlik görünür duruma dönmez; yayın duraklatılır.
+            if (!getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED)) IptvPlayerPlugin.onPipDismissed();
+        }
     }
 
     @Override
@@ -61,6 +66,8 @@ public class MainActivity extends BridgeActivity {
                     // TV'de kumandayla yanlışlıkla çıkmamak için ana ekranda ikinci basış gerekir
                     lastBackAt = System.currentTimeMillis();
                     Toast.makeText(MainActivity.this, "Çıkmak için Geri tuşuna tekrar basın", Toast.LENGTH_SHORT).show();
+                } else if (!IptvPlayerPlugin.tvMode && IptvPlayerPlugin.enterPipFromUserLeave()) {
+                    // Yayın sürerken ana ekranda Geri: uygulama kapanmaz, yayın küçük pencerede (PiP) devam eder
                 } else {
                     setEnabled(false);
                     getOnBackPressedDispatcher().onBackPressed();

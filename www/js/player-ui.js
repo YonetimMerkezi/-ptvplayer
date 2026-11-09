@@ -415,7 +415,7 @@ export function createPlayerUI({ engine, player, env }) {
       if (open) {
         stopRequested = true;
         popLayer('player');
-      }
+      } else if (previewing) endPreview();
       renderSleepLabel();
     },
   });
@@ -551,8 +551,17 @@ export function createPlayerUI({ engine, player, env }) {
     applyRect();
   }
 
+  // Uygulama içi küçük oynatıcı (geri tuşuyla küçülen yayın): durumu uygulamaya tek yerden bildirilir.
+  let miniActive = false;
+  function setMini(on) {
+    if (miniActive === on) return;
+    miniActive = on;
+    if (env.onMiniPlayer) env.onMiniPlayer(on);
+  }
+
   // Önizleme durumundan çıkar (yayına dokunmaz).
   function leavePreview() {
+    setMini(false);
     if (!previewing) return;
     previewing = false;
     clearRect();
@@ -563,6 +572,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   function previewUi(item, targets, opts) {
     if (open) return;
+    setMini(false);
     ctx = opts.ctx || null;
     enterPreview();
     player.open(item, targets, { ep: null, startAt: 0 });
@@ -572,11 +582,13 @@ export function createPlayerUI({ engine, player, env }) {
     if (!previewing) return;
     previewing = false;
     fromPreview = false;
+    setMini(false);
     clearRect();
     root.classList.remove('preview');
     root.hidden = true;
     document.documentElement.classList.remove('native-preview');
     await player.close();
+    if (env.onPreviewEnd) env.onPreviewEnd();
   }
 
   function expand() {
@@ -621,7 +633,7 @@ export function createPlayerUI({ engine, player, env }) {
     // Android'de geri çıkışta yayını kapatma: uygulama içinde yüzen mini oynatıcıya küçült.
     // Uygulama arka plana alınırsa Android'in sistem PiP akışı ayrıca çalışır.
     if (env.native && current.item && !stopping) {
-      if (env.onMiniPlayer) env.onMiniPlayer(true);
+      setMini(true);
       enterPreview();
       engine.setImmersive(false, false).catch(() => {});
       setTimeout(() => previewing && applyRect(), 250);
@@ -824,6 +836,7 @@ export function createPlayerUI({ engine, player, env }) {
     preview: previewUi,
     expand,
     endPreview,
+    isMini: () => miniActive,
     syncPreview: () => previewing && applyRect(),
     isPreviewing: () => previewing,
     close: () => {

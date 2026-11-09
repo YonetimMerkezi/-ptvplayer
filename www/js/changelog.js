@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 21,
+    title: 'Zaman çizelgeli rehber ve kalıcı mini oynatıcı',
+    items: [
+      'TV rehberi zaman çizelgesi oldu: kanallar solda, programlar süresine göre bloklar, şimdi çizgisi; programa dokununca ayrıntı ve “Kanalı izle”',
+      'Geri ile küçülen yayın, sekmeler ve listeler arasında gezerken açık kalır',
+      'Ana ekrana çıkınca ya da ana ekranda Geri’ye basınca yayın küçük pencerede (PiP) sürer; pencereyi kapatınca yayın durur',
+    ],
+  },
+
+  {
     id: 20,
     title: 'Hata taraması',
     items: [
