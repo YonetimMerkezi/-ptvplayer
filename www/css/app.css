@@ -567,11 +567,36 @@ html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 3p
 .cast-code { font-size: 3rem; font-weight: 800; letter-spacing: 0.1em; text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; padding: 12px 0 6px; }
 html.tv #pl-tv, html.tv #mv-cast { display: none; }
 
-/* TV rehberi ve yayın tanılama ekranları */
+/* TV rehberi: kategoriler, kanal logoları ve canlı zaman çizelgesi */
+.guide-pg .pg-body { overflow:auto; }
 .guide-tools { display:flex; gap:8px; padding:0 0 10px; }
 .guide-tools input { flex:1; min-width:0; min-height:44px; border-radius:10px; border:1px solid var(--line); background:var(--raised); color:var(--text); padding:0 12px; font:inherit; }
-.guide-row { width:100%; text-align:left; }
-.guide-row .t small { white-space:normal; line-height:1.4; }
+.guide-now { color:var(--muted); font-size:.78rem; padding:2px 4px 10px; }
+.guide-categories { display:flex; flex-direction:column; gap:8px; padding-bottom:16px; }
+.guide-category { border:1px solid var(--line); border-radius:13px; overflow:hidden; background:color-mix(in srgb,var(--surface) 82%,transparent); }
+.guide-category-head { display:flex; align-items:center; gap:10px; width:100%; min-height:58px; padding:9px 13px; text-align:left; }
+.guide-category-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:9px; color:var(--accent); background:var(--accent-soft); flex:none; }
+.guide-category-icon .ic { width:20px; height:20px; }
+.guide-category-title { flex:1; min-width:0; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.guide-category-count { color:var(--muted); font-size:.78rem; white-space:nowrap; }
+.guide-category-head .chev { color:var(--muted); font-size:1.25rem; padding-left:4px; }
+.guide-category-channels { border-top:1px solid var(--line); padding:0 10px; }
+.guide-channel { display:flex; align-items:center; gap:11px; width:100%; min-height:82px; padding:10px 2px; text-align:left; border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent); }
+.guide-channel:last-child { border-bottom:0; }
+.guide-channel-logo { width:48px; height:48px; flex:none; display:grid; place-items:center; }
+.guide-channel-logo .logo { width:46px; height:46px; object-fit:contain; }
+.guide-channel-main { display:flex; flex:1; min-width:0; flex-direction:column; gap:3px; }
+.guide-channel-name { font-weight:650; font-size:.92rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.guide-program-now,.guide-program-next { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:.78rem; }
+.guide-program-now b,.guide-program-next b { color:var(--accent); font-size:.68rem; letter-spacing:.04em; margin-right:4px; }
+.guide-program-now.muted { opacity:.7; }
+.guide-timeline { display:block; height:4px; border-radius:4px; overflow:hidden; background:var(--line); margin:3px 0 1px; }
+.guide-timeline i { display:block; height:100%; border-radius:4px; background:var(--accent); }
+.guide-time { color:var(--muted); font-size:.67rem; font-variant-numeric:tabular-nums; }
+.guide-more { color:var(--muted); font-size:.75rem; text-align:center; padding:10px 4px; }
+html.tv .guide-category-head { min-height:68px; }
+html.tv .guide-channel { min-height:96px; }
+html.tv .guide-channel-logo,.html.tv .guide-channel-logo .logo { width:56px; height:56px; }
 .health-pg .pg-body { overflow:auto; }
 .health-pg .field { display:flex; flex-direction:column; gap:6px; margin:10px 0; }
 .health-pg select { min-height:46px; border:1px solid var(--line); border-radius:10px; padding:0 12px; background:var(--raised); color:var(--text); font:inherit; }

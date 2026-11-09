@@ -1378,7 +1378,7 @@ function renderHome(v) {
       <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec' : ''}">
-      <button class="tile mini t-guide" data-go="guide">${icon('list')}<b>EPG</b></button>
+      <button class="tile mini t-guide" data-go="guide">${icon('calendar')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${icon('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${icon('history')}<b>İzleme listesi</b><small>${recN || ''}</small></button>
       <button class="tile mini t-fav" data-go="favs">${icon('star-on')}<b>Favoriler</b><small>${favN || ''}</small></button>
@@ -1970,33 +1970,74 @@ function channelPicker(onPick, { guide = false } = {}) {
   });
 }
 
-// Ana ekran "EPG": kanalların şimdi/sonra yayınları; dokununca tam ekran açılır.
+// TV rehberi: önce kategoriler açılır; kategori seçilince logolu kanallar ve zaman çizelgesi görünür.
 function guidePage() {
-  const rows = S.cat.live.slice(0, 500);
   openPage({
-    title: 'TV rehberi',
+    title: 'TV Rehberi',
     cls: 'guide-pg',
-    html: '<div class="guide-tools"><input id="guide-q" type="search" placeholder="Kanal ara…" autocomplete="off"><button class="btn sm ghost" id="guide-refresh">EPG yenile</button></div><div id="guide-list"></div>',
+    html: '<div class="guide-tools"><input id="guide-q" type="search" placeholder="Kanal veya kategori ara…" autocomplete="off"><button class="btn sm ghost" id="guide-refresh">EPG yenile</button></div><div class="guide-now" id="guide-now"></div><div id="guide-list" class="guide-categories"></div>',
     mount: (body) => {
       const q = $('#guide-q', body);
       const list = $('#guide-list', body);
+      const nowLabel = $('#guide-now', body);
+      let expanded = null;
+      let categories = categoryRows('live').filter((r) => !r.special && r.count > 0);
       const draw = () => {
         const term = fold(q.value.trim());
-        const filtered = rows.filter((it) => !term || fold(it.name).includes(term)).slice(0, 200);
-        list.innerHTML = filtered.map((it) => {
-          const ep = S.epg.nowNext(it);
-          const now = ep && ep.now;
-          const next = ep && ep.next;
-          return `<button class="list-item guide-row" data-id="${esc(it.id)}"><span class="t">${esc(it.name)}<small>${now ? 'ŞİMDİ · ' + esc(now.t) : 'Program bilgisi yok'}${next ? '  ·  Sonraki: ' + esc(next.t) : ''}</small></span><span class="chev">›</span></button>`;
-        }).join('') || '<div class="empty">Kanal bulunamadı.</div>';
+        nowLabel.textContent = 'ŞİMDİ · ' + fmtClock(Date.now()) + '  ·  Kategori seçerek yayın akışını görüntüleyin';
+        const filtered = categories.filter((c) => !term || fold(c.name).includes(term) ||
+          itemsOfGroup('live', c.id).some((it) => fold(it.name).includes(term)));
+        if (expanded && !filtered.some((c) => c.id === expanded)) expanded = null;
+        list.innerHTML = filtered.map((c) => {
+          const isOpen = expanded === c.id;
+          const items = isOpen ? itemsOfGroup('live', c.id).filter((it) => !term || fold(it.name).includes(term)).slice(0, 250) : [];
+          const channels = items.map((it) => {
+            const ep = S.epg.nowNext(it) || {};
+            const current = ep.now;
+            const next = ep.next;
+            const start = current && current.s ? fmtClock(current.s) : '';
+            const finish = current && current.e ? fmtClock(current.e) : '';
+            const progress = current && current.s && current.e
+              ? Math.max(0, Math.min(100, Math.round((Date.now() - current.s) / (current.e - current.s) * 100))) : 0;
+            return '<button class="guide-channel" data-id="' + esc(it.id) + '">' +
+              '<span class="guide-channel-logo">' + logo(it.logo, it.name) + '</span>' +
+              '<span class="guide-channel-main"><span class="guide-channel-name">' + esc(it.name) + '</span>' +
+              (current ? '<span class="guide-program-now"><b>ŞİMDİ</b> ' + esc(current.t) + '</span>' : '<span class="guide-program-now muted">Program bilgisi yok</span>') +
+              (current ? '<span class="guide-timeline"><i style="width:' + progress + '%"></i></span><span class="guide-time">' + esc(start) + ' – ' + esc(finish) + '</span>' : '') +
+              (next ? '<span class="guide-program-next"><b>SONRA</b> ' + esc(next.t) + '</span>' : '') +
+              '</span><span class="chev">›</span></button>';
+          }).join('');
+          return '<section class="guide-category' + (isOpen ? ' open' : '') + '">' +
+            '<button class="guide-category-head" data-category="' + esc(c.id) + '" aria-expanded="' + isOpen + '">' +
+            '<span class="guide-category-icon">' + icon('folder') + '</span><span class="guide-category-title">' + esc(c.name) + '</span>' +
+            '<span class="guide-category-count">' + c.count + ' kanal</span><span class="chev">' + (isOpen ? '⌃' : '›') + '</span></button>' +
+            (isOpen ? '<div class="guide-category-channels">' + (channels || '<div class="empty">Bu kategoride kanal bulunamadı.</div>') +
+              (itemsOfGroup('live', c.id).length > 250 ? '<div class="guide-more">İlk 250 kanal gösteriliyor. Arama ile kanal bulun.</div>' : '') + '</div>' : '') +
+            '</section>';
+        }).join('') || '<div class="empty">Kategori veya kanal bulunamadı.</div>';
       };
-      q.addEventListener('input', debounce(draw, 120));
       list.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-id]');
-        if (!b) return;
-        const it = S.idx.live.get(b.dataset.id);
-        if (it) epgSheet(it);
+        const head = e.target.closest('[data-category]');
+        if (head) {
+          const id = head.dataset.category;
+          expanded = expanded === id ? null : id;
+          draw();
+          return;
+        }
+        const channel = e.target.closest('.guide-channel[data-id]');
+        if (channel) {
+          const it = S.idx.live.get(channel.dataset.id);
+          if (it) epgSheet(it);
+        }
       });
+      q.addEventListener('input', debounce(() => {
+        if (q.value.trim()) {
+          const term = fold(q.value.trim());
+          const match = categories.find((c) => itemsOfGroup('live', c.id).some((it) => fold(it.name).includes(term)));
+          expanded = match ? match.id : null;
+        }
+        draw();
+      }, 160));
       const refreshButton = $('#guide-refresh', body);
       refreshButton.addEventListener('click', async () => {
         if (refreshButton.disabled) return;
@@ -2004,11 +2045,11 @@ function guidePage() {
         refreshButton.textContent = 'Yenileniyor…';
         try {
           await maybeRefreshEpg(true);
+          categories = categoryRows('live').filter((r) => !r.special && r.count > 0);
           if (body.isConnected) draw();
         } catch (error) {
           toast('EPG yenilenemedi: ' + ((error && error.message) || 'Bilinmeyen hata'), 3500);
         } finally {
-          // await sonrasında event.currentTarget null olur; buton referansını önceden sakla.
           if (body.isConnected && refreshButton.isConnected) {
             refreshButton.disabled = false;
             refreshButton.textContent = 'EPG yenile';
