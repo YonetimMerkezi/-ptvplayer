@@ -68,3 +68,20 @@ test('kısa rehber base64 çözülür', () => {
   assert.equal(r[1].d, 'Güncel');
   assert.equal(r[0].s, 100000);
 });
+
+test('sunucu listelerinde null/bozuk öğe olsa da çökmez, geçerli öğeler alınır', () => {
+  const live = X.mapLive([null, { stream_id: 7, name: 'A', category_id: 1 }, 5, 'x'], [null, { category_id: 1, category_name: 'Spor' }]);
+  assert.equal(live.length, 1);
+  assert.equal(live[0].group, 'Spor');
+  assert.equal(X.mapVod([undefined, { stream_id: 1, name: 'F' }], null).length, 1);
+  assert.equal(X.mapSeries([null], []).length, 0);
+  assert.equal(X.mapShortEpg({ epg_listings: [null, { start_timestamp: 1, stop_timestamp: 2, title: '' }] }).length, 1);
+  const info = X.mapSeriesInfo({ episodes: { 1: [null, { id: 3, episode_num: 1, title: 'B' }] } });
+  assert.equal(info.seasons[0].episodes.length, 1);
+});
+
+test('hesap doğrulama: auth true olarak gelen paneller de kabul edilir; user_info nesne değilse hata', () => {
+  assert.equal(X.checkAuth({ user_info: { auth: true, status: 'Active' } }).ok, true);
+  assert.equal(X.checkAuth({ user_info: { auth: 0 } }).ok, false);
+  assert.equal(X.checkAuth({ user_info: 'x' }).ok, false);
+});

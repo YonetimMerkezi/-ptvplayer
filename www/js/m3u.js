@@ -4,6 +4,15 @@ import { hashId } from './util.js';
 const VIDEO_EXT = /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)(\?|$)/i;
 const SERIES_NAME = /^(.*?)[\s._\-–]*S(\d{1,2})\s?E(\d{1,3})\b/i;
 
+// Adreste kalmış tek bir "%" (örn. "50%.ts") decodeURIComponent'i patlatır; bozuk dizilerde metin olduğu gibi kalır.
+function safeDecode(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 function attrs(str) {
   const out = {};
   const re = /([A-Za-z0-9_\-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s",]+))/g;
@@ -40,7 +49,7 @@ export function splitPipeHeaders(url) {
     const k = part.indexOf('=');
     if (k < 1) continue;
     const name = part.slice(0, k).trim();
-    const val = decodeURIComponent(part.slice(k + 1));
+    const val = safeDecode(part.slice(k + 1));
     if (/^user-agent$/i.test(name)) headers['User-Agent'] = val;
     else if (/^referr?er$/i.test(name)) headers.Referer = val;
     else if (/^origin$/i.test(name)) headers.Origin = val;
@@ -125,7 +134,7 @@ export class M3UParser {
     const p = this._pending;
     const a = p ? p.attrs : {};
     const group = a['group-title'] || this._group || '';
-    const name = (p && p.name) || a['tvg-name'] || decodeURIComponent(url.split('?')[0].split('/').pop() || url);
+    const name = (p && p.name) || a['tvg-name'] || safeDecode(url.split('?')[0].split('/').pop() || url);
     const merged = { ...(this._opts || {}), ...(pipeHeaders || {}) };
     const headers = Object.keys(merged).length ? merged : null;
     this.items.push({

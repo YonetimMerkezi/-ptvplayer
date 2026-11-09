@@ -85,7 +85,12 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   const read = (k, d) => {
     try {
       const v = storage.getItem(P + k);
-      return v == null ? d : JSON.parse(v);
+      if (v == null) return d;
+      const x = JSON.parse(v);
+      // Bozulmuş kayıt (beklenen dizi/nesne değilse) varsayılana düşer; listeleri okuyan kod çökmez.
+      if (Array.isArray(d)) return Array.isArray(x) ? x : d;
+      if (d && typeof d === 'object') return x && typeof x === 'object' && !Array.isArray(x) ? x : d;
+      return x;
     } catch {
       return d;
     }
@@ -101,7 +106,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   const api = { cache };
 
   // ---- kaynaklar ----
-  api.sources = () => read('sources', []);
+  api.sources = () => read('sources', []).filter((s) => s && typeof s === 'object' && typeof s.id === 'string');
   api.activeId = () => {
     const id = read('active', null);
     const list = api.sources();

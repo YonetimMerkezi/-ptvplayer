@@ -77,3 +77,31 @@ test('yedek dosyası doğrulama', () => {
 test('yedek dosya adı tarihli', () => {
   assert.equal(backupFileName(new Date(2026, 10, 8).getTime()), 'iptv-yedek-2026-11-08.json');
 });
+
+test('bozulmuş/elle değiştirilmiş yedek: geçersiz öğeler atılır, geri yükleme sonrası uygulama çökmez', () => {
+  const text = JSON.stringify({
+    app: 'iptv-oynatici', v: 1, at: 1,
+    data: {
+      sources: [null, 7, { id: 'a', type: 'm3u', url: 'http://x/l.m3u' }, { type: 'm3u' }],
+      'fav.a': [null, { id: 'f1', kind: 'live', name: 'A' }, 'x'],
+      'rec.a': 'bozuk',
+      'prog.a': { m1: null, m2: { id: 'm2', pos: 20000, dur: 60000, name: 'F' } },
+      'cats.a': [1],
+      'pref.set.theme': 'x',
+    },
+  });
+  const r = parseBackup(text);
+  assert.equal(r.ok, true);
+  assert.equal(r.backup.data.sources.length, 1);
+  assert.deepEqual(r.backup.data['fav.a'].map((f) => f.id), ['f1']);
+  assert.equal('rec.a' in r.backup.data, false);
+  assert.deepEqual(Object.keys(r.backup.data['prog.a']), ['m2']);
+  assert.equal('cats.a' in r.backup.data, false);
+  assert.equal(r.summary.sources, 1);
+  const { store } = mk();
+  store.saveSource({ id: 'old', type: 'm3u', url: 'http://old' });
+  applyBackup(store, r.backup);
+  assert.deepEqual(store.sources().map((s) => s.id), ['a']);
+  assert.equal(store.favs('a').length, 1);
+  assert.equal(store.progress('a', 'm2').pos, 20000);
+});

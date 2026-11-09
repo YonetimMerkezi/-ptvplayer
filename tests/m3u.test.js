@@ -95,3 +95,11 @@ test('tvg-chno kanal numarası okunur, yoksa 0', () => {
   assert.equal(r.items[0].num, 105);
   assert.equal(r.items[1].num, 0);
 });
+
+test('adreste kalmış tek "%" listeyi çökertmez (bozuk yüzde kodu olduğu gibi kalır)', () => {
+  const r = parseM3U('#EXTM3U\nhttp://h/live/u/p/50%.ts\n#EXTINF:-1,Normal\nhttp://h/x.m3u8\n#EXTINF:-1,Başlıklı\nhttp://h/y.m3u8|User-Agent=100%\n');
+  assert.equal(r.items.length, 3);
+  assert.equal(r.items[0].name, '50%.ts', 'adsız satırın adı dosya adından, bozuk kodla birlikte gelir');
+  assert.deepEqual(r.items[2].headers, { 'User-Agent': '100%' });
+  assert.equal(r.items[1].name, 'Normal');
+});

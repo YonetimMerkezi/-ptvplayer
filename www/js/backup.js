@@ -44,7 +44,27 @@ export function parseBackup(text) {
   if (!b || b.app !== BACKUP_APP || typeof b.data !== 'object' || b.data === null) return { ok: false, error: 'Bu dosya bu uygulamanın yedeği değil' };
   if (!(b.v >= 1) || b.v > BACKUP_VERSION) return { ok: false, error: 'Yedek daha yeni bir sürümden; önce uygulamayı güncelleyin' };
   if (!Array.isArray(b.data.sources)) return { ok: false, error: 'Yedekte kaynak listesi yok' };
-  return { ok: true, backup: b, summary: summarize(b) };
+  const clean = { ...b, data: cleanData(b.data) };
+  return { ok: true, backup: clean, summary: summarize(clean) };
+}
+
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+// Yedek dosyası elle değiştirilmiş ya da bozulmuş olabilir: geri yüklemeden önce beklenen biçime çevrilir
+// (kaynaklar nesne ve kimlikli, favori/son izlenen dizi, ilerleme/kategori düzeni nesne); bozuk öğeler atılır.
+function cleanData(d) {
+  const out = {};
+  for (const [k, v] of Object.entries(d)) {
+    const m = PER_SOURCE.exec(k);
+    if (k === 'sources') out.sources = v.filter((s) => isObj(s) && typeof s.id === 'string' && s.id);
+    else if (!m) out[k] = v;
+    else if (m[1] === 'fav' || m[1] === 'rec') {
+      if (Array.isArray(v)) out[k] = v.filter((x) => isObj(x) && typeof x.id === 'string');
+    } else if (m[1] === 'prog') {
+      if (isObj(v)) out[k] = Object.fromEntries(Object.entries(v).filter(([, x]) => isObj(x)));
+    } else if (isObj(v)) out[k] = v; // cats
+  }
+  return out;
 }
 
 export function summarize(b) {

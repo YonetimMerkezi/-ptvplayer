@@ -50,8 +50,8 @@ export function episodeUrl(cfg, episodeId, ext = 'mp4') {
 
 export function checkAuth(json) {
   const info = json && json.user_info;
-  if (!info) return { ok: false, reason: 'Sunucu geçerli bir Xtream yanıtı vermedi.' };
-  const auth = String(info.auth) === '1';
+  if (!info || typeof info !== 'object') return { ok: false, reason: 'Sunucu geçerli bir Xtream yanıtı vermedi.' };
+  const auth = /^(1|true)$/i.test(String(info.auth)); // bazı paneller 1 yerine true döndürür
   if (!auth) return { ok: false, reason: 'Kullanıcı adı veya şifre hatalı.' };
   const status = String(info.status || 'Active');
   if (/disabled|banned/i.test(status)) return { ok: false, reason: 'Hesap devre dışı.' };
@@ -64,9 +64,12 @@ export function checkAuth(json) {
   };
 }
 
+// Sunucular listelerde null/bozuk öğe döndürebilir; yalnız nesneler işlenir.
+const objs = (list) => (Array.isArray(list) ? list.filter((x) => x && typeof x === 'object') : []);
+
 function catMap(list) {
   const m = new Map();
-  if (Array.isArray(list)) for (const c of list) m.set(String(c.category_id), String(c.category_name || '').trim());
+  for (const c of objs(list)) m.set(String(c.category_id), String(c.category_name || '').trim());
   return m;
 }
 
@@ -77,7 +80,7 @@ const num = (v) => {
 
 export function mapLive(list, cats) {
   const cm = catMap(cats);
-  return (Array.isArray(list) ? list : []).map((s) => ({
+  return objs(list).map((s) => ({
     id: 'x' + s.stream_id,
     streamId: String(s.stream_id),
     kind: 'live',
@@ -92,7 +95,7 @@ export function mapLive(list, cats) {
 
 export function mapVod(list, cats) {
   const cm = catMap(cats);
-  return (Array.isArray(list) ? list : []).map((s) => ({
+  return objs(list).map((s) => ({
     id: 'm' + s.stream_id,
     streamId: String(s.stream_id),
     kind: 'movie',
@@ -107,7 +110,7 @@ export function mapVod(list, cats) {
 
 export function mapSeries(list, cats) {
   const cm = catMap(cats);
-  return (Array.isArray(list) ? list : []).map((s) => ({
+  return objs(list).map((s) => ({
     id: 'e' + s.series_id,
     seriesId: String(s.series_id),
     kind: 'series',
@@ -127,7 +130,7 @@ export function mapSeriesInfo(json) {
   const seasons = seasonsRaw
     .map(([season, eps]) => ({
       season: num(season),
-      episodes: (Array.isArray(eps) ? eps : []).map((e) => ({
+      episodes: objs(eps).map((e) => ({
         id: 'ep' + e.id,
         episodeId: String(e.id),
         title: String(e.title || `Bölüm ${e.episode_num}`).trim(),
@@ -169,8 +172,7 @@ export function mapVodInfo(json) {
 }
 
 export function mapShortEpg(json) {
-  const list = (json && json.epg_listings) || [];
-  return (Array.isArray(list) ? list : [])
+  return objs(json && json.epg_listings)
     .map((e) => ({
       s: num(e.start_timestamp) * 1000,
       e: num(e.stop_timestamp || e.end_timestamp) * 1000,

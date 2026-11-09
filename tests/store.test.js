@@ -91,3 +91,21 @@ test('kategori düzeni: kaynak ve tür başına saklanır, bozuk kayıt toparlan
   store.removeSource(a.id);
   assert.equal(m.has('iptv.cats.' + a.id), false);
 });
+
+test('bozulmuş depo kaydı (beklenen dizi/nesne değil) varsayılana düşer, okuyan kod çökmez', () => {
+  const { store, m } = mk();
+  m.set('iptv.sources', JSON.stringify([null, 5, { id: 'a', type: 'm3u', url: 'http://x' }]));
+  m.set('iptv.fav.a', 'null');
+  m.set('iptv.rec.a', '{"x":1}');
+  m.set('iptv.prog.a', '[1,2]');
+  m.set('iptv.cats.a', '"x"');
+  m.set('iptv.pref.cast.tvs', '{}');
+  assert.deepEqual(store.sources().map((s) => s.id), ['a']);
+  assert.deepEqual(store.favs('a'), []);
+  assert.equal(store.isFav('a', 'q'), false);
+  assert.deepEqual(store.recents('a'), []);
+  assert.deepEqual(store.progressAll('a'), {});
+  assert.deepEqual(store.continueWatching('a'), []);
+  assert.deepEqual(store.catPrefs('a', 'live').folders, []);
+  assert.deepEqual(store.pref('cast.tvs', []), []);
+});
