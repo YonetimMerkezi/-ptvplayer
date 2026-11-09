@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 20,
+    title: 'Hata taraması',
+    items: [
+      'Bozuk M3U satırı, eksik sağlayıcı yanıtı veya bozuk yedek dosyası artık uygulamayı çökertmiyor',
+      'Bölmeli canlı TV ekranında kategori seçmeden arama yapınca oluşan çökme giderildi',
+      'Uyku zamanlayıcısı, uygulama kilidi ve “TV’de oynat” artık yayını gerçekten durdurur (mini oynatıcıda çalmaya devam etmez)',
+    ],
+  },
+
+  {
     id: 19,
     title: 'Kategorili ve logolu TV rehberi',
     items: [

@@ -485,6 +485,7 @@ function continueItems(kind) {
 // Düzenle kipinde kategoriler sıralanır, gizlenir; özel klasörler oluşturulur.
 
 function groupTitle(kind, g) {
+  if (!g) return 'Arama sonuçları'; // kategori seçilmeden aranıyor (bölmeli ekranda başlık satırı kategori adı yerine bunu gösterir)
   if (g.startsWith('f:')) {
     const f = folderOf(prefsOf(kind), g.slice(2));
     return f ? f.name : 'Klasör';
@@ -1867,6 +1868,7 @@ function renderMulti(v) {
   $('.mp').addEventListener('touchstart', showChips, { capture: true, passive: true });
   $('.mp').addEventListener('click', showChips, true);
   $('.mp').addEventListener('keydown', showChips, true); // kumandayla odak alt düğmelere geçince görünür kalsın
+  $('.mp').addEventListener('focusin', showChips); // odak düğmeye tuşsuz da gelse (örn. kumanda imleci) gizlenmiş denetimler görünür
   $('#mp-back').addEventListener('click', () => setTab('home'));
   $('#mp-fit').addEventListener('click', () => {
     M.fill = !M.fill;

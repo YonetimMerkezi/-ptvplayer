@@ -412,7 +412,10 @@ export function createPlayerUI({ engine, player, env }) {
     onWarn: () => toast('30 saniye sonra oynatma duracak'),
     onFire: () => {
       toast('Uyku zamanlayıcısı: oynatma durduruldu');
-      if (open) popLayer('player');
+      if (open) {
+        stopRequested = true;
+        popLayer('player');
+      }
       renderSleepLabel();
     },
   });
@@ -587,7 +590,11 @@ export function createPlayerUI({ engine, player, env }) {
     render(player.state());
   }
 
+  // Geri tuşu yayını mini oynatıcıya küçültür; kilit, uyku zamanlayıcısı, TV'ye gönderme ve TV'de durdurma ise yayını tamamen kapatır.
+  let stopRequested = false;
   async function closeUi() {
+    const stopping = stopRequested;
+    stopRequested = false;
     if (!open) return;
     open = false;
     layerOpen = false;
@@ -613,7 +620,7 @@ export function createPlayerUI({ engine, player, env }) {
     const current = player.state();
     // Android'de geri çıkışta yayını kapatma: uygulama içinde yüzen mini oynatıcıya küçült.
     // Uygulama arka plana alınırsa Android'in sistem PiP akışı ayrıca çalışır.
-    if (env.native && current.item) {
+    if (env.native && current.item && !stopping) {
       if (env.onMiniPlayer) env.onMiniPlayer(true);
       enterPreview();
       engine.setImmersive(false, false).catch(() => {});
@@ -795,8 +802,10 @@ export function createPlayerUI({ engine, player, env }) {
       if (st.status === 'paused' || st.status === 'ended') player.toggle();
     } else if (k === 'MediaPause') {
       if (st.status === 'playing' || st.status === 'buffering') player.toggle();
-    } else if (k === 'MediaStop') popLayer('player');
-    else if (k === 'Info') showUi(true);
+    } else if (k === 'MediaStop') {
+      stopRequested = true;
+      popLayer('player');
+    } else if (k === 'Info') showUi(true);
     else if (k === 'Guide' && live) env.onEpgSheet(st.item);
     else if (k === 'Captions' && visibleBtn('#pl-text')) trackSheet('text');
     else if (k === 'AudioTrack' && visibleBtn('#pl-audio')) trackSheet('audio');
@@ -817,7 +826,10 @@ export function createPlayerUI({ engine, player, env }) {
     endPreview,
     syncPreview: () => previewing && applyRect(),
     isPreviewing: () => previewing,
-    close: () => popLayer('player'),
+    close: () => {
+      if (open) stopRequested = true;
+      popLayer('player');
+    },
     isOpen: () => open,
     refresh: () => render(player.state()),
     // yerel eklentiden gelen kayıt olayı (süren kaydın süresi, bitişi)
