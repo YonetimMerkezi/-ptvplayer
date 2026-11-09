@@ -2465,36 +2465,215 @@ function epgSettingsSheet() {
 }
 
 // ------------------------------------------------------------------ yayın kalitesi tanılama
+// Kategori + arama ile süzülen kanal listesi. Kanala dokununca o kanal sınanır; "Kategoriyi test et" listedeki tüm kanalları
+// sırayla sınar, her satırda sonuç görünür. Android'de istek yerel katmandan atılır: WebView'in fetch'i CORS yüzünden çoğu
+// IPTV sunucusuna ulaşamaz ve her kanalı yanlışlıkla "başarısız" gösterirdi.
+const HEALTH_PARALLEL = 2; // toplu testte eşzamanlı istek: bağlantı sınırlı hesapları zorlamamak için düşük tutulur
+const HEALTH_BULK_MS = 6000; // toplu testte kanal başına bekleme
+
+async function probeChannel(item, { all = false, max = 3, timeoutMs = 8000 } = {}) {
+  const targets = targetsOf(item).slice(0, max);
+  if (!targets.length) throw new Error('Bu kanal için oynatma adresi bulunamadı');
+  const probe = nativePlugin && nativePlugin.probe ? (o) => nativePlugin.probe(o) : null;
+  let checks;
+  if (all) checks = await Promise.all(targets.map((t) => checkStreamHealth(t, { probe, timeoutMs })));
+  else {
+    checks = [];
+    for (const t of targets) {
+      const c = await checkStreamHealth(t, { probe, timeoutMs });
+      checks.push(c);
+      if (c.ok === true) break; // ilk çalışan adres yeter
+    }
+  }
+  const best = checks.find((x) => x.ok === true) || checks.find((x) => x.ok === null) || checks[0];
+  return { best, checks };
+}
+
+const healthStatus = (r) => (!r ? '' : r.busy ? 'busy' : r.ok === true ? 'ok' : r.ok === false ? 'bad' : 'unk');
+
 function healthSheet() {
-  const channels = S.cat.live.slice(0, 500);
-  const opts = channels.map((it, i) => `<option value="${i}">${esc(it.name)}</option>`).join('');
   openPage({
     title: 'Yayın kalitesi',
-    cls: 'health-pg',
-    html: `<p class="hint">Seçtiğiniz kanalın sunucu yanıtı, bağlantı süresi ve yayın biçimi kontrol edilir. Bu test görüntü/codec çözümlemesini garanti etmez.</p><label class="field"><span>Kanal</span><select id="health-channel">${opts}</select></label><button class="btn" id="health-run">Bağlantıyı test et</button><div id="health-result" class="health-result"><div class="empty">Test etmek için kanal seçin.</div></div>`,
+    cls: 'pk-pg health-pg',
+    html: '<p class="hint">Kategori seçip kanala dokunarak ya da “Kategoriyi test et” ile sunucu yanıtını ve bağlantı süresini sınayın. Görüntü/codec çözümlemesi garanti edilmez; bağlantı sınırı olan hesaplarda toplu test oynayan yayını kesebilir.</p><div class="pk-bar"><select id="health-cat" aria-label="Kategori"></select><input id="health-q" type="search" placeholder="Kanal ara…" autocomplete="off"></div><div class="health-run"><button class="btn sm" id="health-all">Kategoriyi test et</button><span class="health-sum" id="health-sum" aria-live="polite"></span></div><div class="health-prog" id="health-prog" hidden><i></i></div><div class="seg" id="health-f"><button data-f="all" class="on">Tümü</button><button data-f="ok">Çalışan</button><button data-f="bad">Çalışmayan</button></div><div id="health-list"></div>',
     mount: (body) => {
-      const select = $('#health-channel', body);
-      const run = $('#health-run', body);
-      const result = $('#health-result', body);
-      run.addEventListener('click', async () => {
-        const item = channels[Number(select.value)];
-        if (!item) return;
+      const sel = $('#health-cat', body);
+      const q = $('#health-q', body);
+      const runBtn = $('#health-all', body);
+      const sum = $('#health-sum', body);
+      const prog = $('#health-prog', body);
+      const results = new Map(); // kanal no → { busy } | { ok, status, ms, format, message }
+      const cats = categoryRows('live').filter((r) => r.id !== '__recent' || r.count);
+      sel.innerHTML = cats.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.count})</option>`).join('');
+      let items = []; // kategori + arama
+      let shown = []; // + sonuç süzgeci
+      let filter = 'all';
+      let runner = null;
+      const line = (r) => (r.busy ? 'Test ediliyor…' : r.ok === true ? `Çalışıyor · ${r.ms == null ? '?' : r.ms + ' ms'} · ${r.format || ''}` : r.ok === false ? `Çalışmıyor · ${r.message || ''}` : r.message || 'HTTP ile doğrulanamadı');
+      const list = new VirtualList($('#health-list', body), {
+        rowH: scaled(60),
+        render: (it, i) => {
+          const r = results.get(it.id);
+          const st = healthStatus(r);
+          return `<div class="row hs ${st}" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(r ? line(r) : it.group || '')}</span></div></div>${st ? `<span class="hs-dot ${st}" aria-hidden="true"></span>` : ''}</div>`;
+        },
+        onTap: (i) => {
+          const it = shown[i];
+          if (it) healthDetail(it, results, () => redraw(true));
+        },
+      });
+      const tally = () => {
+        let ok = 0;
+        let bad = 0;
+        let ms = 0;
+        for (const it of items) {
+          const r = results.get(it.id);
+          if (!r || r.busy) continue;
+          if (r.ok === true) {
+            ok++;
+            ms += r.ms || 0;
+          } else if (r.ok === false) bad++;
+        }
+        return { ok, bad, avg: ok ? Math.round(ms / ok) : 0 };
+      };
+      const summary = () => {
+        const t = tally();
+        sum.textContent = t.ok + t.bad ? `Çalışan ${t.ok} · Çalışmayan ${t.bad}${t.ok ? ' · ort. ' + t.avg + ' ms' : ''}` : '';
+      };
+      const applyFilter = () => {
+        shown = filter === 'all' ? items : items.filter((it) => {
+          const r = results.get(it.id);
+          return !!r && !r.busy && (filter === 'ok' ? r.ok === true : r.ok === false);
+        });
+      };
+      const label = () => {
+        if (runner) return;
+        runBtn.textContent = (q.value.trim() ? 'Sonuçları test et' : 'Kategoriyi test et') + (items.length ? ` (${items.length})` : '');
+        runBtn.disabled = !items.length;
+      };
+      let raf = 0;
+      function redraw(keepScroll = true) {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          if (!body.isConnected) return;
+          applyFilter();
+          list.setItems(shown, keepScroll);
+          summary();
+        });
+      }
+      const draw = () => {
+        const base = itemsOfGroup('live', sel.value);
+        items = q.value.trim() ? search(base, q.value, 500) : base;
+        label();
+        applyFilter();
+        list.setItems(shown);
+        summary();
+      };
+      const finish = (stopped) => {
+        runner = null;
+        prog.hidden = true;
+        label();
+        const t = tally();
+        if (stopped) toast('Test durduruldu');
+        else toast(`Test bitti: ${t.ok} çalışan, ${t.bad} çalışmayan`, 3500);
+        redraw(true);
+      };
+      const runAll = async () => {
+        if (runner) {
+          runner.stop = true;
+          runBtn.disabled = true;
+          runBtn.textContent = 'Durduruluyor…';
+          return;
+        }
+        const todo = items.slice();
+        if (!todo.length) return;
+        const token = { stop: false };
+        runner = token;
+        for (const it of todo) results.delete(it.id);
+        let idx = 0;
+        let done = 0;
+        runBtn.textContent = 'Durdur';
+        prog.hidden = false;
+        const bar = $('i', prog);
+        const tick = () => {
+          bar.style.width = ((done / todo.length) * 100).toFixed(1) + '%';
+          sum.textContent = `${done}/${todo.length} sınandı`;
+        };
+        tick();
+        const worker = async () => {
+          while (!token.stop && idx < todo.length && body.isConnected) {
+            const it = todo[idx++];
+            results.set(it.id, { busy: true });
+            redraw(true);
+            try {
+              const { best } = await probeChannel(it, { max: 2, timeoutMs: HEALTH_BULK_MS });
+              results.set(it.id, { ok: best.ok, status: best.status, ms: best.latencyMs, format: best.format, message: best.message });
+            } catch (e) {
+              results.set(it.id, { ok: false, message: (e && e.message) || 'Test başarısız' });
+            }
+            done++;
+            tick();
+            redraw(true);
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(HEALTH_PARALLEL, todo.length) }, worker));
+        if (body.isConnected) {
+          finish(token.stop);
+          summary();
+        }
+      };
+      runBtn.addEventListener('click', runAll);
+      sel.addEventListener('change', () => {
+        if (runner) runner.stop = true; // kategori değişince süren test durur
+        draw();
+      });
+      q.addEventListener('input', debounce(draw, 120));
+      $('#health-f', body).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-f]');
+        if (!b) return;
+        filter = b.dataset.f;
+        $$('#health-f button', body).forEach((x) => x.classList.toggle('on', x === b));
+        applyFilter();
+        list.setItems(shown);
+      });
+      draw();
+    },
+  });
+}
+
+// Tek kanalın ayrıntılı sonucu: üç adrese birden bakılır; sonuç listedeki satıra da yansır.
+function healthDetail(item, results, changed) {
+  openSheet({
+    title: item.name,
+    html: '<div id="hd-res" class="health-result"></div><button class="btn" id="hd-run">Yeniden test et</button>',
+    mount: (body) => {
+      const result = $('#hd-res', body);
+      const run = $('#hd-run', body);
+      const go = async () => {
         run.disabled = true;
         run.textContent = 'Test ediliyor…';
         result.innerHTML = '<div class="empty">Yayın sunucusu kontrol ediliyor…</div>';
+        results.set(item.id, { busy: true });
+        changed();
         try {
-          const targets = targetsOf(item);
-          if (!targets.length) throw new Error('Bu kanal için oynatma adresi bulunamadı');
-          const checks = await Promise.all(targets.slice(0, 3).map((target) => checkStreamHealth(target)));
-          const best = checks.find((x) => x.ok === true) || checks[0];
-          result.innerHTML = `<div class="list-item"><span class="t">${esc(item.name)}<small>${best.ok === true ? 'Sunucu yanıt veriyor' : best.ok === false ? 'Bağlantı başarısız' : 'HTTP ile doğrulanamadı'}</small></span></div><div class="list-item"><span class="t">Bağlantı süresi<small>${best.latencyMs == null ? 'Ölçülemedi' : best.latencyMs + ' ms'}</small></span></div><div class="list-item"><span class="t">HTTP yanıtı<small>${best.status == null ? 'Yok' : best.status}</small></span></div><div class="list-item"><span class="t">Yayın biçimi<small>${esc(best.format || 'Bilinmiyor')}</small></span></div><p class="hint">${esc(best.message || '')}</p>${checks.length > 1 ? `<p class="hint">${checks.length} adres denendi; ${checks.filter((x) => x.ok === true).length} adres yanıt verdi.</p>` : ''}`;
+          const { best, checks } = await probeChannel(item, { all: true });
+          results.set(item.id, { ok: best.ok, status: best.status, ms: best.latencyMs, format: best.format, message: best.message });
+          if (!body.isConnected) return;
+          result.innerHTML = `<div class="list-item"><span class="t">${best.ok === true ? 'Sunucu yanıt veriyor' : best.ok === false ? 'Bağlantı başarısız' : 'HTTP ile doğrulanamadı'}<small>${esc(item.group || '')}</small></span></div><div class="list-item"><span class="t">Bağlantı süresi<small>${best.latencyMs == null ? 'Ölçülemedi' : best.latencyMs + ' ms'}</small></span></div><div class="list-item"><span class="t">HTTP yanıtı<small>${best.status == null ? 'Yok' : best.status}</small></span></div><div class="list-item"><span class="t">Yayın biçimi<small>${esc(best.format || 'Bilinmiyor')}</small></span></div><p class="hint">${esc(best.message || '')}</p>${checks.length > 1 ? `<p class="hint">${checks.length} adres denendi; ${checks.filter((x) => x.ok === true).length} adres yanıt verdi.</p>` : ''}`;
         } catch (error) {
-          result.innerHTML = `<div class="empty">${esc(error.message || 'Test başarısız')}</div>`;
+          results.set(item.id, { ok: false, message: (error && error.message) || 'Test başarısız' });
+          if (body.isConnected) result.innerHTML = `<div class="empty">${esc((error && error.message) || 'Test başarısız')}</div>`;
         } finally {
-          run.disabled = false;
-          run.textContent = 'Yeniden test et';
+          changed();
+          if (body.isConnected) {
+            run.disabled = false;
+            run.textContent = 'Yeniden test et';
+          }
         }
-      });
+      };
+      run.addEventListener('click', go);
+      go();
     },
   });
 }

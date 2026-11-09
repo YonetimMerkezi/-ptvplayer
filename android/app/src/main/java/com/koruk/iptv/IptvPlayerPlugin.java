@@ -79,6 +79,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.Locale;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -105,6 +106,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newFixedThreadPool(3);
+    private final ExecutorService probeIo = Executors.newFixedThreadPool(2); // yayın sağlık testi: indirmeleri bekletmesin
 
     private PlayerView playerView;
     private ExoPlayer player;
@@ -1200,6 +1202,83 @@ public class IptvPlayerPlugin extends Plugin {
             return conn;
         }
         throw new IOException("Çok fazla yönlendirme");
+    }
+
+    // ------------------------------------------------------------------ yayın sağlık testi
+
+    // Adrese kısa bir GET atar (WebView dışından: CORS ve karışık içerik engeli yoktur), ilk baytları okuyup bağlantıyı kapatır.
+    // Hata da bir sonuçtur: { error, timeout, ms } ile çözülür; bağlantı kopması kanalı "çalışmıyor" gösterir.
+    @PluginMethod
+    public void probe(final PluginCall call) {
+        final String url = call.getData().optString("url", "");
+        final JSObject headers = call.getObject("headers");
+        final int timeout = Math.max(2000, Math.min(20000, call.getData().optInt("timeoutMs", 8000)));
+        if (url.isEmpty()) {
+            call.reject("url gerekli");
+            return;
+        }
+        probeIo.execute(() -> {
+            final long t0 = System.currentTimeMillis();
+            HttpURLConnection conn = null;
+            JSObject r = new JSObject();
+            try {
+                String cur = url;
+                int code = 0;
+                for (int hop = 0; hop < 6; hop++) {
+                    conn = (HttpURLConnection) new URL(cur).openConnection();
+                    conn.setInstanceFollowRedirects(false);
+                    conn.setConnectTimeout(timeout);
+                    conn.setReadTimeout(timeout);
+                    conn.setRequestProperty("User-Agent", UA);
+                    if (headers != null) {
+                        Iterator<String> keys = headers.keys();
+                        while (keys.hasNext()) {
+                            String k = keys.next();
+                            String v = headers.optString(k, "");
+                            if (!v.isEmpty()) conn.setRequestProperty(k, v);
+                        }
+                    }
+                    code = conn.getResponseCode();
+                    if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                        String loc = conn.getHeaderField("Location");
+                        conn.disconnect();
+                        conn = null;
+                        if (loc == null || loc.isEmpty()) throw new IOException("Yönlendirme adresi yok");
+                        cur = new URL(new URL(cur), loc).toString();
+                        continue;
+                    }
+                    break;
+                }
+                if (conn == null) throw new IOException("Çok fazla yönlendirme");
+                r.put("status", code);
+                r.put("ms", System.currentTimeMillis() - t0);
+                String ct = conn.getContentType();
+                r.put("contentType", ct == null ? "" : ct);
+                if (code >= 200 && code < 300) {
+                    int n = 0;
+                    boolean playlist = false;
+                    try {
+                        InputStream in = conn.getInputStream();
+                        byte[] buf = new byte[512];
+                        n = Math.max(0, in.read(buf));
+                        playlist = n >= 7 && "#EXTM3U".equals(new String(buf, 0, 7, java.nio.charset.StandardCharsets.ISO_8859_1));
+                    } catch (IOException ignored) {
+                        n = 0; // yanıt başlığı geldi ama veri gelmedi/kesildi
+                    }
+                    r.put("bytes", n);
+                    r.put("playlist", playlist);
+                }
+                call.resolve(r);
+            } catch (Exception e) {
+                JSObject err = new JSObject();
+                err.put("error", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                err.put("timeout", e instanceof SocketTimeoutException);
+                err.put("ms", System.currentTimeMillis() - t0);
+                call.resolve(err);
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        });
     }
 
     // ------------------------------------------------------------------ uygulama içi güncelleme

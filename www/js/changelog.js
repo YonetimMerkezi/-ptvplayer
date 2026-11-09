@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 23,
+    title: 'Yayın kalitesi testi: kategori, arama, toplu test',
+    items: [
+      'Kategori seçip kanal arayabilir, kanala dokunarak ya da “Kategoriyi test et” ile tüm kanalları sınayabilirsiniz; sonuç her satırda görünür',
+      'Test artık sunucuya doğrudan (WebView dışından) ulaşıyor; çalışan kanallar yanlışlıkla “başarısız” görünmez',
+      'Yayın kalitesi kutucuğuna simge eklendi',
+    ],
+  },
+  {
     id: 22,
     title: 'TV rehberi kumandayla ve tek kaydırmayla',
     items: [

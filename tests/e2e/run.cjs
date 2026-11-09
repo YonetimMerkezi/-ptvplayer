@@ -978,6 +978,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         return { path: p, size: 1 };
       },
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
+      // Yayın sağlık testi: gerçek eklenti WebView dışından atar; burada 5'in katı kanallar 404 döner
+      probe: async ({ url }) => {
+        window.__calls.push(['probe', url]);
+        await new Promise((r) => setTimeout(r, 40));
+        const m = /\/(\d+)\.m3u8/.exec(url);
+        const n = m ? Number(m[1]) : 1;
+        if (n % 5 === 0) return { status: 404, ms: 20, contentType: 'text/plain' };
+        return { status: 200, ms: 30 + (n % 7), contentType: 'application/vnd.apple.mpegurl', bytes: 512, playlist: true };
+      },
       play: async (a) => {
         window.__calls.push(['play', a.url, a.mime, a.buffer, a.audioDelay]);
         if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm|\/rec\//.test(a.url) }), 50);
@@ -1793,6 +1802,89 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.sheet [data-close]');
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castPairClose'), null, { timeout: 6000 });
   ok(true, 'ekran kapanınca eşleştirme kodu kapatıldı');
+
+  // Ayarlar › Yayın kalitesi: kategori + arama + kanal listesi, tek kanal ve kategori testi
+  console.log('Yayın kalitesi');
+  ok(await page.$eval('[data-set=health] svg use', (u) => u.getAttribute('href') === '#i-activity' && !!document.getElementById('i-activity')), 'Yayın kalitesi kutucuğunda simge var');
+  await page.click('[data-set=health]');
+  await page.waitForSelector('#health-cat');
+  ok(!!(await page.$('.health-pg #health-q')) && (await page.$$('#health-cat option')).length >= 2, 'kategori seçici ve arama kutusu var');
+  await page.waitForSelector('#health-list .row');
+  ok(/Kategoriyi test et \(\d+\)/.test(await page.textContent('#health-all')), 'kategoriyi test et düğmesi kanal sayısını gösteriyor');
+  const hlay = await page.evaluate(() => {
+    const b = document.querySelector('.health-pg .pg-body');
+    const l = document.querySelector('#health-list');
+    return { bodyScrolls: b.scrollHeight > b.clientHeight + 1, listScrolls: l.scrollHeight >= l.clientHeight, listH: l.clientHeight };
+  });
+  ok(!hlay.bodyScrolls && hlay.listH > 150, 'sayfa gövdesi kaymıyor, liste ekranı dolduruyor (tek kaydırma alanı)');
+  const cat = await page.$$eval('#health-cat option', (o) => o.map((x) => [x.value, x.textContent]).find(([v]) => v.startsWith('g:')));
+  await page.selectOption('#health-cat', cat[0]);
+  const catN = Number(/\((\d+)\)\s*$/.exec(cat[1])[1]);
+  await page.waitForFunction((n) => new RegExp('Kategoriyi test et \\(' + n + '\\)').test(document.querySelector('#health-all').textContent), catN, { timeout: 3000 });
+  ok(catN >= 5, 'seçilen kategoride ' + catN + ' kanal listelendi');
+  // arama listeyi daraltır, düğme “Sonuçları test et” olur
+  const first = await page.$eval('#health-list .row .nm', (n) => n.textContent.trim());
+  await page.fill('#health-q', first);
+  await page.waitForFunction(() => /Sonuçları test et/.test(document.querySelector('#health-all').textContent), null, { timeout: 3000 });
+  ok((await page.$$eval('#health-list .row', (r) => r.length)) >= 1, 'arama kutusu kanalları süzdü');
+  await page.fill('#health-q', '');
+  await page.waitForFunction((n) => new RegExp('Kategoriyi test et \\(' + n + '\\)').test(document.querySelector('#health-all').textContent), catN, { timeout: 3000 });
+  // tek kanal: dokununca ayrıntı penceresi, yerel eklenti üzerinden sınanır
+  const p0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'probe').length);
+  await page.click('#health-list .row');
+  await page.waitForSelector('.sheet #hd-res .list-item');
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'probe').length)) > p0, 'kanal testi WebView fetch’i yerine yerel eklentiyi (probe) kullandı');
+  ok(/Bağlantı süresi/.test(await page.textContent('#hd-res')) && /HTTP yanıtı/.test(await page.textContent('#hd-res')), 'tek kanal ayrıntıları gösteriliyor (süre, HTTP, biçim)');
+  await page.screenshot({ path: path.join(SHOTS, '00h-yayin-kalitesi-kanal.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  // kategorinin tamamı
+  const pAll0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'probe').length);
+  await page.click('#health-all');
+  await page.waitForFunction(() => /Durdur/.test(document.querySelector('#health-all').textContent) || /Çalışan/.test(document.querySelector('#health-sum').textContent), null, { timeout: 3000 });
+  await page.waitForFunction((n) => new RegExp('Kategoriyi test et \\(' + n + '\\)').test(document.querySelector('#health-all').textContent) && /Çalışan \d+ · Çalışmayan \d+/.test(document.querySelector('#health-sum').textContent), catN, { timeout: 20000 });
+  const sm = /Çalışan (\d+) · Çalışmayan (\d+)/.exec(await page.textContent('#health-sum'));
+  ok(Number(sm[1]) + Number(sm[2]) === catN && Number(sm[2]) >= 1 && Number(sm[1]) >= 1, 'kategori testi bitti: ' + sm[0] + ' (toplam ' + catN + ')');
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'probe').length)) - pAll0 >= catN, 'her kanal yerel eklentiyle sınandı');
+  ok((await page.$$('#health-list .row.hs.ok')).length > 0 && (await page.$$('#health-list .row.hs.bad')).length > 0, 'satırlarda çalışan/çalışmayan işareti ve açıklaması var');
+  ok(/Çalışmıyor · HTTP 404/.test(await page.textContent('#health-list .row.hs.bad .sub')), 'çalışmayan satırda neden yazıyor (HTTP 404)');
+  await page.screenshot({ path: path.join(SHOTS, '00h-yayin-kalitesi.png') });
+  await page.click('#health-f [data-f=bad]');
+  await page.waitForFunction(() => document.querySelectorAll('#health-list .row').length > 0);
+  ok(await page.$$eval('#health-list .row', (r) => r.length > 0 && r.every((x) => x.classList.contains('bad'))), '“Çalışmayan” süzgeci yalnız çalışmayanları gösteriyor');
+  await page.click('#health-f [data-f=ok]');
+  await page.waitForFunction(() => document.querySelectorAll('#health-list .row').length > 0);
+  ok(await page.$$eval('#health-list .row', (r) => r.length > 0 && r.every((x) => x.classList.contains('ok'))), '“Çalışan” süzgeci yalnız çalışanları gösteriyor');
+  await page.click('#health-f [data-f=all]');
+  // dar dikey ekran: yatay taşma yok, özet satıra sığmazsa alta iner
+  const vp0 = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await sleep(300);
+  const narrow = await page.evaluate(() => {
+    const sum = document.querySelector('#health-sum').getBoundingClientRect();
+    const all = document.querySelector('#health-all').getBoundingClientRect();
+    const l = document.querySelector('#health-list').getBoundingClientRect();
+    return { overflowX: document.documentElement.scrollWidth > window.innerWidth + 1, sumIn: sum.right <= window.innerWidth + 1 && all.right <= window.innerWidth + 1, listH: l.height, bottomIn: l.bottom <= window.innerHeight + 1 };
+  });
+  ok(!narrow.overflowX && narrow.sumIn && narrow.listH > 250 && narrow.bottomIn, 'dar ekranda düzen taşmıyor, liste yeterince yüksek (' + Math.round(narrow.listH) + ' px)');
+  await page.screenshot({ path: path.join(SHOTS, '00h-yayin-kalitesi-dikey.png') });
+  await page.setViewportSize(vp0);
+  await sleep(200);
+  // Tümü kategorisi: başlatıp durdurma
+  await page.selectOption('#health-cat', '__all');
+  await page.waitForFunction(() => /Kategoriyi test et \(\d{3,}\)/.test(document.querySelector('#health-all').textContent), null, { timeout: 3000 });
+  const pStop0 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'probe').length);
+  await page.click('#health-all');
+  await page.waitForFunction(() => /Durdur/.test(document.querySelector('#health-all').textContent), null, { timeout: 3000 });
+  await sleep(250);
+  await page.click('#health-all');
+  await page.waitForFunction(() => /Kategoriyi test et/.test(document.querySelector('#health-all').textContent), null, { timeout: 8000 });
+  const sentN = (await page.evaluate(() => window.__calls.filter((c) => c[0] === 'probe').length)) - pStop0;
+  ok(sentN > 0 && sentN < 100, 'Durdur testi yarıda kesti (' + sentN + ' kanal sınandı)');
+  // geri: sayfadan ayarlara dönülür
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.health-pg', { state: 'detached' });
+  ok(true, 'Geri yayın kalitesi sayfasını kapattı');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 

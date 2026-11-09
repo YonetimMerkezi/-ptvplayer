@@ -33,6 +33,7 @@ export function nativePlugin(name, win = globalThis.window) {
     setVolume: call('setVolume'),
     selectTrack: call('selectTrack'),
     download: call('download'),
+    probe: call('probe'),
     downloadApk: call('downloadApk'),
     installApk: call('installApk'),
     deleteFile: call('deleteFile'),
