@@ -932,17 +932,11 @@ public class IptvPlayerPlugin extends Plugin {
     // ------------------------------------------------------------------ kayıt
 
     private File recDir() {
-        File base = getContext().getExternalFilesDir(Environment.DIRECTORY_MOVIES);
-        File dir = new File(base != null ? base : getContext().getFilesDir(), "Kayitlar");
-        //noinspection ResultOfMethodCallIgnored
-        dir.mkdirs();
-        return dir;
+        return StreamRecorder.dirOf(getContext());
     }
 
     private static String safeName(String name) {
-        String s = String.valueOf(name).replaceAll("[^\\p{L}\\p{N}]+", "-").replaceAll("^-+|-+$", "");
-        if (s.length() > 40) s = s.substring(0, 40);
-        return s.isEmpty() ? "kanal" : s;
+        return StreamRecorder.safeName(name);
     }
 
     private JSObject recState() {
@@ -1937,6 +1931,86 @@ public class IptvPlayerPlugin extends Plugin {
                 plugin.notifyListeners("pipChannel", event);
             }
             plugin.updatePipParams();
+        });
+    }
+
+    // ------------------------------------------------------------------ planlananlar (hatırlatıcı + zamanlı kayıt)
+
+    private static String launchCh = "";
+    private static String launchSrc = "";
+
+    // JS planların tam listesini verir; yerel katman alarmları buna göre kurar (yeniden başlatmada da geri kurulur).
+    @PluginMethod
+    public void planSync(final PluginCall call) {
+        JSArray plans = call.getArray("plans");
+        PlanStore.replaceAll(getContext(), plans == null ? new JSArray() : plans);
+        call.resolve();
+    }
+
+    private boolean notifyAllowed() {
+        if (Build.VERSION.SDK_INT < 33) return true;
+        return getContext().checkSelfPermission("android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private JSObject planStatusObj() {
+        JSObject o = new JSObject();
+        o.put("notify", notifyAllowed());
+        o.put("exact", PlanStore.canExact(getContext()));
+        return o;
+    }
+
+    @PluginMethod
+    public void planStatus(final PluginCall call) {
+        call.resolve(planStatusObj());
+    }
+
+    // Bildirim izni (Android 13+) ya da tam zamanlı alarm ayarı (Android 12+) eksikse ilgili ekranı açar.
+    @PluginMethod
+    public void planPermissions(final PluginCall call) {
+        main.post(() -> {
+            Activity a = getActivity();
+            if (a != null) {
+                try {
+                    if (Build.VERSION.SDK_INT >= 33 && !notifyAllowed()) {
+                        a.requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 7101);
+                    } else if (Build.VERSION.SDK_INT >= 31 && !PlanStore.canExact(getContext())) {
+                        Intent i = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getContext().getPackageName()));
+                        a.startActivity(i);
+                    }
+                } catch (Exception ignored) {
+                    // ayar ekranı açılamadıysa durum yine de döner
+                }
+            }
+            call.resolve(planStatusObj());
+        });
+    }
+
+    // Bildirime dokunarak açılışta hangi kanalın açılacağı: {ch, src}; okununca sıfırlanır.
+    @PluginMethod
+    public void planLaunch(final PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("ch", launchCh);
+        o.put("src", launchSrc);
+        launchCh = "";
+        launchSrc = "";
+        call.resolve(o);
+    }
+
+    public static void handleLaunch(Intent intent) {
+        if (intent == null || !Notifier.ACTION_OPEN.equals(intent.getAction())) return;
+        String ch = intent.getStringExtra("plan_ch");
+        if (ch == null || ch.isEmpty()) return;
+        String src = intent.getStringExtra("plan_src");
+        launchCh = ch;
+        launchSrc = src == null ? "" : src;
+        intent.setAction(Intent.ACTION_MAIN); // aynı niyet yeniden işlenmesin
+        final IptvPlayerPlugin plugin = activePlugin;
+        if (plugin == null) return; // uygulama henüz yüklenmedi: JS açılışta planLaunch ile alır
+        plugin.main.post(() -> {
+            JSObject e = new JSObject();
+            e.put("ch", launchCh);
+            e.put("src", launchSrc);
+            plugin.notifyListeners("planLaunch", e);
         });
     }
 

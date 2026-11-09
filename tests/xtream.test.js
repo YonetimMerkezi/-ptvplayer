@@ -85,3 +85,28 @@ test('hesap doğrulama: auth true olarak gelen paneller de kabul edilir; user_in
   assert.equal(X.checkAuth({ user_info: { auth: 0 } }).ok, false);
   assert.equal(X.checkAuth({ user_info: 'x' }).ok, false);
 });
+
+test('arşiv adresi sunucunun saat dilimiyle kurulur', () => {
+  const t = Date.UTC(2026, 10, 9, 12, 5); // 12:05 UTC
+  assert.equal(X.archiveStamp(t, 'UTC'), '2026-11-09:12-05');
+  assert.equal(X.archiveStamp(t, 'Europe/Istanbul'), '2026-11-09:15-05');
+  assert.equal(X.archiveStamp(t, 'Bozuk/Zaman'), X.archiveStamp(t, ''), 'geçersiz saat dilimi cihaz saatine düşer');
+  const cfg = { server: 'http://h:8080', user: 'u', pass: 'p w' };
+  assert.equal(X.timeshiftUrl(cfg, '10', t, 45, 'UTC'), 'http://h:8080/timeshift/u/p%20w/45/2026-11-09:12-05/10.ts');
+  assert.equal(X.timeshiftUrl(cfg, '10', t, 0.2, 'UTC', 'm3u8'), 'http://h:8080/timeshift/u/p%20w/1/2026-11-09:12-05/10.m3u8');
+  assert.equal(X.checkAuth({ user_info: { auth: 1, status: 'Active' }, server_info: { timezone: 'Europe/Istanbul' } }).timezone, 'Europe/Istanbul');
+});
+
+test('arşiv rehberi: has_archive işaretli programlar', () => {
+  const b64 = (s) => Buffer.from(s).toString('base64');
+  const r = X.mapArchiveEpg({ epg_listings: [
+    { title: b64('Akşam Haberleri'), description: b64('özet'), start_timestamp: '2000', stop_timestamp: '5600', has_archive: 1 },
+    { title: b64('Gece'), start_timestamp: '1000', stop_timestamp: '2000', has_archive: 0 },
+    null,
+  ] });
+  assert.equal(r.length, 2);
+  assert.equal(r[0].t, 'Gece');
+  assert.equal(r[0].archive, false);
+  assert.equal(r[1].archive, true);
+  assert.equal(r[1].s, 2000000);
+});

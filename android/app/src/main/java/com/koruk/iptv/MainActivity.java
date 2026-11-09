@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         IptvPlayerPlugin.handlePipAction(intent);
+        IptvPlayerPlugin.handleLaunch(intent);
     }
 
     @Override
@@ -77,6 +78,7 @@ public class MainActivity extends BridgeActivity {
 
         setupFullscreen();
         focusWebView();
+        IptvPlayerPlugin.handleLaunch(getIntent()); // bildirimden soğuk açılış
     }
 
     // TV kumandasının yön/Tamam tuşları WebView'e ulaşsın: WebView ilk açılışta odakta olmalı.

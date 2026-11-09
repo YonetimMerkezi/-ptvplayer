@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 25,
+    title: 'Geriye dönük izleme, hatırlatıcı ve zamanlı kayıt',
+    items: [
+      'Arşivli Xtream kanalında program ayrıntısından “Arşivden izle”; “Canlıya dön” kanala geçirir',
+      '“Hatırlat”: program başlamadan 5 dk önce bildirim; dokununca kanal açılır',
+      '“Kaydet”: uygulama kapalıyken de başlar, Kayıtlar’a düşer (Xtream, doğrudan TS)',
+      'Ayarlar › Planlananlar ve rehberde “Program ara”',
+    ],
+  },
+  {
     id: 24,
     title: 'Ana ekran kısayolları yatayda düzgün',
     items: [

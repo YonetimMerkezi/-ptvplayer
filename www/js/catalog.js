@@ -25,7 +25,7 @@ export async function loadCatalog(source, net, { onStage = () => {}, onProgress 
     onStage('Hesap doğrulanıyor…');
     const auth = X.checkAuth(await net.json(X.apiUrl(cfg)));
     if (!auth.ok) throw new Error(auth.reason);
-    cat.account = { expires: auth.expires, maxConnections: auth.maxConnections };
+    cat.account = { expires: auth.expires, maxConnections: auth.maxConnections, timezone: auth.timezone };
     const fetchList = async (label, action, extra) => {
       onStage(label);
       try {
@@ -195,6 +195,29 @@ export async function loadVodInfo(source, net, item) {
   return X.mapVodInfo(await net.json(X.apiUrl(sourceCfg(source), 'get_vod_info', { vod_id: item.streamId })));
 }
 
+// Arşivli (catch-up) kanalın geçmiş programları; yalnız Xtream. Dönen her program { s, e, t, d, archive }.
+export async function loadArchiveEpg(source, net, item) {
+  if (source.type !== 'xtream' || item.kind !== 'live' || !item.archive) return [];
+  return X.mapArchiveEpg(await net.json(X.apiUrl(sourceCfg(source), 'get_simple_data_table', { stream_id: item.streamId })));
+}
+
+// Bir programı baştan izleme adresleri (Xtream timeshift); arşivi olmayan kanal/kaynakta boş liste.
+export function archiveTargets(source, item, p, timeZone = '') {
+  if (source.type !== 'xtream' || item.kind !== 'live' || !item.archive || !p) return [];
+  const cfg = sourceCfg(source);
+  const mins = Math.max(1, Math.ceil((p.e - p.s) / 60000));
+  return [
+    { url: X.timeshiftUrl(cfg, item.streamId, p.s, mins, timeZone, 'ts'), mime: 'ts' },
+    { url: X.timeshiftUrl(cfg, item.streamId, p.s, mins, timeZone, 'm3u8'), mime: 'hls' },
+  ];
+}
+
+// Zamanlı kayıt: kayıt hizmeti doğrudan TS akışı okur; yalnız doğrudan TS adresi olan kanallar kaydedilebilir.
+export function recordTarget(source, item, ep) {
+  const t = playTargets(source, item, ep).find((x) => x.mime === 'ts' || /\.ts(?:$|[?#])/i.test(x.url));
+  return t ? { url: t.url, headers: t.headers || null } : null;
+}
+
 export async function loadShortEpg(source, net, item, limit = 6) {
   if (source.type !== 'xtream' || item.kind !== 'live') return [];
   return X.mapShortEpg(await net.json(X.apiUrl(sourceCfg(source), 'get_short_epg', { stream_id: item.streamId, limit })));
@@ -256,5 +279,28 @@ export class EpgView {
   }
   nowNext(item, now = Date.now()) {
     return nowNext(this.listFor(item), now);
+  }
+  // Program adında arama: { id: kanal öğesi no, p: program }, başlangıç sırasıyla. Aynı rehber kanalını paylaşan kanallardan biri alınır.
+  search(term, { from = Date.now() - 2 * 3600e3, limit = 150 } = {}) {
+    const t = fold(String(term || ''));
+    if (t.length < 2) return [];
+    if (!this._rep) {
+      this._rep = new Map();
+      for (const [itemId, eid] of Object.entries(this.data.map)) if (!this._rep.has(eid)) this._rep.set(eid, itemId);
+      this._folded = new Map();
+    }
+    const out = [];
+    for (const [eid, list] of Object.entries(this.data.prog)) {
+      const itemId = this._rep.get(eid);
+      if (!itemId) continue;
+      let ft = this._folded.get(eid);
+      if (!ft) this._folded.set(eid, (ft = list.map((r) => fold(r[2]))));
+      for (let i = 0; i < list.length; i++) {
+        const [s, e, title, d] = list[i];
+        if (e >= from && ft[i].includes(t)) out.push({ id: itemId, p: { s, e, t: title, d } });
+      }
+    }
+    out.sort((a, b) => a.p.s - b.p.s);
+    return out.slice(0, limit);
   }
 }

@@ -978,6 +978,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         return { path: p, size: 1 };
       },
       deleteFile: async ({ path }) => window.__calls.push(['delete', path]),
+      // Planlananlar: yerel alarm listesi (gerçek eklentide AlarmManager); izin durumu testten değiştirilebilir
+      planSync: async (a) => {
+        window.__plans = a.plans || [];
+        window.__calls.push(['planSync', window.__plans.length]);
+      },
+      planStatus: async () => window.__planStatus || { notify: true, exact: true },
+      planPermissions: async () => {
+        window.__calls.push(['planPermissions']);
+        return window.__planStatus || { notify: true, exact: true };
+      },
+      planLaunch: async () => window.__launch || { ch: '', src: '' },
       // Yayın sağlık testi: gerçek eklenti WebView dışından atar; burada 5'in katı kanallar 404 döner
       probe: async ({ url }) => {
         window.__calls.push(['probe', url]);
@@ -1888,6 +1899,191 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
+  // ---------------------------------------------------------------- 9a. arşivden izleme, hatırlatıcı, zamanlı kayıt, program arama
+  console.log('Planlananlar ve arşiv');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.evaluate((u) => {
+    localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'xa', name: 'Arşivli', type: 'xtream', server: u, user: 'u', pass: 'p' }]));
+  }, mock.url);
+  await page.reload();
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.epg.ready, null, { timeout: 15000 });
+  ok(await page.evaluate(() => window.__iptv.S.cat.account && window.__iptv.S.cat.account.timezone === 'Europe/Istanbul'), 'Xtream sunucu saat dilimi okundu');
+  ok(await page.evaluate(() => window.__iptv.S.cat.live.filter((c) => c.archive).length === 40), 'arşivli kanallar (tv_archive) işaretlendi');
+  const toastText = () => page.textContent('#toast');
+  // arama kutusu gecikmeli (debounce) çalışır: sonuç listesi istenen kanala dönene kadar bekle
+  const searchProg = async (term, ch) => {
+    await page.fill('#guide-q', term);
+    await page.waitForFunction((c) => { const h = document.querySelectorAll('#guide-list .prog-row[data-hit]'); return h.length === 1 && h[0].textContent.includes(c); }, ch, { timeout: 3000 });
+  };
+  await page.click('[data-go=guide]');
+  await page.waitForSelector('.guide-category-head');
+  ok(!!(await page.$('#guide-mode')) && (await page.getAttribute('#guide-mode', 'aria-pressed')) === 'false', 'rehberde “Program ara” düğmesi var');
+  await page.click('#guide-mode');
+  ok((await page.getAttribute('#guide-mode', 'aria-pressed')) === 'true', 'program arama kipi açıldı');
+  await page.fill('#guide-q', 'ö');
+  await sleep(300);
+  ok(/en az 2 harf/.test(await page.textContent('#guide-list')), 'tek harfle aranınca yönerge görünüyor');
+  await page.fill('#guide-q', 'zzzzqq');
+  await page.waitForFunction(() => /Eşleşen program bulunamadı/.test(document.querySelector('#guide-list').textContent), null, { timeout: 3000 });
+  ok(true, 'eşleşmeyen aramada boş durum iletisi');
+  await page.fill('#guide-q', 'Öğretmen Kanalı 1 Program 8');
+  await page.waitForSelector('#guide-list .prog-row[data-hit]', { timeout: 3000 });
+  ok((await page.$$('#guide-list .prog-row[data-hit]')).length === 1, 'program adıyla arama tek sonuç verdi (aksan duyarsız eşleşme)');
+  ok(/Öğretmen Kanalı 1/.test(await page.textContent('#guide-list .prog-row[data-hit] small')), 'sonuçta kanal adı ve gün görünüyor');
+  await page.fill('#guide-q', 'ogretmen kanali 1 program 8');
+  await page.waitForFunction(() => document.querySelectorAll('#guide-list .prog-row[data-hit]').length === 1, null, { timeout: 3000 });
+  ok(true, 'aksansız yazım da bulunuyor');
+  await page.click('#guide-list .prog-row[data-hit]');
+  await page.waitForSelector('.gp [data-a=watch]');
+  ok(!(await page.$('.gp [data-a=arc]')), 'henüz başlamamış programda arşiv düğmesi yok');
+  ok((await page.textContent('.gp [data-a=rem] span')) === 'Hatırlat' && (await page.textContent('.gp [data-a=rec] span')) === 'Kaydet', 'program penceresinde Hatırlat ve Kaydet düğmeleri var');
+  await page.click('.gp [data-a=rem]');
+  ok((await page.textContent('.gp [data-a=rem] span')) === 'Hatırlatıcıyı kaldır' && /Hatırlatıcı kuruldu/.test(await toastText()), 'hatırlatıcı kuruldu, düğme “kaldır”a döndü');
+  const plans1 = await page.evaluate(() => window.__plans);
+  ok(plans1.length === 1 && plans1[0].kind === 'rem' && plans1[0].chId === 'x3' && plans1[0].src === 'xa' && plans1[0].s - plans1[0].at === 5 * 60000, 'yerel alarm listesine hatırlatıcı (başlamadan 5 dk önce) gönderildi: ' + JSON.stringify(plans1.map((x) => [x.kind, x.chId, x.s - x.at])));
+  await page.click('.gp [data-a=rec]');
+  const plans2 = await page.evaluate(() => window.__plans);
+  const recPlan = plans2.find((x) => x.kind === 'rec');
+  ok(plans2.length === 2 && recPlan && /\/live\/u\/p\/3\.ts$/.test(recPlan.url) && recPlan.at === recPlan.s - 60000 && recPlan.until === recPlan.e + 120000, 'zamanlı kayıt doğrudan TS adresiyle planlandı (1 dk önce başlar, 2 dk sonra biter)');
+  ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'planPermissions'))), 'izin verilmişken izin ekranı açılmadı');
+  // aynı saatte başka kanalın kaydı çakışır
+  await page.click('.sheet [data-close]');
+  await page.waitForSelector('.gp', { state: 'detached' });
+  await searchProg('Şeker TV 1 Program 8', 'Şeker TV 1');
+  await page.click('#guide-list .prog-row[data-hit]');
+  await page.waitForSelector('.gp [data-a=rec]');
+  await page.click('.gp [data-a=rec]');
+  ok(/Aynı saatte başka kayıt var/.test(await toastText()) && (await page.evaluate(() => window.__plans.length)) === 2, 'aynı saatte ikinci kayıt reddedildi');
+  await page.click('.gp [data-a=rem]');
+  ok((await page.evaluate(() => window.__plans.length)) === 3, 'çakışan saatte hatırlatıcı yine kurulabiliyor');
+  await page.click('.gp [data-a=rem]');
+  ok((await page.evaluate(() => window.__plans.length)) === 2 && /Hatırlatıcı kaldırıldı/.test(await toastText()), 'aynı düğmeyle hatırlatıcı kaldırıldı');
+  await page.click('.sheet [data-close]');
+  await page.waitForSelector('.gp', { state: 'detached' });
+  // arşivli kanalın günlük akışı: geçmiş programlar sunucudan gelir, arşivden izlenir
+  await searchProg('Öğretmen Kanalı 1 Program 8', 'Öğretmen Kanalı 1');
+  await page.click('#guide-list .prog-row[data-hit]');
+  await page.waitForSelector('.gp [data-a=day]');
+  await page.click('.gp [data-a=day]');
+  await page.waitForSelector('.epg-schedule .prog-row.tap', { timeout: 5000 });
+  ok(!!(await page.$('.epg-schedule .epg-mark')), 'günlük akışta planlı program işaretli');
+  const archiveRowDay = async () => {
+    for (const d of await page.$$eval('.epg-days [data-day]', (b) => b.map((x) => x.dataset.day))) {
+      await page.click(`.epg-days [data-day="${d}"]`);
+      if (await page.$('.epg-schedule .prog-row:has-text("Arşiv Program 2")')) return true;
+    }
+    return false;
+  };
+  await page.waitForFunction(() => document.querySelectorAll('.epg-days [data-day]').length >= 1 && true, null, { timeout: 3000 });
+  let found = false;
+  for (let i = 0; i < 20 && !found; i++) {
+    found = await archiveRowDay();
+    if (!found) await sleep(250);
+  }
+  ok(found, 'arşivli kanalın geçmiş programları günlük akışa eklendi');
+  await page.click('.epg-schedule .prog-row:has-text("Arşiv Program 2")');
+  await page.waitForSelector('.gp [data-a=arc]');
+  ok(/Arşivden izle/.test(await page.textContent('.gp [data-a=arc]')) && !(await page.$('.gp [data-a=day]')), 'geçmiş programda “Arşivden izle” var, günlük akış düğmesi tekrarlanmıyor');
+  ok(!(await page.$('.gp [data-a=rem]')) && !(await page.$('.gp [data-a=rec]')), 'bitmiş programda Hatırlat/Kaydet yok');
+  const calls0 = await page.evaluate(() => window.__calls.length);
+  await page.click('.gp [data-a=arc]');
+  await page.waitForFunction((n) => window.__calls.slice(n).some((c) => c[0] === 'play' && /\/timeshift\//.test(c[1])), calls0, { timeout: 8000 });
+  const arc = await page.evaluate((n) => window.__calls.slice(n).find((c) => c[0] === 'play' && /\/timeshift\//.test(c[1])), calls0);
+  const m = /\/timeshift\/u\/p\/(\d+)\/(\d{4})-(\d{2})-(\d{2}):(\d{2})-(\d{2})\/3\.ts$/.exec(arc[1]);
+  ok(!!m && m[1] === '60' && m[6] === '00', 'arşiv adresi 60 dk süreli ve tam saatten başlıyor: ' + arc[1]);
+  const wantHour = await page.evaluate(() => {
+    const h0 = Math.floor(Date.now() / 3600e3) * 3600e3;
+    return new Date(h0 - 4 * 3600e3 + 3 * 3600e3).getUTCHours(); // Arşiv Program 2 = 4 saat önce; Europe/Istanbul = UTC+3
+  });
+  ok(m && Number(m[5]) === wantHour, 'başlangıç saati sunucu saat dilimine (UTC+3) çevrildi: ' + (m && m[5]) + ' = ' + wantHour);
+  ok(/Arşiv Program 2/.test(await page.textContent('#pl-name')) && !(await page.$eval('#pl-golive', (b) => b.hidden)), 'oynatıcıda program adı ve “Canlıya dön” görünüyor');
+  await page.evaluate(() => document.querySelector('#pl-golive').click());
+  await page.waitForFunction((n) => window.__calls.slice(n).some((c) => c[0] === 'play' && /\/live\/u\/p\/3\./.test(c[1])), calls0, { timeout: 8000 });
+  ok(true, '“Canlıya dön” kanalın canlı yayınını açtı');
+  await page.keyboard.press('Escape');
+  await sleep(400);
+  // Ayarlar › Planlananlar
+  await page.evaluate(() => { document.querySelectorAll('.sheet-back [data-close]').forEach((b) => b.click()); });
+  await page.keyboard.press('Escape');
+  await sleep(300);
+  await page.evaluate(() => window.__iptv.S.tab !== 'sources' && document.querySelector('#tabs [data-tab=sources]').click());
+  await page.waitForSelector('[data-set=plans]');
+  await page.click('[data-set=plans]');
+  await page.waitForSelector('.pl-row');
+  ok((await page.$$('.pl-row')).length === 2, 'Planlananlar iki planı listeliyor (kayıt + hatırlatıcı)');
+  ok(!(await page.$('.pl-warn')), 'izinler tamamken uyarı yok');
+  ok(/Zamanlı kayıt/.test(await page.textContent('.sheet')) && /Hatırlatıcı/.test(await page.textContent('.sheet')), 'planların türü satırda yazıyor');
+  await page.screenshot({ path: path.join(SHOTS, '12a-planlananlar.png') });
+  await page.click('.sheet [data-close]');
+  await page.evaluate(() => { window.__planStatus = { notify: false, exact: true }; });
+  await page.click('[data-set=plans]');
+  await page.waitForSelector('.pl-warn');
+  ok(/Bildirim izni kapalı/.test(await page.textContent('.pl-warn')), 'bildirim izni kapalıysa uyarı ve “İzni aç” çıkıyor');
+  await page.click('.pl-warn [data-a=perm]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'planPermissions'), null, { timeout: 3000 });
+  ok(true, '“İzni aç” yerel izin ekranını çağırdı');
+  await page.evaluate(() => { window.__planStatus = { notify: true, exact: false }; });
+  await page.click('.sheet [data-close]');
+  await page.click('[data-set=plans]');
+  await page.waitForSelector('.pl-warn');
+  ok(/Tam zamanlı alarm/.test(await page.textContent('.pl-warn')), 'tam zamanlı alarm kapalıysa kayma uyarısı var');
+  await page.evaluate(() => { window.__planStatus = null; });
+  // satıra dokununca kanal açılır, çöp kutusu planı siler
+  const calls1 = await page.evaluate(() => window.__calls.length);
+  await page.click('.pl-row .rec-play');
+  await page.waitForFunction((n) => window.__calls.slice(n).some((c) => c[0] === 'play'), calls1, { timeout: 8000 });
+  ok(true, 'plan satırına dokununca kanal açıldı');
+  await page.keyboard.press('Escape');
+  await sleep(400);
+  await page.evaluate(() => document.querySelector('#tabs [data-tab=sources]').click());
+  await page.click('[data-set=plans]');
+  await page.waitForSelector('.pl-row');
+  await page.click('.pl-row [data-del]');
+  await page.waitForFunction(() => document.querySelectorAll('.pl-row').length === 1, null, { timeout: 3000 });
+  ok((await page.evaluate(() => window.__plans.length)) === 1, 'plan silinince yerel alarm listesi de güncellendi');
+  await page.click('.pl-row [data-del]');
+  await page.waitForSelector('.sheet .hint:has-text("Henüz plan yok")');
+  ok((await page.evaluate(() => window.__plans.length)) === 0, 'son plan silinince liste boş ve yerel liste boş');
+  // bildirime dokunma: uygulama açıkken olay kanalı açar
+  await page.click('.sheet [data-close]');
+  const calls2 = await page.evaluate(() => window.__calls.length);
+  await page.evaluate(() => window.__emit('planLaunch', { ch: 'x5', src: 'xa' }));
+  await page.waitForFunction((n) => window.__calls.slice(n).some((c) => c[0] === 'play' && /\/live\/u\/p\/5\./.test(c[1])), calls2, { timeout: 8000 });
+  ok(true, 'bildirime dokunma olayı ilgili kanalı açtı');
+  // yeniden açılışta kayıtlı planlar yerel alarmlara yeniden eşitlenir
+  await page.evaluate(() => {
+    const t = Date.now() + 3600e3;
+    window.__iptv.store.setPref('plans', [{ id: 'rem:xa:x9:1', kind: 'rem', src: 'xa', chId: 'x9', chName: 'Kanal 9', title: 'Sonra', s: t, e: t + 3600e3, at: t - 300000 }, { id: 'rem:xa:x8:0', kind: 'rem', src: 'xa', chId: 'x8', chName: 'Kanal 8', title: 'Eski', s: 1000, e: 2000, at: 500 }]);
+  });
+  await page.reload();
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.waitForFunction(() => window.__plans && window.__plans.length === 1, null, { timeout: 6000 });
+  ok(await page.evaluate(() => window.__plans[0].chId === 'x9'), 'açılışta alarmlar yeniden kuruldu; süresi geçen plan atıldı');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // tarayıcıda: kayıt düğmesi yok, hatırlatıcı çalışır
+  ({ page, ctx, errs } = await newPage());
+  await page.evaluate((u) => {
+    localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'xa', name: 'Arşivli', type: 'xtream', server: u, user: 'u', pass: 'p' }]));
+  }, mock.url);
+  await page.reload();
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.epg.ready, null, { timeout: 15000 });
+  await page.click('[data-go=guide]');
+  await page.waitForSelector('.guide-category-head');
+  await page.click('#guide-mode');
+  await page.fill('#guide-q', 'Öğretmen Kanalı 1 Program 8');
+  await page.waitForSelector('#guide-list .prog-row[data-hit]', { timeout: 3000 });
+  await page.click('#guide-list .prog-row[data-hit]');
+  await page.waitForSelector('.gp [data-a=rem]');
+  ok(!(await page.$('.gp [data-a=rec]')), 'tarayıcıda zamanlı kayıt düğmesi yok');
+  await page.click('.gp [data-a=rem]');
+  ok((await page.evaluate(() => window.__iptv.store.pref('plans', []).length)) === 1, 'tarayıcıda hatırlatıcı yerel olarak saklandı');
+  ok(errs.length === 0, 'konsol hatası yok (tarayıcı)' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
   // ---------------------------------------------------------------- 9b. uygulama içi güncelleme (taklit eklenti)
   console.log('Uygulama içi güncelleme');
   ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
@@ -2201,7 +2397,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // ayarlar kutuları
   await page.click('#h-set');
   await page.waitForSelector('.set-grid');
-  ok((await page.$$('.set-tile')).length === 6, 'ayarlarda altı kutu (genel, EPG, yayın kalitesi, otomasyon, yenilikler, güncelleme)');
+  ok((await page.$$('.set-tile')).length === 7, 'ayarlarda yedi kutu (genel, EPG, yayın kalitesi, planlananlar, otomasyon, yenilikler, güncelleme)');
+  ok(await page.$eval('[data-set=plans] svg use', (u) => u.getAttribute('href') === '#i-bell' && !!document.getElementById('i-bell')), 'Planlananlar kutucuğunda simge var');
   await page.click('[data-set=general]');
   await page.waitForSelector('.chk');
   ok((await page.$$('.chk.on')).length === 3, 'genel ayarlarda üç seçenek açık');

@@ -1,5 +1,8 @@
 package com.koruk.iptv;
 
+import android.content.Context;
+import android.os.Environment;
+
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -44,6 +47,21 @@ final class StreamRecorder {
     private static Listener listener;
 
     private StreamRecorder() {}
+
+    /** Kayıt klasörü (uygulamaya özel Filmler/Kayitlar); yoksa oluşturulur. */
+    static File dirOf(Context c) {
+        File base = c.getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        File dir = new File(base != null ? base : c.getFilesDir(), "Kayitlar");
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        return dir;
+    }
+
+    static String safeName(String name) {
+        String s = String.valueOf(name).replaceAll("[^\\p{L}\\p{N}]+", "-").replaceAll("^-+|-+$", "");
+        if (s.length() > 40) s = s.substring(0, 40);
+        return s.isEmpty() ? "kanal" : s;
+    }
 
     static boolean active() {
         synchronized (LOCK) {

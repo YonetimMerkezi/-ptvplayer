@@ -6,7 +6,9 @@ import { createNet } from './net.js';
 import {
   loadCatalog, catalogToStorable, catalogFromStorable, emptyCatalog, search, groupList, inGroup,
   playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
+  loadArchiveEpg, archiveTargets, recordTarget,
 } from './catalog.js';
+import { makePlan, activePlans, addPlan, removePlan, hasPlan, recConflict, planId, planWhen, REMIND_LEAD_MIN } from './plan.js';
 import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
@@ -949,6 +951,113 @@ function startPlay(item, { ep = null, ctx = null, startAt } = {}) {
   pui.open(item, targets, { ep, startAt: item.kind === 'live' ? 0 : at, ctx });
 }
 
+// ---- planlananlar: program hatırlatıcıları ve zamanlı kayıtlar ----
+// Liste cihazda saklanır; Android'de alarmlar ve kayıt hizmeti uygulama kapalıyken de çalışır, tarayıcıda hatırlatıcılar sayfa açıkken.
+
+const PLANS_KEY = 'plans';
+const readPlans = () => activePlans(store.pref(PLANS_KEY, []));
+let webTimers = [];
+
+function webRemind(pl) {
+  toast(`${pl.title} başlıyor · ${pl.chName}`, 8000);
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(pl.title, { body: `${pl.chName} · ${fmtClock(pl.s)}` });
+  } catch {
+    /* bildirim açılamadı: ekrandaki ileti yeter */
+  }
+}
+
+// Yerel alarmları plan listesiyle eşitler; zamanı geçenler tetiklenmiş sayılır ve yerele gönderilmez (yeniden bildirim olmasın).
+function syncPlans() {
+  const now = Date.now();
+  const list = readPlans();
+  if (nativePlugin) {
+    nativePlugin.planSync({ plans: list.filter((x) => x.at > now) }).catch(() => {});
+    return;
+  }
+  webTimers.forEach(clearTimeout);
+  webTimers = list.filter((x) => x.kind === 'rem' && x.at > now && x.at - now < 2147e6).map((x) => setTimeout(() => webRemind(x), x.at - now));
+}
+
+function setPlans(list) {
+  store.setPref(PLANS_KEY, list);
+  syncPlans();
+}
+
+// Bildirim izni (Android 13+) yoksa sistem iznini ister; tam zamanlı alarm ayarı Planlananlar ekranında açılır.
+async function ensurePlanPermissions() {
+  if (!nativePlugin) {
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
+    } catch {
+      /* izin sorulamadı */
+    }
+    return;
+  }
+  try {
+    const st = await nativePlugin.planStatus();
+    if (st && !st.notify) await nativePlugin.planPermissions();
+  } catch {
+    /* izin durumu okunamadı */
+  }
+}
+
+const planIdOf = (kind, it, p) => planId(kind, it.id, p.s, sid());
+
+// Programa hatırlatıcı ya da zamanlı kayıt ekler; planı varsa kaldırır. Dönen değer: plan artık var mı.
+function togglePlan(kind, it, p) {
+  const list = readPlans();
+  const id = planIdOf(kind, it, p);
+  if (hasPlan(list, id)) {
+    setPlans(removePlan(list, id));
+    toast(kind === 'rec' ? 'Zamanlı kayıt kaldırıldı' : 'Hatırlatıcı kaldırıldı', 1800);
+    return false;
+  }
+  const now = Date.now();
+  let plan;
+  if (kind === 'rec') {
+    const rt = recordTarget(S.source, it, null);
+    if (!rt) {
+      toast('Bu kanal zamanlı kayıt için uygun değil (doğrudan TS adresi gerekir)', 3800);
+      return false;
+    }
+    plan = makePlan('rec', it, p, { url: rt.url, headers: rt.headers, src: sid() });
+    plan.at = Math.max(plan.at, now + 4000); // süren program: kayıt hemen başlar
+    const clash = recConflict(list, plan);
+    if (clash) {
+      toast(`Aynı saatte başka kayıt var: “${clash.title}” (${clash.chName})`, 4200);
+      return false;
+    }
+  } else {
+    plan = makePlan('rem', it, p, { src: sid() });
+    plan.at = Math.max(plan.at, now + 3000); // başlamasına 5 dakikadan az kaldıysa hemen haber verir
+  }
+  setPlans(addPlan(list, plan));
+  ensurePlanPermissions();
+  toast(kind === 'rec' ? `Kayıt planlandı · ${fmtClock(p.s)} ${p.t || ''}` : `Hatırlatıcı kuruldu · ${fmtClock(p.s)} ${p.t || ''}`, 2600);
+  return true;
+}
+
+// Arşivden (catch-up) izleme: bitmiş ya da süren programı baştan açar; oynatıcıdaki "Canlıya dön" kanala geçirir.
+function playArchive(it, p) {
+  const tz = (S.cat.account && S.cat.account.timezone) || '';
+  const targets = archiveTargets(S.source, it, p, tz);
+  if (!targets.length) return toast('Bu kanalda arşiv (geriye dönük izleme) yok');
+  const item = { id: `arc:${it.id}:${p.s}`, kind: 'recording', name: `${it.name} · ${p.t || 'Program'}`, logo: it.logo };
+  const ctx = { items: [it], index: 0, play: (x) => startPlay(x, { ctx: { items: [x], index: 0, play: ctx.play } }) };
+  pui.open(item, targets, { ep: null, startAt: 0, ctx });
+}
+
+// Bildirime dokununca ilgili kanal açılır (kaynak başkaysa önce o kaynağa geçilir).
+async function openPlanChannel(chId, srcId) {
+  if (!chId) return;
+  if (srcId && srcId !== sid() && store.sources().some((x) => x.id === srcId)) await activate(srcId);
+  for (let i = 0; i < 32 && !S.idx.live.has(chId); i++) await new Promise((r) => setTimeout(r, 250)); // açılışta liste yüklenirken bekle
+  const it = S.idx.live.get(chId);
+  if (it) playLive([it], 0);
+  else toast('Kanal bulunamadı');
+}
+
 // ---- ayrıntı sayfaları (tam ekran): film ve dizi ----
 
 const posterOf = (it) => (it.logo ? `<img src="${esc(it.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(it.name.slice(0, 2).toUpperCase()));
@@ -1066,6 +1175,8 @@ function openSeries(it) {
 async function epgSheet(it) {
   const sh = openSheet({ title: it.name, html: '<div class="empty">Yükleniyor…</div>' });
   const now = Date.now();
+  // Arşivli kanalda geçmiş günlerin programları da gelir (yalnız Xtream); rehberdeki programlarla birleştirilir.
+  const arcP = it.archive && S.source.type === 'xtream' ? loadArchiveEpg(S.source, net, it).catch(() => []) : Promise.resolve([]);
   let list = S.epg.listFor(it).filter((p) => p.e > now - 30 * 60000);
   if (!list.length) {
     try {
@@ -1075,6 +1186,20 @@ async function epgSheet(it) {
     }
   }
   const body = sh.body;
+  const mergeArchive = (arc) => {
+    const have = new Map(list.map((p) => [p.s, p]));
+    for (const a of arc) {
+      const cur = have.get(a.s);
+      if (cur) cur.archive = a.archive;
+      else {
+        const n = { ...a };
+        list.push(n);
+        have.set(a.s, n);
+      }
+    }
+    list.sort((a, b) => a.s - b.s);
+  };
+  if (!list.length) mergeArchive(await arcP);
   if (!list.length) {
     body.innerHTML = emptyHtml('Program bilgisi yok', S.source.type === 'xtream' || S.cat.epgUrls.length || S.source.epgUrl ? 'Bu kanal için rehberde program bulunamadı.' : 'Bu kaynakta TV rehberi adresi yok. Kaynaklar sekmesinden bir XMLTV adresi ekleyebilirsiniz.');
     return;
@@ -1084,8 +1209,13 @@ async function epgSheet(it) {
     const d = new Date(ts);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
-  const days = [...new Set(list.map((p) => dayKey(p.s)))].sort();
-  let selected = days.find((d) => d === dayKey(now)) || days[0];
+  let days = [];
+  let selected = null;
+  const plan = () => {
+    days = [...new Set(list.map((p) => dayKey(p.s)))].sort();
+    if (!selected || !days.includes(selected)) selected = days.find((d) => d === dayKey(now)) || days[0];
+  };
+  plan();
   const draw = () => {
     const dayList = list.filter((p) => dayKey(p.s) === selected).sort((a, b) => a.s - b.s);
     const tabs = days.map((d) => {
@@ -1093,19 +1223,31 @@ async function epgSheet(it) {
       const label = dayKey(now) === d ? 'Bugün' : date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' });
       return `<button class="chip ${selected === d ? 'on' : ''}" data-day="${d}">${esc(label)}</button>`;
     }).join('');
+    const plans = readPlans();
     body.innerHTML = `<div class="chips epg-days" role="group" aria-label="Program günü">${tabs}</div><div class="epg-schedule">${dayList.length ? dayList.map((p) => {
       const active = p.s <= now && p.e > now;
       const past = p.e <= now;
-      return `<div class="prog-row ${active ? 'now' : ''}${past ? ' past' : ''}"><time>${fmtClock(p.s)}</time><div><b>${esc(p.t)}</b>${p.d ? `<small>${esc(p.d)}</small>` : ''}</div>${active ? '<span class="epg-live">ŞİMDİ</span>' : ''}</div>`;
+      const mark = hasPlan(plans, planIdOf('rec', it, p)) ? `<span class="epg-mark" title="Kayıt planlı">${icon('rec')}</span>` : hasPlan(plans, planIdOf('rem', it, p)) ? `<span class="epg-mark" title="Hatırlatıcı">${icon('bell')}</span>` : p.archive && past ? `<span class="epg-mark" title="Arşivden izlenebilir">${icon('history')}</span>` : '';
+      return `<div class="prog-row tap ${active ? 'now' : ''}${past ? ' past' : ''}" role="button" tabindex="0" data-s="${p.s}"><time>${fmtClock(p.s)}</time><div><b>${esc(p.t)}</b>${p.d ? `<small>${esc(p.d)}</small>` : ''}</div>${active ? '<span class="epg-live">ŞİMDİ</span>' : ''}${mark}</div>`;
     }).join('') : '<div class="empty">Bu gün için program bilgisi yok.</div>'}</div>`;
   };
   body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-day]');
-    if (!b) return;
-    selected = b.dataset.day;
-    draw();
+    if (b) {
+      selected = b.dataset.day;
+      return draw();
+    }
+    const row = e.target.closest('.prog-row[data-s]');
+    const p = row && list.find((x) => x.s === Number(row.dataset.s));
+    if (p) guideProgramSheet(it, p, [it], 0, { noDay: true, onChange: draw });
   });
   draw();
+  if (list.length) arcP.then((arc) => {
+    if (!arc.length || !body.isConnected) return;
+    mergeArchive(arc);
+    plan();
+    draw();
+  });
 }
 
 // ------------------------------------------------------------------ favoriler
@@ -1167,7 +1309,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -1179,6 +1321,7 @@ function onSourcesClick(e) {
     if (k === 'general') return generalSheet();
     if (k === 'epg') return epgSettingsSheet();
     if (k === 'health') return healthSheet();
+    if (k === 'plans') return plansSheet();
     if (k === 'auto') return autoSheet();
     if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
@@ -1998,18 +2141,32 @@ function guideAxisHtml(ws) {
   return out;
 }
 
-function guideProgramSheet(it, p, items, index) {
+function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null } = {}) {
   const now = Date.now();
   const state = p.s <= now && p.e > now ? 'Şimdi yayında' : p.e <= now ? 'Yayınlandı' : 'Henüz başlamadı';
   const mins = Math.max(1, Math.round((p.e - p.s) / 60000));
+  const live = it.kind === 'live';
+  const canArchive = live && it.archive && S.source.type === 'xtream' && p.s < now && p.archive !== false;
+  const canRemind = live && p.s > now;
+  const canRecord = live && !!engine.rec && p.e > now;
+  const has = (kind) => hasPlan(readPlans(), planIdOf(kind, it, p));
+  const label = (kind) => (kind === 'rem' ? (has('rem') ? 'Hatırlatıcıyı kaldır' : 'Hatırlat') : has('rec') ? 'Kaydı kaldır' : p.s < now ? 'Şimdi kaydet' : 'Kaydet');
+  const btn = (a, ic, kind, cls = 'ghost') => `<button class="btn ${cls}" data-a="${a}">${icon(ic)}<span>${label(kind)}</span></button>`;
   const sh = openSheet({
     title: p.t || 'Program',
-    html: `<div class="gp"><div class="gp-meta"><b>${esc(it.name)}</b><span>${fmtClock(p.s)} – ${fmtClock(p.e)} · ${mins} dk · ${state}</span></div>${p.d ? `<p class="gp-desc">${esc(p.d)}</p>` : '<p class="gp-desc muted">Bu program için açıklama yok.</p>'}<div class="gp-btns"><button class="btn" data-a="watch">${icon('play')}Kanalı izle</button><button class="btn ghost" data-a="day">Günlük akış</button></div></div>`,
+    html: `<div class="gp"><div class="gp-meta"><b>${esc(it.name)}</b><span>${fmtClock(p.s)} – ${fmtClock(p.e)} · ${mins} dk · ${state}</span></div>${p.d ? `<p class="gp-desc">${esc(p.d)}</p>` : '<p class="gp-desc muted">Bu program için açıklama yok.</p>'}<div class="gp-btns"><button class="btn" data-a="watch">${icon('play')}Kanalı izle</button>${canArchive ? `<button class="btn ghost" data-a="arc">${icon('history')}${p.e > now ? 'Baştan izle' : 'Arşivden izle'}</button>` : ''}${canRemind ? btn('rem', 'bell', 'rem') : ''}${canRecord ? btn('rec', 'rec', 'rec') : ''}${noDay ? '' : '<button class="btn ghost" data-a="day">Günlük akış</button>'}</div></div>`,
   });
   sh.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-a]');
     if (!b) return;
-    closeThen(sh, () => (b.dataset.a === 'day' ? epgSheet(it) : playLive(items, index)));
+    const a = b.dataset.a;
+    if (a === 'rem' || a === 'rec') {
+      togglePlan(a, it, p);
+      b.querySelector('span').textContent = label(a);
+      if (onChange) onChange();
+      return;
+    }
+    closeThen(sh, () => (a === 'day' ? epgSheet(it) : a === 'arc' ? playArchive(it, p) : playLive(items, index)));
     sh.close();
   });
 }
@@ -2018,7 +2175,7 @@ function guidePage() {
   openPage({
     title: 'TV Rehberi',
     cls: 'guide-pg',
-    html: '<div class="guide-tools"><input id="guide-q" type="search" placeholder="Kanal veya kategori ara…" autocomplete="off"><button class="btn sm ghost" id="guide-refresh">EPG yenile</button></div><div class="guide-now"><span id="guide-now"></span><span class="guide-nav"><button class="btn sm ghost" id="guide-back" aria-label="3 saat geri">‹ 3 sa</button><button class="btn sm ghost" id="guide-today">Şimdi</button><button class="btn sm ghost" id="guide-fwd" aria-label="3 saat ileri">3 sa ›</button></span></div><div id="guide-list" class="guide-categories"></div>',
+    html: '<div class="guide-tools"><input id="guide-q" type="search" placeholder="Kanal veya kategori ara…" autocomplete="off"><button class="btn sm ghost" id="guide-mode" aria-pressed="false">Program ara</button><button class="btn sm ghost" id="guide-refresh">EPG yenile</button></div><div class="guide-now"><span id="guide-now"></span><span class="guide-nav"><button class="btn sm ghost" id="guide-back" aria-label="3 saat geri">‹ 3 sa</button><button class="btn sm ghost" id="guide-today">Şimdi</button><button class="btn sm ghost" id="guide-fwd" aria-label="3 saat ileri">3 sa ›</button></span></div><div id="guide-list" class="guide-categories"></div>',
     mount: (body) => {
       const q = $('#guide-q', body);
       const list = $('#guide-list', body);
@@ -2029,6 +2186,9 @@ function guidePage() {
       let scrollX = null; // null → şimdiye kaydır
       let ws = 0;
       let rows = []; // açık kategorinin süzülmüş kanalları
+      let progMode = false; // "Program ara": arama kutusu kanal yerine program adlarında arar
+      let progHits = [];
+      let visIds = null; // gizli/kilitli kategorilerdeki kanallar program aramasında çıkmaz
       let categories = categoryRows('live').filter((r) => !r.special && r.count > 0);
       const kbd = () => document.documentElement.classList.contains('kbd');
       const scroller = () => $('.tl-scroll', list);
@@ -2038,7 +2198,7 @@ function guidePage() {
       };
       const nowX = () => ((Date.now() - ws) / 60000) * ppm();
       const clock = () => {
-        nowLabel.textContent = 'ŞİMDİ · ' + fmtClock(Date.now()) + (expanded ? '' : '  ·  Kategori seçerek yayın akışını görüntüleyin');
+        nowLabel.textContent = 'ŞİMDİ · ' + fmtClock(Date.now()) + (expanded || progMode ? '' : '  ·  Kategori seçerek yayın akışını görüntüleyin');
       };
       // Zaman ilerledikçe şimdi çizgisi ve blokların şimdi/geçmiş durumu güncellenir
       const tickNow = () => {
@@ -2073,7 +2233,12 @@ function guidePage() {
           expanded = null;
           if (catLayer) popLayer('guide-cat');
         }
-        list.classList.toggle('tlmode', !!cat);
+        list.classList.toggle('tlmode', !!cat && !progMode);
+        if (progMode) {
+          rows = [];
+          drawPrograms(term);
+          return;
+        }
         if (cat) {
           const all = itemsOfGroup('live', cat.id);
           rows = term ? all.filter((it) => fold(it.name).includes(term)) : all;
@@ -2100,6 +2265,25 @@ function guidePage() {
             if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 160) moreRows();
           }, { passive: true });
         }
+      };
+      const dayWord = (ts) => {
+        const d0 = new Date().setHours(0, 0, 0, 0);
+        const diff = Math.round((new Date(ts).setHours(0, 0, 0, 0) - d0) / 86400000);
+        return diff === 0 ? 'Bugün' : diff === 1 ? 'Yarın' : diff === -1 ? 'Dün' : new Date(ts).toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' });
+      };
+      const drawPrograms = (term) => {
+        progHits = [];
+        let html;
+        if (fold(term).length < 2) html = '<div class="empty"><p>Programlarda aramak için adının en az 2 harfini yazın.</p></div>';
+        else {
+          if (!visIds) visIds = new Set(visibleAll('live').map((x) => x.id));
+          progHits = S.epg.search(term, { limit: 400 }).filter((h) => visIds.has(h.id)).slice(0, 120);
+          html = progHits.length
+            ? progHits.map((h, i) => `<div class="prog-row tap" role="button" tabindex="0" data-hit="${i}"><time>${fmtClock(h.p.s)}</time><div><b>${esc(h.p.t)}</b><small>${esc(S.idx.live.get(h.id).name)} · ${esc(dayWord(h.p.s))}</small></div></div>`).join('')
+            : '<div class="empty">Eşleşen program bulunamadı.</div>';
+        }
+        list.innerHTML = html;
+        clock();
       };
       const closeCat = () => {
         const id = expanded;
@@ -2206,6 +2390,12 @@ function guidePage() {
       });
 
       list.addEventListener('click', (e) => {
+        const hit = e.target.closest('[data-hit]');
+        if (hit && progHits[Number(hit.dataset.hit)]) {
+          const h = progHits[Number(hit.dataset.hit)];
+          const ch = S.idx.live.get(h.id);
+          return ch && guideProgramSheet(ch, h.p, [ch], 0);
+        }
         if (e.target.closest('[data-back]')) return popLayer('guide-cat');
         const head = e.target.closest('[data-category]');
         if (head) return openCat(head.dataset.category);
@@ -2252,6 +2442,16 @@ function guidePage() {
         if (sc) sc.scrollTo({ left: Math.max(0, nowX() - 16), top: 0, behavior: 'smooth' });
       });
       const timer = setInterval(() => (body.isConnected ? tickNow() : clearInterval(timer)), 30000);
+      const modeBtn = $('#guide-mode', body);
+      modeBtn.addEventListener('click', () => {
+        progMode = !progMode;
+        modeBtn.setAttribute('aria-pressed', String(progMode));
+        modeBtn.classList.toggle('on', progMode);
+        q.placeholder = progMode ? 'Program adı ara… (örn. haber, maç)' : 'Kanal veya kategori ara…';
+        visIds = null;
+        draw(true);
+        if (!progMode) scrollX = null;
+      });
       const refreshButton = $('#guide-refresh', body);
       refreshButton.addEventListener('click', async () => {
         if (refreshButton.disabled) return;
@@ -2847,6 +3047,59 @@ function deleteRecSheet(r, after) {
   });
 }
 
+// Planlananlar: bekleyen hatırlatıcılar ve zamanlı kayıtlar; izin durumu ve kaldırma burada.
+function plansSheet() {
+  const sh = openSheet({
+    title: 'Planlananlar',
+    html: '<div id="pl-body"><p class="hint">Yükleniyor…</p></div>',
+    mount: (body) => {
+      const box = $('#pl-body', body);
+      const draw = async () => {
+        if (!box.isConnected) return;
+        const list = readPlans();
+        const now = Date.now();
+        let st = null;
+        if (nativePlugin) {
+          try {
+            st = await nativePlugin.planStatus();
+          } catch {
+            /* durum okunamadı */
+          }
+        }
+        if (!box.isConnected) return;
+        const needs = [];
+        if (st && !st.notify) needs.push('Bildirim izni kapalı: hatırlatıcı ve kayıt bildirimi görünmez.');
+        if (st && st.notify && !st.exact) needs.push('Tam zamanlı alarm izni kapalı: hatırlatıcı ve kayıt birkaç dakika kayabilir.');
+        const warn = needs.length ? `<div class="pl-warn"><p>${needs.map(esc).join(' ')}</p><button class="btn sm" data-a="perm">İzni aç</button></div>` : '';
+        const rows = list.map((x) => {
+          const fired = x.at <= now;
+          const what = x.kind === 'rec' ? (fired ? 'Kayıt sürüyor ya da bitti' : 'Zamanlı kayıt') : fired ? 'Hatırlatıldı' : 'Hatırlatıcı';
+          return `<div class="rec-row pl-row${fired ? ' on' : ''}"><button class="rec-play" data-open="${esc(x.id)}"><span class="t">${icon(x.kind === 'rec' ? 'rec' : 'bell')}${esc(x.title)}</span><small>${esc(x.chName)} · ${esc(planWhen(x, now))} · ${what}</small></button><button class="icon-btn" data-del="${esc(x.id)}" aria-label="Kaldır">${icon('trash')}</button></div>`;
+        }).join('');
+        const note = nativePlugin ? '' : '<p class="hint">Tarayıcıda hatırlatıcılar yalnız sayfa açıkken çalışır; zamanlı kayıt Android uygulamasındadır.</p>';
+        box.innerHTML = `${warn}${rows || '<p class="hint">Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin.</p>'}${note}`;
+      };
+      body.addEventListener('click', async (e) => {
+        const del = e.target.closest('[data-del]');
+        if (del) {
+          setPlans(removePlan(readPlans(), del.dataset.del));
+          toast('Plan kaldırıldı', 1600);
+          return draw();
+        }
+        if (e.target.closest('[data-a="perm"]')) {
+          if (nativePlugin) await nativePlugin.planPermissions().catch(() => {});
+          else await ensurePlanPermissions();
+          return setTimeout(draw, 600);
+        }
+        const open = e.target.closest('[data-open]');
+        const x = open && readPlans().find((y) => y.id === open.dataset.open);
+        if (x) closeThen(sh, () => openPlanChannel(x.chId, x.src));
+      });
+      draw();
+    },
+  });
+}
+
 // ------------------------------------------------------------------ yenilikler
 
 // Güncellemeden sonra görülmemiş yenilikleri bir kez gösterir (all: son kayıtların hepsini, elle açılışta).
@@ -3197,7 +3450,12 @@ if (nativePlugin) {
   }).catch(() => {});
   castUi.listen();
   player.on((st) => castUi.nowPlaying(st));
+  // Bildirime dokunulunca (uygulama açıkken olay, kapalıyken açılışta sorgu) kanal açılır
+  const launchPlan = (e) => e && e.ch && openPlanChannel(e.ch, e.src);
+  nativePlugin.addListener('planLaunch', launchPlan).catch(() => {});
+  setTimeout(() => nativePlugin.planLaunch().then(launchPlan).catch(() => {}), 1500);
 }
+setTimeout(syncPlans, 2500); // alarmları kayıtlı listeyle eşitle (yeniden başlatma, güncelleme sonrası)
 
 initNav();
 window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v) }; // hata ayıklama ve uçtan uca testler için

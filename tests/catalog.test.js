@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadCatalog, loadEpg, EpgView, search, groupList, inGroup, playTargets, catalogToStorable, catalogFromStorable, loadSeriesInfo } from '../www/js/catalog.js';
+import { loadCatalog, loadEpg, EpgView, search, groupList, inGroup, playTargets, archiveTargets, recordTarget, catalogToStorable, catalogFromStorable, loadSeriesInfo } from '../www/js/catalog.js';
 import { createNet } from '../www/js/net.js';
 
 const b64 = (s) => Buffer.from(s).toString('base64');
@@ -172,4 +172,37 @@ test('yedek adres: kalite ve ülke ekleri yok sayılır, farklı kanallar karı�
   const t = playTargets({ type: 'm3u' }, list[0], null, altsOf(idx, list[0]));
   assert.deepEqual(t.map((x) => [x.url, x.alt || null]), [['http://h/1.m3u8', null], ['http://h/2.m3u8', 'TRT 1'], ['http://h/4.m3u8', 'TR: TRT 1 FHD']]);
   assert.equal(playTargets({ type: 'm3u' }, list[0]).length, 1);
+});
+
+test('rehberde program adıyla arama: yalnız süren/gelecek programlar, Türkçe harf duyarsız, başlangıca göre sıralı', () => {
+  const now = Date.UTC(2026, 10, 9, 12, 0);
+  const H = 3600000;
+  const view = new EpgView({
+    map: { x1: 'a', x2: 'a', x3: 'b' },
+    prog: {
+      a: [[now - 5 * H, now - 4 * H, 'Eski Maç', ''], [now + 2 * H, now + 3 * H, 'Büyük MAÇ', 'd1'], [now + 9 * H, now + 10 * H, 'Haber', '']],
+      b: [[now, now + H, 'Maçın Özeti', ''], [now + H, now + 2 * H, 'Gece Filmi', '']],
+      c: [[now, now + H, 'Maç yok kanal', '']],
+    },
+  });
+  const r = view.search('mac', { from: now - H });
+  assert.deepEqual(r.map((x) => [x.id, x.p.t]), [['x3', 'Maçın Özeti'], ['x1', 'Büyük MAÇ']], 'ortak rehber kanalından tek kanal; eski ve eşlenmemiş elenir');
+  assert.equal(r[1].p.d, 'd1');
+  assert.deepEqual(view.search('m', { from: now - H }), [], 'tek harfle aranmaz');
+  assert.equal(view.search('film', { from: now - H }).length, 1);
+  assert.equal(view.search('maç', { from: now - H, limit: 1 }).length, 1);
+});
+
+test('arşiv ve zamanlı kayıt adresleri yalnız Xtream canlı kanalda', () => {
+  const src = { type: 'xtream', server: 'http://h:80', user: 'u', pass: 'p' };
+  const live = { id: 'x10', streamId: '10', kind: 'live', name: 'TRT', archive: true };
+  const p = { s: Date.UTC(2026, 10, 9, 12, 0), e: Date.UTC(2026, 10, 9, 13, 0) };
+  const t = archiveTargets(src, live, p, 'UTC');
+  assert.equal(t[0].url, 'http://h:80/timeshift/u/p/60/2026-11-09:12-00/10.ts');
+  assert.equal(t[1].mime, 'hls');
+  assert.deepEqual(archiveTargets(src, { ...live, archive: false }, p), []);
+  assert.deepEqual(archiveTargets({ type: 'm3u' }, live, p), []);
+  assert.equal(recordTarget(src, live).url, 'http://h:80/live/u/p/10.ts');
+  assert.equal(recordTarget({ type: 'm3u' }, { kind: 'live', url: 'http://a/b.m3u8' }), null, 'yalnız HLS olan kanal kaydedilemez');
+  assert.equal(recordTarget({ type: 'm3u' }, { kind: 'live', url: 'http://a/b.ts' }).url, 'http://a/b.ts');
 });

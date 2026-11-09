@@ -48,6 +48,23 @@ export function episodeUrl(cfg, episodeId, ext = 'mp4') {
   return `${normalizeServer(cfg.server)}/series/${q(cfg.user)}/${q(cfg.pass)}/${episodeId}.${ext || 'mp4'}`;
 }
 
+// Arşiv (catch-up) adresi: başlangıç zamanı sunucunun yerel saatiyle "YYYY-MM-DD:HH-MM" yazılır.
+export function archiveStamp(ms, timeZone) {
+  let fmt;
+  try {
+    fmt = new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  } catch {
+    fmt = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); // geçersiz saat dilimi: cihaz saati
+  }
+  const parts = fmt.formatToParts(new Date(ms));
+  const g = (t) => parts.find((x) => x.type === t).value;
+  return `${g('year')}-${g('month')}-${g('day')}:${g('hour')}-${g('minute')}`;
+}
+
+export function timeshiftUrl(cfg, streamId, startMs, durationMin, timeZone, ext = 'ts') {
+  return `${normalizeServer(cfg.server)}/timeshift/${q(cfg.user)}/${q(cfg.pass)}/${Math.max(1, Math.round(durationMin))}/${archiveStamp(startMs, timeZone)}/${streamId}.${ext}`;
+}
+
 export function checkAuth(json) {
   const info = json && json.user_info;
   if (!info || typeof info !== 'object') return { ok: false, reason: 'Sunucu geçerli bir Xtream yanıtı vermedi.' };
@@ -61,6 +78,7 @@ export function checkAuth(json) {
     ok: true,
     expires: Number.isFinite(exp) && exp > 0 ? exp * 1000 : null,
     maxConnections: Number(info.max_connections) || null,
+    timezone: String((json.server_info && json.server_info.timezone) || ''),
   };
 }
 
@@ -178,6 +196,20 @@ export function mapShortEpg(json) {
       e: num(e.stop_timestamp || e.end_timestamp) * 1000,
       t: decodeBase64Utf8(e.title),
       d: decodeBase64Utf8(e.description),
+    }))
+    .filter((e) => e.s && e.e)
+    .sort((a, b) => a.s - b.s);
+}
+
+// get_simple_data_table: kanalın geçmiş ve gelecek programları; has_archive=1 olanlar arşivden izlenebilir.
+export function mapArchiveEpg(json) {
+  return objs(json && json.epg_listings)
+    .map((e) => ({
+      s: num(e.start_timestamp) * 1000,
+      e: num(e.stop_timestamp || e.end_timestamp) * 1000,
+      t: decodeBase64Utf8(e.title),
+      d: decodeBase64Utf8(e.description),
+      archive: num(e.has_archive) === 1,
     }))
     .filter((e) => e.s && e.e)
     .sort((a, b) => a.s - b.s);

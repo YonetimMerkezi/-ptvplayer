@@ -71,9 +71,9 @@ function xtream(url, base) {
   const cats = (names) => names.map((n, i) => ({ category_id: String(i + 1), category_name: n }));
   switch (q.get('action')) {
     case null:
-      return { user_info: { auth: 1, status: 'Active', exp_date: String(Math.floor(Date.now() / 1000) + 86400 * 90), max_connections: '2' }, server_info: { url: base } };
+      return { user_info: { auth: 1, status: 'Active', exp_date: String(Math.floor(Date.now() / 1000) + 86400 * 90), max_connections: '2' }, server_info: { url: base, timezone: 'Europe/Istanbul' } };
     case 'get_live_categories': return cats(GROUPS);
-    case 'get_live_streams': return liveChannels().map((c) => ({ num: c.id, name: c.name, stream_id: c.id, stream_icon: `${base}/logo/${c.id}.svg`, epg_channel_id: c.tvg, category_id: String(GROUPS.indexOf(c.group) + 1) }));
+    case 'get_live_streams': return liveChannels().map((c) => ({ num: c.id, name: c.name, stream_id: c.id, stream_icon: `${base}/logo/${c.id}.svg`, epg_channel_id: c.tvg, tv_archive: c.id % 3 === 0 ? 1 : 0, category_id: String(GROUPS.indexOf(c.group) + 1) }));
     case 'get_vod_categories': return cats(['Aksiyon', 'Dram']);
     case 'get_vod_streams': return MOVIES.map((m) => ({ name: m.name, stream_id: m.id, stream_icon: '', category_id: m.group === 'Aksiyon' ? '1' : '2', container_extension: 'webm', rating_5based: 3.5 }));
     case 'get_series_categories': return cats(['Diziler']);
@@ -90,6 +90,11 @@ function xtream(url, base) {
     case 'get_short_epg': {
       const now = Math.floor(Date.now() / 1000);
       return { epg_listings: [0, 1, 2].map((i) => ({ title: b64(`Kısa Program ${i}`), description: b64('Ayrıntı'), start_timestamp: String(now - 600 + i * 3600), stop_timestamp: String(now + 3000 + i * 3600) })) };
+    }
+    case 'get_simple_data_table': {
+      // Arşivli kanal: son altı saat (arşivde) ve önümüzdeki bir saat
+      const h0 = Math.floor(Date.now() / 3600e3) * 3600;
+      return { epg_listings: Array.from({ length: 7 }, (_, i) => ({ title: b64(`Arşiv Program ${i}`), description: b64('Arşiv ayrıntısı'), start_timestamp: String(h0 - (6 - i) * 3600), stop_timestamp: String(h0 - (5 - i) * 3600), has_archive: i < 6 ? 1 : 0 })) };
     }
     default: return [];
   }
@@ -139,6 +144,11 @@ export function startMock(port = 0) {
     if (p.startsWith('/logo/')) return res.writeHead(200, { 'Content-Type': 'image/svg+xml' }).end(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#38bdf8"/></svg>`);
     if (/^\/live\/u\/p\/\d+\.m3u8$/.test(p)) return sendFile(req, res, join(MEDIA, 'hls', 'index.m3u8'), 'application/vnd.apple.mpegurl');
     if (/^\/live\/u\/p\/\d+\.ts$/.test(p)) return res.writeHead(404).end('ts yok');
+    // Arşiv (catch-up): /timeshift/kullanıcı/şifre/süre/başlangıç/kanal.(ts|m3u8)
+    if (/^\/timeshift\/u\/p\/\d+\/[\d:-]+\/\d+\.m3u8$/.test(p)) return sendFile(req, res, join(MEDIA, 'hls', 'index.m3u8'), 'application/vnd.apple.mpegurl');
+    if (/^\/timeshift\/u\/p\/\d+\/[\d:-]+\/\d+\.ts$/.test(p)) return res.writeHead(404).end('ts yok');
+    const tseg = /^\/timeshift\/u\/p\/\d+\/[\d:-]+\/(init\.mp4|seg\d+\.m4s)$/.exec(p);
+    if (tseg) return sendFile(req, res, join(MEDIA, 'hls', tseg[1]), tseg[1].endsWith('.mp4') ? 'video/mp4' : 'video/iso.segment');
     if (p === '/live/u/p/bozuk.m3u8') return res.writeHead(404).end('yok');
     const seg = /^\/live\/u\/p\/(init\.mp4|seg\d+\.m4s)$/.exec(p);
     if (seg) return sendFile(req, res, join(MEDIA, 'hls', seg[1]), seg[1].endsWith('.mp4') ? 'video/mp4' : 'video/iso.segment');
