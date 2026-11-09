@@ -645,6 +645,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-hud').hidden = true;
     q('#pl-nextup').hidden = true;
     q('#pl-intro').hidden = true;
+    q('#pl-pip').hidden = engine.kind !== 'native' || onTv(); // TV'de resim içinde resim yok
     applyResize(resizeIdx);
     loadLevels();
     engine.setImmersive(true, true).catch(() => {});
@@ -692,6 +693,8 @@ export function createPlayerUI({ engine, player, env }) {
     document.documentElement.classList.remove('native-playing');
     applyRect();
   }
+
+  const onTv = () => !!(env.isTv && env.isTv());
 
   // Uygulama içi küçük oynatıcı (geri tuşuyla küçülen yayın): durumu uygulamaya tek yerden bildirilir.
   let miniActive = false;
@@ -803,7 +806,7 @@ export function createPlayerUI({ engine, player, env }) {
     const current = player.state();
     // Android'de geri çıkışta yayını kapatma: uygulama içinde yüzen mini oynatıcıya küçült.
     // Uygulama arka plana alınırsa Android'in sistem PiP akışı ayrıca çalışır.
-    if (env.native && current.item && !stopping) {
+    if (env.native && current.item && !stopping && !onTv()) {
       setMini(true);
       enterPreview();
       engine.setImmersive(false, false).catch(() => {});
@@ -945,6 +948,8 @@ export function createPlayerUI({ engine, player, env }) {
     const st = player.state();
     const live = st.live;
     const k = e.key;
+    // Oynatıcının üstünde (over-player) alt sayfa/sayfa/şifre ekranı açıkken oklar, Tamam, boşluk ve rakamlar onlarındır (odak içinde gezer); oynatıcı yayına dokunmaz
+    if (open && (k.startsWith('Arrow') || k === 'Enter' || k === ' ' || /^[0-9]$/.test(k)) && (document.getElementById('lock') || document.querySelector('#sheets > .over-player'))) return;
     if (!open) {
       // önizleme: kanal tuşları listedeki bir sonraki/önceki kanalı önizler (tam ekranı açmaz)
       const step = k === 'ChannelUp' || k === 'MediaTrackNext' ? 1 : k === 'ChannelDown' || k === 'MediaTrackPrevious' ? -1 : 0;
@@ -984,16 +989,13 @@ export function createPlayerUI({ engine, player, env }) {
     }
     const seekKey = k === 'MediaFastForward' || k === 'FastForward' || k === 'MediaSkipForward' ? 1 : k === 'MediaRewind' || k === 'Rewind' || k === 'MediaSkipBackward' ? -1 : 0;
     const visibleBtn = (id) => !q(id).hidden && !q(id).disabled;
-    if ((k === 'ArrowUp' || k === 'ChannelDown') && live) go(-1);
-    else if ((k === 'ArrowDown' || k === 'ChannelUp') && live) go(1);
+    // Yön tuşları denetimler kapalıyken (ya da odak denetimlerde değilken) yalnız denetimleri açar: yayın durmaz, kanal/konum değişmez.
+    // Sonra oklar düğmeler arasında gezer, Tamam odaktaki düğmeye basar (duraklat dahil). Kanal için kanal +/- ve rakam tuşları, sarma için ileri/geri tuşları kullanılır.
+    if (k.startsWith('Arrow')) revealControls();
+    else if (k === 'ChannelDown' && live) go(-1);
+    else if (k === 'ChannelUp' && live) go(1);
     else if (seekKey && !live) keySeek(seekKey);
     else if (seekKey) hud('info', 'Canlı yayında sarma yok');
-    else if (k === 'ArrowLeft' && !live) keySeek(-1);
-    else if (k === 'ArrowRight' && !live) keySeek(1);
-    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && live) {
-      if (kbdMode()) revealControls();
-      else hud('info', 'Canlı yayında sarma yok');
-    } else if ((k === 'ArrowUp' || k === 'ArrowDown') && !live) revealControls();
     else if (k === 'ChannelUp' || k === 'ChannelDown') go(k === 'ChannelUp' ? 1 : -1);
     else if (k === 'PageUp' || k === 'MediaTrackPrevious') go(-1);
     else if (k === 'PageDown' || k === 'MediaTrackNext') go(1);

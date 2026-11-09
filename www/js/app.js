@@ -128,6 +128,7 @@ const pui = createPlayerUI({
     recStart: (item, maxMs) => engine.rec.start(item.name, maxMs),
     recStop: () => engine.rec.stop(),
     playRecording: (r, ctx) => startPlay(recItem(r), { ctx }),
+    isTv: () => isTvUi() || tvDetected, // TV'de resim içinde resim ve küçük oynatıcı yok
     canCast: () => !!nativePlugin && !isTvUi(),
     castTo: (st, ctx) => castItem(st.item, st.ep, { startMs: st.pos, ctx, closePlayer: true }),
     epg: (it) => S.epg.nowNext(it),

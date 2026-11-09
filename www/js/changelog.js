@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 29,
+    title: 'TV düzeltmeleri',
+    items: [
+      'TV’de resim içinde resim ve küçük oynatıcı yok; Geri yayını kapatır',
+      'TV’de arama kutusundan geçerken ekran klavyesi kendiliğinden açılmaz; Tamam’a basınca açılır',
+      'Oynatıcıda yön tuşları yayını durdurmadan yalnız denetimleri açar; yukarı/aşağı artık kanal değiştirmez (kanal +/- tuşları değiştirir)',
+      'Gece modu gibi pencerelerde kumandayla gezinme düzeldi',
+      'Telefondan oynat: kodu yalnız TV üretir; telefonda TV’yi seçip TV’deki kodu girersiniz',
+      'Film ilk açılışta yavaş ama veri geliyorsa artık 25 sn’de pes etmez (en çok 90 sn bekler); dosya açılıp görüntü başlamazsa nedenini söyler',
+    ],
+  },
+  {
     id: 28,
     title: 'Kumanda renk tuşları, TV ana ekranı, sesli arama',
     items: [

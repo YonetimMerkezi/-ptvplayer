@@ -36,7 +36,8 @@ export function createCastUI(deps) {
   }
 
   // TV seçtirir: kayıtlı TV'ler hemen, ağdakiler arama bitince listelenir. Seçilen eşleşmemişse kod istenir. → cihaz | null
-  function chooseTv(title = 'TV’de oynat') {
+  // manage=true (Ayarlar › Telefondan oynat): yalnız eşleştirme/kaldırma; seçim bir şey göndermez, ekran açık kalır.
+  function chooseTv(title = 'TV’de oynat', manage = false) {
     return new Promise((resolve) => {
       let done = false;
       let list = [];
@@ -50,7 +51,7 @@ export function createCastUI(deps) {
       };
       const sh = openSheet({
         title,
-        html: '<div id="cs-list"></div><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="TV’nin IP adresi (örn. 192.168.1.20)" autocomplete="off"><button class="btn" id="cs-ipgo">Ekle</button></div><p class="hint">Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı eşleştirme kodunu gösterir.</p>',
+        html: '<div id="cs-list"></div><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="TV’nin IP adresi (örn. 192.168.1.20)" autocomplete="off"><button class="btn" id="cs-ipgo">Ekle</button></div><p class="hint">' + (manage ? 'Önce TV’de Ayarlar › Telefondan oynat ekranını açın; 6 haneli kod orada görünür. Sonra buradan TV’ye dokunup kodu girin. ' : '') + 'Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı eşleştirme kodunu gösterir.</p>',
         mount: (body, api) => {
           const box = body.querySelector('#cs-list');
           const draw = () => {
@@ -58,7 +59,7 @@ export function createCastUI(deps) {
             const rows = list
               .map(
                 (d, i) =>
-                  `<div class="cast-row-d"><button class="rec-play" data-i="${i}">${icon('tv')}<span class="t">${esc(d.name)}</span><small>${d.saved ? (d.online ? 'Eşleşmiş · bağlanabilir' : 'Eşleşmiş · bulunamadı') : 'Yeni · kod gerekir'} · ${esc(d.host)}${now[d.id] ? ` · Şu an: ${esc(now[d.id].title || 'oynatılıyor')}` : ''}</small></button>${now[d.id] ? `<button class="icon-btn" data-remote="${i}" aria-label="Kumandayı aç">${icon('play')}</button>` : ''}${d.saved ? `<button class="icon-btn" data-forget="${i}" aria-label="Eşleşmeyi kaldır">${icon('trash')}</button>` : ''}</div>`,
+                  `<div class="cast-row-d"><button class="rec-play" data-i="${i}">${icon('tv')}<span class="t">${esc(d.name)}</span><small>${d.saved ? (d.online ? 'Eşleşmiş · bağlanabilir' : 'Eşleşmiş · bulunamadı') : manage ? 'Eşleşmemiş · dokunup TV’deki kodu girin' : 'Yeni · kod gerekir'} · ${esc(d.host)}${now[d.id] && !manage ? ` · Şu an: ${esc(now[d.id].title || 'oynatılıyor')}` : ''}</small></button>${now[d.id] && !manage ? `<button class="icon-btn" data-remote="${i}" aria-label="Kumandayı aç">${icon('play')}</button>` : ''}${d.saved ? `<button class="icon-btn" data-forget="${i}" aria-label="Eşleşmeyi kaldır">${icon('trash')}</button>` : ''}</div>`,
               )
               .join('');
             box.innerHTML = (rows || `<p class="hint">${searching ? 'TV aranıyor…' : 'TV bulunamadı. TV’de uygulamanın açık olduğundan ve aynı Wi‑Fi’ye bağlı olduğundan emin olun, ya da IP adresini yazın.'}</p>`) + (rows && searching ? '<p class="hint">Aranıyor…</p>' : '') + (!searching ? '<button class="btn g" id="cs-again">Yeniden ara</button>' : '');
@@ -124,6 +125,11 @@ export function createCastUI(deps) {
               }
               const dev = await ensurePaired(d);
               if (!dev) return;
+              if (manage) {
+                toast(`${dev.name} ile eşleşti`);
+                draw();
+                return;
+              }
               api.close();
               finish(dev);
               return;
@@ -296,7 +302,8 @@ export function createCastUI(deps) {
 
   // ------------------------------------------------------------------ TV: alıcı
 
-  const wantReceiver = () => !!store.pref('cast.on', deps.isTv());
+  // Alıcı (eşleştirme kodunu üreten taraf) yalnız TV'dir; telefon kodu TV'den alıp girer.
+  const wantReceiver = () => !!deps.isTv() && !!store.pref('cast.on', true);
 
   async function startReceiver() {
     if (!plugin || !wantReceiver()) return;
@@ -355,6 +362,10 @@ export function createCastUI(deps) {
 
   function receiverSheet() {
     if (!plugin) return toast('Bu özellik yalnız Android uygulamasında çalışır');
+    if (!deps.isTv()) {
+      chooseTv('Telefondan oynat', true); // telefon: TV'yi seç, TV'nin gösterdiği kodu gir
+      return;
+    }
     openSheet({
       title: 'Telefondan oynat',
       html: '<div id="rc-body"><p class="hint">Yükleniyor…</p></div>',

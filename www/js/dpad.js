@@ -71,11 +71,48 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     root.classList.toggle('kbd', on);
   };
   let isTv = false;
+  const isTextInput = (el) => !!el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|url|email|tel|password|number)$/.test(el.type)));
+
+  // TV'de kumandayla gezerken metin alanından geçmek ekran klavyesini açmasın: alan salt okunur kalır, Tamam'a (Enter) ya da dokunmaya basılınca
+  // düzenlenir ve klavye açılır; odak alandan çıkınca yeniden salt okunur olur.
+  const guardInput = (el) => {
+    if (isTv && isTextInput(el) && !el.dataset.editing && !el.readOnly) {
+      el.readOnly = true;
+      el.dataset.tvRo = '1'; // salt okunurluğu bizim koyduğumuzu ayırt eder
+    }
+  };
+  const ownRo = (el) => isTextInput(el) && !!el.dataset.tvRo && el.readOnly && !el.dataset.editing;
+  const guardAll = () => {
+    if (isTv) doc.querySelectorAll('input, textarea').forEach(guardInput);
+  };
+  let restarting = false;
+  function beginEdit(el) {
+    el.dataset.editing = '1';
+    delete el.dataset.tvRo;
+    el.readOnly = false;
+    restarting = true;
+    el.blur();
+    el.focus(); // klavyeyi açar
+    restarting = false;
+    try {
+      el.setSelectionRange(el.value.length, el.value.length);
+    } catch {
+      /* bazı alan türlerinde imleç ayarlanamaz */
+    }
+  }
   // TV kipi: odak halkası her zaman görünür, kenar boşlukları genişler (CSS html.tv)
   const setTv = (on) => {
     isTv = !!on;
     root.classList.toggle('tv', isTv);
-    if (isTv) setKbd(true);
+    if (isTv) {
+      setKbd(true);
+      guardAll();
+    } else {
+      doc.querySelectorAll('[data-tv-ro]').forEach((el) => {
+        el.readOnly = false;
+        delete el.dataset.tvRo;
+      });
+    }
   };
   setTv(tv);
 
@@ -200,8 +237,35 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
   doc.addEventListener('keydown', onKey);
   doc.addEventListener('pointerdown', () => !isTv && setKbd(false), true);
   doc.addEventListener('focusin', (e) => {
+    guardInput(e.target); // kod odak verdiyse (ör. arama açılınca) de klavye kendiliğinden açılmasın
     const scope = scopeEl();
     if (scope && scope.contains(e.target)) memory.set(scope, e.target);
+  }, true);
+  doc.addEventListener('focusout', (e) => {
+    const el = e.target;
+    if (!restarting && isTv && isTextInput(el) && el.dataset.editing) {
+      delete el.dataset.editing;
+      guardInput(el);
+    }
+  });
+  // Tamam (Enter): salt okunur metin alanında düzenlemeyi başlatır. Yakalama aşamasında çalışır ki alanın kendi Enter işleyicisi (ör. "ekle") boş alanla tetiklenmesin.
+  doc.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Enter' || e.altKey || e.ctrlKey || e.metaKey) return;
+      const el = doc.activeElement;
+      if (isTv && el && ownRo(el)) {
+        e.preventDefault();
+        e.stopPropagation();
+        beginEdit(el);
+      }
+    },
+    true,
+  );
+  // dokunma/tıklama alanı açıkça seçmektir: düzenleme başlar
+  doc.addEventListener('click', (e) => {
+    const el = e.target;
+    if (e.isTrusted && isTv && el && ownRo(el)) beginEdit(el);
   });
 
   // Ekran/katman değişince odak kaybolursa (öğe silindi) uygun yere taşı; dokunmatikte klavye açılmasın diye yalnız kumanda kipinde.
@@ -220,7 +284,10 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
   const schedule = () => {
     if (!raf) raf = win.requestAnimationFrame(ensure);
   };
-  const mo = new win.MutationObserver(schedule);
+  const mo = new win.MutationObserver(() => {
+    guardAll();
+    schedule();
+  });
   for (const id of ['app', 'sheets', 'player']) {
     const n = doc.getElementById(id);
     if (n) mo.observe(n, { childList: true, subtree: true });

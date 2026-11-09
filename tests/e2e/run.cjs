@@ -38,6 +38,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function newPage(vp = { width: 390, height: 844 }, init) {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, hasTouch: true });
     const page = await ctx.newPage();
+    // TV'de metin alanları kumandayla gezerken salt okunurdur; kullanıcı gibi önce Tamam'a basılıp düzenleme açılır
+    const rawFill = page.fill.bind(page);
+    page.fill = async (sel, val, opts) => {
+      const ro = await page.$eval(sel, (e) => e.dataset.tvRo === '1' && e.readOnly).catch(() => false);
+      if (ro) {
+        await page.focus(sel);
+        await page.keyboard.press('Enter');
+      }
+      return rawFill(sel, val, opts);
+    };
     const errs = [];
     page.on('pageerror', (e) => errs.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text()) && errs.push(m.text()));
@@ -620,9 +630,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await page.$eval('#vid', (v) => v.volume)) > vol, 'yukarı kaydırma sesi artırdı');
   await sleep(1000);
   const before = await page.$eval('#vid', (v) => v.currentTime);
-  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.remove('show'));
+  await page.keyboard.press('ArrowRight');
+  await sleep(200);
+  ok((await page.$eval('#pl-ui', (u) => u.classList.contains('show'))) && Math.abs((await page.$eval('#vid', (v) => v.currentTime)) - before) < 3, 'denetimler kapalıyken sağ ok yalnız denetimleri açtı, film sarılmadı');
+  const fwd = () => page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaFastForward', bubbles: true, cancelable: true })));
+  for (let i = 0; i < 3; i++) await fwd();
   await page.waitForFunction((b) => document.querySelector('#vid').currentTime > b + 25, before, { timeout: 2500 });
-  ok(true, 'sağ ok ile 3 × 10 sn ileri sarıldı');
+  ok(true, 'ileri sarma tuşuyla 3 × 10 sn ileri sarıldı');
   await page.screenshot({ path: path.join(SHOTS, '08-oynatici-film.png') });
   await sleep(200);
   await page.goBack(); // oynatıcı
@@ -1706,6 +1721,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.cast-row-d [data-i="0"]');
   await page.waitForFunction(() => /eşleşmesi kaldırılmış/.test(document.querySelector('#toast').textContent), null, { timeout: 5000 });
   ok(((await page.evaluate(() => window.__iptv.store.pref('cast.tvs', []))).length) === 0, 'TV eşleşmeyi kaldırmışsa telefon da unutur ve yeniden eşleştirmeyi ister');
+  // Ayarlar › Telefondan oynat (telefonda): kod ÜRETMEZ; TV seçilir ve TV'nin gösterdiği kod girilir
+  await ctx.close();
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.evaluate(() => {
+    window.__calls.length = 0;
+    window.__found = [{ id: 'tv1', name: 'Salon TV', host: '192.168.1.20', port: 8765, paired: false }];
+  });
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=cast]');
+  await page.waitForSelector('.cast-row-d');
+  ok((await page.$('.cast-code')) === null && (await page.$('#rc-body')) === null, 'telefonda “Telefondan oynat” eşleştirme kodu üretmiyor');
+  ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'castStart' || c[0] === 'castPairOpen'))), 'telefonda alıcı/kod üretimi hiç başlatılmadı');
+  ok(/Salon TV/.test(await page.textContent('.cast-row-d')) && /TV’deki kodu girin/.test(await page.textContent('.cast-row-d')), 'ağdaki TV listelendi ve kod girileceği yazıyor');
+  await page.click('.cast-row-d [data-i="0"]');
+  await page.waitForSelector('#lock .lk-k');
+  for (const d of '123456') await page.click(`#lock .lk-k[data-k="${d}"]`);
+  await page.waitForFunction(() => /ile eşleşti/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
+  ok(((await page.evaluate(() => window.__iptv.store.pref('cast.tvs', []))).length) === 1 && (await page.$('.cast-row-d')) !== null, 'kod girilince TV eşleşti, ekran açık kaldı');
+  ok(/Eşleşmiş/.test(await page.textContent('.cast-row-d')), 'liste “Eşleşmiş” gösteriyor');
   await ctx.close();
 
   // veri eşitleme: telefon başlatır, iki cihaz birbirinin eksiklerini alır, var olan değişmez
@@ -2376,6 +2416,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
   await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
   ok(/\.m3u8$/.test(await lastPlay()), 'iptvpro://play?kind=live bağlantısı kanalı doğrudan açtı');
+  ok(!(await page.$eval('#pl-pip', (b) => b.hidden)), 'telefonda “resim içinde resim” düğmesi var');
   // oynatıcıda renkli tuşlar
   await sleep(300);
   const asp0 = (await page.textContent('#pl-aspect-l')).trim();
@@ -2454,6 +2495,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(300);
   await page.evaluate(() => window.__emit('state', { state: 'playing', playing: true, live: false }));
   await sleep(10500); // ilerleme kaydı oynatmanın ilk 10 saniyesinden sonra başlar
+  ok(await page.$eval('#pl-pip', (b) => b.hidden), 'TV: oynatıcıda “resim içinde resim” düğmesi yok');
   await page.evaluate(() => { window.__calls.length = 0; });
   await page.evaluate(() => window.__emit('time', { pos: 300000, dur: 1500000, buffered: 0 }));
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'watchNext'), null, { timeout: 6000 });
@@ -2461,8 +2503,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const prog1 = await page.evaluate(() => window.__iptv.store.continueWatching(window.__iptv.S.source.id)[0]);
   ok(wn1.length === 1 && wn1[0].kind === 'episode' && wn1[0].parent === prog1.parent && wn1[0].pos === 300000 && wn1[0].dur === 1500000, 'oynarken yarım kalan bölüm TV satırına eşitlendi: ' + JSON.stringify(wn1[0]));
   ok(/^iptvpro:\/\/play\?/.test(wn1[0].uri) && /kind=episode/.test(wn1[0].uri) && /parent=/.test(wn1[0].uri) && /pos=300000/.test(wn1[0].uri), 'satırın derin bağlantısı bölüm, dizi ve konumu taşıyor');
-  await page.goBack(); // geri: oynatıcı küçülür (yayın sürer); Ana ekran tuşuna basılınca da satır yeniden eşitlenir
+  await page.goBack(); // TV'de geri: oynatıcı kapanır (küçük oynatıcı/PiP yok); Ana ekran tuşuna basılınca da satır yeniden eşitlenir
   await page.waitForSelector('#player', { state: 'hidden' });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'stop'));
+  ok(await page.$eval('#mini-player-overlay', (e) => e.hidden), 'TV: geri tuşu küçük oynatıcı açmadı, yayın kapandı');
   // bitmeye yakın film satıra girmez, yarım kalan film en üste gelir
   const mv = await page.evaluate(() => { const m = [...window.__iptv.S.idx.movies.values()]; return [m[0].id, m[1].id]; });
   await page.evaluate(([a, b]) => {
@@ -3150,12 +3194,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('#split .row:not(.cat)');
   // kalıcı kanal arama alanı (liste sanal olduğu için satır sayısı yerine öğe listesine bakılır)
   const itemsN = () => page.evaluate(() => window.__iptv.S.items.length);
+  ok(await page.$eval('#sp-q', (e) => e.readOnly), 'TV: arama kutusu kumandayla gezerken salt okunur (ekran klavyesi kendiliğinden açılmaz)');
+  await page.focus('#sp-q');
+  ok(await page.$eval('#sp-q', (e) => e.readOnly), 'TV: kutuya odak gelince de salt okunur kaldı');
+  await page.keyboard.press('Enter');
+  ok(!(await page.$eval('#sp-q', (e) => e.readOnly)) && (await page.evaluate(() => document.activeElement.id)) === 'sp-q', 'TV: Tamam’a basınca kutu düzenlenebilir oldu (klavye ancak o zaman açılır)');
   await page.fill('#sp-q', 'Haber');
   await page.waitForFunction(() => window.__iptv.S.items.length > 0 && window.__iptv.S.items.length < 120);
   ok(await page.evaluate(() => window.__iptv.S.items.every((i) => /haber/i.test(i.name + ' ' + (i.group || '')))), 'bölmedeki “Kanal ara…” alanı kanalları süzdü: ' + (await itemsN()));
   await page.fill('#sp-q', '');
   await page.waitForFunction(() => window.__iptv.S.items.length === 120);
   ok(true, 'arama silinince tüm kanallar geri geldi');
+  await page.focus('#sp-slot');
+  ok(await page.$eval('#sp-q', (e) => e.readOnly), 'TV: odak kutudan çıkınca yeniden salt okunur oldu');
   // sıralama: bölmeli ekranda sol başlıktan
   ok(await page.isVisible('#sp-sort'), 'bölmeli canlı TV: kategori içinde “Sırala” düğmesi var');
   await page.click('#sp-sort');
@@ -3230,6 +3281,44 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await key('MediaFastForward');
   await sleep(100);
   ok(await page.isVisible('#pl-hud'), 'canlı yayında ileri sarma tuşu “sarma yok” bilgisini gösterdi');
+  ok(await page.$eval('#pl-pip', (b) => b.hidden), 'TV: oynatıcıda “resim içinde resim” düğmesi yok');
+  // denetimler kapalıyken yön tuşu yayını durdurmaz/değiştirmez, yalnız denetimleri açar; Tamam odaktaki duraklat düğmesine basar
+  await page.evaluate(() => { document.querySelector('#pl-ui').classList.remove('show'); document.activeElement && document.activeElement.blur(); });
+  const plA = await nCalls('play');
+  const psA = await nCalls('pause');
+  const stA = await nCalls('stop');
+  await page.keyboard.press('ArrowDown');
+  await sleep(200);
+  ok(await page.$eval('#pl-ui', (u) => u.classList.contains('show')) && (await nCalls('play')) === plA && (await nCalls('pause')) === psA && (await nCalls('stop')) === stA, 'TV: denetimler kapalıyken aşağı ok yalnız denetimleri açtı; yayın durmadı, kanal değişmedi');
+  ok((await page.evaluate(() => document.activeElement.id)) === 'pl-play', 'odak duraklat düğmesinde');
+  await page.keyboard.press('Enter');
+  await sleep(150);
+  ok((await nCalls('pause')) === psA + 1, 'duraklat düğmesine Tamam basınca yayın duraklatıldı');
+  await page.keyboard.press('Enter');
+  await sleep(150);
+  ok((await nCalls('resume')) >= 1 && (await nCalls('play')) === plA, 'yeniden Tamam yayını sürdürdü');
+  for (const k of ['ArrowUp', 'ArrowLeft', 'ArrowRight']) {
+    await page.evaluate(() => { document.querySelector('#pl-ui').classList.remove('show'); document.activeElement && document.activeElement.blur(); });
+    await page.keyboard.press(k);
+    await sleep(120);
+    ok((await page.$eval('#pl-ui', (u) => u.classList.contains('show'))) && (await nCalls('play')) === plA && (await nCalls('stop')) === stA, `TV: denetimler kapalıyken ${k} yayına dokunmadan denetimleri açtı`);
+  }
+  // gece modu penceresi: oynatıcının üstünde açılır, oklar pencerede gezer (kanal değişmez)
+  await page.click('#pl-night');
+  await page.waitForSelector('.sheet [data-n]');
+  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('.sheet'));
+  ok(true, 'gece modu penceresi açılınca odak pencereye geçti');
+  const f0 = await page.evaluate(() => document.activeElement.dataset.n);
+  await page.keyboard.press('ArrowDown');
+  await sleep(150);
+  const f1 = await page.evaluate(() => document.activeElement.dataset.n);
+  ok(f0 && f1 && f0 !== f1 && (await nCalls('play')) === plA, 'pencerede aşağı ok bir sonraki seçeneğe geçti, kanal değişmedi: ' + f0 + ' → ' + f1);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  ok((await page.evaluate(() => window.__calls.filter((c) => c[0] === 'night').pop()[1])) === f1, 'Tamam seçeneği uyguladı ve pencere kapandı');
+  await page.keyboard.press('ArrowDown');
+  await sleep(150);
+  ok(await page.$eval('#pl-ui', (u) => u.classList.contains('show')) && (await page.evaluate(() => document.activeElement.closest('#pl-ui') != null)), 'pencere kapanınca oklar yeniden oynatıcı denetimlerinde');
   await key('MediaStop');
   await page.waitForFunction(() => !document.body.classList.contains('player-open'));
   ok(true, 'Durdur tuşu oynatıcıyı kapattı (önizlemeye dönüldü)');

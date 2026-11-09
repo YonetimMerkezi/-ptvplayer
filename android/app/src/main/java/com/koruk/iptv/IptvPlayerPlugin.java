@@ -629,14 +629,23 @@ public class IptvPlayerPlugin extends Plugin {
     // Android TV / kumandalı cihaz mı? (arayüz odak halkasını ve geniş kenar boşluklarını açar)
     @PluginMethod
     public void isTv(final PluginCall call) {
-        UiModeManager um = (UiModeManager) getContext().getSystemService(Context.UI_MODE_SERVICE);
-        PackageManager pm = getContext().getPackageManager();
-        boolean tv = (um != null && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
-                || pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-                || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
         JSObject o = new JSObject();
-        o.put("tv", tv);
+        o.put("tv", tvDevice(getContext()));
         call.resolve(o);
+    }
+
+    private static Boolean tvDeviceCache;
+
+    // TV / kumandalı cihaz mı (TV modu ayarından bağımsız, cihazın kendisi): TV'de PiP yoktur.
+    static boolean tvDevice(Context c) {
+        if (tvDeviceCache == null) {
+            UiModeManager um = (UiModeManager) c.getSystemService(Context.UI_MODE_SERVICE);
+            PackageManager pm = c.getPackageManager();
+            tvDeviceCache = (um != null && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
+                    || pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+                    || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+        }
+        return tvDeviceCache;
     }
 
     @PluginMethod
@@ -1905,6 +1914,10 @@ public class IptvPlayerPlugin extends Plugin {
     @PluginMethod
     public void enterPip(final PluginCall call) {
         main.post(() -> {
+            if (tvDevice(getContext())) {
+                call.reject("TV'de resim içinde resim yok");
+                return;
+            }
             if (player == null || playerView == null) {
                 call.reject("Önce bir yayın başlatın");
                 return;
@@ -1926,6 +1939,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     // Ana ekrana çıkınca PiP'e geçilebilir mi: oynayan (ya da yüklenen) bir yayın var ve çoklu ekran açık değil.
     private boolean pipWanted() {
+        if (tvDevice(getContext())) return false; // TV'de Ana ekran/Geri ile PiP penceresi açılmaz
         return player != null && player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED;
     }
 

@@ -4,6 +4,7 @@ import { STEADY_MS, reconnectDelay, retryPolicy } from './retry.js';
 
 const STALL_MS = 25000; // ilk açılışta yayının gelmesi için
 const PROGRESS_EVERY_MS = 10000;
+const OPEN_CAP_MS = 90000; // film ilk açılışta veri geliyorsa (tampon büyüyorsa) en çok bu kadar beklenir
 
 export function createPlayer({ engine, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
   const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0 };
@@ -16,6 +17,8 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
   let everPlayed = false;
   let lastProgressAt = 0;
   let startMs = 0;
+  let openedAt = 0;
+  let lastBuf = 0; // son görülen tampon konumu: büyüyorsa veri geliyordur, açılış takılmış sayılmaz
 
   const emit = () => listeners.forEach((f) => f({ ...st }));
   const clearStall = () => {
@@ -28,9 +31,14 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
   };
   // Oynamış bir yayında takılma kısa sürede yeniden bağlanmayı tetikler; ilk açılışta daha sabırlı bekler.
   const stallMs = () => (!everPlayed ? STALL_MS : st.live ? policy().liveStallMs : policy().vodStallMs);
+  // Film dosyası açılıp süresi okunduysa ama görüntü başlamadıysa sorun sunucuda değil, çözme/biçimdedir.
+  const stallMessage = () =>
+    !everPlayed && !st.live && st.dur > 0
+      ? 'Film açıldı ama görüntü başlamadı (cihaz bu biçimi çözemiyor olabilir). “Harici oynatıcı”yı deneyin.'
+      : 'Yayın başlamadı (zaman aşımı)';
   const armStall = () => {
     clearStall();
-    stallTimer = timers.set(() => fail('Yayın başlamadı (zaman aşımı)'), stallMs());
+    stallTimer = timers.set(() => fail(stallMessage()), stallMs());
   };
   const setStatus = (s) => {
     st.status = s;
@@ -93,6 +101,11 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     if (ev.type === 'time') {
       st.pos = ev.pos;
       st.dur = ev.dur;
+      // Film ilk açılışta yavaş ama veri geliyorsa (tampon büyüyor) bekçi yeniden kurulur; üst sınır OPEN_CAP_MS.
+      if (!everPlayed && !st.live && (st.status === 'loading' || st.status === 'buffering') && ev.buffered > lastBuf + 1000) {
+        lastBuf = ev.buffered;
+        if (now() - openedAt < OPEN_CAP_MS) armStall();
+      }
       if (reconnects && st.status === 'playing' && playingSince !== null && now() - playingSince >= STEADY_MS) reconnects = 0;
       if (progressCb && ev.dur > 0 && now() - lastProgressAt >= PROGRESS_EVERY_MS && st.status === 'playing') {
         lastProgressAt = now();
@@ -135,6 +148,8 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       clearRetry();
       startMs = startAt;
       lastProgressAt = now();
+      openedAt = now();
+      lastBuf = 0;
       if (!targets.length) {
         st.status = 'error';
         st.error = 'Bu içerik için oynatma adresi yok';
@@ -150,6 +165,8 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       reconnects = 0;
       st.reconnect = 0;
       clearRetry();
+      openedAt = now();
+      lastBuf = 0;
       return startTarget(st.live ? 0 : st.pos, true);
     },
     async toggle() {

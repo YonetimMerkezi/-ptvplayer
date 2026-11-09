@@ -346,3 +346,35 @@ test('ayar her denemede güncel okunur (oynarken değiştirilebilir)', async () 
   assert.equal(p.state().status, 'error');
   assert.equal(loads(calls), 1);
 });
+
+test('film ilk açılışta: tampon büyüyorsa bekçi yeniden kurulur, üst sınırda hata; süre okunduysa mesaj ayrışır', async () => {
+  const { p, timers, tick } = setup();
+  await p.open(movie, [T('a')]);
+  assert.equal(timers.lastMs(), 25000);
+  tick(20000);
+  p.handle({ type: 'time', pos: 0, dur: 7169000, buffered: 5000 }); // veri geliyor
+  assert.equal(timers.lastMs(), 25000, 'bekçi yeniden kuruldu');
+  tick(20000);
+  p.handle({ type: 'time', pos: 0, dur: 7169000, buffered: 5000 }); // tampon büyümedi: yeniden kurulmaz
+  timers.fire();
+  assert.equal(p.state().status, 'error');
+  assert.match(p.state().error, /Film açıldı ama görüntü başlamadı/);
+  // süre hiç okunamadıysa eski mesaj
+  const b = setup();
+  await b.p.open(movie, [T('a')]);
+  b.timers.fire();
+  assert.equal(b.p.state().error, 'Yayın başlamadı (zaman aşımı)');
+  // üst sınır: 90 sn'den sonra tampon büyüse de bekçi uzatılmaz
+  const c = setup();
+  await c.p.open(movie, [T('a')]);
+  c.tick(95000);
+  const n = c.timers.fns.length;
+  c.p.handle({ type: 'time', pos: 0, dur: 7169000, buffered: 9000 });
+  assert.equal(c.timers.fns.length, n, 'üst sınır aşıldı: yeniden kurulmadı');
+  // canlıda değişmez
+  const d = setup();
+  await d.p.open(live, [T('a')]);
+  const m = d.timers.fns.length;
+  d.p.handle({ type: 'time', pos: 0, dur: -1, buffered: 9000 });
+  assert.equal(d.timers.fns.length, m);
+});
