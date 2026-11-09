@@ -38,6 +38,8 @@ import { clampDelay } from './avsync.js';
 import { normalizeNight, DEFAULT_NIGHT } from './night.js';
 import { INTRO_OPTIONS, DEFAULT_INTRO, normalizeIntro } from './nextup.js';
 import { subParams, subLabel, DEFAULT_SUB } from './subtitle.js';
+import { PLAYER_ACTIONS, HOME_ACTIONS, DEFAULT_PLAYER, DEFAULT_HOME, COLORS, normalizeKeys, actionFor } from './remote.js';
+import { watchNextItems, watchNextPayload, parseDeepLink } from './tvhome.js';
 import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { checkUpdate, explainError, fmtMB, retry, shouldAutoCheck, versionCodeOf } from './update.js';
@@ -178,6 +180,10 @@ function saveProgress(item, ep, pos, dur) {
 player.onProgress((pos, dur, st) => {
   if (!S.source || st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
   saveProgress(st.item, st.ep, pos, dur);
+  if (Date.now() - wnLast >= WN_EVERY_MS) {
+    wnLast = Date.now(); // oynarken TV satırı en çok dakikada bir güncellenir
+    syncWatchNext();
+  }
 });
 
 // Açılamayan canlı kanal işaretlenir; yedek adres oynadıysa asıl kanal da işaretlenir, asıl oynarsa işaret kalkar.
@@ -190,6 +196,22 @@ player.on((st) => {
     markBad(st.item.id, !!(t && t.alt));
   }
 });
+
+// Android TV ana ekranı: yarıda bırakılan film ve bölümler "Devam et" satırında görünür (yalnız TV'de; telefonda yapılmaz).
+let wnTimer = 0;
+let wnLast = 0;
+const WN_EVERY_MS = 60000;
+function syncWatchNext(now) {
+  if (!nativePlugin || !nativePlugin.tvSyncWatchNext || !tvDetected || !S.source) return;
+  clearTimeout(wnTimer);
+  const run = () => {
+    nativePlugin.tvSyncWatchNext({ items: watchNextPayload(watchNextItems(store.continueWatching(S.source.id)), S.source.id) }).catch(() => {});
+  };
+  if (now) run();
+  else wnTimer = setTimeout(run, 2500);
+}
+player.on((st) => st.status === 'idle' && syncWatchNext());
+document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && syncWatchNext(true));
 
 // Oynatıcı kapanınca "Devam et" çipi ve ilerleme çubukları güncellensin.
 player.on((st) => {
@@ -976,6 +998,38 @@ $('#btn-search').addEventListener('click', () => {
 });
 $('#crumb-sort').addEventListener('click', () => sortSheet(S.tab === 'favs' ? S.favKind : TAB_KIND[S.tab]));
 $('#q-clear').addEventListener('click', () => closeSearch());
+
+// Sesli arama (Android): cihazın konuşma tanıyıcısı açılır, söylenen metin arama kutusuna yazılır. İptalde sessiz kalır.
+async function voiceInto(input) {
+  if (!nativePlugin || !nativePlugin.voiceSearch) return;
+  try {
+    const r = await nativePlugin.voiceSearch();
+    const text = r && r.text ? String(r.text).trim() : '';
+    if (!text) return;
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+  } catch (e) {
+    toast(e && /yok/i.test(String(e.message)) ? 'Bu cihazda sesli arama yok' : 'Sesli arama açılamadı');
+  }
+}
+if (nativePlugin && nativePlugin.voiceSearch) {
+  $('#q-mic').hidden = false;
+  $('#q-mic').addEventListener('click', () => voiceInto(qEl));
+}
+
+// Kumandanın renkli tuşları (oynatıcı kapalıyken): Genel ayarlar > Kumanda renkli tuşları'nda atanan iş. Oynatıcıda player-ui.js ele alır.
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || pui.isOpen() || pad.isOpen()) return;
+  const a = actionFor(e.key, store.pref('remote.home', null), HOME_ACTIONS, DEFAULT_HOME);
+  if (!a) return;
+  if (e.target && e.target.matches && e.target.matches('input, textarea, select')) return;
+  if (document.querySelector('.sheet-back, .pg')) return;
+  if (!S.source && a !== 'sources') return;
+  e.preventDefault();
+  if (a === 'search') $('#btn-search').click();
+  else goTo(a);
+});
 qEl.addEventListener(
   'input',
   debounce(() => {
@@ -1105,11 +1159,34 @@ function playArchive(it, p) {
 // Bildirime dokununca ilgili kanal açılır (kaynak başkaysa önce o kaynağa geçilir).
 async function openPlanChannel(chId, srcId) {
   if (!chId) return;
-  if (srcId && srcId !== sid() && store.sources().some((x) => x.id === srcId)) await activate(srcId);
-  for (let i = 0; i < 32 && !S.idx.live.has(chId); i++) await new Promise((r) => setTimeout(r, 250)); // açılışta liste yüklenirken bekle
-  const it = S.idx.live.get(chId);
+  const it = await waitItem('live', chId, srcId);
   if (it) playLive([it], 0);
   else toast('Kanal bulunamadı');
+}
+
+// Açılışta liste yüklenirken bekleyerek içeriği bulur (kaynak başkaysa önce o kaynağa geçilir).
+async function waitItem(key, id, srcId) {
+  if (srcId && srcId !== sid() && store.sources().some((x) => x.id === srcId)) await activate(srcId);
+  for (let i = 0; i < 32 && !S.idx[key].has(id); i++) await new Promise((r) => setTimeout(r, 250));
+  return S.idx[key].get(id);
+}
+
+// Android TV ana ekranındaki "Devam et" satırından (iptvpro://play?…) gelen bağlantı: film, dizi bölümü ya da kanal doğrudan açılır.
+async function openDeepLink(link) {
+  const key = link.kind === 'live' ? 'live' : link.kind === 'movie' ? 'movies' : 'series';
+  const it = await waitItem(key, link.kind === 'episode' ? link.parent : link.id, link.src);
+  if (!it) return toast('İçerik bulunamadı');
+  const startAt = link.pos > 0 ? Math.max(0, link.pos - 3000) : undefined;
+  if (link.kind === 'live') return playLive([it], 0);
+  if (link.kind === 'movie') return startPlay(it, { startAt });
+  try {
+    const all = episodesOf(await loadSeriesInfo(S.source, net, it));
+    const ep = all.find((x) => x.id === link.id);
+    if (!ep) return toast('Bölüm bulunamadı');
+    seriesPlayer(it, all)(ep, startAt);
+  } catch {
+    toast('Bölüm açılamadı');
+  }
 }
 
 // ---- ayrıntı sayfaları (tam ekran): film ve dizi ----
@@ -1155,6 +1232,21 @@ function openMovie(it) {
   });
 }
 
+// Dizinin tüm bölümleri (sezon sırasıyla) ve bölüm açan işlev: ayrıntı sayfası ile TV ana ekranından devam etme aynı yolu kullanır.
+function episodesOf(info) {
+  const all = [];
+  for (const s of info.seasons) for (const e of s.episodes) all.push({ ...e, season: s.season, label: `S${s.season} B${e.episodeNum}` + (e.title && !/^Bölüm/i.test(e.title) ? ` · ${e.title}` : '') });
+  return all;
+}
+
+function seriesPlayer(it, all) {
+  return (ep, startAt) => {
+    const index = all.findIndex((x) => x.id === ep.id);
+    const ctx = { items: all, index, autoNext: true, play: (e, i) => startPlay(it, { ep: e, ctx: { ...ctx, index: i } }) };
+    startPlay(it, { ep, ctx, startAt });
+  };
+}
+
 function openSeries(it) {
   return openPage({
     cls: 'dt-pg',
@@ -1171,19 +1263,14 @@ function openSeries(it) {
         body.innerHTML = emptyHtml('Bölüm bulunamadı', 'Bu dizi için bölüm listesi boş.');
         return;
       }
-      const all = [];
-      for (const s of info.seasons) for (const e of s.episodes) all.push({ ...e, season: s.season, label: `S${s.season} B${e.episodeNum}` + (e.title && !/^Bölüm/i.test(e.title) ? ` · ${e.title}` : '') });
+      const all = episodesOf(info);
       let season = info.seasons[0].season;
       const last = progressOf(it);
       if (last) {
         const e = all.find((x) => x.id === last.id);
         if (e) season = e.season;
       }
-      const play = (ep) => {
-        const index = all.findIndex((x) => x.id === ep.id);
-        const ctx = { items: all, index, autoNext: true, play: (e, i) => startPlay(it, { ep: e, ctx: { ...ctx, index: i } }) };
-        startPlay(it, { ep, ctx });
-      };
+      const play = seriesPlayer(it, all);
       const plotText = info.plot || it.plot || '';
       const draw = () => {
         const p = progressOf(it);
@@ -1596,17 +1683,21 @@ function renderHome(v) {
     if (e.target.closest('#h-upd-chip')) return upd && updateSheet(upd);
     if (e.target.closest('#h-src')) return store.sources().length ? sourceSwitcher() : sourceForm();
     const t = e.target.closest('[data-go]');
-    if (!t) return;
-    if (t.dataset.go === 'recent') {
-      setTab('live');
-      return showRecent();
-    }
-    if (t.dataset.go === 'rec') return recordingsSheet();
-    if (t.dataset.go === 'cats') return categoriesPage();
-    if (t.dataset.go === 'guide') return guidePage();
-    setTab(t.dataset.go);
+    if (t) goTo(t.dataset.go);
   };
   tickClock();
+}
+
+// Ana ekran kutuları ve kumanda renkli tuşları aynı yoldan açar.
+function goTo(go) {
+  if (go === 'recent') {
+    setTab('live');
+    return showRecent();
+  }
+  if (go === 'rec') return recordingsSheet();
+  if (go === 'cats') return categoriesPage();
+  if (go === 'guide') return guidePage();
+  setTab(go);
 }
 
 function showRecent() {
@@ -2580,7 +2671,7 @@ function globalSearch() {
   openPage({
     title: 'Ara',
     cls: 'gs-pg',
-    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search"></div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button></div><div id="gs-res"></div>',
+    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search">' + (nativePlugin && nativePlugin.voiceSearch ? `<button class="icon-btn" id="gs-mic" aria-label="Sesle ara">${icon('mic')}</button>` : '') + '</div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button></div><div id="gs-res"></div>',
     mount: (body) => {
       const q = $('#gs-q', body);
       const res = $('#gs-res', body);
@@ -2612,6 +2703,8 @@ function globalSearch() {
         draw();
       });
       q.addEventListener('input', debounce(draw, 150));
+      const gmic = $('#gs-mic', body);
+      if (gmic) gmic.addEventListener('click', () => voiceInto(q));
       res.addEventListener('click', (e) => {
         const more = e.target.closest('[data-more]');
         if (more) {
@@ -2640,6 +2733,37 @@ function globalSearch() {
 const chkRow = (k, label, sub) => `<button class="chk${setting(k) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
 const optionsHtml = (pairs, cur) => pairs.map(([v, t]) => `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${t}</option>`).join('');
 
+// Kumandanın renkli tuşları: oynatıcıda ve listelerde ayrı ayrı bir işe atanır.
+function remoteSheet() {
+  const scopes = {
+    player: ['remote.player', PLAYER_ACTIONS, DEFAULT_PLAYER],
+    home: ['remote.home', HOME_ACTIONS, DEFAULT_HOME],
+  };
+  const group = (scope, title) => {
+    const [key, acts, def] = scopes[scope];
+    const map = normalizeKeys(store.pref(key, null), acts, def);
+    const opts = acts.map((a) => [a[0], a[1]]);
+    return `<div class="sect">${title}</div>` + COLORS.map(([c, n]) => `<div class="sel-row"><span style="white-space:nowrap"><i class="rm-dot rm-${c}"></i>${n}</span><select data-rm="${scope}" data-c="${c}" aria-label="${title}: ${n} tuş">${optionsHtml(opts, map[c])}</select></div>`).join('');
+  };
+  openSheet({
+    title: 'Kumanda renkli tuşları',
+    html: group('player', 'Oynatıcıda') + group('home', 'Listelerde') + '<div style="margin-top:14px"><button class="btn ghost sm" id="rm-reset">Varsayılana dön</button></div>',
+    mount: (body) => {
+      body.addEventListener('change', (e) => {
+        const sel = e.target.closest('select[data-rm]');
+        if (!sel) return;
+        const [key, acts, def] = scopes[sel.dataset.rm];
+        store.setPref(key, { ...normalizeKeys(store.pref(key, null), acts, def), [sel.dataset.c]: sel.value });
+      });
+      $('#rm-reset', body).addEventListener('click', () => {
+        for (const [key, , def] of Object.values(scopes)) store.setPref(key, { ...def });
+        $$('select[data-rm]', body).forEach((sel) => (sel.value = scopes[sel.dataset.rm][2][sel.dataset.c]));
+        toast('Varsayılan atamalar geri yüklendi');
+      });
+    },
+  });
+}
+
 function generalSheet() {
   const lim = Number(store.pref('set.recentLimit', 40));
   openSheet({
@@ -2657,6 +2781,7 @@ function generalSheet() {
       chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
       `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Altyazı görünümü<small id="g-sub-s">${esc(subLabel(store.pref('sub', DEFAULT_SUB)))}</small></span><button class="btn sm ghost" id="g-sub">Ayarla</button></div>` : '') +
+      `<div class="sel-row"><span>Kumanda renkli tuşları<small>Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin</small></span><button class="btn sm ghost" id="g-rm">Ayarla</button></div>` +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
       `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
@@ -2686,6 +2811,7 @@ function generalSheet() {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));
         applyTvMode();
       });
+      $('#g-rm', body).addEventListener('click', () => remoteSheet());
       $('#g-lock', body).addEventListener('click', () => lockSheet());
       $('#g-bk', body).addEventListener('click', () => backupSheet());
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
@@ -3598,6 +3724,7 @@ if (nativePlugin) {
   nativePlugin.isTv().then((r) => {
     tvDetected = tvDetected || !!(r && r.tv);
     applyTvMode();
+    setTimeout(() => syncWatchNext(true), 4000);
     castUi.startReceiver(); // TV'de varsayılan açık: telefondan gelen oynatma isteklerini karşılar
   }).catch(() => {});
   nativePlugin.addListener('remote', (e) => e && e.key && dpad.sendKey(e.key)).catch(() => {}); // kanal +/-, medya, menü tuşları
@@ -3608,7 +3735,12 @@ if (nativePlugin) {
   castUi.listen();
   player.on((st) => castUi.nowPlaying(st));
   // Bildirime dokunulunca (uygulama açıkken olay, kapalıyken açılışta sorgu) kanal açılır
-  const launchPlan = (e) => e && e.ch && openPlanChannel(e.ch, e.src);
+  const launchPlan = (e) => {
+    if (!e) return;
+    const link = e.uri ? parseDeepLink(e.uri) : null;
+    if (link) openDeepLink(link);
+    else if (e.ch) openPlanChannel(e.ch, e.src);
+  };
   nativePlugin.addListener('planLaunch', launchPlan).catch(() => {});
   setTimeout(() => nativePlugin.planLaunch().then(launchPlan).catch(() => {}), 1500);
 }

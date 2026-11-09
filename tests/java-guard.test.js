@@ -140,10 +140,31 @@ test('kumanda tuşları: sayfanın dinlediği her ad yerelde üretilir ve yereli
   for (const ad of ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'MediaTrackPrevious', 'ChannelUp', 'ChannelDown']) {
     assert.ok(yerel.has(ad), `${ad} yerelde üretilmiyor`);
   }
+  const uzaktan = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/remote.js'), 'utf8');
+  assert.ok(ui.includes('colorOf(k)'), 'renkli tuşlar oynatıcıda remote.js üzerinden işlenmeli');
   for (const ad of yerel) {
-    if (['ContextMenu', 'ColorF1Green', 'ColorF2Yellow'].includes(ad)) continue; // henüz bir işlevi yok
-    assert.ok(ui.includes(`'${ad}'`), `${ad} oynatıcı arayüzünde işlenmiyor`);
+    if (ad === 'ContextMenu') continue; // henüz bir işlevi yok
+    if (ad.startsWith('ColorF')) assert.ok(uzaktan.includes(`'${ad}'`), `${ad} remote.js'te atanabilir renkler arasında yok`);
+    else assert.ok(ui.includes(`'${ad}'`), `${ad} oynatıcı arayüzünde işlenmiyor`);
   }
+});
+
+test('Android TV ana ekranı ve sesli arama: manifest, bağımlılık, köprü ve eklenti yöntemleri birbirini tutar', () => {
+  const manifest_ = readFileSync(join(androidDizin, 'AndroidManifest.xml'), 'utf8');
+  assert.match(manifest_, /com\.android\.providers\.tv\.permission\.WRITE_EPG_DATA/, 'Watch Next yazma izni yok');
+  assert.match(manifest_, /<data android:scheme="iptvpro" android:host="play" \/>/, 'iptvpro://play bağlantısı manifestte yok');
+  assert.match(manifest_, /android\.speech\.action\.RECOGNIZE_SPEECH/, 'Android 11+ için sesli arama sorgu izni yok');
+  const gradle = readFileSync(join(androidDizin, '../../../app/build.gradle'), 'utf8');
+  assert.match(gradle, /androidx\.tvprovider:tvprovider/, 'tvprovider bağımlılığı yok');
+  for (const ad of ['tvSyncWatchNext', 'voiceSearch', 'planLaunch']) {
+    assert.match(kaynak, new RegExp(`public void ${ad}\\(`), `${ad} eklentide yok`);
+  }
+  assert.match(kaynak, /@ActivityCallback\s+private void voiceResult/, 'sesli arama sonucu ActivityCallback ile alınmalı');
+  assert.match(kaynak, /startActivityForResult\(call, \w+, "voiceResult"\)/);
+  const tv = oku_('TvHome.java');
+  assert.match(tv, /WATCH_NEXT_TYPE_CONTINUE/);
+  assert.match(tv, /WatchNextPrograms\.CONTENT_URI/);
+  assert.match(tv, /\.delete\(/, 'eski satırlar silinmeden her eşitlemede yinelenir');
 });
 
 test('TV modu: setTvMode yatay kilitler; oynatıcıdan çıkınca da kilit sürer; ana ekranda çift geri tuşuyla çıkılır', () => {

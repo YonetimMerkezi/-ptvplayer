@@ -23,6 +23,7 @@ import android.os.Environment;
 import android.os.Looper;
 import android.util.Rational;
 import android.provider.MediaStore;
+import android.speech.RecognizerIntent;
 import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -30,6 +31,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebView;
 
+import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
@@ -65,6 +67,7 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
@@ -2045,6 +2048,7 @@ public class IptvPlayerPlugin extends Plugin {
     // ------------------------------------------------------------------ planlananlar (hatırlatıcı + zamanlı kayıt)
 
     private static String launchCh = "";
+    private static String launchUri = ""; // TV ana ekranı "Devam et" satırından derin bağlantı (iptvpro://play?...)
     private static String launchSrc = "";
 
     // JS planların tam listesini verir; yerel katman alarmları buna göre kurar (yeniden başlatmada da geri kurulur).
@@ -2099,27 +2103,80 @@ public class IptvPlayerPlugin extends Plugin {
         JSObject o = new JSObject();
         o.put("ch", launchCh);
         o.put("src", launchSrc);
+        o.put("uri", launchUri);
         launchCh = "";
         launchSrc = "";
+        launchUri = "";
         call.resolve(o);
     }
 
     public static void handleLaunch(Intent intent) {
-        if (intent == null || !Notifier.ACTION_OPEN.equals(intent.getAction())) return;
-        String ch = intent.getStringExtra("plan_ch");
-        if (ch == null || ch.isEmpty()) return;
-        String src = intent.getStringExtra("plan_src");
-        launchCh = ch;
-        launchSrc = src == null ? "" : src;
-        intent.setAction(Intent.ACTION_MAIN); // aynı niyet yeniden işlenmesin
+        if (intent == null) return;
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null && "iptvpro".equals(intent.getData().getScheme())) {
+            // TV ana ekranındaki "Devam et" satırı: derin bağlantı sayfaya olduğu gibi iletilir, orada çözülür
+            launchUri = intent.getData().toString();
+            launchCh = "";
+            launchSrc = "";
+            intent.setAction(Intent.ACTION_MAIN);
+        } else if (Notifier.ACTION_OPEN.equals(intent.getAction())) {
+            String ch = intent.getStringExtra("plan_ch");
+            if (ch == null || ch.isEmpty()) return;
+            String src = intent.getStringExtra("plan_src");
+            launchCh = ch;
+            launchSrc = src == null ? "" : src;
+            launchUri = "";
+            intent.setAction(Intent.ACTION_MAIN); // aynı niyet yeniden işlenmesin
+        } else {
+            return;
+        }
         final IptvPlayerPlugin plugin = activePlugin;
         if (plugin == null) return; // uygulama henüz yüklenmedi: JS açılışta planLaunch ile alır
         plugin.main.post(() -> {
             JSObject e = new JSObject();
             e.put("ch", launchCh);
             e.put("src", launchSrc);
+            e.put("uri", launchUri);
             plugin.notifyListeners("planLaunch", e);
         });
+    }
+
+    // TV ana ekranı "Devam et" satırı: yarım kalan film/bölümler eşitlenir (TV olmayan cihazda etkisiz). Yanıt: {count} (-1: satır yok)
+    @PluginMethod
+    public void tvSyncWatchNext(final PluginCall call) {
+        final org.json.JSONArray items = call.getData().optJSONArray("items");
+        final Context ctx = getContext();
+        new Thread(() -> {
+            JSObject o = new JSObject();
+            o.put("count", TvHome.sync(ctx, items == null ? new org.json.JSONArray() : items));
+            call.resolve(o);
+        }, "tv-watchnext").start();
+    }
+
+    // Sesli arama: Android konuşma tanıma ekranı açılır, söylenen metin {text} olarak döner (boş: iptal).
+    @PluginMethod
+    public void voiceSearch(final PluginCall call) {
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR");
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Kanal, film veya dizi adını söyleyin");
+        if (i.resolveActivity(getContext().getPackageManager()) == null) {
+            call.reject("Bu cihazda sesli arama yok");
+            return;
+        }
+        startActivityForResult(call, i, "voiceResult");
+    }
+
+    @ActivityCallback
+    private void voiceResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        String text = "";
+        if (result != null && result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+            java.util.ArrayList<String> r = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (r != null && !r.isEmpty() && r.get(0) != null) text = r.get(0);
+        }
+        JSObject o = new JSObject();
+        o.put("text", text);
+        call.resolve(o);
     }
 
     // ------------------------------------------------------------------ yaşam döngüsü

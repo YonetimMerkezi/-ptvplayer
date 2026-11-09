@@ -688,3 +688,8 @@ html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px v
 /* Klasör sıralama satırları */
 .fo-row .act { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); flex: none; border-radius: 22px; }
 .fo-row .rec-play { padding: 8px; }
+/* Kumanda renkli tuşları ayarı */
+.rm-dot { display: inline-block; width: 12px; height: 12px; margin-right: 8px; border-radius: 50%; vertical-align: -1px; }
+.rm-red { background: #ef4444; } .rm-green { background: #22c55e; } .rm-yellow { background: #facc15; } .rm-blue { background: #3b82f6; }
+.gs-q { display: flex; align-items: center; gap: 4px; }
+.gs-q input { flex: 1; min-width: 0; }

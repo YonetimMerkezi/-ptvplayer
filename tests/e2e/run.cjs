@@ -1073,6 +1073,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         window.__calls.push(['audioDelay', a.ms]);
       },
       setNightMode: async (a) => window.__calls.push(['night', a.level]),
+      // Sesli arama (Android konuşma tanıyıcı): window.__voice söylenen metin, boşsa iptal; __voiceErr ile hata
+      voiceSearch: async () => {
+        window.__calls.push(['voice']);
+        if (window.__voiceErr) throw new Error(window.__voiceErr);
+        return { text: window.__voice || '' };
+      },
+      // Android TV ana ekranı "Devam et" satırı: son eşitlenen liste window.__wn'de
+      tvSyncWatchNext: async (a) => {
+        window.__wn = a.items;
+        window.__calls.push(['watchNext', a.items.length]);
+        return { count: a.items.length };
+      },
       setSubtitleStyle: async (a) => window.__calls.push(['subStyle', JSON.stringify(a)]),
       recordStart: async (a) => {
         window.__calls.push(['recStart', a.name, a.maxMs]);
@@ -2263,6 +2275,215 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const rz = await callsOf('resize');
   ok(rz.length >= 1 && rz[0][1] === 'zoom', 'kayıtlı en-boy kipi (Yakınlaştır) oynatıcı yeniden açılınca eklentiye uygulandı');
   ok(/Yakınlaştır/.test(await page.textContent('#pl-aspect-l')), 'düğme kayıtlı kipi gösteriyor');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // ---------------------------------------------------------------- 9d. kumanda renk tuşları, sesli arama, TV ana ekranı "Devam et"
+  console.log('Kumanda renk tuşları, sesli arama, TV ana ekranı');
+  ({ page, ctx, errs } = await newPage({ width: 390, height: 844 }, nativeInit));
+  await page.waitForSelector('#f');
+  await page.click('#f-type [data-t=m3u]');
+  await page.fill('input[name=url]', mock.url + '/list.m3u');
+  await page.click('#f-go');
+  await page.waitForSelector('.tile', { timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
+  const rmKey = (k) => page.evaluate((x) => window.__emit('remote', { key: x }), k);
+  const tabNow = () => page.evaluate(() => window.__iptv.S.tab);
+  const prefOf4 = (k, d) => page.evaluate(([k2, d2]) => window.__iptv.store.pref(k2, d2), [k, d]);
+  const calls4 = (n) => page.evaluate((k) => window.__calls.filter((c) => c[0] === k).length, n);
+  const link4 = (o) => page.evaluate(async (x) => (await import('./js/tvhome.js')).deepLink(x), o);
+  // sesli arama: genel aramada mikrofon düğmesi söylenen metni kutuya yazar
+  ok(!(await page.$eval('#q-mic', (b) => b.hidden)), 'arama çubuğunda mikrofon düğmesi var (Android)');
+  await page.click('#h-search');
+  await page.waitForSelector('#gs-mic');
+  const chName = await page.evaluate(() => [...window.__iptv.S.idx.live.values()][0].name);
+  await page.evaluate((n) => { window.__voice = n; }, chName);
+  await page.click('#gs-mic');
+  await page.waitForFunction((n) => document.querySelector('#gs-q').value === n, chName, { timeout: 3000 });
+  await page.waitForSelector('#gs-res .list-item');
+  ok(true, 'sesli arama: söylenen kanal adı kutuya yazıldı ve sonuçlar geldi');
+  await page.evaluate(() => { window.__voice = ''; document.querySelector('#toast').classList.remove('on'); });
+  await page.click('#gs-mic');
+  await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'voice').length === 2);
+  await sleep(200);
+  ok((await page.inputValue('#gs-q')) === chName && !(await page.$eval('#toast', (t) => t.classList.contains('on'))), 'konuşma iptal edilince kutu değişmedi, ileti çıkmadı');
+  await page.evaluate(() => { window.__voiceErr = 'Bu cihazda sesli arama yok'; });
+  await page.click('#gs-mic');
+  await page.waitForFunction(() => /sesli arama yok/.test(document.querySelector('#toast').textContent));
+  ok(true, 'cihazda konuşma tanıyıcı yoksa anlaşılır ileti çıktı');
+  await page.evaluate(() => { window.__voiceErr = ''; });
+  await page.goBack();
+  await page.waitForSelector('.gs-pg', { state: 'detached' });
+  // kumanda renkli tuşları: ana ekran ve listeler
+  await rmKey('ColorF1Green');
+  await page.waitForFunction(() => window.__iptv.S.tab === 'favs');
+  ok(true, 'yeşil tuş (varsayılan) Favoriler’i açtı');
+  await page.click('#btn-home');
+  await rmKey('ColorF2Yellow');
+  await page.waitForSelector('.pg');
+  await rmKey('ColorF0Red');
+  await sleep(250);
+  ok((await page.$$('.gs-pg')).length === 0, 'sayfa/pencere açıkken renkli tuş listeyi karıştırmadı');
+  await page.goBack();
+  await page.waitForSelector('.pg', { state: 'detached' });
+  ok(true, 'sarı tuş (varsayılan) TV Rehberi’ni açtı');
+  await rmKey('ColorF0Red');
+  await page.waitForSelector('.gs-pg');
+  ok(true, 'kırmızı tuş (varsayılan) aramayı açtı');
+  await page.goBack();
+  await page.waitForSelector('.gs-pg', { state: 'detached' });
+  await rmKey('ColorF3Blue');
+  await page.waitForFunction(() => window.__iptv.S.tab === 'sources');
+  ok(true, 'mavi tuş (varsayılan) Ayarlar’ı açtı');
+  // atamayı Genel ayarlar > Kumanda renkli tuşları'ndan değiştir
+  await page.click('#btn-home');
+  await page.click('#h-set');
+  await page.waitForSelector('.set-grid');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('#g-rm');
+  await page.click('#g-rm');
+  await page.waitForSelector('select[data-rm=home][data-c=green]');
+  ok((await page.$$('select[data-rm]')).length === 8, 'oynatıcı ve liste için dörder renkli tuş satırı var');
+  ok((await page.$eval('select[data-rm=home][data-c=green]', (e) => e.value)) === 'favs' && (await page.$eval('select[data-rm=player][data-c=blue]', (e) => e.value)) === 'aspect', 'varsayılan atamalar seçili (liste: yeşil Favoriler, oynatıcı: mavi En-boy)');
+  await sleep(500); // iç içe pencerenin açılış animasyonu bitsin
+  await page.screenshot({ path: path.join(SHOTS, '00k-kumanda-renk-tuslari.png') });
+  await page.selectOption('select[data-rm=home][data-c=green]', 'movies');
+  ok((await prefOf4('remote.home', null)).green === 'movies', 'liste için yeşil tuş ataması kaydedildi');
+  await page.click('#rm-reset');
+  ok(JSON.stringify(await prefOf4('remote.home', null)) === JSON.stringify({ red: 'search', green: 'favs', yellow: 'guide', blue: 'sources' }) && (await page.$eval('select[data-rm=home][data-c=green]', (e) => e.value)) === 'favs', '“Varsayılana dön” atamaları geri yükledi');
+  await page.selectOption('select[data-rm=home][data-c=green]', 'movies');
+  await page.goBack();
+  await page.waitForSelector('select[data-rm]', { state: 'detached' });
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.click('#btn-home');
+  await rmKey('ColorF1Green');
+  await page.waitForFunction(() => window.__iptv.S.tab === 'movies');
+  ok(true, 'yeşil tuş yeni atamayla Filmler’i açtı');
+  await page.click('#btn-home');
+  await page.evaluate(() => window.__iptv.store.setPref('remote.home', { red: 'none', green: 'none', yellow: 'none', blue: 'none' }));
+  await rmKey('ColorF3Blue');
+  await sleep(300);
+  ok((await tabNow()) !== 'sources', '“Yok” atanan tuş bir şey yapmıyor');
+  await page.evaluate(() => window.__iptv.store.setPref('remote.home', null));
+  // derin bağlantı: kanal, eski bildirim biçimi, film, geçersiz bağlantı
+  const liveId = await page.evaluate(() => [...window.__iptv.S.idx.live.keys()][0]);
+  const movieId = await page.evaluate(() => [...window.__iptv.S.idx.movies.keys()][0]);
+  const launch = (e) => page.evaluate((x) => window.__emit('planLaunch', x), e);
+  const lastPlay = () => page.evaluate(() => { const c = window.__calls.filter((x) => x[0] === 'play'); return c.length ? c[c.length - 1][1] : ''; });
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await launch({ uri: await link4({ kind: 'live', id: liveId }) });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
+  ok(/\.m3u8$/.test(await lastPlay()), 'iptvpro://play?kind=live bağlantısı kanalı doğrudan açtı');
+  // oynatıcıda renkli tuşlar
+  await sleep(300);
+  const asp0 = (await page.textContent('#pl-aspect-l')).trim();
+  await rmKey('ColorF3Blue');
+  await page.waitForFunction((a) => document.querySelector('#pl-aspect-l').textContent.trim() !== a, asp0);
+  ok(true, 'oynatıcıda mavi tuş (varsayılan) en-boy kipini değiştirdi');
+  await rmKey('ColorF0Red');
+  await page.waitForFunction(() => /gold/.test(document.querySelector('#pl-fav').style.color));
+  ok(true, 'oynatıcıda kırmızı tuş (varsayılan) kanalı favoriye ekledi');
+  await rmKey('ColorF2Yellow');
+  await page.waitForSelector('.sheet-back');
+  ok(true, 'oynatıcıda sarı tuş (varsayılan) uyku zamanlayıcısını açtı');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await rmKey('ColorF1Green');
+  await page.waitForSelector('.sheet-back');
+  ok(true, 'oynatıcıda yeşil tuş (varsayılan) altyazı penceresini açtı');
+  await page.goBack();
+  await page.waitForSelector('.sheet-back', { state: 'detached' });
+  await page.evaluate(() => window.__iptv.store.setPref('remote.player', { red: 'stats', green: 'last', yellow: 'none', blue: 'none' }));
+  await rmKey('ColorF1Green');
+  await page.waitForFunction(() => /kullanılamıyor/.test(document.querySelector('#pl-hud .hud-t').textContent));
+  ok(true, 'düğmesi o an görünmeyen iş (önceki kanal yokken “Son kanal”) için “şu an kullanılamıyor” bilgisi çıktı');
+  await rmKey('ColorF0Red');
+  await page.waitForFunction(() => !document.querySelector('#pl-stats-box').hidden);
+  ok(true, 'oynatıcıda kırmızı tuşa atanan “Yayın bilgisi” açıldı');
+  await rmKey('ColorF2Yellow');
+  await sleep(300);
+  ok((await page.$$('.sheet-back')).length === 0, '“Yok” atanan oynatıcı tuşu bir şey yapmadı');
+  await page.evaluate(() => window.__iptv.store.setPref('remote.player', null));
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await launch({ ch: liveId, src: '' });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  ok(/\.m3u8$/.test(await lastPlay()), 'eski bildirim biçimi (ch) hâlâ kanalı açıyor');
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await launch({ uri: await link4({ kind: 'movie', id: movieId, pos: 120000 }) });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'));
+  ok(/\/movie\//.test(await lastPlay()), 'iptvpro://play?kind=movie bağlantısı filmi açtı');
+  await page.goBack();
+  await page.waitForSelector('#player', { state: 'hidden' });
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await launch({ uri: 'iptvpro://play?kind=bogus&id=1' });
+  await launch({ uri: 'iptvpro://play?kind=live' });
+  await sleep(500);
+  ok((await calls4('play')) === 0, 'geçersiz derin bağlantı hiçbir şey açmadı');
+  await sleep(2800);
+  ok((await calls4('watchNext')) === 0, 'telefonda TV ana ekranı eşitlemesi yapılmıyor');
+  ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await ctx.close();
+
+  // Android TV: yarım kalan film/bölüm ana ekrandaki "Devam et" satırına gider, satırdan açılır
+  ({ page, ctx, errs } = await newPage({ width: 915, height: 412 }, nativeInit));
+  await page.evaluate((u) => {
+    localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'a', name: 'Deneme', type: 'm3u', url: u }]));
+    localStorage.setItem('__isTv', '1');
+  }, mock.url + '/list.m3u');
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  await page.waitForFunction(() => window.__iptv.S.cat.live.length === 120, null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'watchNext'), null, { timeout: 8000 });
+  ok((await page.evaluate(() => window.__wn)).length === 0, 'izleme geçmişi boşken TV satırı boş eşitlendi (eski satırlar silinir)');
+  await page.click('.tile.t-series');
+  await page.waitForSelector('.row.cat');
+  await sleep(150);
+  await page.click('.row.cat:has-text("Tümü")');
+  await page.waitForSelector('.card');
+  await page.click('.card');
+  await page.waitForSelector('.epi');
+  await page.click('.epi');
+  await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
+  const epLabel2 = (await page.textContent('#pl-sub')).trim();
+  await sleep(300);
+  await page.evaluate(() => window.__emit('state', { state: 'playing', playing: true, live: false }));
+  await sleep(10500); // ilerleme kaydı oynatmanın ilk 10 saniyesinden sonra başlar
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.evaluate(() => window.__emit('time', { pos: 300000, dur: 1500000, buffered: 0 }));
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'watchNext'), null, { timeout: 6000 });
+  const wn1 = await page.evaluate(() => window.__wn);
+  const prog1 = await page.evaluate(() => window.__iptv.store.continueWatching(window.__iptv.S.source.id)[0]);
+  ok(wn1.length === 1 && wn1[0].kind === 'episode' && wn1[0].parent === prog1.parent && wn1[0].pos === 300000 && wn1[0].dur === 1500000, 'oynarken yarım kalan bölüm TV satırına eşitlendi: ' + JSON.stringify(wn1[0]));
+  ok(/^iptvpro:\/\/play\?/.test(wn1[0].uri) && /kind=episode/.test(wn1[0].uri) && /parent=/.test(wn1[0].uri) && /pos=300000/.test(wn1[0].uri), 'satırın derin bağlantısı bölüm, dizi ve konumu taşıyor');
+  await page.goBack(); // geri: oynatıcı küçülür (yayın sürer); Ana ekran tuşuna basılınca da satır yeniden eşitlenir
+  await page.waitForSelector('#player', { state: 'hidden' });
+  // bitmeye yakın film satıra girmez, yarım kalan film en üste gelir
+  const mv = await page.evaluate(() => { const m = [...window.__iptv.S.idx.movies.values()]; return [m[0].id, m[1].id]; });
+  await page.evaluate(([a, b]) => {
+    const sid = window.__iptv.S.source.id;
+    window.__iptv.store.setProgress(sid, { id: a, kind: 'movie', name: 'Neredeyse bitti' }, 98000, 100000);
+    window.__iptv.store.setProgress(sid, { id: b, kind: 'movie', name: 'Yarım film' }, 60000, 600000);
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, mv);
+  await page.waitForFunction(() => window.__wn && window.__wn.length === 2, null, { timeout: 3000 });
+  const wn2 = await page.evaluate(() => window.__wn);
+  ok(wn2[0].kind === 'movie' && wn2[0].id === String(mv[1]) && wn2[1].kind === 'episode' && !wn2.some((x) => x.id === String(mv[0])), 'yeni yarım film başta, %95’i geçen film satırda yok');
+  await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); });
+  // satırdan bölümü aç
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.evaluate((u) => window.__emit('planLaunch', { uri: u }), wn1[0].uri);
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'play'), null, { timeout: 8000 });
+  await page.waitForFunction(() => document.documentElement.classList.contains('native-playing'));
+  const pl2 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').pop()[1]);
+  ok(/\/series\//.test(pl2) && (await page.textContent('#pl-sub')).trim() === epLabel2, 'TV satırından bölüm doğrudan açıldı: ' + epLabel2);
+  await page.screenshot({ path: path.join(SHOTS, '00l-tv-devam-et.png') });
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 

@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 28,
+    title: 'Kumanda renk tuşları, TV ana ekranı, sesli arama',
+    items: [
+      'Kırmızı/yeşil/sarı/mavi tuşlara oynatıcıda ve listelerde istediğiniz işi atayın (Genel ayarlar)',
+      'Android TV ana ekranında “Devam et” satırı: yarım kalan film ve bölüm doğrudan açılır',
+      'Sesli arama: arama kutusundaki mikrofon düğmesi (Android)',
+    ],
+  },
+  {
     id: 27,
     title: 'Altyazı görünümü, gece modu, sonraki bölüm',
     items: [

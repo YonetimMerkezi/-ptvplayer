@@ -10,6 +10,7 @@ import { DELAY_PRESETS, clampDelay, stepDelay, fmtDelay, describeDelay } from '.
 import { statsRows } from './stats.js';
 import { NIGHT_LEVELS, normalizeNight, nightLabel, DEFAULT_NIGHT } from './night.js';
 import { nextUp, introSkip, DEFAULT_INTRO } from './nextup.js';
+import { PLAYER_ACTIONS, DEFAULT_PLAYER, colorOf, actionFor } from './remote.js';
 import { SUB_SIZES, SUB_COLORS, SUB_BGS, SUB_POS, DEFAULT_SUB, normalizeSub, subParams, subPreviewStyle } from './subtitle.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
@@ -1008,8 +1009,13 @@ export function createPlayerUI({ engine, player, env }) {
     else if (k === 'Guide' && live) env.onEpgSheet(st.item);
     else if (k === 'Captions' && visibleBtn('#pl-text')) trackSheet('text');
     else if (k === 'AudioTrack' && visibleBtn('#pl-audio')) trackSheet('audio');
-    else if (k === 'ColorF0Red') q('#pl-fav').click();
-    else if (k === 'ColorF3Blue') q('#pl-aspect').click();
+    else if (colorOf(k)) {
+      // renkli tuşlar: Genel ayarlar > Kumanda renkli tuşları'nda atanan iş (varsayılan: kırmızı favori, yeşil altyazı, sarı uyku, mavi en-boy)
+      const act = actionFor(k, env.pref ? env.pref('remote.player', null) : null, PLAYER_ACTIONS, DEFAULT_PLAYER);
+      const btn = act && PLAYER_ACTIONS.find((a) => a[0] === act)[2];
+      if (btn && visibleBtn(btn)) q(btn).click();
+      else if (btn) hud('info', 'Bu tuş şu an kullanılamıyor');
+    }
     else if (k === 'Enter' && !e.target.closest('button') && !ui.classList.contains('show') && !q('#pl-intro').hidden) q('#pl-intro').click(); // kumanda: Tamam, görünen intro düğmesine basar
     else if (k === 'Enter' && !e.target.closest('button') && !ui.classList.contains('show') && !q('#pl-nextup').hidden) q('#nu-now').click(); // kumanda: Tamam, sonraki bölümü hemen açar
     else if (k === 'Enter' && !e.target.closest('button')) {
