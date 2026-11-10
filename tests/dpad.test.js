@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickNext } from '../www/js/dpad.js';
+import { pickNext, beyond, scrollStep } from '../www/js/dpad.js';
 
 const R = (l, t, w, h) => ({ l, t, r: l + w, b: t + h });
 // 3 × 3 ızgara (100 × 50 kutular, 10 aralık)
@@ -114,4 +114,30 @@ test('aşağı: yakın ışındaki aday, uzaktaki ışın dışı adaya göre ö
   const near = R(100, 170, 100, 50); // hemen altta, ışında
   const farSide = R(500, 400, 100, 50); // uzakta ve yanda
   assert.equal(pickNext(cur, [cur, farSide, near], 'down'), 2);
+});
+
+test('beyond: hedef odaktaki öğenin gerçekten altında/üstünde mi', () => {
+  const cur = R(0, 100, 100, 50); // 100..150
+  assert.equal(beyond(R(0, 150, 100, 50), cur, 'down'), true);
+  assert.equal(beyond(R(0, 120, 100, 50), cur, 'down'), false, 'üst üste binen öğe aşağıda sayılmaz');
+  assert.equal(beyond(R(0, 40, 100, 60), cur, 'up'), true);
+  assert.equal(beyond(R(0, 60, 100, 60), cur, 'up'), false);
+});
+
+test('scrollStep: uzun içerik yarım ekran adımlarla kayar, uçta durur, odak yerinde kalır', () => {
+  const sc = { scrollHeight: 1000, clientHeight: 400, scrollTop: 0 };
+  assert.equal(scrollStep(sc, 'up'), false, 'en üstteyken yukarı kaydırılmaz');
+  assert.equal(scrollStep(sc, 'down'), true);
+  assert.equal(sc.scrollTop, 200, 'adım: yarım ekran');
+  sc.scrollTop = 500;
+  assert.equal(scrollStep(sc, 'down'), true);
+  assert.equal(sc.scrollTop, 600, 'kalan yer adımdan azsa uca oturur');
+  assert.equal(scrollStep(sc, 'down'), false, 'en altta daha fazla kaydırılmaz');
+  assert.equal(scrollStep(sc, 'up'), true);
+  assert.equal(sc.scrollTop, 400);
+  sc.scrollTop = 30;
+  assert.equal(scrollStep(sc, 'up'), true);
+  assert.equal(sc.scrollTop, 0);
+  const tiny = { scrollHeight: 400.5, clientHeight: 400, scrollTop: 0 };
+  assert.equal(scrollStep(tiny, 'down'), false, 'piksel altı taşma kaydırma sayılmaz');
 });

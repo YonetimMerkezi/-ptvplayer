@@ -74,9 +74,10 @@ export async function readBody(body, onText, onProgress) {
 }
 
 export function createNet({ native = null, convertFileSrc = null, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 90000 } = {}) {
-  async function open(url, headers) {
+  // fast: küçük API/JSON isteği; yerelde büyük indirmelerin kuyruğunda beklemeyen ayrı iş parçacığı havuzunu kullanır.
+  async function open(url, headers, fast = false) {
     if (native && convertFileSrc) {
-      const r = await native.download({ url, headers: headers || {} });
+      const r = await native.download(fast ? { url, headers: headers || {}, fast: true } : { url, headers: headers || {} });
       const res = await fetchImpl(convertFileSrc('file://' + r.path));
       if (!res.ok) throw new Error('Geçici dosya okunamadı');
       return { res, cleanup: () => native.deleteFile({ path: r.path }).catch(() => {}) };
@@ -95,8 +96,8 @@ export function createNet({ native = null, convertFileSrc = null, fetchImpl = (.
     }
   }
 
-  async function read(url, { headers, onText, onProgress } = {}) {
-    const { res, cleanup } = await open(url, headers);
+  async function read(url, { headers, onText, onProgress, fast } = {}) {
+    const { res, cleanup } = await open(url, headers, !!fast);
     try {
       return await readBody(res.body, onText || (() => {}), onProgress);
     } finally {

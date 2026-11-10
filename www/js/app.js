@@ -113,6 +113,7 @@ const S = {
   hiddenAt: null, // uygulama arka plana en son ne zaman gitti
   sort: Object.fromEntries(['live', 'movie', 'series'].map((k) => [k, isSortMode(store.pref('sort.' + k, 'default')) ? store.pref('sort.' + k, 'default') : 'default'])), // kategori içi sıralama (türe göre kalıcı)
   catFilter: '',
+  backCat: null, // kategoriden geri çıkılınca imlecin döneceği kategori: { kind, id } (bir kez kullanılır)
   catEdit: false, // kategori düzenleme kipi (sırala / gizle / klasör)
   cats: [],
   listMode: null,
@@ -649,16 +650,20 @@ function enterGroup(kind, g) {
       groupLayer = 0;
       const k = TAB_KIND[S.tab];
       if (k && S.group[k] != null) {
+        S.backCat = { kind: k, id: S.group[k] };
         S.group[k] = null;
         refreshList();
       }
     });
   }
   refreshList();
+  // kumandayla girildiyse imleç üstteki "önceki kategori" düğmesinde değil, listenin ilk öğesinde başlar
+  if (dpad.isKbd() && S.list && S.listMode === 'items' && S.items.length) S.list.focusIndex(0);
 }
 
 function leaveGroup(kind) {
   if (groupLayer) return popLayer('group');
+  if (S.group[kind] != null) S.backCat = { kind, id: S.group[kind] };
   S.group[kind] = null;
   refreshList();
 }
@@ -671,6 +676,7 @@ function dropGroupLayer() {
 
 function clearGroupState() {
   S.group = { live: null, movie: null, series: null };
+  S.backCat = null;
   S.catFilter = '';
   S.catEdit = false;
 }
@@ -781,6 +787,18 @@ function mountList(kind, mode = 'items') {
   }
 }
 
+// Kategoriden geri çıkınca liste en üste değil, en son girilen kategoriye konumlanır; kumanda kipindeyse imleç de orada durur.
+function restoreCatCursor(kind) {
+  const b = S.backCat;
+  S.backCat = null;
+  if (!b || b.kind !== kind || !S.list || S.listMode !== 'cats') return;
+  const i = S.cats.findIndex((c) => c.id === b.id);
+  if (i < 0) return;
+  S.list.scrollToIndex(i);
+  if (dpad.isKbd()) S.list.focusIndex(i);
+  else S.list.draw();
+}
+
 function refreshList(keepScroll = false) {
   if (S.tab === 'favs') return S.list ? refreshFavs() : undefined;
   if (S.tab === 'live' && S.split && $('#split')) return refreshSplit(keepScroll);
@@ -798,6 +816,7 @@ function refreshList(keepScroll = false) {
   S.cats = mode === 'cats' ? categoryRows(kind) : [];
   const rows = mode === 'cats' ? S.cats : S.items;
   S.list.setItems(rows, keepScroll);
+  restoreCatCursor(kind);
   drawCrumb(kind);
   const empty = $('#empty');
   const none = mode === 'cats' ? !all || !rows.length : !rows.length;
@@ -1974,6 +1993,7 @@ function refreshSplit(keepScroll = false) {
   S.cats = cats ? categoryRows('live') : [];
   const rows = cats ? S.cats : S.items;
   S.list.setItems(rows, keepScroll);
+  restoreCatCursor('live');
   $('#sp-prev').hidden = $('#sp-next').hidden = cats;
   const gl = S.group.live;
   $('#sp-sort').hidden = cats || !!S.query || gl === '__recent' || gl === '__cont'; // sıralama: yalnız kategori içinde, aramada ve özel listelerde değil

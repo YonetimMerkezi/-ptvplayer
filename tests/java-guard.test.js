@@ -416,3 +416,9 @@ test('yayın kaydı: şifreli HLS (AES-128) parçalar kayıt için çözülür, 
   assert.match(tap, /StreamSniff\.noteError\(e\)/, 'yutulan iç hata tanılamaya yazılmalı');
   assert.match(sniff, /path\.substring\(path\.lastIndexOf\('\/'\) \+ 1\)/, 'yalnız dosya adı gösterilmeli (yolun kalanında kullanıcı/şifre olabilir)');
 });
+
+test('indirme: küçük API istekleri (fast) büyük indirmelerden ayrı havuzda çalışır ve kapanışta durdurulur', () => {
+  assert.match(kaynak, /ExecutorService apiIo = Executors\.newFixedThreadPool/);
+  assert.match(kaynak, /call\.getBoolean\("fast", false\)[\s\S]{0,120}\(fast \? apiIo : io\)\.execute/);
+  assert.match(kaynak, /apiIo\.shutdownNow\(\)/);
+});

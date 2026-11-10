@@ -114,6 +114,7 @@ public class IptvPlayerPlugin extends Plugin {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService probeIo = Executors.newFixedThreadPool(2); // yayın sağlık testi: indirmeleri bekletmesin
+    private final ExecutorService apiIo = Executors.newFixedThreadPool(3); // küçük API/JSON istekleri (maç skorları…): büyük liste/rehber indirmelerinin arkasında beklemesin
 
     private PlayerView playerView;
     private ExoPlayer player;
@@ -1370,7 +1371,8 @@ public class IptvPlayerPlugin extends Plugin {
             call.reject("url gerekli");
             return;
         }
-        io.execute(() -> {
+        final boolean fast = Boolean.TRUE.equals(call.getBoolean("fast", false));
+        (fast ? apiIo : io).execute(() -> {
             File out = null;
             HttpURLConnection conn = null;
             try {
@@ -2358,5 +2360,6 @@ public class IptvPlayerPlugin extends Plugin {
         stopAllSlots();
         releasePlayer();
         io.shutdownNow();
+        apiIo.shutdownNow();
     }
 }

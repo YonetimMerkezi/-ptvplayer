@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LEAGUES, DAY, scoreboardUrl, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram, broadcasterFor,
+  LEAGUES, DAY, scoreboardUrl, scoreboardLadder, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram, broadcasterFor,
   channelsOfBroadcaster, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
 } from '../www/js/sports.js';
 
@@ -240,12 +240,49 @@ test('loadMatches: bir lig hata verirse diğerleri yine gelir (başarısız olan
   assert.equal(r.matches.length, 1);
   assert.deepEqual(r.failed, ['esp.1']);
   assert.equal(r.okCount, LEAGUES.length - 1);
-  assert.equal(net.calls.filter((u) => u.includes('/esp.1/')).length, 2, 'başarısız lig bir kez yeniden denenir');
+  assert.equal(net.calls.filter((u) => u.includes('/esp.1/')).length, 3, 'başarısız lig üç yalınlıkta denenir (limitli aralık, aralık, parametresiz)');
+  assert.match(r.errors['esp.1'], /HTTP 500/);
 });
 
-test('loadMatches: hiçbir lig alınamazsa açık hata', async () => {
-  const net = fakeNet(() => { throw new Error('ağ yok'); });
-  await assert.rejects(loadMatches({ net, now: NOW }), /Maç bilgisi alınamadı/);
+test('loadMatches: hiçbir lig alınamazsa açık hata ve ilk nedenler ayrıntıda', async () => {
+  const net = fakeNet(() => { throw new Error('HTTP 403'); });
+  await assert.rejects(loadMatches({ net, now: NOW }), (e) => /Maç bilgisi alınamadı/.test(e.message) && /^tur\.1: HTTP 403/.test(e.detail) && e.detail.split(' · ').length === 3);
+});
+
+test('scoreboardLadder: limitli aralık → aralık → parametresiz', () => {
+  const l = scoreboardLadder('tur.1', Date.UTC(2026, 10, 9), Date.UTC(2026, 10, 18));
+  assert.equal(l[0], scoreboardUrl('tur.1', Date.UTC(2026, 10, 9), Date.UTC(2026, 10, 18)));
+  assert.match(l[1], /scoreboard\?dates=20261109-20261118$/);
+  assert.match(l[2], /tur\.1\/scoreboard$/);
+});
+
+test('loadMatches: limit/aralık reddedilirse yalın adrese düşülür, iki ligde görülünce sonrakiler doğrudan oradan başlar', async () => {
+  const net = fakeNet((u) => {
+    if (u.includes('limit=')) throw new Error('HTTP 400');
+    return { events: [] };
+  });
+  const r = await loadMatches({ net, now: NOW, parallel: 1 });
+  assert.equal(r.okCount, LEAGUES.length);
+  assert.deepEqual(r.failed, []);
+  assert.equal(r.level, 1);
+  // ilk iki lig 2'şer istek (limitli + aralık), kalanlar yalnız aralık
+  assert.equal(net.calls.length, 2 * 2 + (LEAGUES.length - 2));
+  assert.equal(net.calls.filter((u) => u.includes('limit=')).length, 2);
+});
+
+test('loadMatches: yalnız parametresiz adres çalışırsa yine maçlar gelir', async () => {
+  const net = fakeNet((u) => {
+    if (u.includes('dates=')) throw new Error('HTTP 400');
+    return { events: [ev(1, new Date(at(2026, 11, 11, 20)).toISOString(), 'Galatasaray', 'Fenerbahçe')] };
+  });
+  const r = await loadMatches({ net, now: NOW, leagues: [LEAGUES[0]] });
+  assert.equal(r.matches.length, 1);
+  assert.equal(r.level, 0, 'tek lig oy vermeden basamağı yükseltmez');
+});
+
+test('loadMatches: JSON olmayan yanıt hata sayılır', async () => {
+  const net = fakeNet(() => null);
+  await assert.rejects(loadMatches({ net, now: NOW, leagues: [LEAGUES[0]] }), (e) => /Boş yanıt/.test(e.detail));
 });
 
 test('loadMatches: yanıt vermeyen lig zaman aşımına uğrar, diğerlerini bekletmez', async () => {

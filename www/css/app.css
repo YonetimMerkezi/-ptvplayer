@@ -15,6 +15,10 @@
   --danger: #f87171;
   --ok: #34d399;
   --gold: #fbbf24;
+  /* Odak halkası (kumanda): tüm temalarda aynı — beyaz çizgi + koyu kenar; vurgu rengi yeşil/mavi vb. zeminle karışsa da ayırt edilir */
+  --ring: #fff;
+  --ring-edge: rgba(0, 0, 0, 0.88);
+  --ring-bg: rgba(255, 255, 255, 0.17);
   --r: 12px;
   /* Android'de çentik payı eklentiden gerçek ölçüyle gelir (--na-*); tarayıcıda env() kullanılır. */
   --safe-t: var(--na-t, env(safe-area-inset-top, 0px));
@@ -110,13 +114,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 input, select, textarea { font: inherit; color: var(--text); }
 .ic { width: 24px; height: 24px; fill: currentColor; flex: none; }
 [hidden] { display: none !important; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
-/* kumanda kipi (html.kbd: yön tuşlarına basılınca ya da Android TV'de): odaktaki öğe uzaktan da seçilir */
-html.kbd :focus { outline: 3px solid var(--accent); outline-offset: 2px; }
-html.kbd input:focus, html.kbd select:focus { outline-offset: 0; }
-html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 3px var(--accent), 0 0 26px var(--accent-soft); z-index: 2; }
-html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus { outline: none; background: var(--accent-soft); box-shadow: inset 0 0 0 3px var(--accent); }
-html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus { box-shadow: 0 0 0 3px var(--accent); outline: none; }
+:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
+/* kumanda kipi (html.kbd: yön tuşlarına basılınca ya da Android TV'de): odaktaki öğe uzaktan da seçilir.
+   Halka tüm temalarda beyaz + koyu kenar (vurgu rengi zeminle karışabildiği için tek başına yetmez); seçili (.on) durumdan da ayrışır. */
+html.kbd :focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ring-edge); }
+html.kbd input:focus, html.kbd select:focus { outline-offset: 0; box-shadow: none; }
+html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
+html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus, html.kbd .sp-m:focus { outline: none; background: var(--ring-bg); box-shadow: inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); }
+html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus, html.kbd .act:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
 /* Android TV: ekran kenarındaki taşma payı (overscan) ve uzaktan okunur büyük yazı */
 html.tv { font-size: calc(18px * var(--fs)); }
 html.tv #app { padding: 14px calc(var(--safe-r) + 26px) 10px calc(var(--safe-l) + 26px); }
@@ -670,7 +675,7 @@ html.native-preview.native-multi #bgfill { display: none !important; }
 @keyframes lk-shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 html.tv .lk-box { width: min(60vh, 420px); }
 html.tv .lk-k { height: 56px; }
-html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 3px var(--accent), 0 0 20px var(--accent-soft); }
+html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 20px var(--accent-soft); }
 @media (orientation: landscape) and (max-height: 520px) { .lk-box { gap: 6px; } .lk-k { height: 44px; font-size: 1.25rem; } .lk-pad { gap: 6px; } }
 
 /* Telefondan TV'ye oynatma */
@@ -744,8 +749,8 @@ html.tv .tl-prog small { font-size:.76rem; }
 .tl-prog.now { background:var(--accent-soft); border-color:var(--accent); }
 .tl-prog.past { opacity:.55; }
 .tl-prog.none { cursor:default; background:transparent; border-style:dashed; opacity:.7; }
-html.kbd .tl-prog:focus, html.kbd .tl-ch:focus { outline:3px solid var(--accent); outline-offset:-3px; }
-html.kbd .tl-prog:focus { background:var(--accent-soft); box-shadow:0 0 18px var(--accent-soft); z-index:1; }
+html.kbd .tl-prog:focus, html.kbd .tl-ch:focus { outline:3px solid var(--ring); outline-offset:-3px; box-shadow:inset 0 0 0 5px var(--ring-edge); }
+html.kbd .tl-prog:focus { background:var(--ring-bg); box-shadow:inset 0 0 0 5px var(--ring-edge), 0 0 18px var(--accent-soft); z-index:1; }
 .tl-nowline { position:absolute; top:0; bottom:0; left:calc(var(--tl-ch) + var(--now, 0) * var(--tl-ppm) * 1px); width:2px; background:var(--accent); z-index:2; pointer-events:none; }
 .tl-more { position:sticky; left:8px; margin:10px 8px; }
 .gp { display:flex; flex-direction:column; gap:10px; }
@@ -757,7 +762,7 @@ html.kbd .tl-prog:focus { background:var(--accent-soft); box-shadow:0 0 18px var
 html.tv .guide-category-head { min-height:68px; }
 html.tv .guide-category-head.open { min-height:56px; }
 .guide-category-head.open .chev { padding:0 2px 0 0; }
-html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px var(--accent); background:var(--accent-soft); }
+html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); background:var(--ring-bg); }
 /* Yayın kalitesi: kanal seçici düzeni (.pk-pg) üstüne sonuç şeridi; liste tek kaydırma alanı */
 .health-pg .hint { margin:0 0 8px; }
 .health-pg .pg-body { padding-bottom:8px; }
@@ -869,7 +874,8 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sp-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 28px; -webkit-overflow-scrolling: touch; }
 .sp-lg-h { margin: 14px 0 4px; font-size: 0.8125rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
 .sp-m { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
-.sp-m.on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.sp-m.on { background: rgba(255, 255, 255, 0.05); }
+.sp-detail { overflow-wrap: anywhere; max-width: 92%; margin: 6px auto 12px; }
 .sp-when { width: 56px; flex: none; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9375rem; padding-top: 2px; }
 .sp-when time { color: var(--text); font-weight: 600; }
 .sp-live { color: var(--danger); font-weight: 700; }

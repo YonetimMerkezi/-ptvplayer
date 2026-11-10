@@ -206,6 +206,12 @@ export function scoreboardUrl(slug, fromMs, toMs, base = ESPN_BASE) {
   return `${base}${slug}/scoreboard?dates=${ymd(fromMs)}-${ymd(toMs)}&limit=300`;
 }
 
+// ESPN'in resmî olmayan API'si tarih aralığı/limit parametrelerini her zaman kabul etmeyebilir; sırayla daha yalın adresler denenir:
+// 0) aralık + limit, 1) yalnız aralık, 2) parametresiz (yalnız güncel gün). Çalışan basamak sonraki liglerde baştan kullanılır.
+export function scoreboardLadder(slug, fromMs, toMs, base = ESPN_BASE) {
+  return [scoreboardUrl(slug, fromMs, toMs, base), `${base}${slug}/scoreboard?dates=${ymd(fromMs)}-${ymd(toMs)}`, `${base}${slug}/scoreboard`];
+}
+
 // ESPN durum nesnesi → { state: 'pre'|'in'|'post', text } (text: ekrandaki kısa yazı; 'pre'de boş = saat gösterilir)
 export function statusOf(st) {
   const type = (st && st.type) || {};
@@ -288,40 +294,58 @@ function withTimeout(p, ms) {
 }
 
 // Dün'den (back) bugünden itibaren ahead gün sonrasına kadar tüm liglerin maçları. Bir lig alınamazsa diğerleri yine gelir.
-// Döner: { matches, okCount, failed: [lig kimlikleri] }; hiçbir lig alınamazsa hata atar.
-export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4 } = {}) {
+// Döner: { matches, okCount, failed: [lig kimlikleri], errors: { lig: ilk hata iletisi }, level }; hiçbir lig alınamazsa hata atar
+// (hata.detail: "tur.1: HTTP 403" gibi ilk nedenler, ekranda gösterilir).
+export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4, budgetMs = 60000 } = {}) {
   const today = startOfDay(now);
   const from = today - back * DAY;
   const to = today + (ahead + 1) * DAY;
   const matches = [];
   const failed = [];
+  const errors = {};
   let okCount = 0;
+  let level = 0; // çalışan en yalın basamak (sonraki ligler buradan başlar)
+  const votes = [0, 0, 0];
+  const deadline = Date.now() + budgetMs;
   const queue = [...leagues];
   async function worker() {
     for (let lg = queue.shift(); lg; lg = queue.shift()) {
-      const url = scoreboardUrl(lg.id, from - DAY, to + DAY, base);
+      if (Date.now() > deadline) {
+        failed.push(lg.id);
+        errors[lg.id] = errors[lg.id] || 'Süre doldu';
+        continue;
+      }
+      const urls = scoreboardLadder(lg.id, from - DAY, to + DAY, base);
       let json = null;
-      for (let n = 0; n < 2 && json === null; n++) {
+      for (let k = Math.min(level, urls.length - 1); k < urls.length && json === null; k++) {
         try {
-          json = await withTimeout(net.json(url), timeoutMs);
-        } catch {
+          json = await withTimeout(net.json(urls[k], { fast: true }), timeoutMs);
+          if (json === null || typeof json !== 'object') throw new Error('Boş yanıt');
+          if (k > level && ++votes[k] >= 2) level = k; // iki ayrı ligde aynı basamağa düşülürse sonrakiler oradan başlar (tek seferlik ağ hatası yalınlaştırmaz)
+        } catch (e) {
           json = null;
+          if (!errors[lg.id]) errors[lg.id] = String((e && e.message) || e || 'hata').slice(0, 140);
         }
       }
       if (json === null) {
         failed.push(lg.id);
         continue;
       }
+      delete errors[lg.id];
       okCount++;
       for (const m of parseScoreboard(json, lg.id)) if (m.t >= from && m.t < to) matches.push(m);
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, leagues.length)) }, worker));
-  if (!okCount) throw new Error('Maç bilgisi alınamadı. İnternet bağlantınızı denetleyin.');
+  if (!okCount) {
+    const err = new Error('Maç bilgisi alınamadı. İnternet bağlantınızı denetleyin.');
+    err.detail = Object.entries(errors).slice(0, 3).map(([id, m]) => `${id}: ${m}`).join(' · ');
+    throw err;
+  }
   const seen = new Set();
   const uniq = matches.filter((m) => !seen.has(m.id) && seen.add(m.id));
   uniq.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
-  return { matches: uniq, okCount, failed };
+  return { matches: uniq, okCount, failed, errors, level };
 }
 
 // ---- gün ve lig süzgeci ----

@@ -13,6 +13,20 @@ const DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 
 //    ötekinin uzak kenarından yakınsa üstün gelir; aksi halde 13·(yön mesafesi)² + (merkez kayması)² küçük olan seçilir.
 //    Böylece sağa yaslı seçici/düğme satırları, uzaktaki tam genişlik düğmenin gölgesinde kalıp atlanmaz.
 //  - Satır dışı yatay adaylar: yön eksenindeki boşluk + dik eksendeki boşluk (ağırlıklı) + merkez kayması.
+// Hedef, kaynağın dikey olarak tamamen ötesinde mi (aynı satırdaki komşu değil)?
+export function beyond(r, cur, dir) {
+  return dir === 'down' ? r.t >= cur.b - 2 : r.b <= cur.t + 2;
+}
+
+// Kaydırma alanını dir yönünde bir adım kaydırır (en çok yarım ekran); kaydıracak yer yoksa false.
+export function scrollStep(sc, dir) {
+  const room = dir === 'down' ? sc.scrollHeight - sc.clientHeight - sc.scrollTop : sc.scrollTop;
+  if (room <= 1) return false;
+  const step = Math.min(room, Math.max(60, Math.round(sc.clientHeight * 0.5)));
+  sc.scrollTop += dir === 'down' ? step : -step;
+  return true;
+}
+
 export function pickNext(cur, rects, dir) {
   const cx = (cur.l + cur.r) / 2;
   const cy = (cur.t + cur.b) / 2;
@@ -241,7 +255,16 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
         target = pass(list.filter((e) => e !== cur && sc.contains(e) && reachable(e, scope)));
       }
     }
-    target = target || pass(list.filter((e) => e !== cur && reachable(e, scope))) || pass(list.filter((e) => e !== cur));
+    // Yaklaşım dışlamaları: odaktaki öğeyi içeren kapsayıcı (ör. içinde düğmeler olan satır) komşu düğmeye gitmeden önce seçilmez;
+    // yoksa satırdaki göster/gizle düğmesinden sağa basınca kilit düğmesi atlanıp satırın kendisine dönülürdü.
+    const notAncestor = (e) => e !== cur && !e.contains(cur);
+    target = target || pass(list.filter((e) => notAncestor(e) && reachable(e, scope))) || pass(list.filter(notAncestor)) || pass(list.filter((e) => e !== cur && reachable(e, scope))) || pass(list.filter((e) => e !== cur));
+    // Dikey harekette odağı taşıyacak yer yoksa (içerik uzun bir yazı ise) ya da hedef kaydırma alanının dışındaysa, alan hâlâ o yöne kayabiliyorsa alan kaydırılır;
+    // odak aynı kalır. Böylece film konusu gibi uzun metin kumandayla aşağı okunabilir ve yukarı basınca en üste dönülür.
+    if (dir === 'up' || dir === 'down') {
+      const sc = scrollerOf(cur, scope);
+      if (sc && (!target || !sc.contains(target) || !beyond(rectOf(target), curRect, dir)) && scrollStep(sc, dir)) return true;
+    }
     if (!target) return false;
     focusEl(target, scope);
     return true;

@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, failLeagues: new Set(['ger.1']), calls: [] };
+  const st = { fail: false, failDelay: 0, rejectLimit: false, failLeagues: new Set(['ger.1']), calls: [], urls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -39,6 +39,8 @@ function fakeEspn() {
       const slug = /soccer\/([^/]+)\/scoreboard/.exec(route.request().url());
       const id = slug ? slug[1] : '';
       st.calls.push(id);
+      st.urls.push(route.request().url());
+      if (st.rejectLimit && /limit=/.test(route.request().url())) return route.fulfill({ status: 400, headers: CORS, body: 'bad' });
       if (st.fail && st.failDelay) await new Promise((r) => setTimeout(r, st.failDelay));
       if (st.fail || st.failLeagues.has(id)) return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
       return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify({ events: data()[id] || [] }) });
@@ -184,6 +186,7 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(/yükleniyor/.test(await c.textContent('.sp-list')), 'indirme sürerken “yükleniyor” görünüyor (“Maç yok” değil)');
   await c.waitForSelector('.sp-list .empty h3', { timeout: 20000 });
   ok(/Maçlar alınamadı/.test(await c.textContent('.sp-list .empty h3')) && /İnternet bağlantınızı denetleyin/.test(await c.textContent('.sp-list .empty')), 'hiçbir lig alınamazsa açık hata ekranı');
+  ok(/Ayrıntı: [a-z0-9.]+: HTTP 500/.test(await c.textContent('.sp-list .empty')), 'hata ekranı nedeni gösteriyor (ör. “tur.1: HTTP 500”)');
   await c.screenshot({ path: path.join(SHOTS, '81-spor-hata.png') });
   espn.st.fail = false;
   espn.st.failDelay = 0;
@@ -193,6 +196,13 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await c.click('#sp-ref');
   await c.waitForFunction(() => /Son güncelleme/.test(document.querySelector('#sp-upd').textContent));
   ok(true, 'yenile düğmesi çalışıyor');
+  // ESPN limit parametresini reddederse yalın adrese düşülür ve maçlar yine gelir
+  espn.st.rejectLimit = true;
+  espn.st.urls.length = 0;
+  await c.click('#sp-ref');
+  await c.waitForFunction(() => /Son güncelleme/.test(document.querySelector('#sp-upd').textContent), null, { timeout: 15000 });
+  ok(espn.st.urls.some((u) => !/limit=/.test(u)) && (await c.$$('.sp-m')).length > 0, 'limit reddedilince aralık adresine düşüldü, maçlar yine listede');
+  espn.st.rejectLimit = false;
   ok(C.errs.length === 0, 'sayfa hatası yok (hata yolu): ' + C.errs.join(' | '));
   await C.ctx.close();
 

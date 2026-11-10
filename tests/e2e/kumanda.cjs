@@ -135,6 +135,123 @@ async function kumandaSection({ browser, base, mock, ok, sleep }) {
     ok(prevented[0] && prevented[1], 'çubukta ↑↓ gidecek düğme olmasa da tarayıcının değer değiştirmesi engellendi');
     await ctx.close();
   }
+
+  // ---- kategori düzenleme: satırdaki göster/gizle → kilit → taşıma düğmelerine sağ okla geçilir (kilit atlanmaz), sol okla geri dönülür
+  {
+    const { ctx, page, errs } = await open({ width: 1280, height: 720 });
+    await page.click('.tile.t-live');
+    await page.waitForSelector('#cat-edit');
+    await sleep(300);
+    await page.click('#cat-edit');
+    await sleep(400);
+    await page.focus('.row.cat.edit [data-act=eye]');
+    const acts = [];
+    for (let i = 0; i < 5; i++) {
+      await press(page, 'ArrowRight');
+      acts.push(await page.evaluate(() => (document.activeElement && document.activeElement.dataset.act) || 'satır'));
+    }
+    ok(acts[0] === 'lock', `düzenleme: göster/gizle düğmesinden sağa basınca kilit düğmesine gelindi (${acts.join(' → ')})`);
+    ok(acts.includes('top') && acts.includes('up') && acts.includes('down'), 'düzenleme: sağ okla taşıma düğmelerine de ulaşıldı');
+    await page.focus('.row.cat.edit [data-act=lock]');
+    await press(page, 'ArrowLeft');
+    ok((await page.evaluate(() => document.activeElement.dataset.act)) === 'eye', 'düzenleme: kilitten sola basınca göster/gizle düğmesine dönüldü');
+    ok(errs.length === 0, `düzenleme: sayfa hatası yok ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+
+  // ---- kategoriye girip geri çıkınca imleç en üstteki Düzenle düğmesine değil, son girilen kategoride kalır
+  for (const vp of [{ width: 960, height: 540 }, { width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    const { ctx, page, errs } = await open(vp);
+    const tag = `${vp.width}×${vp.height}`;
+    await page.click('.tile.t-live');
+    await page.waitForSelector('.row.cat');
+    await sleep(400);
+    for (let i = 0; i < 4; i++) await press(page, 'ArrowDown');
+    const name = () => page.evaluate(() => { const a = document.activeElement; return a && a.classList.contains('cat') ? a.textContent.replace(/\d+›?$/, '').trim() : '-'; });
+    const before = await name();
+    ok(before !== '-' && before !== 'Tümü', `${tag}: kategori satırında duruluyor (${before})`);
+    await page.keyboard.press('Enter');
+    await sleep(500);
+    ok(await page.evaluate(() => !!document.activeElement && document.activeElement.classList.contains('row') && !document.activeElement.classList.contains('cat')), `${tag}: kategoriye girince imleç listenin ilk öğesinde`);
+    await page.keyboard.press('Escape');
+    await sleep(600);
+    ok((await name()) === before, `${tag}: geri çıkınca imleç aynı kategoride (${await name()})`);
+    ok(errs.length === 0, `${tag}: sayfa hatası yok ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+
+  // ---- film ayrıntısı: uzun konu kumandayla aşağı okunur, yukarı basınca en üste dönülür
+  for (const vp of [{ width: 960, height: 540 }, { width: 1280, height: 720 }]) {
+    const { ctx, page, errs } = await open(vp);
+    const tag = `${vp.width}×${vp.height}`;
+    const LONG = 'Boğaz kıyısında geçen uzun bir hikâye. '.repeat(120);
+    await page.route(`${mock.url}/player_api.php*`, (r) => {
+      if (new URL(r.request().url()).searchParams.get('action') === 'get_vod_info') {
+        return r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: JSON.stringify({ info: { plot: LONG, genre: 'Dram', releasedate: '2020-01-01' } }) });
+      }
+      return r.continue();
+    });
+    await page.click('.tile.t-movie');
+    await page.waitForSelector('.row.cat');
+    await sleep(300);
+    await page.click('.row.cat:has-text("Tümü")');
+    await page.waitForSelector('.card');
+    await page.click('.card');
+    await page.waitForSelector('#mv-play');
+    await sleep(900);
+    const top = () => page.evaluate(() => document.querySelector('.pg-body').scrollTop);
+    ok((await page.evaluate(() => { const b = document.querySelector('.pg-body'); return b.scrollHeight - b.clientHeight; })) > 300, `${tag}: konu ekrandan uzun (kaydırma gerekir)`);
+    for (let i = 0; i < 40; i++) await press(page, 'ArrowDown');
+    const bottom = await page.evaluate(() => { const b = document.querySelector('.pg-body'); return b.scrollHeight - b.clientHeight - b.scrollTop; });
+    ok(bottom <= 2, `${tag}: aşağı okla konu sonuna kadar kaydırıldı (kalan ${bottom}px)`);
+    for (let i = 0; i < 60; i++) await press(page, 'ArrowUp');
+    ok((await top()) <= 2, `${tag}: yukarı okla tekrar en üste dönüldü (${await top()}px)`);
+    ok(errs.length === 0, `${tag}: sayfa hatası yok ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+
+  // ---- odak halkası her temada belirgin (beyaz + koyu kenar), tema seçimi kumandayla yapılır
+  {
+    const { ctx, page, errs } = await open({ width: 1280, height: 720 });
+    const themes = await page.evaluate(async () => (await import('/js/theme.js')).THEMES.map((t) => t.id));
+    for (const t of themes) {
+      await page.evaluate((id) => localStorage.setItem('iptv.pref.set.theme', JSON.stringify(id)), t);
+      await page.goto(tvUrl);
+      await page.waitForSelector('.tile.t-live');
+      await sleep(300);
+      await page.keyboard.press('ArrowDown');
+      await sleep(600); // halka geçişi (0,15 sn) bitsin
+      const ring = await page.evaluate(() => {
+        const a = document.activeElement;
+        const cs = getComputedStyle(a);
+        return { theme: document.documentElement.dataset.theme, shadow: cs.boxShadow, outline: cs.outlineStyle === 'none' ? '' : cs.outlineColor + ' ' + cs.outlineWidth };
+      });
+      ok(ring.theme === t && /rgb\(255, 255, 255\)/.test(ring.shadow + ' ' + ring.outline), `${t}: odaklanan kutuda beyaz halka (${ring.shadow.slice(0, 70)})`);
+      await page.click('.tile.t-live');
+      await page.waitForSelector('.row.cat');
+      await sleep(300);
+      await press(page, 'ArrowDown', 2);
+      await sleep(500);
+      const row = await page.evaluate(() => { const cs = getComputedStyle(document.activeElement); return cs.boxShadow; });
+      ok(/rgb\(255, 255, 255\)/.test(row), `${t}: listede odaklı satırda beyaz halka`);
+    }
+    await page.evaluate(() => localStorage.removeItem('iptv.pref.set.theme'));
+    await page.goto(tvUrl);
+    await page.waitForSelector('#h-set');
+    await page.click('#h-set');
+    await page.waitForSelector('.set-tile');
+    await page.focus('[data-set=general]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.swatch');
+    await sleep(300);
+    await page.focus('.swatch.on');
+    await press(page, 'ArrowRight');
+    await page.keyboard.press('Enter');
+    await sleep(300);
+    ok(await page.evaluate(() => document.documentElement.dataset.theme !== 'green'), 'Tamam tuşuyla tema seçildi (kumanda)');
+    ok(errs.length === 0, `halka/tema: sayfa hatası yok ${errs.join(' | ')}`);
+    await ctx.close();
+  }
 }
 
 module.exports = { kumandaSection };

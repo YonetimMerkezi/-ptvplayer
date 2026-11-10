@@ -24,6 +24,7 @@ export function openSports(env) {
   let fetchedAt = 0;
   let failed = [];
   let err = '';
+  let errDetail = '';
   let loading = false;
   let day = dayStart(now());
   let lg = '';
@@ -136,7 +137,7 @@ export function openSports(env) {
       list.innerHTML = loading && !fetchedAt
         ? '<div class="empty"><p>Maçlar yükleniyor…</p></div>'
         : err && !fetchedAt
-          ? `<div class="empty"><h3>Maçlar alınamadı</h3><p>${esc(err)}</p><button class="btn" id="sp-retry">Yeniden dene</button></div>`
+          ? `<div class="empty"><h3>Maçlar alınamadı</h3><p>${esc(err)}</p>${errDetail ? `<p class="hint sp-detail">Ayrıntı: ${esc(errDetail)}</p>` : ''}<button class="btn" id="sp-retry">Yeniden dene</button></div>`
           : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>`;
       return;
     }
@@ -164,6 +165,7 @@ export function openSports(env) {
     if (loading) return;
     loading = true;
     err = '';
+    errDetail = '';
     if (!quiet) drawStatus();
     try {
       const r = await loadMatches({ net, now: now(), base });
@@ -177,6 +179,7 @@ export function openSports(env) {
       }
     } catch (e) {
       err = (e && e.message) || 'Maç bilgisi alınamadı';
+      errDetail = (e && e.detail) || '';
       if (fetchedAt && !quiet) toast('Skorlar güncellenemedi', 2200);
     } finally {
       loading = false;

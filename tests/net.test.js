@@ -79,3 +79,12 @@ test('createNet: yerel indirme yolu geçici dosyayı temizler', async () => {
     ['delete', '/cache/a.tmp'],
   ]);
 });
+
+test('createNet: fast isteği yerel indirmeye ayrı havuz bayrağıyla gider, normal istek bayraksız', async () => {
+  const sent = [];
+  const native = { download: async (o) => { sent.push(o); return { path: '/cache/b.tmp' }; }, deleteFile: async () => {} };
+  const net = createNet({ native, convertFileSrc: (p) => p, fetchImpl: async () => new Response('{"a":1}') });
+  assert.deepEqual(await net.json('http://api/x', { fast: true }), { a: 1 });
+  await net.json('http://srv/y');
+  assert.deepEqual(sent, [{ url: 'http://api/x', headers: {}, fast: true }, { url: 'http://srv/y', headers: {} }]);
+});

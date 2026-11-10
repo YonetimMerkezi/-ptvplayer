@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 49,
+    title: 'Kumanda: daha rahat gezinme, belirgin imleç',
+    items: [
+      'Odaktaki öğe artık tüm temalarda beyaz + koyu kenarlı belirgin bir çerçeveyle gösterilir (yeşil temada da hangi düğmede/filmde olduğunuz net görünür)',
+      'Kategori düzenlerken göster/gizle düğmesinden sağa basınca kilit düğmesine de gelinir',
+      'Film ayrıntısında uzun konu kumandayla aşağı okunur, yukarı basınca en üste dönülür',
+      'Bir kategoriden geri çıkınca imleç en üstteki Düzenle düğmesine değil, son girdiğiniz kategoride kalır; kategoriye girince imleç listenin ilk öğesinde başlar',
+      'Spor: maç bilgisi alınamazsa nedeni ekranda yazar; ESPN bazı parametreleri reddederse daha yalın adreslere düşülür; skor istekleri büyük liste/rehber indirmelerinin arkasında beklemez',
+    ],
+  },
+  {
     id: 48,
     title: 'Spor: futbol maç takvimi ve skorlar',
     items: [
