@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 36,
+    title: 'Çok renkli temalar',
+    items: [
+      'Genel ayarlar › Tema rengi: Renkli kartlar, Dolu renk, Neon cam ve Gün batımı temaları eklendi',
+      'Bu temalarda Canlı TV, Filmler, Diziler ve Kategoriler kutuları ile alt sekmeler, üst çubuk ve ayar kutularındaki simgeler kendi renginde',
+    ],
+  },
+  {
     id: 35,
     title: 'Yönetici formu renk düzeltmesi',
     items: ['Yönetici panelindeki Yeni kullanıcı formunda Süre ve Tür kutuları beyaz zemin üzerinde okunmuyordu: koyu temaya uyduruldu'],

@@ -3784,6 +3784,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await ctx.close();
 
   await require('./admin.cjs').adminSection({ browser, base, mock, ok, sleep, SHOTS });
+  await require('./theme.cjs').themeSection({ browser, base, mock, ok, sleep, SHOTS });
 
   await browser.close();
   www.close();

@@ -24,7 +24,9 @@ test('her temanın renkleri CSS\'te tanımlı ve önizleme rengi vurgu rengiyle 
     for (const k of ['--bg', '--surface', '--raised', '--line', '--sel', '--bg-grad', '--accent', '--accent-ink', '--accent-soft', '--mini']) {
       assert.ok(block.includes(k + ':'), `${t.id}: ${k} eksik`);
     }
-    assert.ok(block.toLowerCase().includes('--accent: ' + t.swatch.toLowerCase()), `${t.id}: önizleme rengi vurgu rengiyle uyuşmuyor`);
+    // çok renkli temalarda swatch bir gradyandır; vurgu rengi eşleşmesi yalnız tek renkli temalar için aranır
+    if (!t.multi) assert.ok(block.toLowerCase().includes('--accent: ' + t.swatch.toLowerCase()), `${t.id}: önizleme rengi vurgu rengiyle uyuşmuyor`);
+    else assert.match(t.swatch, /gradient\(/, `${t.id}: çok renkli temanın önizlemesi gradyan olmalı`);
   }
 });
 
@@ -48,4 +50,30 @@ test('ayar kutuları (.set-tile) renklerini temadan alır, sabit renk yok', () =
   const all = rules.join('\n');
   assert.match(all, /background: var\(--raised\)/);
   assert.match(all, /\.set-tile \.ic \{[^}]*color: var\(--accent\)/);
+});
+
+test('çok renkli temalar: 4 tane, palet tam, applyTheme data-multi yazar ve tek renkliye dönünce siler', () => {
+  const multi = THEMES.filter((t) => t.multi);
+  assert.deepEqual(multi.map((t) => t.id), ['cards', 'solid', 'neon', 'sunset']);
+  for (const t of multi) {
+    const block = css.match(new RegExp(`html\\[data-theme="${t.id}"\\] \\{([^}]*)\\}`))[1];
+    for (let i = 0; i <= 8; i++) assert.ok(block.includes(`--p${i}:`), `${t.id}: --p${i} eksik`);
+  }
+  const doc = { documentElement: { dataset: {} }, querySelector: () => null };
+  assert.equal(applyTheme('neon', doc), 'neon');
+  assert.equal(doc.documentElement.dataset.multi, '1');
+  assert.equal(applyTheme('blue', doc), 'blue');
+  assert.equal('multi' in doc.documentElement.dataset, false);
+});
+
+test('çok renkli temalarda her sekme, her ayar kutusu ve ana kutu için renk kuralı var', () => {
+  const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/index.html'), 'utf8');
+  const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/app.js'), 'utf8');
+  const tabs = [...html.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
+  assert.ok(tabs.length >= 6);
+  for (const t of tabs) assert.ok(css.includes(`html[data-multi] #tabs [data-tab=${t}]`), `sekme rengi yok: ${t}`);
+  const sets = new Set([...app.matchAll(/class="set-tile" data-set="([a-z]+)"/g)].map((m) => m[1]));
+  assert.ok(sets.size >= 12);
+  for (const k of sets) assert.ok(css.includes(`html[data-multi] .set-tile[data-set=${k}]`), `ayar kutusu rengi yok: ${k}`);
+  for (const k of ['live', 'movie', 'series', 'cats']) for (const th of ['cards', 'solid', 'neon', 'sunset']) assert.ok(css.includes(`html[data-theme="${th}"] .tile.t-${k}`), `${th}: ${k} kutusu`);
 });
