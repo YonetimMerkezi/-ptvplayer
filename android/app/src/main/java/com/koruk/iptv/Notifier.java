@@ -64,11 +64,9 @@ final class Notifier {
         return null;
     }
 
-    /** Hatırlatıcı bildirimini gösterir; dönen metin günlüğe yazılır ("gönderildi" ya da engel nedeni). */
-    static String reminder(Context c, JSONObject plan) {
+    static void reminder(Context c, JSONObject plan) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return "bildirim hizmeti yok";
-        String blocked = blockedReason(c);
+        if (nm == null) return;
         String title = plan.optString("title", "Program");
         long s = plan.optLong("s", 0L);
         long leftMin = Math.max(0L, (s - System.currentTimeMillis() + 30000L) / 60000L);
@@ -81,7 +79,6 @@ final class Notifier {
             .setAutoCancel(true)
             .build();
         nm.notify(plan.optString("id", "").hashCode(), n);
-        return blocked == null ? "bildirim gönderildi" : "bildirim gönderildi ama ENGELLİ: " + blocked;
     }
 
     static Notification recording(Context c, String name, long until, PendingIntent stop) {

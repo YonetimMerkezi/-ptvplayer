@@ -4049,23 +4049,6 @@ function deleteDownloadSheet(j) {
   });
 }
 
-// Planlananlar ekranının altındaki "bildirim denemesi": izin/pil durumu, son alarm olayları ve gerçek alarm yolundan geçen deneme düğmeleri.
-function planDiagHtml(d) {
-  const onoff = (v) => (v ? 'açık' : 'KAPALI');
-  const lines = [
-    `Android ${d.sdk}${d.brand ? ' · ' + d.brand : ''}`,
-    `Bildirimler: ${d.blocked ? 'KAPALI (' + d.blocked + ')' : 'açık'}`,
-    `Tam zamanlı alarm: ${onoff(d.exact)}`,
-    `Pil kısıtı: ${d.batteryFree ? 'yok' : 'var (arka planda alarm gecikebilir)'}`,
-    `Bekleyen alarm: ${d.pending || 0}`,
-  ];
-  const log = Array.isArray(d.log) && d.log.length ? d.log.slice().reverse().map((x) => `<li>${esc(x)}</li>`).join('') : '<li>Henüz alarm tetiklenmedi</li>';
-  const auto = /xiaomi|redmi|poco/i.test(d.brand || '') ? '<button class="btn sm ghost" data-dg="auto">Otomatik başlatma</button>' : '';
-  return `<div class="pl-diag"><b>Bildirim denemesi</b><p class="hint">${lines.map(esc).join('<br>')}</p><p class="hint">Son olaylar:</p><ul class="pl-log">${log}</ul>` +
-    `<div class="pl-diag-btns"><button class="btn sm" data-dg="t5">5 sn sonra dene</button><button class="btn sm ghost" data-dg="t60">1 dk sonra dene</button>` +
-    `<button class="btn sm ghost" data-dg="app">Uygulama ayarları</button>${auto}<button class="btn sm ghost" data-dg="battery">Pil ayarı</button></div></div>`;
-}
-
 // Planlananlar: bekleyen hatırlatıcılar ve zamanlı kayıtlar; izin durumu ve kaldırma burada.
 function plansSheet() {
   const sh = openSheet({
@@ -4085,14 +4068,6 @@ function plansSheet() {
             /* durum okunamadı */
           }
         }
-        let dg = null;
-        if (nativePlugin && nativePlugin.planDiag) {
-          try {
-            dg = await nativePlugin.planDiag();
-          } catch {
-            /* eski sürüm ya da okunamadı: tanı bölümü gösterilmez */
-          }
-        }
         if (!box.isConnected) return;
         const needs = [];
         if (st && !st.notify) needs.push('Bildirim izni kapalı: hatırlatıcı ve kayıt bildirimi görünmez.');
@@ -4104,8 +4079,7 @@ function plansSheet() {
           return `<div class="rec-row pl-row${fired ? ' on' : ''}"><button class="rec-play" data-open="${esc(x.id)}"><span class="t">${icon(x.kind === 'rec' ? 'rec' : 'bell')}${esc(x.title)}</span><small>${esc(x.chName)} · ${esc(planWhen(x, now))} · ${what}</small></button><button class="icon-btn" data-del="${esc(x.id)}" aria-label="Kaldır">${icon('trash')}</button></div>`;
         }).join('');
         const note = nativePlugin ? '' : '<p class="hint">Tarayıcıda hatırlatıcılar yalnız sayfa açıkken çalışır; zamanlı kayıt Android uygulamasındadır.</p>';
-        const diag = dg ? planDiagHtml(dg) : '';
-        box.innerHTML = `${warn}${rows || '<p class="hint">Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin.</p>'}${note}${diag}`;
+        box.innerHTML = `${warn}${rows || '<p class="hint">Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin.</p>'}${note}`;
       };
       body.addEventListener('click', async (e) => {
         const del = e.target.closest('[data-del]');
@@ -4113,17 +4087,6 @@ function plansSheet() {
           setPlans(removePlan(readPlans(), del.dataset.del));
           toast('Plan kaldırıldı', 1600);
           return draw();
-        }
-        const dgBtn = e.target.closest('[data-dg]');
-        if (dgBtn && nativePlugin) {
-          const k = dgBtn.dataset.dg;
-          if (k === 't5' || k === 't60') {
-            await nativePlugin.planTest({ seconds: k === 't5' ? 5 : 60 }).catch(() => {});
-            toast(k === 't5' ? '5 saniye sonra bildirim gelmeli' : '1 dk sonra bildirim gelmeli: uygulamayı kapatıp ekranı kilitle', k === 't5' ? 2600 : 6000);
-            return setTimeout(draw, k === 't5' ? 7500 : 65000);
-          }
-          await nativePlugin.planOpenSettings({ kind: k }).catch(() => {});
-          return;
         }
         if (e.target.closest('[data-a="perm"]')) {
           if (nativePlugin) await nativePlugin.planPermissions().catch(() => {});

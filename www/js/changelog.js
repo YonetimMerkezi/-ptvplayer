@@ -2,11 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
-    id: 46,
-    title: 'Hatırlatıcı bildirimleri: deneme ve tanı',
+    id: 47,
+    title: 'Hatırlatıcı bildirim uyarısı',
     items: [
-      'Ayarlar › Planlananlar’ın altına “Bildirim denemesi” eklendi: bildirim/alarm/pil durumunu ve son alarm olaylarını gösterir, 5 sn ya da 1 dk sonra gerçek bir deneme bildirimi gönderir',
-      'Bildirimler ya da hatırlatıcı kanalı sistem ayarından kapatılmışsa nedeni yazılır; Uygulama ayarları, Pil ayarı ve (Xiaomi’de) Otomatik başlatma ekranına tek dokunuşla gidilir',
+      'Bildirimler (ya da hatırlatıcı kanalı) telefon ayarlarından kapatılmışsa Planlananlar’da artık Android sürümünden bağımsız uyarı çıkar; “İzni aç” doğrudan uygulamanın bildirim ayarlarını açar',
+    ],
+  },
+  {
+    id: 46,
+    title: 'Canlı kayıt tanısı',
+    items: [
       'Biçimi tanınmayan canlı yayında kayıt uyarısı ilk baytları, paket boyutu izini ve istek konumunu da gösterir',
     ],
   },
