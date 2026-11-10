@@ -3267,7 +3267,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('.sheet-back', { state: 'detached' });
   await page.click('[data-set=general]');
   await page.waitForSelector('.chk');
-  ok((await page.$$('.chk.on')).length === 4 && !(await page.$('#g-rc')), 'genel ayarlarda dört seçenek açık (devam çubukları dahil); oynatıcı ayarları artık ayrı sayfada');
+  ok((await page.$$('.chk.on')).length === 5 && !(await page.$('#g-rc')), 'genel ayarlarda beş seçenek açık (devam çubukları ve bölüm resimleri dahil); oynatıcı ayarları artık ayrı sayfada');
   await page.click('.chk[data-k=epgRows]');
   ok(!(await page.evaluate(() => window.__iptv.store.pref('set.epgRows', true))), 'seçenek kapatılınca ayar kalıcı kaydedildi');
   await page.selectOption('#g-lim', '20');

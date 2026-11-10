@@ -855,6 +855,8 @@ body.kid-mode .home .hero .re,
 
 /* Ayarlar > Devam çubuklarını göster kapalıysa */
 html[data-noprog] .card .prog, html[data-noprog] .epi .bar { display: none; }
+/* Ayarlar > Bölüm küçük resimlerini göster kapalıysa (gizli resim hiç indirilmez: loading=lazy) */
+html[data-nothumb] .epi-th { display: none !important; }
 
 /* Hafif mod: animasyon, gölge ve bulanıklık kapalı (yükleme göstergesi ve kayıt noktası dönmeye devam eder) */
 html[data-lite] *:not(.spinner):not(.spin):not(.hs-dot), html[data-lite] *::before, html[data-lite] *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }

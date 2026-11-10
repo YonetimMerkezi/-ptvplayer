@@ -179,6 +179,32 @@ async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(await page.evaluate(() => !document.documentElement.hasAttribute('data-noprog')), 'yeniden açınca çubuklar geri geldi');
   await page.keyboard.press('Escape');
 
+  // bölüm küçük resimleri anahtarı
+  await page.click('[data-tab=sources]').catch(() => {});
+  await page.click('[data-set=general]');
+  await page.waitForSelector('.chk[data-k=epThumbs]');
+  ok(await page.$eval('.chk[data-k=epThumbs]', (b) => b.classList.contains('on')), '“Bölüm küçük resimlerini göster” varsayılan açık');
+  const thDisplay = () => page.evaluate(() => {
+    const e = document.createElement('div');
+    e.className = 'dt-sp';
+    e.innerHTML = '<span class="epi-th"></span>';
+    document.body.append(e);
+    const d = getComputedStyle(e.firstChild).display;
+    e.remove();
+    return d;
+  });
+  await page.click('.chk[data-k=epThumbs]');
+  ok(await page.evaluate(() => document.documentElement.hasAttribute('data-nothumb')) && (await thDisplay()) === 'none', 'kapatınca küçük resimler hemen gizlendi');
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  ok(await page.evaluate(() => document.documentElement.hasAttribute('data-nothumb')), 'bölüm resmi tercihi açılışta kalıcı');
+  await page.click('[data-tab=sources]');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('.chk[data-k=epThumbs]');
+  await page.click('.chk[data-k=epThumbs]');
+  ok(await page.evaluate(() => !document.documentElement.hasAttribute('data-nothumb')), 'yeniden açınca küçük resimler geri geldi');
+  await page.keyboard.press('Escape');
+
   // hızlı arabellek (oynatıcı ayarları)
   await page.goBack().catch(() => {});
   await page.click('[data-tab=sources]').catch(() => {});

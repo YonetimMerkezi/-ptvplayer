@@ -86,9 +86,12 @@ applyFontScale();
 applyTheme(store.pref('set.theme', DEFAULT_THEME));
 // Hafif mod (animasyon/gölge/bulanıklık kapalı) ve devam çubuklarını gizleme: kök öğede işaret, CSS uygular.
 const applyLiteMode = () => applyLite(store.pref('set.lite', DEFAULT_LITE), document, navigator);
-const applyProgPref = () => document.documentElement.toggleAttribute('data-noprog', !setting('showProg'));
+const applyViewPrefs = () => {
+  document.documentElement.toggleAttribute('data-noprog', !setting('showProg'));
+  document.documentElement.toggleAttribute('data-nothumb', !setting('epThumbs'));
+};
 applyLiteMode();
-applyProgPref();
+applyViewPrefs();
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
@@ -3023,6 +3026,7 @@ function generalSheet() {
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ile bölümlerde izleme ilerlemesi') +
+      chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
@@ -3038,7 +3042,7 @@ function generalSheet() {
           const on = !setting(c.dataset.k);
           store.setPref('set.' + c.dataset.k, on);
           c.classList.toggle('on', on);
-          if (c.dataset.k === 'showProg') applyProgPref();
+          if (c.dataset.k === 'showProg' || c.dataset.k === 'epThumbs') applyViewPrefs();
           S.list && S.list.refreshRows();
         } else if (e.target.id === 'g-clr') {
           store.clearRecents(sid());

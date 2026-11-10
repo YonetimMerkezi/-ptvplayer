@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 39,
+    title: 'Bölüm küçük resmi ayarı',
+    items: ['Genel ayarlar › Bölüm küçük resimlerini göster: kapatınca dizi bölümleri resimsiz, daha sıkışık listelenir'],
+  },
+  {
     id: 38,
     title: 'Dizi ekranı düzeltmeleri',
     items: [
