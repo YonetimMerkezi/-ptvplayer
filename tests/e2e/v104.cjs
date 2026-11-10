@@ -224,6 +224,51 @@ async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(errs.length === 0, 'konsol hatası yok (ayarlar)' + (errs.length ? ': ' + errs[0] : ''));
   await ctx.close();
 
+  // ---- kutudaki film adı: Gizli / 2 / 3 / 5 satır
+  ({ ctx, page, errs } = await mk({ width: 390, height: 844 }));
+  const setCap = async (n) => {
+    await page.click('[data-tab=sources]');
+    await page.waitForSelector('[data-set=general]');
+    await page.click('[data-set=general]');
+    await page.waitForSelector('#g-cap');
+    await page.selectOption('#g-cap', String(n));
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.sheet-back', { state: 'detached' }).catch(() => {});
+    await page.click('[data-tab=movies]');
+    await page.waitForSelector('.row.cat, .card');
+    if (await page.$('.row.cat')) {
+      await sleep(150);
+      await page.click('.row.cat:has-text("Tümü")');
+    }
+    await page.waitForSelector('.card');
+    await sleep(250);
+    return page.evaluate(() => {
+      const c = document.querySelector('.card').getBoundingClientRect();
+      const p = document.querySelector('.card .poster').getBoundingClientRect();
+      const cap = document.querySelector('.card .cap');
+      return { cw: c.width, ch: c.height, pw: p.width, ph: p.height, capDisp: getComputedStyle(cap).display, capH: cap.getBoundingClientRect().height, lines: document.documentElement.style.getPropertyValue('--cap-lines'), nocap: document.documentElement.hasAttribute('data-nocap') };
+    });
+  };
+  await page.click('[data-tab=sources]');
+  await page.click('[data-set=general]');
+  await page.waitForSelector('#g-cap');
+  ok((await page.$eval('#g-cap', (s) => [...s.options].map((o) => o.value).join())) === '0,2,3,5' && (await page.$eval('#g-cap', (s) => s.value)) === '3', 'kutudaki ad seçenekleri Gizli/2/3/5 satır, varsayılan 3');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.sheet-back', { state: 'detached' }).catch(() => {});
+  const c3 = await setCap(3);
+  ok(c3.capDisp !== 'none' && Math.abs(c3.capH - 66) <= 2, `3 satır: ad alanı 66 px (${Math.round(c3.capH)})`);
+  const c0 = await setCap(0);
+  ok(c0.nocap && c0.capDisp === 'none' && c0.ph / c0.pw > 1.4 && c0.ph / c0.pw < 1.6, `Gizli: ad görünmüyor, afiş kutuyu dolduruyor (afiş ${Math.round(c0.pw)}×${Math.round(c0.ph)}, kutu ${Math.round(c0.ch)})`);
+  ok(c0.ch < c3.ch - 50, `Gizli: kutu kısaldı (${Math.round(c3.ch)} → ${Math.round(c0.ch)})`);
+  const c5 = await setCap(5);
+  ok(!c5.nocap && c5.lines === '5' && Math.abs(c5.capH - 98) <= 3 && c5.ch > c3.ch + 25, `5 satır: ad alanı büyüdü (${Math.round(c5.capH)} px, kutu ${Math.round(c3.ch)} → ${Math.round(c5.ch)})`);
+  ok(c5.ph / c5.pw > 1.4 && c5.ph / c5.pw < 1.6, 'afiş oranı bozulmadı (2:3)');
+  await page.reload();
+  await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+  ok(await page.evaluate(() => document.documentElement.style.getPropertyValue('--cap-lines') === '5'), 'ad satırı tercihi açılışta kalıcı');
+  ok(errs.length === 0, 'konsol hatası yok (ad alanı)' + (errs.length ? ': ' + errs[0] : ''));
+  await ctx.close();
+
   // ---- az bellekli cihaz: otomatik hafif mod kendiliğinden açılır
   ({ ctx, page, errs } = await mk({ width: 390, height: 844 }, () => Object.defineProperty(navigator, 'deviceMemory', { value: 1, configurable: true })));
   ok(await page.evaluate(() => document.documentElement.dataset.lite === '1'), '1 GB bellekli cihazda otomatik hafif mod açıldı');

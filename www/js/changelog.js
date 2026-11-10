@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 41,
+    title: 'Kutudaki film adı',
+    items: ['Genel ayarlar › Kutudaki film/dizi adı: Gizli, 2, 3 (varsayılan) veya 5 satır; uzun adlar daha çok satırda görünür, gizlenince yalnız afiş kalır ve kutular kısalır'],
+  },
+  {
     id: 40,
     title: 'Büyük afiş',
     items: ['Yatay ekranda film ve dizi afişi görünen yüksekliğe tam sığar (2:3); sayfa kayarken yerinde durur'],

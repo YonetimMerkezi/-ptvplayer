@@ -32,6 +32,7 @@ import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
+import { CAPTION_LINES, DEFAULT_CAPTION, normalizeCaption, captionPx, applyCaption } from './caption.js';
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
@@ -92,6 +93,7 @@ const applyViewPrefs = () => {
 };
 applyLiteMode();
 applyViewPrefs();
+applyCaption(store.pref('set.caption', DEFAULT_CAPTION), document);
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
@@ -771,7 +773,7 @@ function mountList(kind, mode = 'items') {
     S.list = new VirtualList(el, {
       minCellW: 104,
       gap,
-      cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + Math.round(66 * fontScale()), // 66 px = 3 satırlık ad alanı (4,125 rem)
+      cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(store.pref('set.caption', DEFAULT_CAPTION), fontScale()), // ad alanı: Ayarlar > Kutudaki ad (varsayılan 3 satır = 66 px)
       render: (it, i) => card(it, i),
       onTap: (i) => (kind === 'movie' ? openMovie(S.items[i]) : openSeries(S.items[i])),
       onLongPress: longPress,
@@ -3028,6 +3030,7 @@ function generalSheet() {
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ile bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
+      `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
@@ -3057,6 +3060,10 @@ function generalSheet() {
           x.classList.toggle('on', x === b);
           x.setAttribute('aria-checked', String(x === b));
         });
+      });
+      $('#g-cap', body).addEventListener('change', (e) => {
+        store.setPref('set.caption', applyCaption(e.target.value, document));
+        renderTab(); // ızgara hücre yüksekliği değişti: liste yeniden kurulur
       });
       $('#g-lite', body).addEventListener('change', (e) => {
         store.setPref('set.lite', normalizeLite(e.target.value));
