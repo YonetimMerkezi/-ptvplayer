@@ -136,7 +136,11 @@ public class RecordService extends Service {
         String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
         File f = new File(dir, stamp + "_" + StreamRecorder.safeName(name) + ".ts");
         final String[] reason = {null};
-        StreamRecorder.start(f, name, Math.max(1000L, until - System.currentTimeMillis()), (info, r) -> reason[0] = r);
+        final boolean[] empty = {false};
+        StreamRecorder.start(f, name, Math.max(1000L, until - System.currentTimeMillis()), (info, r) -> {
+            reason[0] = r;
+            empty[0] = info.empty;
+        });
         final Object me = new Object();
         byte[] buf = new byte[64 * 1024];
         int failures = 0;
@@ -173,6 +177,7 @@ public class RecordService extends Service {
         } finally {
             StreamRecorder.stop(null);
         }
+        if (empty[0]) return "Kayıt boş kaldı: yayın MPEG-TS biçiminde değil ya da veri gelmedi";
         if ("disk".equals(reason[0])) return "Kayıt depolama dolduğu için durdu";
         if ("error".equals(reason[0])) return "Kayıt dosyası yazılamadı";
         return stopFlag ? "Kayıt durduruldu" : "Kayıt tamamlandı";

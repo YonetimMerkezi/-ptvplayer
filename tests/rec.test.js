@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REC_LIMITS, fmtBytes, fmtElapsed, recItem, recEndMessage, recSub } from '../www/js/rec.js';
+import { REC_LIMITS, fmtBytes, fmtElapsed, recItem, recEndMessage, recSub, isEmptyRec } from '../www/js/rec.js';
 
 test('boyut biçimi', () => {
   assert.equal(fmtBytes(0), '1 KB');
@@ -42,4 +42,16 @@ test('liste alt yazısı', () => {
   assert.equal(recSub({ startedAt: t, durationMs: 90000, size: 20 * 1024 * 1024 }), '08.11.2026 18:05 · 1:30 · 20 MB');
   assert.match(recSub({ startedAt: t, active: true, size: 1024 }), /kaydediliyor/);
   assert.equal(recSub({ startedAt: t, durationMs: -1, size: 2048 }), '08.11.2026 18:05 · 2 KB');
+});
+
+test('boş kayıt: iletisi, listede işareti', () => {
+  assert.match(recEndMessage({ empty: true }), /Kayıt boş kaldı/);
+  assert.match(recEndMessage({ empty: true, reason: 'limit' }), /boş/); // boşluk, diğer nedenin önüne geçer
+  assert.equal(isEmptyRec({ size: 0 }), true);
+  assert.equal(isEmptyRec({ size: 939 }), true);
+  assert.equal(isEmptyRec({ size: 940 }), false);
+  assert.equal(isEmptyRec({ size: 10, active: true }), false); // kayıt sürerken küçük olması normal
+  const t = new Date(2026, 10, 8, 18, 5).getTime();
+  assert.match(recSub({ startedAt: t, durationMs: 5000, size: 0 }), /boş$/);
+  assert.doesNotMatch(recSub({ startedAt: t, durationMs: 90000, size: 20 * 1024 * 1024 }), /boş/);
 });

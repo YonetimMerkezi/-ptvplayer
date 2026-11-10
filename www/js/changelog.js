@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 42,
+    title: 'Canlı yayın kaydı düzeltmesi',
+    items: [
+      'Doğrudan .ts adresli yayınlarda kayıt açılmıyordu (dosya boş kalıyordu); paket ortasından başlayan yayınlar artık kaydediliyor',
+      'Hiç veri yazılamayan kayıt silinir ve nedeni söylenir; eski boş kayıtlar listede “boş” görünür',
+    ],
+  },
+  {
     id: 41,
     title: 'Kutudaki film adı',
     items: ['Genel ayarlar › Kutudaki film/dizi adı: Gizli, 2, 3 (varsayılan) veya 5 satır; uzun adlar daha çok satırda görünür, gizlenince yalnız afiş kalır ve kutular kısalır'],

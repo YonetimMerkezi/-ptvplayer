@@ -356,3 +356,13 @@ test('yayın önbelleği: JS’teki her düzeyin yerelde karşılığı var, "fa
   assert.ok(min <= max && play <= min && rebuf <= min, 'Media3 kısıtları: başlama süreleri en az arabelleği aşamaz');
   assert.ok(play <= 1500, 'fast: yarım-bir saniyede başlamalı');
 });
+
+test('yayın kaydı: paket ortasından başlayan progresif TS kaydedilir; veri yazılamayan kayıt boş sayılıp silinir', () => {
+  const rec = oku('StreamRecorder.java');
+  assert.match(rec, /PROBE = 3 \* PACKET \+ 1/, 'eşleşme için en az üç paket görülmeli');
+  assert.match(rec, /findSync\(src, start, end - start\)/, 'ilk istekte de 0x47 eşleşmesi aranmalı (akış paket ortasından başlayabilir)');
+  assert.match(rec, /pend\b[\s\S]*?pendLen/, 'küçük ilk parçalar birleştirilmeli');
+  assert.match(rec, /if \(info\.bytes < PACKET\)[\s\S]*?file\.delete\(\)[\s\S]*?info\.empty = true/, 'boş kayıt silinmeli ve işaretlenmeli');
+  assert.match(rec, /Arrays\.fill\(padding, \(byte\) 0xFF\)/, 'kesilen istekten sonra paket hizası korunmalı');
+  assert.match(kaynak, /o\.put\("empty", true\)/, 'boş kayıt bilgisi arayüze iletilmeli');
+});

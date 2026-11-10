@@ -14,6 +14,8 @@ import java.io.OutputStream;
  * Oynatılan canlı yayını cihaza MPEG-TS dosyası olarak kaydeder.
  * Veri oynatıcının kendi okumasından (TapDataSource) alınır: sağlayıcıya ikinci bağlantı açılmaz.
  * TS paketleri 188 bayttır ve 0x47 ile başlar; kayıt paket sınırında başlar, TS olmayan istekler (liste, anahtar vb.) yazılmaz.
+ * Doğrudan (progresif) .ts yayınları çoğu zaman paket ortasından başlar: ilk 0x47 yerine, art arda üç paketin 0x47 ile
+ * başladığı yer aranır (parça küçükse sonraki parçalarla birleştirilir). Hiç bayt yazılamadıysa kayıt boş sayılır ve silinir.
  */
 final class StreamRecorder {
     interface Listener {
@@ -27,10 +29,13 @@ final class StreamRecorder {
         long startedAt;
         long durationMs;
         long bytes;
+        boolean empty;
     }
 
     private static final int PACKET = 188;
     private static final int SYNC = 0x47;
+    // Eşleşme aramak için gereken en az bayt: ilk paket aralığındaki her konum için ardışık iki paket daha görülebilsin.
+    private static final int PROBE = 3 * PACKET + 1;
     static final long MIN_FREE_BYTES = 300L * 1024L * 1024L;
     private static final long STOP_FREE_BYTES = 50L * 1024L * 1024L;
 
@@ -43,6 +48,8 @@ final class StreamRecorder {
     private static long maxMs;
     private static long lastSpaceCheck;
     private static boolean needSync;
+    private static byte[] pend = new byte[PROBE + 16 * 1024];
+    private static int pendLen;
     private static Object owner;
     private static Listener listener;
 
@@ -98,6 +105,7 @@ final class StreamRecorder {
             maxMs = Math.max(0, maxDurationMs);
             lastSpaceCheck = 0;
             needSync = true;
+            pendLen = 0;
             owner = null;
             listener = l;
         }
@@ -125,24 +133,64 @@ final class StreamRecorder {
         synchronized (LOCK) {
             if (out == null || len <= 0) return true;
             if (owner != null && owner != requester) return true; // aynı anda başka bir istek yazıyor (ör. ayrı ses akışı): karışmasın
+            byte[] src = b;
             int start = off;
+            int end = off + len;
             if (needSync) {
-                if (requestStart) {
-                    if ((b[off] & 0xFF) != SYNC) return false;
-                } else {
-                    start = findSync(b, off, len);
-                    if (start < 0) return true;
+                // Önceki küçük parçalar (karar için yetmeyen) varsa birleştirilir.
+                if (pendLen > 0) {
+                    byte[] cat = new byte[pendLen + len];
+                    System.arraycopy(pend, 0, cat, 0, pendLen);
+                    System.arraycopy(b, off, cat, pendLen, len);
+                    src = cat;
+                    start = 0;
+                    end = cat.length;
                 }
-            } else if (requestStart && (b[off] & 0xFF) != SYNC) {
-                return false;
+                boolean fromReqStart = requestStart || pendLen > 0;
+                int s = findSync(src, start, end - start);
+                if (s < 0) {
+                    if (end - start < PROBE) {
+                        // Karar için az veri: istek başındaysa biriktir, sonraki parçayla yeniden denenir.
+                        if (fromReqStart && end - start <= pend.length) {
+                            System.arraycopy(src, start, pend, 0, end - start);
+                            pendLen = end - start;
+                        }
+                        return true;
+                    }
+                    pendLen = 0;
+                    return !fromReqStart; // istek başında TS bulunamadı: bu istek TS değil, kalanı yazılmaz
+                }
+                pendLen = 0;
+                start = s;
+            } else if (requestStart) {
+                // Kayıt sürerken yeni istek (HLS'te sonraki parça, progresifte yeniden bağlanma): TS ise eklenir.
+                if ((b[off] & 0xFF) != SYNC) {
+                    int s = findSync(b, off, len);
+                    if (s < 0) return false;
+                    start = s;
+                }
+                // Önceki istek paket ortasında kesildiyse yeni veri paket sınırına hizalanır (0xFF dolgu).
+                int rem = (int) (bytes % PACKET);
+                if (rem != 0) {
+                    try {
+                        byte[] padding = new byte[PACKET - rem];
+                        java.util.Arrays.fill(padding, (byte) 0xFF);
+                        out.write(padding);
+                        bytes += padding.length;
+                    } catch (IOException e) {
+                        stopReason = "error";
+                    }
+                }
             }
             owner = requester;
-            try {
-                out.write(b, start, off + len - start);
-                bytes += off + len - start;
-                needSync = false;
-            } catch (IOException e) {
-                stopReason = "error";
+            if (stopReason == null) {
+                try {
+                    out.write(src, start, end - start);
+                    bytes += end - start;
+                    needSync = false;
+                } catch (IOException e) {
+                    stopReason = "error";
+                }
             }
             if (stopReason == null) {
                 long now = System.currentTimeMillis();
@@ -191,6 +239,17 @@ final class StreamRecorder {
         }
         out = null;
         owner = null;
+        pendLen = 0;
+        if (info.bytes < PACKET) {
+            // hiç TS verisi yazılamadı (yayın MPEG-TS değil ya da akış hiç gelmedi): boş dosya bırakılmaz
+            //noinspection ResultOfMethodCallIgnored
+            file.delete();
+            //noinspection ResultOfMethodCallIgnored
+            metaOf(file).delete();
+            info.bytes = 0;
+            info.empty = true;
+            return info;
+        }
         writeMeta(info);
         return info;
     }

@@ -33,11 +33,15 @@ export function recItem(r) {
 
 // Kayıt bitince verilecek ileti.
 export function recEndMessage(e) {
+  if (e.empty) return 'Kayıt boş kaldı: yayın MPEG-TS biçiminde değil ya da veri gelmedi, dosya silindi';
   if (e.reason === 'disk') return 'Depolama doldu, kayıt durduruldu ve kaydedildi';
   if (e.reason === 'error') return 'Kayıt yazılamadı, durduruldu (o ana kadarki bölüm kaydedildi)';
   if (e.reason === 'limit') return 'Kayıt süresi doldu, kaydedildi';
   return 'Kayıt kaydedildi';
 }
+
+// Boş / bozuk kayıt: Exo'nun TS'i tanıması için en az beş paket (940 bayt) gerekir.
+export const isEmptyRec = (r) => !r.active && Number(r.size) < 940;
 
 // Kayıtlar listesindeki satırın alt yazısı.
 export function recSub(r) {
@@ -45,5 +49,6 @@ export function recSub(r) {
   if (r.active) parts.push('● kaydediliyor');
   else if (r.durationMs > 0) parts.push(fmtDuration(r.durationMs));
   parts.push(fmtBytes(r.size));
+  if (isEmptyRec(r)) parts.push('boş');
   return parts.filter(Boolean).join(' · ');
 }

@@ -13,7 +13,7 @@ import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
-import { fmtBytes, recItem, recEndMessage, recSub, fmtRecDate } from './rec.js';
+import { fmtBytes, recItem, recEndMessage, recSub, fmtRecDate, isEmptyRec } from './rec.js';
 import { makeBackup, parseBackup, applyBackup, backupFileName } from './backup.js';
 import { CHANGELOG, LATEST_ID, unseenEntries } from './changelog.js';
 import { VirtualList } from './vlist.js';
@@ -3702,6 +3702,7 @@ function recordingsSheet() {
         if (play && items[Number(play.dataset.i)]) {
           const r = items[Number(play.dataset.i)];
           if (r.active) return toast('Kayıt sürüyor');
+          if (isEmptyRec(r)) return toast('Bu kayıt boş (yayından veri yazılamamış); silebilirsiniz', 3500);
           sh.close();
           startPlay(recItem(r));
         }

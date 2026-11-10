@@ -1094,6 +1094,7 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("startedAt", info.startedAt);
         o.put("durationMs", info.durationMs);
         o.put("bytes", info.bytes);
+        if (info.empty) o.put("empty", true); // hiç TS verisi yazılamadı: dosya silindi
         if (reason != null) o.put("reason", reason);
         return o;
     }
