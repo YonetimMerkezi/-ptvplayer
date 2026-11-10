@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 45,
+    title: 'Şifreli yayınların kaydı',
+    items: [
+      'AES-128 şifreli HLS yayınlar (ör. bazı film/dizi kanalları) artık kaydedilebiliyor: kayıt çözülmüş, normal bir .ts dosyası olur; oynatma etkilenmez',
+      'Çözülemeyen şifreleme (SAMPLE-AES/DRM) kayıt başlamadan söylenir; tanınmayan biçimde uyarıya yayının liste durumu da eklendi',
+    ],
+  },
+  {
     id: 44,
     title: 'Canlı yayın kaydı: biçim denetimi',
     items: [

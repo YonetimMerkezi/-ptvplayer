@@ -386,3 +386,21 @@ test('yayın kaydı: biçim kayıttan önce tanınır; desteklenmeyen yayında b
   assert.match(rec, /isFragmentStart/);
   assert.match(rec, /pendReq != requester/, 'başka isteğin artığı yeni isteğe karışmamalı');
 });
+
+test('yayın kaydı: şifreli HLS (AES-128) parçalar kayıt için çözülür, oynatıcıya giden veri değişmez, SAMPLE-AES baştan reddedilir', () => {
+  const sniff = oku('StreamSniff.java');
+  assert.match(sniff, /static Crypto cryptoFor\(String uri\)/, 'parça için anahtar+IV verilmeli');
+  assert.match(sniff, /static void noteKey\(String uri, byte\[\] key\)/, 'oynatıcının anahtar isteği saklanmalı');
+  assert.match(sniff, /static boolean isKeyUri/);
+  assert.match(sniff, /seqIv\(r\.seq\)/, 'IV yoksa sıra numarasından türetilmeli');
+  assert.match(sniff, /SAMPLE-AES\/DRM/, 'çözülemeyen şifreleme baştan söylenmeli');
+  assert.match(sniff, /EXTM3U[\s\S]*?off\+\+|b\[off\] == ' '/, 'listenin başındaki boşluk yok sayılmalı');
+  const tap = oku('TapDataSource.java');
+  assert.match(tap, /Cipher\.getInstance\("AES\/CBC\/NoPadding"\)/, 'parça akış halinde çözülmeli');
+  assert.match(tap, /dataSpec\.position == 0/, 'yalnız baştan okunan parça çözülmeli');
+  assert.match(tap, /private void finishCrypto\(\)[\s\S]*?complete[\s\S]*?total % 16 == 0/, 'dolgu yalnız tam okunan parçada ayıklanmalı');
+  assert.match(tap, /noteList\(t, t\.length, /, 'liste adresi (göreli yolların tabanı) bildirilmeli');
+  assert.match(tap, /StreamSniff\.noteKey\(keyUri/);
+  // çözülmüş veri yalnız tanıma/kayda gider; read() tamponu oynatıcıya olduğu gibi döner
+  assert.doesNotMatch(tap, /System\.arraycopy\([^;]*buffer, offset/, 'oynatıcıya verilen tampon değiştirilmemeli');
+});
