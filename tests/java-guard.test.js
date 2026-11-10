@@ -194,7 +194,7 @@ test('yayın kaydı: yalnız ana oynatıcı kayda yazar, çıkışta/yeni yayın
   assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer\), true, true\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
   assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false, false\)/, 'çoklu ekran kutuları kayda yazmamalı ve ses gecikmesi almamalı');
   assert.match(kaynak, /public void stop\(final PluginCall call\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'oynatıcı kapanınca kayıt bitmeli');
-  assert.match(kaynak, /if \(!keepRec\) StreamRecorder\.stop\(null\)/, 'başka yayına geçilince kayıt bitmeli');
+  assert.match(kaynak, /if \(!keepRec\) \{\s*StreamRecorder\.stop\(null\);/, 'başka yayına geçilince kayıt bitmeli');
   assert.match(kaynak, /handleOnDestroy\(\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'uygulama kapanınca kayıt dosyası düzgün kapanmalı');
   assert.match(kaynak, /new DefaultDataSource\.Factory\(getContext\(\), http\)/, 'kayıt dosyaları (file://) açılabilmeli');
   const tap = oku('TapDataSource.java');
@@ -362,7 +362,27 @@ test('yayın kaydı: paket ortasından başlayan progresif TS kaydedilir; veri y
   assert.match(rec, /PROBE = 3 \* PACKET \+ 1/, 'eşleşme için en az üç paket görülmeli');
   assert.match(rec, /findSync\(src, start, end - start\)/, 'ilk istekte de 0x47 eşleşmesi aranmalı (akış paket ortasından başlayabilir)');
   assert.match(rec, /pend\b[\s\S]*?pendLen/, 'küçük ilk parçalar birleştirilmeli');
-  assert.match(rec, /if \(info\.bytes < PACKET\)[\s\S]*?file\.delete\(\)[\s\S]*?info\.empty = true/, 'boş kayıt silinmeli ve işaretlenmeli');
+  assert.match(rec, /if \(mp4 \? !gotMedia : info\.bytes < PACKET\)[\s\S]*?file\.delete\(\)[\s\S]*?info\.empty = true/, 'boş kayıt silinmeli ve işaretlenmeli');
   assert.match(rec, /Arrays\.fill\(padding, \(byte\) 0xFF\)/, 'kesilen istekten sonra paket hizası korunmalı');
   assert.match(kaynak, /o\.put\("empty", true\)/, 'boş kayıt bilgisi arayüze iletilmeli');
+});
+
+test('yayın kaydı: biçim kayıttan önce tanınır; desteklenmeyen yayında baştan uyarılır, fMP4 (HLS) mp4 olarak kaydedilir', () => {
+  const sniff = oku('StreamSniff.java');
+  assert.match(sniff, /static Verdict verdict\(\)/);
+  assert.match(sniff, /fourcc\(b, 4, "styp"\)/, 'fMP4 parçası tanınmalı');
+  assert.match(sniff, /#EXT-X-KEY/, 'şifreli HLS işareti okunmalı');
+  assert.match(sniff, /MKV biçiminde/);
+  const tap = oku('TapDataSource.java');
+  assert.match(tap, /StreamSniff\.noteMedia/, 'her istek tanıma için incelenmeli');
+  assert.match(tap, /kind == StreamSniff\.TS \|\| kind == StreamSniff\.MP4_FRAG/, 'liste gibi görünen ama TS/fMP4 olan istek de kayda alınmalı');
+  const plug = oku('IptvPlayerPlugin.java');
+  assert.match(plug, /StreamSniff\.verdict\(\)[\s\S]*?call\.reject\(verdict\.error\)/, 'kaydedilemeyecek yayında kayıt başlamadan reddedilmeli');
+  assert.match(plug, /verdict\.init != null \? "\.mp4" : "\.ts"/);
+  assert.match(plug, /StreamRecorder\.stop\("nodata"\)/, 'veri gelmeyen kayıt kendiliğinden bitmeli');
+  assert.match(plug, /StreamSniff\.reset\(\)/, 'yeni yayında önceki yayının biçimi unutulmalı');
+  assert.match(plug, /n\.endsWith\("\.ts"\) \|\| n\.endsWith\("\.mp4"\)/, 'mp4 kayıtlar da listelenmeli');
+  const rec = oku('StreamRecorder.java');
+  assert.match(rec, /isFragmentStart/);
+  assert.match(rec, /pendReq != requester/, 'başka isteğin artığı yeni isteğe karışmamalı');
 });

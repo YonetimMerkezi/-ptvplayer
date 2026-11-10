@@ -269,7 +269,10 @@ public class IptvPlayerPlugin extends Plugin {
 
     private void startPlayback(String url, String mime, long startMs, JSObject headers, String buffer, boolean keepRec) {
         // Kayıt, aynı yayına yeniden bağlanırken sürer; başka bir yayına/dosyaya geçilince biter.
-        if (!keepRec) StreamRecorder.stop(null);
+        if (!keepRec) {
+            StreamRecorder.stop(null);
+            StreamSniff.reset(); // önceki yayının biçim bilgisi yeni yayına karışmasın
+        }
         releasePlayer();
         ensureView();
         curUrl = url;
@@ -1094,7 +1097,10 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("startedAt", info.startedAt);
         o.put("durationMs", info.durationMs);
         o.put("bytes", info.bytes);
-        if (info.empty) o.put("empty", true); // hiç TS verisi yazılamadı: dosya silindi
+        if (info.empty) { // hiç medya verisi yazılamadı: dosya silindi
+            o.put("empty", true);
+            if (info.detail != null) o.put("detail", info.detail);
+        }
         if (reason != null) o.put("reason", reason);
         return o;
     }
@@ -1123,9 +1129,21 @@ public class IptvPlayerPlugin extends Plugin {
                     call.reject("Yetersiz depolama alanı (en az 300 MB boş yer gerekir)");
                     return;
                 }
+                // Yayının biçimi kayıttan önce denetlenir: kaydedilemeyecekse baştan söylenir, boş dosya oluşmaz.
+                StreamSniff.Verdict verdict = StreamSniff.verdict();
+                if (verdict.error != null) {
+                    call.reject(verdict.error);
+                    return;
+                }
                 String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
-                File f = new File(dir, stamp + "_" + safeName(name) + ".ts");
-                StreamRecorder.start(f, name, maxMs, recListener);
+                File f = new File(dir, stamp + "_" + safeName(name) + (verdict.init != null ? ".mp4" : ".ts"));
+                StreamRecorder.start(f, name, maxMs, recListener, verdict.init);
+                final long startedAt = StreamRecorder.snapshot()[0];
+                // Biçimi henüz bilinmeyen (ilk parça okunmamış) yayında 40 sn içinde hiç veri yazılamazsa kayıt boş sayılıp bitirilir.
+                main.postDelayed(() -> {
+                    long[] snap = StreamRecorder.snapshot();
+                    if (snap != null && snap[0] == startedAt && StreamRecorder.mediaBytes() == 0) StreamRecorder.stop("nodata");
+                }, 40000);
                 JSObject st = recState();
                 call.resolve(st);
                 notifyListeners("recording", st);
@@ -1155,7 +1173,7 @@ public class IptvPlayerPlugin extends Plugin {
         io.execute(() -> {
             try {
                 File dir = recDir();
-                File[] files = dir.listFiles((d, n) -> n.endsWith(".ts"));
+                File[] files = dir.listFiles((d, n) -> n.endsWith(".ts") || n.endsWith(".mp4"));
                 if (files == null) files = new File[0];
                 Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified())); // en yeni başta
                 File live = StreamRecorder.currentFile();
@@ -1197,7 +1215,7 @@ public class IptvPlayerPlugin extends Plugin {
         if (name == null || name.isEmpty()) {
             String n = ts.getName();
             int u = n.indexOf('_');
-            name = (u >= 0 ? n.substring(u + 1) : n).replaceAll("\\.ts$", "").replace('-', ' ');
+            name = (u >= 0 ? n.substring(u + 1) : n).replaceAll("\\.(ts|mp4)$", "").replace('-', ' ');
         }
         if (startedAt <= 0) startedAt = ts.lastModified();
         o.put("name", name);
@@ -1210,7 +1228,7 @@ public class IptvPlayerPlugin extends Plugin {
         final String id = call.getData().optString("id", "");
         io.execute(() -> {
             try {
-                if (id.isEmpty() || !id.equals(new File(id).getName()) || !id.endsWith(".ts")) {
+                if (id.isEmpty() || !id.equals(new File(id).getName()) || !(id.endsWith(".ts") || id.endsWith(".mp4"))) {
                     call.reject("Geçersiz kayıt");
                     return;
                 }

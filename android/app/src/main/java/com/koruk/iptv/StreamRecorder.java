@@ -11,11 +11,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 /**
- * Oynatılan canlı yayını cihaza MPEG-TS dosyası olarak kaydeder.
+ * Oynatılan canlı yayını cihaza MPEG-TS (ya da fMP4/HLS ise MP4) dosyası olarak kaydeder.
  * Veri oynatıcının kendi okumasından (TapDataSource) alınır: sağlayıcıya ikinci bağlantı açılmaz.
  * TS paketleri 188 bayttır ve 0x47 ile başlar; kayıt paket sınırında başlar, TS olmayan istekler (liste, anahtar vb.) yazılmaz.
  * Doğrudan (progresif) .ts yayınları çoğu zaman paket ortasından başlar: ilk 0x47 yerine, art arda üç paketin 0x47 ile
  * başladığı yer aranır (parça küçükse sonraki parçalarla birleştirilir). Hiç bayt yazılamadıysa kayıt boş sayılır ve silinir.
+ * fMP4 (HLS-CMAF) yayınlarda dosya, başlangıç bölümü (ftyp+moov, StreamSniff'ten) + art arda parçalar (styp/moof/sidx ile başlayan istekler)
+ * olarak yazılır; bu birleşim parçalı bir MP4'tür ve oynatıcıda doğrudan açılır.
  */
 final class StreamRecorder {
     interface Listener {
@@ -30,6 +32,7 @@ final class StreamRecorder {
         long durationMs;
         long bytes;
         boolean empty;
+        String detail; // boş kalan kayıtta nedeni (kullanıcıya gösterilir)
     }
 
     private static final int PACKET = 188;
@@ -48,8 +51,13 @@ final class StreamRecorder {
     private static long maxMs;
     private static long lastSpaceCheck;
     private static boolean needSync;
+    private static boolean mp4;
+    private static boolean gotMedia;
     private static byte[] pend = new byte[PROBE + 16 * 1024];
     private static int pendLen;
+    private static Object pendReq; // biriktirilen küçük parçaların ait olduğu istek: başka isteğe karışmaz
+    private static int calls; // kayıt açıkken kayıt katmanına ulaşan okuma sayısı (tanılama)
+    private static int rejects; // bunlardan yazılmayanlar
     private static Object owner;
     private static Listener listener;
 
@@ -90,7 +98,20 @@ final class StreamRecorder {
         }
     }
 
+    /** Medya baytı (başlangıç bölümü hariç) yazıldıysa true'ya yakın sayı; yazılmadıysa 0. */
+    static long mediaBytes() {
+        synchronized (LOCK) {
+            if (out == null) return 0;
+            return gotMedia || (!mp4 && bytes >= PACKET) ? Math.max(1, bytes) : 0;
+        }
+    }
+
     static void start(File f, String channelName, long maxDurationMs, Listener l) throws IOException {
+        start(f, channelName, maxDurationMs, l, null);
+    }
+
+    /** mp4Init verilirse fMP4 kaydı: başlangıç bölümü dosyanın başına yazılır, sonrası parça istekleridir. */
+    static void start(File f, String channelName, long maxDurationMs, Listener l, byte[] mp4Init) throws IOException {
         Info prev;
         synchronized (LOCK) {
             prev = finishLocked();
@@ -104,10 +125,23 @@ final class StreamRecorder {
             bytes = 0;
             maxMs = Math.max(0, maxDurationMs);
             lastSpaceCheck = 0;
-            needSync = true;
+            calls = 0;
+            rejects = 0;
+            needSync = mp4Init == null;
+            mp4 = mp4Init != null;
+            gotMedia = false;
             pendLen = 0;
             owner = null;
             listener = l;
+            if (mp4) {
+                try {
+                    out.write(mp4Init);
+                    bytes = mp4Init.length;
+                } catch (IOException e) {
+                    finishLocked();
+                    throw e;
+                }
+            }
         }
     }
 
@@ -132,78 +166,119 @@ final class StreamRecorder {
         boolean keep = true;
         synchronized (LOCK) {
             if (out == null || len <= 0) return true;
-            if (owner != null && owner != requester) return true; // aynı anda başka bir istek yazıyor (ör. ayrı ses akışı): karışmasın
-            byte[] src = b;
-            int start = off;
-            int end = off + len;
-            if (needSync) {
-                // Önceki küçük parçalar (karar için yetmeyen) varsa birleştirilir.
-                if (pendLen > 0) {
-                    byte[] cat = new byte[pendLen + len];
-                    System.arraycopy(pend, 0, cat, 0, pendLen);
-                    System.arraycopy(b, off, cat, pendLen, len);
-                    src = cat;
-                    start = 0;
-                    end = cat.length;
+            calls++;
+            if (owner != null && owner != requester) {
+                rejects++;
+                return true; // aynı anda başka bir istek yazıyor (ör. ayrı ses akışı): karışmasın
+            }
+            if (mp4) {
+                if (owner != requester) {
+                    // Yeni istek: yalnız medya parçasıyla (styp/moof/sidx) başlayan yazılır; liste, anahtar, başlangıç bölümü ve ortadan yakalanan istekler atlanır.
+                    if (!requestStart || len < 8 || !isFragmentStart(b, off)) {
+                        rejects++;
+                        return false;
+                    }
+                    owner = requester;
                 }
-                boolean fromReqStart = requestStart || pendLen > 0;
-                int s = findSync(src, start, end - start);
-                if (s < 0) {
-                    if (end - start < PROBE) {
-                        // Karar için az veri: istek başındaysa biriktir, sonraki parçayla yeniden denenir.
-                        if (fromReqStart && end - start <= pend.length) {
-                            System.arraycopy(src, start, pend, 0, end - start);
-                            pendLen = end - start;
+                try {
+                    out.write(b, off, len);
+                    bytes += len;
+                    gotMedia = true;
+                } catch (IOException e) {
+                    stopReason = "error";
+                }
+                if (stopReason == null) stopReason = limitLocked();
+            } else {
+                byte[] src = b;
+                int start = off;
+                int end = off + len;
+                if (needSync) {
+                    // Önceki küçük parçalar (karar için yetmeyen) varsa birleştirilir; başka isteğin (ör. küçük liste/anahtar) artığı atılır.
+                    if (pendLen > 0 && pendReq != requester) pendLen = 0;
+                    if (pendLen > 0) {
+                        byte[] cat = new byte[pendLen + len];
+                        System.arraycopy(pend, 0, cat, 0, pendLen);
+                        System.arraycopy(b, off, cat, pendLen, len);
+                        src = cat;
+                        start = 0;
+                        end = cat.length;
+                    }
+                    boolean fromReqStart = requestStart || pendLen > 0;
+                    int s = findSync(src, start, end - start);
+                    if (s < 0) {
+                        if (end - start < PROBE) {
+                            // Karar için az veri: istek başındaysa biriktir, sonraki parçayla yeniden denenir.
+                            if (fromReqStart && end - start <= pend.length) {
+                                System.arraycopy(src, start, pend, 0, end - start);
+                                pendLen = end - start;
+                                pendReq = requester;
+                            }
+                            return true;
                         }
-                        return true;
+                        pendLen = 0;
+                        rejects++;
+                        return !fromReqStart; // istek başında TS bulunamadı: bu istek TS değil, kalanı yazılmaz
                     }
                     pendLen = 0;
-                    return !fromReqStart; // istek başında TS bulunamadı: bu istek TS değil, kalanı yazılmaz
-                }
-                pendLen = 0;
-                start = s;
-            } else if (requestStart) {
-                // Kayıt sürerken yeni istek (HLS'te sonraki parça, progresifte yeniden bağlanma): TS ise eklenir.
-                if ((b[off] & 0xFF) != SYNC) {
-                    int s = findSync(b, off, len);
-                    if (s < 0) return false;
                     start = s;
+                } else if (requestStart) {
+                    // Kayıt sürerken yeni istek (HLS'te sonraki parça, progresifte yeniden bağlanma): TS ise eklenir.
+                    if ((b[off] & 0xFF) != SYNC) {
+                        int s = findSync(b, off, len);
+                        if (s < 0) {
+                            rejects++;
+                            return false;
+                        }
+                        start = s;
+                    }
+                    // Önceki istek paket ortasında kesildiyse yeni veri paket sınırına hizalanır (0xFF dolgu).
+                    int rem = (int) (bytes % PACKET);
+                    if (rem != 0) {
+                        try {
+                            byte[] padding = new byte[PACKET - rem];
+                            java.util.Arrays.fill(padding, (byte) 0xFF);
+                            out.write(padding);
+                            bytes += padding.length;
+                        } catch (IOException e) {
+                            stopReason = "error";
+                        }
+                    }
                 }
-                // Önceki istek paket ortasında kesildiyse yeni veri paket sınırına hizalanır (0xFF dolgu).
-                int rem = (int) (bytes % PACKET);
-                if (rem != 0) {
+                owner = requester;
+                if (stopReason == null) {
                     try {
-                        byte[] padding = new byte[PACKET - rem];
-                        java.util.Arrays.fill(padding, (byte) 0xFF);
-                        out.write(padding);
-                        bytes += padding.length;
+                        out.write(src, start, end - start);
+                        bytes += end - start;
+                        needSync = false;
                     } catch (IOException e) {
                         stopReason = "error";
                     }
                 }
-            }
-            owner = requester;
-            if (stopReason == null) {
-                try {
-                    out.write(src, start, end - start);
-                    bytes += end - start;
-                    needSync = false;
-                } catch (IOException e) {
-                    stopReason = "error";
-                }
-            }
-            if (stopReason == null) {
-                long now = System.currentTimeMillis();
-                if (maxMs > 0 && now - startedAt >= maxMs) stopReason = "limit";
-                else if (now - lastSpaceCheck > 5000) {
-                    lastSpaceCheck = now;
-                    File dir = file.getParentFile();
-                    if (dir != null && dir.getUsableSpace() < STOP_FREE_BYTES) stopReason = "disk";
-                }
+                if (stopReason == null) stopReason = limitLocked();
             }
         }
         if (stopReason != null) stop(stopReason);
         return keep;
+    }
+
+    // Süre ve boş yer sınırları (kilit içinde): durma nedeni ya da null.
+    private static String limitLocked() {
+        long now = System.currentTimeMillis();
+        if (maxMs > 0 && now - startedAt >= maxMs) return "limit";
+        if (now - lastSpaceCheck > 5000) {
+            lastSpaceCheck = now;
+            File dir = file.getParentFile();
+            if (dir != null && dir.getUsableSpace() < STOP_FREE_BYTES) return "disk";
+        }
+        return null;
+    }
+
+    // fMP4 medya parçası: ilk kutu styp, moof ya da sidx.
+    private static boolean isFragmentStart(byte[] b, int off) {
+        for (String t : new String[] {"styp", "moof", "sidx"}) {
+            if ((b[off + 4] & 0xFF) == t.charAt(0) && (b[off + 5] & 0xFF) == t.charAt(1) && (b[off + 6] & 0xFF) == t.charAt(2) && (b[off + 7] & 0xFF) == t.charAt(3)) return true;
+        }
+        return false;
     }
 
     /** İstek bitti: bu isteğin yazma sahipliği bırakılır. */
@@ -240,14 +315,15 @@ final class StreamRecorder {
         out = null;
         owner = null;
         pendLen = 0;
-        if (info.bytes < PACKET) {
-            // hiç TS verisi yazılamadı (yayın MPEG-TS değil ya da akış hiç gelmedi): boş dosya bırakılmaz
+        if (mp4 ? !gotMedia : info.bytes < PACKET) {
+            // hiç medya verisi yazılamadı (yayın MPEG-TS/fMP4 değil ya da akış hiç gelmedi): boş dosya bırakılmaz
             //noinspection ResultOfMethodCallIgnored
             file.delete();
             //noinspection ResultOfMethodCallIgnored
             metaOf(file).delete();
             info.bytes = 0;
             info.empty = true;
+            info.detail = StreamSniff.describe() + " [okuma " + calls + ", atlanan " + rejects + "]";
             return info;
         }
         writeMeta(info);

@@ -33,7 +33,7 @@ export function recItem(r) {
 
 // Kayıt bitince verilecek ileti.
 export function recEndMessage(e) {
-  if (e.empty) return 'Kayıt boş kaldı: yayın MPEG-TS biçiminde değil ya da veri gelmedi, dosya silindi';
+  if (e.empty) return 'Kayıt boş kaldı: ' + (e.detail || 'yayın MPEG-TS biçiminde değil ya da veri gelmedi') + ', dosya silindi';
   if (e.reason === 'disk') return 'Depolama doldu, kayıt durduruldu ve kaydedildi';
   if (e.reason === 'error') return 'Kayıt yazılamadı, durduruldu (o ana kadarki bölüm kaydedildi)';
   if (e.reason === 'limit') return 'Kayıt süresi doldu, kaydedildi';

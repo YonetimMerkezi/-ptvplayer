@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 44,
+    title: 'Canlı yayın kaydı: biçim denetimi',
+    items: [
+      'Kaydedilemeyecek yayında (MKV, FLV, şifreli HLS, tanınmayan biçim) kayıt başlamadan nedeni söylenir; boş dosya oluşmaz',
+      'fMP4 (HLS-CMAF) yayınlar artık .mp4 olarak kaydedilir; kayıtlar listesinde birlikte görünür',
+      'Veri gelmeyen kayıt 40 saniye içinde kendiliğinden biter ve nedeni (yayın biçimi) bildirilir',
+    ],
+  },
+  {
     id: 43,
     title: 'Kumanda düzeltmeleri',
     items: [

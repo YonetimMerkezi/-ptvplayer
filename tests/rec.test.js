@@ -35,6 +35,8 @@ test('bitiş iletileri nedene göre', () => {
   assert.match(recEndMessage({ reason: 'limit' }), /süresi doldu/);
   assert.match(recEndMessage({ reason: 'error' }), /yazılamadı/);
   assert.equal(recEndMessage({}), 'Kayıt kaydedildi');
+  assert.match(recEndMessage({ empty: true }), /MPEG-TS biçiminde değil ya da veri gelmedi/, 'neden bilinmiyorsa genel ileti');
+  assert.match(recEndMessage({ empty: true, detail: 'yayın MKV biçiminde' }), /Kayıt boş kaldı: yayın MKV biçiminde, dosya silindi/, 'yerel eklentinin söylediği neden gösterilir');
 });
 
 test('liste alt yazısı', () => {
