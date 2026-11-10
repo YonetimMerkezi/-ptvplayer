@@ -17,7 +17,7 @@ function fakeGithub() {
       if (!f) return route.fulfill({ status: 404, headers: cors, body: 'Not Found' });
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/plain' }, body: f.text });
     });
-    await ctx.route('https://api.github.com/repos/YonetimMerkezi/-ptvplayer/**', async (route) => {
+    await ctx.route('https://api.github.com/repos/YonetimMerkezi/-ptvplayer{,/**}', async (route) => { // kök adres (sonunda “/” yok) da yakalanır: gerçek GitHub’a hiç gidilmez
       const req = route.request();
       if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
       const u = new URL(req.url());
@@ -89,7 +89,8 @@ async function adminSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await a.fill('#adm-p2', 'panel-parolasi-1');
   await a.click('#adm-setup');
   await a.waitForFunction(() => !document.querySelector('#adm-err').hidden);
-  ok(/Token geçersiz/.test(await a.textContent('#adm-err')), 'yanlış token açık bir hatayla reddedildi');
+  const tokErr = await a.textContent('#adm-err');
+  ok(/Token geçersiz/.test(tokErr), 'yanlış token açık bir hatayla reddedildi' + (/Token geçersiz/.test(tokErr) ? '' : ' → ' + tokErr));
   await a.fill('#adm-p2', 'başka');
   await a.fill('#adm-tok', 'TOKEN-TEST');
   await a.click('#adm-setup');
@@ -103,6 +104,12 @@ async function adminSection({ browser, base, mock, ok, sleep, SHOTS }) {
   // ---- kullanıcı oluştur
   await a.click('#adm-new');
   await a.waitForSelector('#uf');
+  // açılır kutular koyu temada okunur olmalı (beyaz zemin + açık yazı olmaz)
+  const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255; };
+  const selCss = await a.evaluate(() => [...document.querySelectorAll('#uf select')].map((e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.color]; }));
+  ok(selCss.length >= 2 && selCss.every(([bg, fg]) => lum(bg) < 0.2 && lum(fg) > 0.6), 'form açılır kutuları koyu zemin/açık yazı: ' + JSON.stringify(selCss));
+  await sleep(600);
+  await a.screenshot({ path: path.join(SHOTS, '59-yonetici-form.png') });
   await a.fill('#uf input[name=name]', 'Deneme Kullanıcı');
   await a.selectOption('#uf select[name=days]', '30');
   await a.selectOption('#uf select[name=type0]', 'm3u');

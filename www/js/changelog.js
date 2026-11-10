@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 35,
+    title: 'Yönetici formu renk düzeltmesi',
+    items: ['Yönetici panelindeki Yeni kullanıcı formunda Süre ve Tür kutuları beyaz zemin üzerinde okunmuyordu: koyu temaya uyduruldu'],
+  },
+  {
     id: 34,
     title: 'Davet kodu ve sorun raporu',
     items: [
