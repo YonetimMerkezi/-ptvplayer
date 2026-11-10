@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 50,
+    title: 'Spor: maç ayrıntıları ve yayın bilgisi',
+    items: [
+      'Maç satırının sağındaki ⓘ düğmesi (biten maçta satıra dokunmak) maç ayrıntısını açar: skor ve dakika, goller/kartlar/oyuncu değişiklikleri, istatistik (topla oynama, şut…), kadro ve diziliş, stat, hakem, seyirci',
+      'Yayın bölümü: TV rehberinizde bu maçı gösteren tüm kanallar program adıyla listelenir ve dokununca açılır; yoksa tahmini yayıncının kanalları gösterilir; ESPN’in bildirdiği yabancı yayıncılar da ülke adıyla yazılır',
+      'Canlı maçta ayrıntı sayfası 45 saniyede bir kendiliğinden yenilenir (anlık değildir)',
+    ],
+  },
+  {
     id: 49,
     title: 'Kumanda: daha rahat gezinme, belirgin imleç',
     items: [

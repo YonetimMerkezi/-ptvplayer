@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, rejectLimit: false, failLeagues: new Set(['ger.1']), calls: [], urls: [] };
+  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -34,8 +34,39 @@ function fakeEspn() {
     'uefa.nations': [ev(5, at(3, 20, 45), 'Turkey', 'Wales')],
     'eng.1': [ev(6, at(0, 19, 0), 'Arsenal', 'Chelsea')],
   });
+  const comp = (state, name, hs, as, extra = {}) => ({
+    header: { competitions: [{ status: { displayClock: extra.clock || '', type: { state, name } }, competitors: [{ id: '1', homeAway: 'home', score: hs, team: { id: '1' } }, { id: '2', homeAway: 'away', score: as, team: { id: '2' } }], ...(extra.comp || {}) }] },
+  });
+  const summaries = () => ({
+    2: {
+      ...comp('in', 'STATUS_SECOND_HALF', '1', '0', { clock: "67'" }),
+      keyEvents: [
+        { type: { text: 'Kickoff' }, clock: { displayValue: "0'" } },
+        { type: { text: 'Goal' }, scoringPlay: true, clock: { displayValue: "12'" }, team: { id: '1' }, participants: [{ athlete: { displayName: 'Cenk Tosun' } }] },
+        { type: { text: 'Yellow Card' }, clock: { displayValue: "30'" }, team: { id: '2' }, participants: [{ athlete: { displayName: 'Uğurcan Çakır' } }] },
+        { type: { text: 'Substitution' }, clock: { displayValue: "60'" }, team: { id: '1' }, participants: [{ athlete: { displayName: 'Rafa Silva' } }, { athlete: { displayName: 'Semih Kılıçsoy' } }] },
+      ],
+      boxscore: { teams: [
+        { homeAway: 'home', team: { id: '1' }, statistics: [{ name: 'possessionPct', displayValue: '58' }, { name: 'totalShots', displayValue: '11' }] },
+        { homeAway: 'away', team: { id: '2' }, statistics: [{ name: 'possessionPct', displayValue: '42' }, { name: 'totalShots', displayValue: '5' }] },
+      ] },
+      rosters: [
+        { homeAway: 'home', team: { id: '1' }, formation: '4-2-3-1', roster: [{ starter: true, jersey: '1', athlete: { displayName: 'Mert Günok' }, position: { abbreviation: 'G' } }, { starter: false, jersey: '7', athlete: { displayName: 'Rafa Silva' }, position: { abbreviation: 'M' } }] },
+        { homeAway: 'away', team: { id: '2' }, formation: '4-3-3', roster: [{ starter: true, jersey: '1', athlete: { displayName: 'Uğurcan Çakır' }, position: { abbreviation: 'G' } }] },
+      ],
+      gameInfo: { venue: { fullName: 'Tüpraş Stadyumu', address: { city: 'İstanbul' } }, officials: [{ fullName: 'Cüneyt Çakır' }], attendance: 41000 },
+    },
+    1: comp('pre', 'STATUS_SCHEDULED', undefined, undefined, { comp: { geoBroadcasts: [{ media: { shortName: 'Paramount+' }, region: 'us' }] } }),
+    3: { ...comp('post', 'STATUS_FULL_TIME', '2', '2'), keyEvents: [{ type: { text: 'Goal' }, scoringPlay: true, clock: { displayValue: "5'" }, team: { id: '2' }, participants: [{ athlete: { displayName: 'Deneme Oyuncu' } }] }] },
+  });
   async function install(ctx) {
     await ctx.route('https://site.api.espn.com/**', async (route) => {
+      const sm = /soccer\/([^/]+)\/summary\?event=(\d+)/.exec(route.request().url());
+      if (sm) {
+        st.summaryCalls.push(sm[2]);
+        if (st.summaryFail) return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
+        return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(summaries()[sm[2]] || {}) });
+      }
       const slug = /soccer\/([^/]+)\/scoreboard/.exec(route.request().url());
       const id = slug ? slug[1] : '';
       st.calls.push(id);
@@ -127,6 +158,65 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await a.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
   ok(await a.isVisible('.sp-pg .sp-m'), 'oynatıcıdan dönünce spor sayfası yerinde');
 
+  // ---- maç ayrıntısı: canlı maç (olaylar, istatistik, kadro, stat/hakem, yayıncı yedeği)
+  const openInfo = (re) => a.$$eval('.sp-m', (rows, src) => rows.find((r) => new RegExp(src).test(r.textContent)).querySelector('[data-info]').click(), re.source);
+  await openInfo(/Beşiktaş/);
+  await a.waitForSelector('.sd-pg .sd-e', { timeout: 8000 });
+  const head = (await a.textContent('.sd-head')).replace(/\s+/g, ' ');
+  ok(/Beşiktaş/.test(head) && /Trabzonspor/.test(head) && /1 – 0/.test(head) && /67'/.test(head), 'ayrıntı: takımlar, skor ve dakika: ' + head.slice(0, 90));
+  ok(/Tüpraş Stadyumu, İstanbul/.test(head) && /Hakem: Cüneyt Çakır/.test(head) && /Seyirci: 41/.test(head), 'ayrıntı: stat, hakem, seyirci');
+  const evs = await text(a, '.sd-e');
+  const has = (t, ...parts) => parts.every((p) => t.includes(p));
+  ok(evs.length === 3 && has(evs[0], "12'", 'Cenk Tosun') && has(evs[1], "30'", 'Uğurcan') && has(evs[2], "60'", 'Rafa Silva', 'Semih'), 'ayrıntı: gol, kart, değişiklik olayları (' + evs.join(' | ') + ')');
+  ok(await a.$$eval('.sd-e.home', (e) => e.length) === 2 && (await a.$$eval('.sd-e.away', (e) => e.length)) === 1, 'ayrıntı: olaylar takımına göre sol/sağda');
+  const stats = await text(a, '.sd-s');
+  ok(stats.length === 2 && /58%.*Topla oynama.*42%/.test(stats[0]) && /11.*Şut.*5/.test(stats[1]), 'ayrıntı: istatistik satırları (' + stats.join(' | ') + ')');
+  ok((await a.$$('.sd-lu')).length === 2 && /4-2-3-1/.test(await a.textContent('.sd-lu')) && /Mert Günok/.test(await a.textContent('.sd-lu')) && /Yedekler:.*Rafa Silva/.test(await a.textContent('.sd-lu')), 'ayrıntı: kadro, diziliş ve yedekler');
+  ok(/Tahmini yayıncı: beIN SPORTS/.test(await a.textContent('#sd-bc')) && (await a.isVisible('#sd-bcs')), 'ayrıntı: rehberde yoksa tahmini yayıncı ve kanal listesi düğmesi');
+  await sleep(700); // sayfa açılış geçişi bitsin
+  await a.screenshot({ path: path.join(SHOTS, '82-spor-ayrinti.png') });
+  await a.click('#sd-bcs');
+  await a.waitForSelector('.sheet .sp-cands [data-i]', { timeout: 5000 });
+  ok(/BEIN SPORTS 1/i.test(await a.textContent('.sheet .sp-cands')), 'ayrıntı: yayıncı kanalları listesi açıldı');
+  await a.goBack();
+  await a.waitForFunction(() => !document.querySelector('.sheet .sp-cands'), null, { timeout: 4000 });
+  const callsBefore2 = espn.st.summaryCalls.length;
+  await a.click('#sd-ref');
+  await a.waitForFunction((n) => /Son güncelleme/.test(document.querySelector('#sd-upd').textContent), 0, { timeout: 5000 });
+  ok(espn.st.summaryCalls.length === callsBefore2 + 1, 'ayrıntı: yenile düğmesi ayrıntıyı yeniden indirdi');
+  await a.goBack();
+  await a.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  ok(await a.isVisible('.sp-pg .sp-m'), 'ayrıntıdan dönünce spor sayfası yerinde');
+
+  // derbi: rehberdeki kanal ayrıntıda da listelenir, dokununca oynar; yabancı yayıncılar
+  await openInfo(/Galatasaray/);
+  await a.waitForSelector('.sd-pg .sd-ch', { timeout: 8000 });
+  ok((await text(a, '.sd-ch .nm')).join('|') === chName, 'ayrıntı: rehberdeki kanal Yayın bölümünde (' + (await text(a, '.sd-ch .nm')).join('|') + ')');
+  ok(/Galatasaray - Fenerbahçe/.test(await a.textContent('.sd-ch .sub')), 'ayrıntı: kanal satırında program adı');
+  await a.waitForFunction(() => /Paramount\+/.test(document.querySelector('#sd-intl').textContent), null, { timeout: 5000 });
+  ok(/Paramount\+.*ABD/.test(await a.textContent('#sd-intl')), 'ayrıntı: ESPN’deki yabancı yayıncılar ülke adıyla');
+  ok(/Maç başlayınca/.test(await a.textContent('#sd-body')) || (await a.$$('.sd-e')).length === 0, 'ayrıntı: başlamamış maçta olay yok, açıklama var');
+  await a.click('.sd-ch');
+  await a.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
+  ok(true, 'ayrıntıdan kanala dokununca oynatıldı');
+  await a.goBack();
+  await a.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
+  await a.goBack();
+  await a.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+
+  // biten maçta satıra dokununca doğrudan ayrıntı açılır; hata ve yeniden deneme
+  espn.st.summaryFail = true;
+  await a.$$eval('.sp-m', (rows) => rows.find((r) => /Konyaspor/.test(r.textContent)).click());
+  await a.waitForSelector('.sd-pg .empty h3', { timeout: 8000 });
+  ok(/Ayrıntı alınamadı/.test(await a.textContent('.sd-pg .empty h3')) && /Ayrıntı: HTTP 500/.test(await a.textContent('.sd-pg .empty')), 'ayrıntı hatası nedenle gösteriliyor');
+  ok(/MS/.test(await a.textContent('.sd-head')) && /Maç sona erdi/.test(await a.textContent('#sd-bc')), 'ayrıntı: veri gelmese de başlık ve “Maç sona erdi” görünür');
+  espn.st.summaryFail = false;
+  await a.click('#sd-retry');
+  await a.waitForSelector('.sd-pg .sd-e', { timeout: 8000 });
+  ok(/Deneme Oyuncu/.test(await a.textContent('.sd-evs')), 'ayrıntı: “Yeniden dene” ile olaylar geldi');
+  await a.goBack();
+  await a.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+
   // eşleşmesi olmayan maç: yayıncının kanalları listelenir
   await a.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).click());
   await a.waitForSelector('.sheet .sp-cands [data-i]', { timeout: 5000 });
@@ -215,6 +305,24 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(over === 0, 'yatay ekranda maç satırları taşmıyor');
   await sleep(700); // sayfa açılış animasyonu bitsin
   await d.screenshot({ path: path.join(SHOTS, '82-spor-yatay.png') });
+  // kumanda: ayrıntı sayfasında alttaki içerik aşağı okla okunur (alt düğmeye sıçramaz), yukarı okla başa dönülür
+  await d.$$eval('.sp-m', (rows) => rows.find((r) => /Beşiktaş/.test(r.textContent)).querySelector('[data-info]').click());
+  await d.waitForSelector('.sd-pg .sd-e', { timeout: 8000 });
+  await sleep(500);
+  const bodyTop = () => d.evaluate(() => document.querySelector('.sd-pg .pg-body').scrollTop);
+  ok((await d.evaluate(() => { const b = document.querySelector('.sd-pg .pg-body'); return b.scrollHeight - b.clientHeight; })) > 150, 'yatay ekranda ayrıntı sayfası ekrandan uzun');
+  await d.focus('#sd-bcs');
+  for (let i = 0; i < 30; i++) {
+    await d.keyboard.press('ArrowDown');
+    await sleep(40);
+  }
+  const atEnd = await d.evaluate(() => { const b = document.querySelector('.sd-pg .pg-body'); return b.scrollHeight - b.clientHeight - b.scrollTop; });
+  ok(atEnd <= 2, 'kumanda: aşağı okla ayrıntı sayfası sonuna kadar okundu (kalan ' + atEnd + 'px)');
+  for (let i = 0; i < 40; i++) {
+    await d.keyboard.press('ArrowUp');
+    await sleep(40);
+  }
+  ok((await bodyTop()) <= 2, 'kumanda: yukarı okla ayrıntı sayfası başına dönüldü (' + (await bodyTop()) + 'px)');
   await D.ctx.close();
 }
 

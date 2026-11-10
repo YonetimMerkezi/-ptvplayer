@@ -137,25 +137,25 @@ export function teamPhrases(name) {
 const hasAny = (paddedText, phrases) => phrases.some((p) => paddedText.includes(' ' + p + ' '));
 
 // Program başlığı (+ açıklaması) iki takımı da içeriyorsa ve yayın başlangıcı maça yakınsa o program bu maçındır.
-// hits: [{ id, p: { s, e, t, d } }] (TV rehberi). Döner: { id, p } ya da null. En yakın başlangıç seçilir.
-export function findProgram(match, hits, { before = 90 * 60000, after = 20 * 60000 } = {}) {
-  if (!match || !hits || !hits.length) return null;
+// hits: [{ id, p: { s, e, t, d } }] (TV rehberi). findPrograms: eşleşenlerin hepsi (maça en yakın başlangıçtan uzağa);
+// findProgram: yalnız en yakını ({ id, p }) ya da null.
+export function findPrograms(match, hits, { before = 90 * 60000, after = 20 * 60000 } = {}) {
+  if (!match || !hits || !hits.length) return [];
   const hp = teamPhrases(match.home.name);
   const ap = teamPhrases(match.away.name);
-  let best = null;
-  let bestD = Infinity;
+  const found = [];
   for (const h of hits) {
     const p = h.p;
     if (!p || !(p.s >= match.t - before && p.s <= match.t + after && p.e > match.t)) continue;
     const text = ' ' + norm(p.t) + (p.d ? ' ' + norm(p.d) : '') + ' ';
     if (!hasAny(text, hp) || !hasAny(text, ap)) continue;
-    const d = Math.abs(p.s - match.t);
-    if (d < bestD) {
-      best = h;
-      bestD = d;
-    }
+    found.push({ h, d: Math.abs(p.s - match.t) });
   }
-  return best;
+  return found.sort((a, b) => a.d - b.d).map((x) => x.h);
+}
+
+export function findProgram(match, hits, opts) {
+  return findPrograms(match, hits, opts)[0] || null;
 }
 
 // Başlangıca göre sıralı program listesinden [from, to] aralığındakileri verir (ikili arama; binlerce maç × program taramasını önler).
@@ -253,6 +253,33 @@ function side(c, played) {
   };
 }
 
+const REGIONS = { us: 'ABD', gb: 'İngiltere', uk: 'İngiltere', ca: 'Kanada', au: 'Avustralya', es: 'İspanya', de: 'Almanya', fr: 'Fransa', it: 'İtalya', tr: 'Türkiye', br: 'Brezilya', mx: 'Meksika', pt: 'Portekiz', nl: 'Hollanda', ar: 'Arjantin', in: 'Hindistan' };
+
+// ESPN yanıtındaki yayıncılar (çoğunlukla ABD/İngiltere/Avrupa kanalları): [{ name, region }]; yoksa boş dizi.
+// broadcasts: [{ names: [...] }] ya da [{ media: { shortName } }]; geoBroadcasts: [{ media: { shortName }, region }]
+export function parseBroadcasts(obj) {
+  const out = [];
+  const seen = new Set();
+  const add = (name, region) => {
+    const n = String(name || '').trim();
+    if (!n || n.length > 40) return;
+    const r = REGIONS[String(region || '').toLowerCase()] || (region ? String(region).toUpperCase().slice(0, 12) : '');
+    const key = n.toLowerCase() + '|' + r;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ name: n, region: r });
+  };
+  for (const b of obj && Array.isArray(obj.broadcasts) ? obj.broadcasts : []) {
+    if (typeof b === 'string') add(b, '');
+    else if (b && Array.isArray(b.names)) for (const n of b.names) add(n, b.region || '');
+    else if (b) add((b.media && (b.media.shortName || b.media.name)) || b.shortName || b.name, b.region || '');
+  }
+  for (const g of obj && Array.isArray(obj.geoBroadcasts) ? obj.geoBroadcasts : []) {
+    if (g) add((g.media && (g.media.shortName || g.media.name)) || g.shortName, g.region || '');
+  }
+  return out.slice(0, 8);
+}
+
 // ESPN scoreboard yanıtı → maç listesi (bozuk kayıtlar atlanır, hata atmaz).
 export function parseScoreboard(json, leagueId) {
   const out = [];
@@ -278,6 +305,8 @@ export function parseScoreboard(json, leagueId) {
         off: !!status.off,
         home: side(home, played),
         away: side(away, played),
+        venue: String((comp.venue && comp.venue.fullName) || '').slice(0, 80),
+        intl: parseBroadcasts(comp),
       });
     } catch {
       /* bozuk kayıt atlanır */

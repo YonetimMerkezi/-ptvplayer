@@ -90,7 +90,7 @@ export function openSports(env) {
         <div class="sp-t${win === 'h' ? ' win' : ''}">${flag(m.home)}<span class="sp-n">${esc(m.home.label)}</span>${score(m.home, m)}</div>
         <div class="sp-t${win === 'a' ? ' win' : ''}">${flag(m.away)}<span class="sp-n">${esc(m.away.label)}</span>${score(m.away, m)}</div>
         ${foot}
-      </div></div>`;
+      </div><button class="sp-i" data-info aria-label="Maç ayrıntıları: ${esc(m.home.label)} – ${esc(m.away.label)}">${icon('info')}</button></div>`;
   }
 
   function drawChips() {
@@ -213,8 +213,14 @@ export function openSports(env) {
   function openMatch(m) {
     const ch = chan.get(m.id);
     if (ch) return play([ch.item], 0);
-    if (m.state === 'post') return toast('Maç sona erdi', 1600);
+    if (m.state === 'post') return openDetail(m); // biten maçta açılacak kanal yok: olaylar/istatistik
     if (m.off) return toast(m.text, 1600);
+    if (!broadcasterFor(m)) return openDetail(m);
+    openCandidates(m);
+  }
+
+  // Rehberde eşleşme yokken: yayıncının (tahmini) kanallarından birini seçtirir.
+  function openCandidates(m) {
     const bc = broadcasterFor(m);
     if (!bc) return toast('Bu maçın yayıncısı belli değil', 2600);
     const cands = channelsOfBroadcaster(liveItems() || [], bc.keys);
@@ -241,6 +247,16 @@ export function openSports(env) {
     });
   }
 
+  // Maç ayrıntısı (olaylar, istatistik, kadro, tüm yayın kanalları): ayrı modül, ilk dokunuşta yüklenir.
+  async function openDetail(m) {
+    try {
+      const mod = await import('./sports-detail-ui.js');
+      mod.openMatchDetail({ net, toast, liveItems, epgBetween, play, base, now, openCandidates }, m);
+    } catch (e) {
+      toast('Ayrıntı açılamadı: ' + ((e && e.message) || e), 3000);
+    }
+  }
+
   root.addEventListener('click', (e) => {
     const d = e.target.closest('[data-day]');
     if (d) {
@@ -259,6 +275,12 @@ export function openSports(env) {
       return;
     }
     if (e.target.closest('#sp-ref') || e.target.closest('#sp-retry')) return refresh();
+    const info = e.target.closest('[data-info]');
+    if (info) {
+      const m = matches.find((x) => x.id === (info.closest('.sp-m') || {}).dataset.id);
+      if (m) openDetail(m);
+      return;
+    }
     const row = e.target.closest('.sp-m');
     if (row) {
       const m = matches.find((x) => x.id === row.dataset.id);
