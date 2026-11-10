@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 38,
+    title: 'Dizi ekranı düzeltmeleri',
+    items: [
+      'Yatay ekranda uzun konu artık sol sütunda aşağı kayar ve sonuna kadar okunur; bölüm listesi ve afiş yerinde durur',
+      'Bölüm satırları ve düğmeler küçültüldü; küçük resimli bölümler daha sıkışık, kısa yatay ekranda daha da küçük',
+    ],
+  },
+  {
     id: 37,
     title: 'Yeni film ve dizi ekranı',
     items: [

@@ -8,7 +8,7 @@ const TITLES = ['Liman', 'Sis', 'Son Vapur'];
 async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
   console.log('1.0.104: ayrıntı düzeni, hafif mod, devam çubuğu, hızlı arabellek');
   const CORS = { 'access-control-allow-origin': '*' };
-  const mk = async (vp, init) => {
+  const mk = async (vp, init, plotRepeat = 8) => {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, hasTouch: false });
     const page = await ctx.newPage();
     const errs = [];
@@ -21,7 +21,7 @@ async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
       if (a === 'get_series') return json([{ series_id: 77, name: 'Gece Yolcuları', cover: `${mock.url}/img/gece.svg`, category_id: '1', plot: 'Özet' }]);
       if (a === 'get_series_info') {
         return json({
-          info: { plot: 'Boğaz kıyısında geçen uzun bir hikâye. '.repeat(8), genre: 'Dram', releaseDate: '2024-03-01', rating_5based: '4.6', cast: 'A, B', director: 'C', cover: `${mock.url}/img/gece.svg` },
+          info: { plot: 'Boğaz kıyısında geçen uzun bir hikâye. '.repeat(plotRepeat), genre: 'Dram', releaseDate: '2024-03-01', rating_5based: '4.6', cast: 'A, B', director: 'C', cover: `${mock.url}/img/gece.svg` },
           episodes: { 1: TITLES.map((t, i) => ({ id: String(900 + i), title: t, episode_num: i + 1, container_extension: 'webm', info: { duration_secs: 3000, ...(i < 2 ? { movie_image: `${mock.url}/img/t${i}.svg` } : {}) } })) },
         });
       }
@@ -64,6 +64,27 @@ async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(await page.$eval('.dt-eps', (e) => getComputedStyle(e).overflowY === 'auto'), 'bölüm listesi kendi içinde kayar');
   await page.screenshot({ path: path.join(SHOTS, '80-dizi-3-sutun.png') });
   ok(errs.length === 0, 'konsol hatası yok (geniş)' + (errs.length ? ': ' + errs[0] : ''));
+  await ctx.close();
+
+  // ---- kısa yatay telefon (770×346): uzun konu sol sütunda aşağı kayar, bölümler sıkışık, liste ve afiş yerinde durur
+  ({ ctx, page, errs } = await mk({ width: 770, height: 346 }, null, 30));
+  await openSeries(page);
+  await sleep(300);
+  const pg = () => page.$eval('.dt-sp .pg-body', (b) => ({ sh: b.scrollHeight, ch: b.clientHeight, top: b.getBoundingClientRect().top, bottom: b.getBoundingClientRect().bottom }));
+  const g0 = await pg();
+  ok(g0.sh > g0.ch + 100, `uzun konuda sayfa aşağı kayabiliyor (${g0.sh} > ${g0.ch})`);
+  ok((await rect(page, '.epi')).h <= 60, `bölüm satırı sıkışık (${Math.round((await rect(page, '.epi')).h)} px)`);
+  const e0 = await rect(page, '.dt-eps');
+  await page.evaluate(() => { document.querySelector('.dt-sp .pg-body').scrollTop = 99999; });
+  await sleep(250);
+  const g1 = await pg();
+  const e1 = await rect(page, '.dt-eps');
+  const p1 = await rect(page, '.dt-pos');
+  const pl1 = await rect(page, '.dt-plot');
+  ok(Math.abs(e1.t - e0.t) < 2 && e1.t >= g1.top - 1, `kaydırınca bölüm listesi yerinde duruyor, kırpılmıyor (${Math.round(e0.t)} → ${Math.round(e1.t)})`);
+  ok(p1.t >= g1.top - 1 && p1.b <= g1.bottom + 1, 'afiş kaydırınca da görünür kalıyor');
+  ok(pl1.b <= g1.bottom + 1, `konunun son satırı görünüyor (${Math.round(pl1.b)} ≤ ${Math.round(g1.bottom)})`);
+  await page.screenshot({ path: path.join(SHOTS, '83-dizi-kisa-yatay.png') });
   await ctx.close();
 
   // ---- dikey telefon: eski düzen, küçük resim ve sütun başlığı gizli
