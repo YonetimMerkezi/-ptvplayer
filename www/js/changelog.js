@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 40,
+    title: 'Büyük afiş',
+    items: ['Yatay ekranda film ve dizi afişi görünen yüksekliğe tam sığar (2:3); sayfa kayarken yerinde durur'],
+  },
+  {
     id: 39,
     title: 'Bölüm küçük resmi ayarı',
     items: ['Genel ayarlar › Bölüm küçük resimlerini göster: kapatınca dizi bölümleri resimsiz, daha sıkışık listelenir'],

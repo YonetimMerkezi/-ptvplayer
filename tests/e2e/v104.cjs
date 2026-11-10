@@ -57,7 +57,7 @@ async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
   ok((await cols(page)) === 3, 'geniş ekranda dizi ayrıntısı üç sütun');
   const [info, eps, pos] = [await rect(page, '.dt-head'), await rect(page, '.dt-eps'), await rect(page, '.dt-pos')];
   ok(info.l < eps.l && eps.r <= pos.l + 1 && info.r <= eps.l + 1, `sol ayrıntılar, orta bölümler, sağ afiş (x: ${Math.round(info.l)} < ${Math.round(eps.l)} < ${Math.round(pos.l)})`);
-  ok(pos.h > 300 && pos.l > 800, `afiş büyük ve sağda (${Math.round(pos.w)}×${Math.round(pos.h)})`);
+  ok(pos.h >= 720 - 52 - 36 - 3 && pos.l > 800, `afiş görünen yüksekliği dolduruyor ve sağda (${Math.round(pos.w)}×${Math.round(pos.h)})`);
   ok((await page.$$('.epi .epi-th')).length === 2 && (await page.$$('.epi.has-th')).length === 2, 'küçük resmi olan 2 bölümde resim var, olmayanda yok');
   ok(await page.$eval('.epi-th', (e) => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 80), 'geniş ekranda bölüm küçük resmi görünür');
   ok(/1\. SEZON/.test(await page.textContent('.dt-eps-h')) && /3 BÖLÜM/.test(await page.textContent('.dt-eps-h')), 'bölüm sütunu başlığı: ' + (await page.textContent('.dt-eps-h')).trim());
@@ -84,6 +84,11 @@ async function v104Section({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(Math.abs(e1.t - e0.t) < 2 && e1.t >= g1.top - 1, `kaydırınca bölüm listesi yerinde duruyor, kırpılmıyor (${Math.round(e0.t)} → ${Math.round(e1.t)})`);
   ok(p1.t >= g1.top - 1 && p1.b <= g1.bottom + 1, 'afiş kaydırınca da görünür kalıyor');
   ok(pl1.b <= g1.bottom + 1, `konunun son satırı görünüyor (${Math.round(pl1.b)} ≤ ${Math.round(g1.bottom)})`);
+  const pz = await rect(page, '.dt-pos');
+  const barH = await page.$eval('.dt-sp .pg-bar', (e) => e.getBoundingClientRect().height);
+  const avail = 346 - barH - 36;
+  ok(pz.h >= avail - 3 && pz.h <= avail + 3 && Math.abs(pz.w / pz.h - 2 / 3) < 0.02, `afiş görünen yüksekliğe tam sığıyor, 2:3 (${Math.round(pz.w)}×${Math.round(pz.h)}, boşluk ${avail})`);
+  ok(pz.r <= 770 + 1 && (await rect(page, '.dt-eps')).w >= 200, 'afiş büyüyünce bölüm sütunu hâlâ okunur genişlikte');
   await page.screenshot({ path: path.join(SHOTS, '83-dizi-kisa-yatay.png') });
   await ctx.close();
 
