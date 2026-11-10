@@ -42,12 +42,14 @@ import { PLAYER_ACTIONS, HOME_ACTIONS, DEFAULT_PLAYER, DEFAULT_HOME, COLORS, nor
 import { watchNextItems, watchNextPayload, parseDeepLink } from './tvhome.js';
 import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, makeRecord, checkPin, emptyFail, registerFail, waitMs, fmtWait, shouldLock } from './lock.js';
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
-import { AUTO_CHECK_MS, LAUNCH_CHECK_MS, checkUpdate, explainError, fmtMB, isNewer, retry, shouldAutoCheck, versionCodeOf } from './update.js';
+import { AUTO_CHECK_MS, LAUNCH_CHECK_MS, UPDATE_BASE, checkUpdate, explainError, fmtMB, isNewer, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 import { checkStreamHealth } from './health.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
 import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
 import { searchAll, totalOf } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
+import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
+import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 
 const Cap = window.Capacitor;
@@ -1498,7 +1500,8 @@ function renderSources(v) {
       const act = s.id === S.source.id;
       const c = S.cat;
       const lines = [];
-      if (s.type === 'xtream') lines.push(`${esc(normalizeServer(s.server))} · ${esc(s.user)}`);
+      if (s.managed) lines.push('Davet koduyla eklendi');
+      else if (s.type === 'xtream') lines.push(`${esc(normalizeServer(s.server))} · ${esc(s.user)}`);
       else if (s.local) lines.push(`Dosya: ${esc(s.fileName || s.name)}`);
       else lines.push(esc(s.url));
       if (act) {
@@ -1511,19 +1514,45 @@ function renderSources(v) {
         else if (epgSourceUrls(s, c).length) lines.push('TV rehberi henüz yüklenmedi');
         else lines.push('TV rehberi adresi yok');
       }
-      return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button><button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
+      return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}${s.managed ? '' : `<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button>`}<button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
-  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
 
+// Sürüm satırına art arda 7 dokunuş yönetici panelini açar/gizler (güvenlik gizlilikten değil, token ve paroladan gelir).
+let verTaps = 0;
+let verTapAt = 0;
+function verTap() {
+  const now = Date.now();
+  verTaps = now - verTapAt < 1500 ? verTaps + 1 : 1;
+  verTapAt = now;
+  if (verTaps < 7) return;
+  verTaps = 0;
+  const on = !store.pref('adm.on', false);
+  store.setPref('adm.on', on);
+  toast(on ? 'Yönetici paneli açıldı' : 'Yönetici paneli gizlendi');
+  renderTab();
+}
+
+async function openAdmin() {
+  try {
+    const m = await import('./admin-ui.js');
+    m.openAdmin({ store, net, apkUrl: UPDATE_BASE + 'iptv-oynatici.apk', shareOrCopy, readClipboard });
+  } catch (e) {
+    toast('Yönetici paneli açılamadı: ' + (e.message || e));
+  }
+}
+
 function onSourcesClick(e) {
+  if (e.target.closest('#ver-tap')) return verTap();
   const t = e.target.closest('[data-set]');
   if (t) {
     const k = t.dataset.set;
     if (k === 'general') return generalSheet();
+    if (k === 'admin') return openAdmin();
     if (k === 'player') return playerSheet();
     if (k === 'epg') return epgSettingsSheet();
     if (k === 'health') return healthSheet();
@@ -1580,15 +1609,16 @@ function sourceForm(edit) {
   const v = (k) => esc((edit && edit[k]) || '');
   const sh = openSheet({
     title: edit ? 'Kaynağı düzenle' : 'Kaynak ekle',
-    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button></div>
+    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button><button data-t="code">Kod</button></div>
 <form id="f" autocomplete="off">
-<label class="field"><span>Ad (isteğe bağlı)</span><input name="name" value="${v('name')}" placeholder="Örn. Evdeki liste"></label>
+<div data-for="xtream m3u file"><label class="field"><span>Ad (isteğe bağlı)</span><input name="name" value="${v('name')}" placeholder="Örn. Evdeki liste"></label></div>
 <div data-for="m3u"><label class="field"><span>M3U / M3U8 liste bağlantısı</span><input name="url" inputmode="url" value="${v('url')}" placeholder="http://…/liste.m3u"></label></div>
 <div data-for="xtream"><label class="field"><span>Sunucu adresi</span><input name="server" inputmode="url" value="${v('server')}" placeholder="http://sunucu.com:8080"></label>
 <label class="field"><span>Kullanıcı adı</span><input name="user" value="${v('user')}" autocapitalize="none"></label>
 <label class="field"><span>Şifre</span><input name="pass" value="${v('pass')}" autocapitalize="none"></label></div>
 <div data-for="file"><label class="field"><span>M3U / M3U8 dosyası</span><input name="file" type="file"><small>${edit && edit.local ? `Kayıtlı dosya: ${esc(edit.fileName || edit.name)}. Değiştirmek için yeni dosya seçin.` : 'Telefondaki liste dosyasını seçin.'}</small></label></div>
-<label class="field"><span>TV rehberi (XMLTV) bağlantısı — isteğe bağlı</span><input name="epgUrl" inputmode="url" value="${v('epgUrl')}" placeholder="Boş bırakırsanız kaynaktaki adres kullanılır"><small>.xml veya .xml.gz olabilir.</small></label>
+<div data-for="xtream m3u file"><label class="field"><span>TV rehberi (XMLTV) bağlantısı — isteğe bağlı</span><input name="epgUrl" inputmode="url" value="${v('epgUrl')}" placeholder="Boş bırakırsanız kaynaktaki adres kullanılır"><small>.xml veya .xml.gz olabilir.</small></label></div>
+<div data-for="code"><label class="field"><span>Davet kodu</span><input name="code" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="24" placeholder="ABCD-EFGH-JKMN-PQRS"><small>Size liste veren kişinin gönderdiği 16 harflik kod.</small></label></div>
 <p class="err-text" id="f-err" hidden></p>
 <button class="btn" id="f-go" type="submit" style="width:100%">Kaydet ve yükle</button>
 </form>`,
@@ -1598,7 +1628,8 @@ function sourceForm(edit) {
       const setType = (t) => {
         type = t;
         $$('#f-type button', body).forEach((b) => b.classList.toggle('on', b.dataset.t === t));
-        $$('[data-for]', body).forEach((d) => (d.hidden = d.dataset.for !== t));
+        $$('[data-for]', body).forEach((d) => (d.hidden = !d.dataset.for.split(' ').includes(t)));
+        $('#f-go', body).textContent = t === 'code' ? 'Kodu doğrula ve yükle' : 'Kaydet ve yükle';
       };
       setType(type);
       $('#f-type', body).addEventListener('click', (e) => {
@@ -1613,6 +1644,23 @@ function sourceForm(edit) {
           err.textContent = m;
         };
         err.hidden = true;
+        if (type === 'code') {
+          const go = $('#f-go', body);
+          go.disabled = true;
+          go.textContent = 'Kod denetleniyor…';
+          try {
+            const r = await redeem({ code: f.code, store, net, deviceId: deviceId(store), now: Date.now() });
+            sh.close();
+            toast(r.name ? `${r.name} için ${r.ids.length} liste eklendi` : `${r.ids.length} liste eklendi`);
+            await activate(r.ids[0], { force: true });
+            renderTab();
+          } catch (ex) {
+            fail(ex.message || 'Kod doğrulanamadı');
+            go.disabled = false;
+            go.textContent = 'Kodu doğrula ve yükle';
+          }
+          return;
+        }
         let src = { id: edit && edit.id, type, name: (f.name || '').trim(), epgUrl: (f.epgUrl || '').trim() };
         let text = null;
         if (type === 'file') {
@@ -2961,6 +3009,8 @@ function generalSheet() {
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
       `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
+      `<div class="sel-row"><span>Cihaz kimliği<small id="g-dev-s">${esc(fmtDeviceId(deviceId(store)))}</small></span><button class="btn sm ghost" id="g-dev">Kopyala</button></div>` +
+      `<div class="sel-row"><span>Sorun raporu<small>Yöneticinize gönderilecek bilgileri önizleyin</small></span><button class="btn sm ghost" id="g-rep">Gönder</button></div>` +
       `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
     mount: (body) => {
       body.addEventListener('click', (e) => {
@@ -2990,6 +3040,8 @@ function generalSheet() {
       });
       $('#g-lock', body).addEventListener('click', () => lockSheet());
       $('#g-bk', body).addEventListener('click', () => backupSheet());
+      $('#g-dev', body).addEventListener('click', async () => toast((await copyText(fmtDeviceId(deviceId(store)))) ? 'Cihaz kimliği kopyalandı' : 'Kopyalanamadı'));
+      $('#g-rep', body).addEventListener('click', () => reportSheet());
       $('#g-lim', body).addEventListener('change', (e) => store.setPref('set.recentLimit', Number(e.target.value)));
       $('#g-fs', body).addEventListener('change', (e) => {
         store.setPref('set.fontScale', Number(e.target.value));
@@ -2997,6 +3049,124 @@ function generalSheet() {
         renderTab(); // sabit yükseklikli listeler yeni ölçüyle yeniden kurulur
       });
     },
+  });
+}
+
+// ------------------------------------------------------------------ paylaşma, sorun raporu, davet kodlu (yönetilen) listeler
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function readClipboard() {
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return '';
+  }
+}
+// Android’de paylaşım menüsü (WhatsApp, e-posta…); olmazsa panoya kopyalar.
+async function shareOrCopy(text, title) {
+  if (nativePlugin && nativePlugin.shareText) {
+    try {
+      await nativePlugin.shareText({ text, title });
+      return 'share';
+    } catch {}
+  }
+  if (await copyText(text)) {
+    toast('Panoya kopyalandı');
+    return 'copy';
+  }
+  toast('Paylaşılamadı');
+  return '';
+}
+
+function reportInput() {
+  const names = new Map();
+  for (const it of S.cat.live) names.set(String(it.id), it.name);
+  const bad = Object.entries(store.pref(badKey(), {}) || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, at]) => ({ name: names.get(String(id)) || 'Kanal ' + id, at }));
+  const hv = Object.values(store.pref(histKey(), {}) || {});
+  const hist = { ok: hv.filter((r) => r[0] === 1).length, fail: hv.filter((r) => r[0] === 0).length, unknown: hv.filter((r) => r[0] === -1).length };
+  return {
+    version: VERSION,
+    tv: isTvUi(),
+    deviceId: deviceId(store),
+    sources: store.sources(),
+    counts: { live: S.cat.live.length, movie: S.cat.movies.length, series: S.cat.series.length },
+    bad,
+    errors: store.pref('errlog', []) || [],
+    hist,
+  };
+}
+
+function reportSheet() {
+  const rep = buildReport(reportInput());
+  const text = 'Iptv Player Pro sorun raporu\n\n' + encodeReport(rep);
+  const sh = openSheet({
+    title: 'Sorun raporu',
+    html: `<p>Yöneticinize yardımcı olmak için aşağıdaki bilgiler gönderilir. Şifre, kullanıcı adı ve liste adresi gönderilmez.</p><pre id="rp-view" style="white-space:pre-wrap;font:inherit;font-size:.8rem;color:var(--muted);margin:10px 0">${esc(describeReport(rep))}</pre><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="rp-send">Gönder</button><button class="btn ghost" id="rp-copy">Kopyala</button></div>`,
+    mount: (body) => {
+      $('#rp-send', body).addEventListener('click', async () => {
+        if (await shareOrCopy(text, 'Sorun raporu gönder')) sh.close();
+      });
+      $('#rp-copy', body).addEventListener('click', async () => toast((await copyText(text)) ? 'Rapor kopyalandı' : 'Kopyalanamadı'));
+    },
+  });
+}
+
+// Oynatma hataları rapora girmek üzere kısa bir halka tamponunda tutulur (adresler ve gizli değerler süzülür).
+let lastPlayErr = '';
+player.on((st) => {
+  if (st.status !== 'error' || !st.item) {
+    if (st.status !== 'error') lastPlayErr = '';
+    return;
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return; // internet yokken oluşan hata kanalın suçu değil
+  const key = st.item.id + '|' + st.error;
+  if (key === lastPlayErr) return;
+  lastPlayErr = key;
+  store.setPref('errlog', pushError(store.pref('errlog', []), { k: st.item.kind, n: st.item.name, m: st.error }));
+});
+
+// Davet koduyla gelen kaynakları yönetici dosyasıyla eşitler: değişiklikler uygulanır, erişimi biten kaynaklar kaldırılır.
+let mgBusy = false;
+async function refreshManaged({ launch = false, force = false } = {}) {
+  if (mgBusy || !store.sources().some((s) => s.managed && s.code)) return;
+  if (!force && !shouldAutoCheck(store.pref('mg.at', 0), Date.now(), launch ? LAUNCH_MS : CHECK_MS)) return;
+  mgBusy = true;
+  try {
+    store.setPref('mg.at', Date.now());
+    const r = await syncManaged({ store, net, deviceId: deviceId(store), now: Date.now() });
+    if (!r || !r.changed) return;
+    const cur = S.source && store.sources().find((s) => s.id === S.source.id);
+    if (!cur) {
+      const next = store.activeSource();
+      if (next) await activate(next.id);
+      else {
+        S.source = null;
+        setCatalog(emptyCatalog());
+        renderTop();
+        renderTab();
+        sourceForm();
+      }
+    } else if (r.updated) await activate(cur.id, { force: true });
+    else if (S.tab === 'sources') renderTab();
+    if (r.removed.length) mgNotice(r.removed);
+  } finally {
+    mgBusy = false;
+  }
+}
+function mgNotice(removed) {
+  const sh = openSheet({
+    title: 'Liste erişimi sona erdi',
+    html: removed.map((x) => `<p>${esc(x.reason)}${x.names && x.names.length ? `<br><small>Kaldırılan: ${esc(x.names.join(', '))}</small>` : ''}</p>`).join('') + '<p>Yeni bir kod için listeyi size veren kişiyle görüşün.</p><button class="btn" id="mg-ok" style="width:100%">Tamam</button>',
+    mount: (body) => $('#mg-ok', body).addEventListener('click', () => sh.close()),
   });
 }
 
@@ -4366,6 +4536,7 @@ document.addEventListener('visibilitychange', () => {
   castUi.autoSync();
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
+  refreshManaged();
 });
 setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
 setInterval(() => {
@@ -4427,7 +4598,7 @@ setTimeout(syncPlans, 2500); // alarmları kayıtlı listeyle eşitle (yeniden b
 if (nativePlugin) setTimeout(() => dlLoad().then(() => engine.dl.resumeAll(false)).catch(() => {}), 2000);
 
 initNav();
-window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdate, restoreUpd }; // hata ayıklama ve uçtan uca testler için
+window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdate, restoreUpd, refreshManaged }; // hata ayıklama ve uçtan uca testler için
 
 (async function boot() {
   if (lockEnabled()) lockApp(); // açılışta şifre ekranı
@@ -4440,6 +4611,7 @@ window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdat
     return sourceForm();
   }
   setTimeout(() => checkForUpdate({ launch: true }), 2500); // açılışta yeni sürüm var mı bak; varsa üstte şerit çıkar
+  setTimeout(() => refreshManaged({ launch: true }), 4000); // davet koduyla gelen listeler hâlâ geçerli mi
   setTimeout(() => maybeWhatsNew(), 1800);
   await activate(src.id);
 })();

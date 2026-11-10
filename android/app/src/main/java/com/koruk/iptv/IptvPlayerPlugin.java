@@ -1590,6 +1590,24 @@ public class IptvPlayerPlugin extends Plugin {
         }
     }
 
+    // Metni paylaşım menüsünden gönderir (WhatsApp, e-posta…): sorun raporu ve davet metni için.
+    @PluginMethod
+    public void shareText(final PluginCall call) {
+        final String text = call.getData().optString("text", "");
+        final String title = call.getData().optString("title", "Paylaş");
+        try {
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_TEXT, text);
+            Intent chooser = Intent.createChooser(send, title);
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(chooser);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
     // Metni dosya olarak kaydeder (yedek). Android 10+: İndirilenler/Iptv Player Pro; daha eskide paylaşım menüsü açılır.
     @PluginMethod
     public void saveText(final PluginCall call) {

@@ -109,3 +109,17 @@ test('bozulmuş/elle değiştirilmiş yedek: geçersiz öğeler atılır, geri y
   assert.equal(store.favs('a').length, 1);
   assert.equal(store.progress('a', 'm2').pos, 20000);
 });
+
+test('yedek: cihaz kimliği, yönetici verisi, yönetilen denetim zamanı ve hata günlüğü yedeğe girmez', () => {
+  const { store } = mk();
+  store.saveSource({ name: 'A', type: 'm3u', url: 'http://x/y' });
+  store.setPref('dev.id', 'a1b2c3d4e5f6');
+  store.setPref('adm.tok', { s: 'a', i: 'b', c: 'c' });
+  store.setPref('adm.on', true);
+  store.setPref('mg.at', 123);
+  store.setPref('errlog', [{ n: 'K', m: 'hata' }]);
+  store.setPref('set.buffer', 'max');
+  const keys = Object.keys(makeBackup(store).data);
+  for (const k of ['pref.dev.id', 'pref.adm.tok', 'pref.adm.on', 'pref.mg.at', 'pref.errlog']) assert.ok(!keys.includes(k), k + ' yedeğe girmemeli');
+  assert.ok(keys.includes('pref.set.buffer'));
+});

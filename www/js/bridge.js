@@ -43,6 +43,7 @@ export function nativePlugin(name, win = globalThis.window) {
     installApk: call('installApk'),
     deleteFile: call('deleteFile'),
     saveText: call('saveText'),
+    shareText: call('shareText'),
     recordStart: call('recordStart'),
     recordStop: call('recordStop'),
     recordList: call('recordList'),

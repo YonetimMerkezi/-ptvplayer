@@ -69,7 +69,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let { page, ctx, errs } = await newPage();
   await page.waitForSelector('#f');
   ok(await page.$eval('#f-type [data-t=xtream]', (b) => b.classList.contains('on')), 'ilk açılışta kaynak ekleme sayfası kendiliğinden açık (Xtream seçili)');
-  ok((await page.$$eval('#f-type button', (b) => b.map((x) => x.textContent))).join() === 'Xtream,M3U bağlantısı,Dosyadan', 'üç giriş türü: Xtream, M3U bağlantısı, Dosyadan');
+  ok((await page.$$eval('#f-type button', (b) => b.map((x) => x.textContent))).join() === 'Xtream,M3U bağlantısı,Dosyadan,Kod', 'dört giriş türü: Xtream, M3U bağlantısı, Dosyadan, Kod');
   await sleep(350);
   await page.screenshot({ path: path.join(SHOTS, '01-ilk-acilis.png') });
   await page.click('.sheet [data-close]');
@@ -3782,6 +3782,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(dlsc.length === 7 && dlsc.every((r) => r[0] === dlsc[0][0]) && dlsc.every((r) => r[1] <= 844), 'yatay ekranda yedi kısayol tek satırda ve ekrana sığıyor: ' + JSON.stringify(dlsc));
   await page.screenshot({ path: path.join(SHOTS, '44-indirme-yatay-ana-ekran.png') });
   await ctx.close();
+
+  await require('./admin.cjs').adminSection({ browser, base, mock, ok, sleep, SHOTS });
 
   await browser.close();
   www.close();

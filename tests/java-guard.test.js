@@ -333,3 +333,14 @@ test('çevrimdışı indirme: hizmet bildirimli ön plan (dataSync), tek iş par
   assert.match(notifier, /CH_DL/);
   assert.match(notifier, /setProgress\(100/);
 });
+
+test('metin paylaşımı (rapor, davet): yöntem eklentide ve köprüde, paylaşım menüsü yeni görevde açılır', () => {
+  const m = /public void shareText\(final PluginCall call\) \{([\s\S]*?)\n    \}\n/.exec(kaynak);
+  assert.ok(m, 'shareText eklentide yok');
+  assert.match(m[1], /Intent\.ACTION_SEND/);
+  assert.match(m[1], /setType\("text\/plain"\)/);
+  assert.match(m[1], /EXTRA_TEXT/);
+  assert.match(m[1], /FLAG_ACTIVITY_NEW_TASK/, 'etkinlik dışından açılan menü yeni görevde başlamalı');
+  assert.match(m[1], /call\.reject/, 'hata kullanıcıya bildirilmeli');
+  assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /shareText: call\('shareText'\)/);
+});

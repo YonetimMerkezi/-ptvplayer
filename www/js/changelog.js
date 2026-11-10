@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 34,
+    title: 'Davet kodu ve sorun raporu',
+    items: [
+      'Kaynak ekle › Kod: size liste veren kişinin gönderdiği davet koduyla liste kendiliğinden eklenir; erişim bitince ya da kod kapatılınca liste de kalkar',
+      'Genel ayarlar › Cihaz kimliği ve Sorun raporu: yöneticinize göndereceğiniz bilgileri önizleyip paylaşın (şifre, kullanıcı adı ve liste adresi gönderilmez)',
+      'Canlı TV’nin bölmeli ekranından tam ekrana geçince sol üstteki geri oku oynatıcıyı yeniden açıyordu: düzeltildi',
+    ],
+  },
+  {
     id: 33,
     title: 'Hızlı indirme, oynatıcıda İndir',
     items: [
