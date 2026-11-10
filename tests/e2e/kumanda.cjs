@@ -79,9 +79,14 @@ async function kumandaSection({ browser, base, mock, ok, sleep }) {
     await page.click('.card');
     await page.waitForSelector('#mv-play');
     await sleep(500);
-    await page.focus('#mv-play');
-    if (hiddenPages) await page.addStyleTag({ content: 'html.tv #app, #sheets .pg:not(.over-player), #sheets .sheet-back:not(.over-player) { visibility: hidden !important }' });
-    await page.keyboard.press('Enter');
+    if (hiddenPages) {
+      // Yerelde oynatıcı açılınca alttaki sayfa gizlenir; gizli öğe odağını kaybeder, bu yüzden tıklama JS ile verilir (zamanlamaya bağlı değil)
+      await page.addStyleTag({ content: 'html.tv #app, #sheets .pg:not(.over-player), #sheets .sheet-back:not(.over-player) { visibility: hidden !important }' });
+      await page.evaluate(() => document.querySelector('#mv-play').click());
+    } else {
+      await page.focus('#mv-play');
+      await page.keyboard.press('Enter');
+    }
     await page.waitForSelector('body.player-open');
     await sleep(1200);
     const inPlayer = () => page.evaluate(() => !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('#pl-ui')));

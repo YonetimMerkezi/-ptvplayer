@@ -6,7 +6,8 @@ export const CHANGELOG = [
     title: 'Şifreli yayınların kaydı',
     items: [
       'AES-128 şifreli HLS yayınlar (ör. bazı film/dizi kanalları) artık kaydedilebiliyor: kayıt çözülmüş, normal bir .ts dosyası olur; oynatma etkilenmez',
-      'Çözülemeyen şifreleme (SAMPLE-AES/DRM) kayıt başlamadan söylenir; tanınmayan biçimde uyarıya yayının liste durumu da eklendi',
+      'Çözülemeyen şifreleme (SAMPLE-AES/DRM) kayıt başlamadan söylenir',
+      'Biçimi tanınmayan yayında uyarı artık yayının dosya adı, sunucunun bildirdiği tür ve liste durumunu da gösterir (sorunu bulmak için); uzun uyarı daha uzun süre ekranda kalır',
     ],
   },
   {

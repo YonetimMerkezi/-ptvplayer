@@ -51,6 +51,7 @@ final class TapDataSource implements DataSource {
     private Cipher cipher;
     private final byte[] tail = new byte[16]; // çözülmüş son blok (sonda dolgu ayıklanır)
     private int tailLen;
+    private String desc = ""; // isteğin kısa tanımı (tanılama)
     private long declared; // açılışta bildirilen uzunluk (-1: bilinmiyor)
     private long total; // bu istekte okunan bayt
     private boolean eof; // istek sonuna kadar okundu
@@ -78,6 +79,7 @@ final class TapDataSource implements DataSource {
         cipher = null;
         tailLen = 0;
         declared = n;
+        desc = describe(dataSpec.uri, n);
         total = 0;
         eof = false;
         try {
@@ -112,8 +114,9 @@ final class TapDataSource implements DataSource {
                 if (cipher != null) decryptChunk(buffer, offset, n);
                 else deliver(buffer, offset, n);
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // kayıt/tanıma/çözme oynatmayı etkilemez
+            StreamSniff.noteError(e);
             cipher = null;
             tapping = false;
         }
@@ -201,7 +204,7 @@ final class TapDataSource implements DataSource {
             capture = new StreamSniff.Capture(StreamSniff.LIST_CAP);
             capture.add(head, 0, headLen);
         } else {
-            StreamSniff.noteMedia(k, head, headLen);
+            StreamSniff.noteMedia(k, head, headLen, desc);
         }
     }
 
@@ -240,13 +243,33 @@ final class TapDataSource implements DataSource {
             try {
                 finishCrypto(); // yalnız tüm parça okunduysa anlamlı; yarım kalan istekte kalan blok yazılmaz
                 finishSniff();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // tanıma oynatmayı etkilemez
+                StreamSniff.noteError(e);
             }
             StreamRecorder.release(this);
         } finally {
             tapping = false;
             upstream.close();
+        }
+    }
+
+    // Tanılama için isteğin kısa tanımı (yalnız dosya adı + sunucunun bildirdiği tür + boyut).
+    private String describe(Uri uri, long length) {
+        try {
+            String type = null;
+            Map<String, List<String>> h = upstream.getResponseHeaders();
+            if (h != null) {
+                for (Map.Entry<String, List<String>> e : h.entrySet()) {
+                    if (e.getKey() != null && e.getKey().equalsIgnoreCase("Content-Type") && e.getValue() != null && !e.getValue().isEmpty()) {
+                        type = e.getValue().get(0);
+                        break;
+                    }
+                }
+            }
+            return StreamSniff.describeRequest(uri == null ? null : uri.getPath(), type, length);
+        } catch (RuntimeException e) {
+            return "";
         }
     }
 

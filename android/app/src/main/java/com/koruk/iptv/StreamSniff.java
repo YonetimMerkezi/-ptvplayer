@@ -58,6 +58,8 @@ final class StreamSniff {
         }
     };
     private static final Map<String, byte[]> keys = new HashMap<>();
+    private static String lastReq = ""; // son medya isteğinin kısa tanımı (adres sonu, tür, boyut)
+    private static String lastErr = ""; // tanıma sırasında yutulan iç hata
     private static final Set<String> keyUris = new HashSet<>();
 
     static final class KeyRef {
@@ -95,6 +97,8 @@ final class StreamSniff {
             listSeen = false;
             fmp4List = false;
             lastSig = "";
+            lastReq = "";
+            lastErr = "";
             segKeys.clear();
             keys.clear();
             keyUris.clear();
@@ -155,6 +159,47 @@ final class StreamSniff {
             lastMedia = kind;
             lastSig = hex(head, len);
         }
+    }
+
+    /** noteMedia + isteğin kısa tanımı (kayıt reddi mesajında gösterilir). */
+    static void noteMedia(int kind, byte[] head, int len, String desc) {
+        if (kind == AUDIO || kind == IGNORE || kind == PLAYLIST || kind == UNDECIDED || kind == MP4_INIT) return;
+        synchronized (LOCK) {
+            lastMedia = kind;
+            lastSig = hex(head, len);
+            lastReq = desc == null ? "" : desc;
+        }
+    }
+
+    /** Tanıma sırasında beklenmeyen bir hata oldu (oynatma etkilenmez); nedeni tanılama mesajına eklenir. */
+    static void noteError(Throwable t) {
+        synchronized (LOCK) {
+            lastErr = t == null ? "" : t.getClass().getSimpleName();
+        }
+    }
+
+    /** İsteğin kısa tanımı: yalnız dosya adı (adresteki kullanıcı/şifre bölümleri asla girmez), tür, boyut. */
+    static String describeRequest(String path, String contentType, long length) {
+        StringBuilder sb = new StringBuilder();
+        if (path != null && !path.isEmpty()) {
+            String name = path.substring(path.lastIndexOf('/') + 1);
+            if (name.length() > 24) name = "…" + name.substring(name.length() - 23);
+            if (!name.isEmpty()) sb.append("dosya: ").append(name);
+        }
+        if (contentType != null && !contentType.isEmpty()) {
+            if (sb.length() > 0) sb.append("; ");
+            String ct = contentType.length() > 32 ? contentType.substring(0, 32) : contentType;
+            sb.append("tür: ").append(ct);
+        }
+        if (length >= 0) {
+            if (sb.length() > 0) sb.append("; ");
+            sb.append("boyut: ").append(length);
+        }
+        return sb.toString();
+    }
+
+    private static String extra() {
+        return (lastReq.isEmpty() ? "" : "; " + lastReq) + (lastErr.isEmpty() ? "" : "; iç hata: " + lastErr);
     }
 
     /** Başlangıç bölümü (ftyp+moov) tam okundu. */
@@ -335,7 +380,7 @@ final class StreamSniff {
                 default:
                     v.error = encrypted
                         ? "Bu yayın şifreli (HLS) olduğundan kaydedilemiyor"
-                        : "Bu yayının biçimi tanınmadı (başlık: " + lastSig + "; liste: " + (listSeen ? "var" : "yok") + "), kaydedilemiyor";
+                        : "Bu yayının biçimi tanınmadı (başlık: " + lastSig + "; liste: " + (listSeen ? "var" : "yok") + extra() + "), kaydedilemiyor";
                     return v;
             }
         }
@@ -358,7 +403,7 @@ final class StreamSniff {
                 case MP4_PROG:
                     return "yayın aralıksız MP4 akışı";
                 default:
-                    return encrypted ? "yayın şifreli (HLS)" : "yayın biçimi tanınmadı (başlık: " + lastSig + ")";
+                    return encrypted ? "yayın şifreli (HLS)" : "yayın biçimi tanınmadı (başlık: " + lastSig + extra() + ")";
             }
         }
     }

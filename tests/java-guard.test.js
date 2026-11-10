@@ -403,4 +403,8 @@ test('yayın kaydı: şifreli HLS (AES-128) parçalar kayıt için çözülür, 
   assert.match(tap, /StreamSniff\.noteKey\(keyUri/);
   // çözülmüş veri yalnız tanıma/kayda gider; read() tamponu oynatıcıya olduğu gibi döner
   assert.doesNotMatch(tap, /System\.arraycopy\([^;]*buffer, offset/, 'oynatıcıya verilen tampon değiştirilmemeli');
+  // tanılama: tanınmayan yayında dosya adı/tür/boyut gösterilir, ama adresin kullanıcı/şifre bölümleri asla
+  assert.match(tap, /StreamSniff\.noteMedia\(k, head, headLen, desc\)/, 'istek tanımı tanıma sonucuyla birlikte saklanmalı');
+  assert.match(tap, /StreamSniff\.noteError\(e\)/, 'yutulan iç hata tanılamaya yazılmalı');
+  assert.match(sniff, /path\.substring\(path\.lastIndexOf\('\/'\) \+ 1\)/, 'yalnız dosya adı gösterilmeli (yolun kalanında kullanıcı/şifre olabilir)');
 });

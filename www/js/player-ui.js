@@ -550,7 +550,8 @@ export function createPlayerUI({ engine, player, env }) {
               await env.recStart(st.item, Number(b.dataset.m) * 60000);
               toast('Kayıt başladı');
             } catch (err) {
-              toast(String((err && err.message) || err || 'Kayıt başlatılamadı'), 4000);
+              const why = String((err && err.message) || err || 'Kayıt başlatılamadı');
+              toast(why, why.length > 90 ? 12000 : 4000); // uzun tanılama mesajı okunabilsin
             }
           }),
       });
