@@ -280,15 +280,17 @@ export class EpgView {
   nowNext(item, now = Date.now()) {
     return nowNext(this.listFor(item), now);
   }
+  _ensureRep() {
+    if (this._rep) return;
+    this._rep = new Map();
+    for (const [itemId, eid] of Object.entries(this.data.map)) if (!this._rep.has(eid)) this._rep.set(eid, itemId);
+    this._folded = new Map();
+  }
   // Program adında arama: { id: kanal öğesi no, p: program }, başlangıç sırasıyla. Aynı rehber kanalını paylaşan kanallardan biri alınır.
   search(term, { from = Date.now() - 2 * 3600e3, limit = 150 } = {}) {
     const t = fold(String(term || ''));
     if (t.length < 2) return [];
-    if (!this._rep) {
-      this._rep = new Map();
-      for (const [itemId, eid] of Object.entries(this.data.map)) if (!this._rep.has(eid)) this._rep.set(eid, itemId);
-      this._folded = new Map();
-    }
+    this._ensureRep();
     const out = [];
     for (const [eid, list] of Object.entries(this.data.prog)) {
       const itemId = this._rep.get(eid);
@@ -302,5 +304,16 @@ export class EpgView {
     }
     out.sort((a, b) => a.p.s - b.p.s);
     return out.slice(0, limit);
+  }
+  // Başlangıcı [from, to] aralığında olan tüm programlar ({ id: kanal öğesi no, p }); her rehber kanalı için bir öğe (search ile aynı).
+  between(from, to) {
+    this._ensureRep();
+    const out = [];
+    for (const [eid, list] of Object.entries(this.data.prog)) {
+      const itemId = this._rep.get(eid);
+      if (!itemId) continue;
+      for (const [s, e, t, d] of list) if (s >= from && s <= to) out.push({ id: itemId, p: { s, e, t, d } });
+    }
+    return out;
   }
 }

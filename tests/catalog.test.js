@@ -193,6 +193,23 @@ test('rehberde program adıyla arama: yalnız süren/gelecek programlar, Türkç
   assert.equal(view.search('maç', { from: now - H, limit: 1 }).length, 1);
 });
 
+test('rehberde zaman aralığındaki programlar: ortak rehber kanalından tek kanal, eşlenmemiş elenir', () => {
+  const now = Date.UTC(2026, 10, 9, 12, 0);
+  const H = 3600000;
+  const view = new EpgView({
+    map: { x1: 'a', x2: 'a', x3: 'b' },
+    prog: {
+      a: [[now - 5 * H, now - 4 * H, 'Eski', ''], [now + 2 * H, now + 3 * H, 'Maç', 'd1'], [now + 9 * H, now + 10 * H, 'Uzak', '']],
+      b: [[now, now + H, 'Özet', '']],
+      c: [[now, now + H, 'Eşlenmemiş', '']],
+    },
+  });
+  const r = view.between(now - H, now + 3 * H);
+  assert.deepEqual(r.map((x) => [x.id, x.p.t]).sort(), [['x1', 'Maç'], ['x3', 'Özet']]);
+  assert.equal(r.find((x) => x.id === 'x1').p.d, 'd1');
+  assert.deepEqual(new EpgView(null).between(0, now), []);
+});
+
 test('arşiv ve zamanlı kayıt adresleri yalnız Xtream canlı kanalda', () => {
   const src = { type: 'xtream', server: 'http://h:80', user: 'u', pass: 'p' };
   const live = { id: 'x10', streamId: '10', kind: 'live', name: 'TRT', archive: true };

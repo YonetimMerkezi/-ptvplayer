@@ -1,0 +1,365 @@
+// Futbol: maç takvimi, skorlar ve maçın hangi kanalda olduğu.
+// Veri: ESPN'in herkese açık skor tablosu (anahtarsız). Bu dosya saf mantıktır (ağ ve TV rehberi dışarıdan verilir); ekran sports-ui.js'te.
+import { fold } from './util.js';
+
+export const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
+export const DAY = 86400000;
+
+// Yayıncılar (Türkiye, 2026-27 sezonu; basında çıkan dağılım, değişebilir). keys: kanal adında aranan sözcük öbekleri.
+export const BROADCASTERS = {
+  bein: { name: 'beIN SPORTS', keys: ['bein sports', 'bein sport', 'beinsports', 'bein spor'] },
+  ssport: { name: 'S Sport', keys: ['s sport', 'ssport'] },
+  trt: { name: 'TRT / Tabii', keys: ['trt spor', 'trt 1', 'trt1', 'tabii spor', 'tabii'] },
+  aspor: { name: 'A Spor / ATV', keys: ['a spor', 'atv'] },
+};
+
+// Sıra, ekrandaki bölüm sırasıdır. bc: yayıncı(lar); tr: Türkiye oynuyorsa yayıncı(lar).
+export const LEAGUES = [
+  { id: 'tur.1', name: 'Süper Lig', bc: ['bein'] },
+  { id: 'uefa.champions', name: 'Şampiyonlar Ligi', bc: ['trt'] },
+  { id: 'uefa.europa', name: 'UEFA Avrupa Ligi', bc: ['trt'] },
+  { id: 'uefa.europa.conf', name: 'UEFA Konferans Ligi', bc: ['trt'] },
+  { id: 'eng.1', name: 'Premier Lig', bc: ['bein'] },
+  { id: 'esp.1', name: 'La Liga', bc: ['ssport'] },
+  { id: 'ita.1', name: 'Serie A', bc: ['ssport'] },
+  { id: 'ger.1', name: 'Bundesliga', bc: ['ssport'] },
+  { id: 'fra.1', name: 'Ligue 1', bc: ['bein'] },
+  { id: 'uefa.nations', name: 'UEFA Uluslar Ligi', bc: [], tr: ['aspor'] },
+  { id: 'fifa.friendly', name: 'Hazırlık maçları (milli)', bc: [], tr: ['aspor'] },
+  { id: 'uefa.euroq', name: 'EURO Elemeleri', bc: [], tr: ['aspor'] },
+];
+export const leagueOf = (id) => LEAGUES.find((l) => l.id === id) || null;
+
+// ---- takım adları: eşleştirme sözcük öbekleri ve ekranda gösterilecek Türkçe ad ----
+
+// Rehberde bu adla yazılabilecek ek yazımlar (anahtar: ESPN adının sadeleşmiş hali).
+const ALIAS = {
+  'manchester united': ['man united', 'man utd', 'manchester utd'],
+  'manchester city': ['man city'],
+  'newcastle united': ['newcastle'],
+  'west ham united': ['west ham'],
+  'tottenham hotspur': ['tottenham', 'spurs'],
+  'wolverhampton wanderers': ['wolves', 'wolverhampton'],
+  'brighton hove albion': ['brighton'],
+  'nottingham forest': ['nottingham'],
+  'leeds united': ['leeds'],
+  'paris saint germain': ['psg', 'paris sg', 'paris st germain', 'paris'],
+  'bayern munich': ['bayern munih', 'bayern munchen', 'bayern'],
+  'atletico madrid': ['atletico', 'at madrid'],
+  'athletic club': ['athletic bilbao', 'bilbao'],
+  'real betis': ['betis'],
+  'celta vigo': ['celta'],
+  'rayo vallecano': ['rayo'],
+  'ac milan': ['milan'],
+  'inter milan': ['inter', 'internazionale'],
+  'internazionale': ['inter'],
+  'hellas verona': ['verona'],
+  'borussia monchengladbach': ['gladbach', 'monchengladbach', 'm gladbach'],
+  'borussia dortmund': ['dortmund'],
+  'rb leipzig': ['leipzig'],
+  'eintracht frankfurt': ['frankfurt'],
+  'werder bremen': ['bremen'],
+  '1 fc koln': ['koln'],
+  'fc koln': ['koln'],
+  'olympique marseille': ['marsilya', 'marseille'],
+  'olympique lyonnais': ['lyon'],
+  'ogc nice': ['nice'],
+  'stade rennais': ['rennes'],
+  'istanbul basaksehir': ['basaksehir', 'medipol basaksehir'],
+  'caykur rizespor': ['rizespor'],
+  'gaziantep fk': ['gaziantep'],
+  'sporting cp': ['sporting lizbon', 'sporting'],
+  'benfica': ['sl benfica'],
+  'psv eindhoven': ['psv'],
+  'club brugge': ['brugge'],
+  'red bull salzburg': ['salzburg'],
+  'shakhtar donetsk': ['shakhtar', 'sahtar'],
+  'dynamo kyiv': ['dinamo kiev'],
+  'red star belgrade': ['kizil yildiz', 'crvena zvezda'],
+  'young boys': ['young boys'],
+};
+
+// [ESPN adı, Türkçe ad, rehberde ek yazımlar…] — milli takımlar
+const NATIONS = [
+  ['Turkey', 'Türkiye', 'turkiye', 'turk milli takimi'],
+  ['Germany', 'Almanya'], ['France', 'Fransa'], ['Spain', 'İspanya'], ['Italy', 'İtalya'], ['England', 'İngiltere'],
+  ['Netherlands', 'Hollanda'], ['Portugal', 'Portekiz'], ['Belgium', 'Belçika'], ['Croatia', 'Hırvatistan'],
+  ['Switzerland', 'İsviçre'], ['Denmark', 'Danimarka'], ['Poland', 'Polonya'], ['Austria', 'Avusturya'],
+  ['Sweden', 'İsveç'], ['Norway', 'Norveç'], ['Greece', 'Yunanistan'], ['Serbia', 'Sırbistan'],
+  ['Czechia', 'Çekya', 'cek cumhuriyeti', 'czech republic'], ['Czech Republic', 'Çekya', 'cekya', 'cek cumhuriyeti'],
+  ['Scotland', 'İskoçya'], ['Wales', 'Galler'], ['Ireland', 'İrlanda'], ['Republic of Ireland', 'İrlanda Cumhuriyeti', 'irlanda'],
+  ['Northern Ireland', 'Kuzey İrlanda'], ['Hungary', 'Macaristan'], ['Romania', 'Romanya'], ['Ukraine', 'Ukrayna'],
+  ['Slovakia', 'Slovakya'], ['Slovenia', 'Slovenya'], ['Bulgaria', 'Bulgaristan'], ['Georgia', 'Gürcistan'],
+  ['Azerbaijan', 'Azerbaycan'], ['Albania', 'Arnavutluk'], ['Bosnia and Herzegovina', 'Bosna-Hersek', 'bosna hersek'],
+  ['Bosnia-Herzegovina', 'Bosna-Hersek', 'bosna hersek'], ['North Macedonia', 'Kuzey Makedonya'],
+  ['Kazakhstan', 'Kazakistan'], ['Israel', 'İsrail'], ['Iceland', 'İzlanda'], ['Finland', 'Finlandiya'],
+  ['Luxembourg', 'Lüksemburg'], ['Montenegro', 'Karadağ'], ['Latvia', 'Letonya'], ['Lithuania', 'Litvanya'],
+  ['Estonia', 'Estonya'], ['Kosovo', 'Kosova'], ['Cyprus', 'Kıbrıs'], ['Armenia', 'Ermenistan'],
+  ['Faroe Islands', 'Faroe Adaları', 'faroe'], ['Moldova', 'Moldova'], ['Malta', 'Malta'], ['Andorra', 'Andorra'],
+  ['Brazil', 'Brezilya'], ['Argentina', 'Arjantin'], ['United States', 'ABD', 'abd'], ['USA', 'ABD', 'abd'],
+  ['Mexico', 'Meksika'], ['Japan', 'Japonya'], ['South Korea', 'Güney Kore'], ['Morocco', 'Fas'], ['Uruguay', 'Uruguay'],
+];
+
+const norm = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
+const GENERIC = new Set(['fc', 'cf', 'sc', 'afc', 'ac', 'as', 'ssc', 'fk', 'sk', 'bk', 'sv', 'vfb', 'vfl', 'tsg', 'ud', 'cd', 'rcd', 'ca', 'us', 'og', 'club', 'de', 'the', 'calcio', 'bsc', 'cfc', 'kv', 'sl', 'if', 'ik']);
+// Tek başına bir takımı ayırt etmeyen sözcükler (tek sözcükle eşleştirmede kullanılmaz)
+const AMBIG = new Set(['manchester', 'borussia', 'olympique', 'sporting', 'racing', 'united', 'albion', 'rovers', 'wanderers', 'athletic', 'atletico', 'saint', 'dynamo', 'spartak', 'lokomotiv', 'internacional', 'national', 'republic', 'district', 'herzegovina']);
+
+const TR_NAME = new Map();
+const NATION_ALIAS = new Map();
+for (const [en, tr, ...extra] of NATIONS) {
+  TR_NAME.set(norm(en), tr);
+  NATION_ALIAS.set(norm(en), [norm(tr), ...extra.map(norm)].filter(Boolean));
+}
+
+// Ekranda gösterilecek ad: milli takımlar Türkçe, kulüpler ESPN'deki gibi.
+export const teamLabel = (name) => TR_NAME.get(norm(name)) || String(name || '?');
+export const isTurkey = (name) => norm(name) === 'turkey' || norm(name) === 'turkiye';
+
+const phraseCache = new Map();
+// Takımın rehber başlığında geçebileceği sözcük öbekleri.
+export function teamPhrases(name) {
+  const core = norm(name);
+  let out = phraseCache.get(core);
+  if (out) return out;
+  const set = new Set([core]);
+  for (const a of ALIAS[core] || []) set.add(a);
+  for (const a of NATION_ALIAS.get(core) || []) set.add(a);
+  const words = core.split(' ').filter((w) => !GENERIC.has(w));
+  const stripped = words.join(' ');
+  if (stripped) set.add(stripped);
+  for (const w of words) if (w.length >= 6 && !AMBIG.has(w)) set.add(w);
+  out = [...set].filter((p) => p.length >= 3);
+  phraseCache.set(core, out);
+  return out;
+}
+
+const hasAny = (paddedText, phrases) => phrases.some((p) => paddedText.includes(' ' + p + ' '));
+
+// Program başlığı (+ açıklaması) iki takımı da içeriyorsa ve yayın başlangıcı maça yakınsa o program bu maçındır.
+// hits: [{ id, p: { s, e, t, d } }] (TV rehberi). Döner: { id, p } ya da null. En yakın başlangıç seçilir.
+export function findProgram(match, hits, { before = 90 * 60000, after = 20 * 60000 } = {}) {
+  if (!match || !hits || !hits.length) return null;
+  const hp = teamPhrases(match.home.name);
+  const ap = teamPhrases(match.away.name);
+  let best = null;
+  let bestD = Infinity;
+  for (const h of hits) {
+    const p = h.p;
+    if (!p || !(p.s >= match.t - before && p.s <= match.t + after && p.e > match.t)) continue;
+    const text = ' ' + norm(p.t) + (p.d ? ' ' + norm(p.d) : '') + ' ';
+    if (!hasAny(text, hp) || !hasAny(text, ap)) continue;
+    const d = Math.abs(p.s - match.t);
+    if (d < bestD) {
+      best = h;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+// Başlangıca göre sıralı program listesinden [from, to] aralığındakileri verir (ikili arama; binlerce maç × program taramasını önler).
+export function slicePrograms(sorted, from, to) {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid].p.s < from) lo = mid + 1;
+    else hi = mid;
+  }
+  const out = [];
+  for (let i = lo; i < sorted.length && sorted[i].p.s <= to; i++) out.push(sorted[i]);
+  return out;
+}
+
+// Rehberde karşılığı yoksa gösterilecek yayıncı (tahmini): { names: 'beIN SPORTS', keys: ['bein'] } ya da null.
+export function broadcasterFor(match) {
+  const lg = leagueOf(match.lg);
+  if (!lg) return null;
+  let keys = lg.bc || [];
+  if (lg.tr && (isTurkey(match.home.name) || isTurkey(match.away.name))) keys = lg.tr;
+  if (!keys.length) return null;
+  return { names: keys.map((k) => BROADCASTERS[k].name).join(' / '), keys: [...keys] };
+}
+
+// Yayıncının kanalları: kanal adında yayıncının sözcüklerinden biri geçenler (en çok max kanal).
+export function channelsOfBroadcaster(items, keys, max = 14) {
+  const phrases = (keys || []).flatMap((k) => (BROADCASTERS[k] ? BROADCASTERS[k].keys : []));
+  const out = [];
+  for (const it of items || []) {
+    if (hasAny(' ' + norm(it.name) + ' ', phrases)) {
+      out.push(it);
+      if (out.length >= max) break;
+    }
+  }
+  return out;
+}
+
+// ---- ESPN verisi ----
+
+const ymd = (ms) => {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+};
+
+export function scoreboardUrl(slug, fromMs, toMs, base = ESPN_BASE) {
+  return `${base}${slug}/scoreboard?dates=${ymd(fromMs)}-${ymd(toMs)}&limit=300`;
+}
+
+// ESPN durum nesnesi → { state: 'pre'|'in'|'post', text } (text: ekrandaki kısa yazı; 'pre'de boş = saat gösterilir)
+export function statusOf(st) {
+  const type = (st && st.type) || {};
+  const name = String(type.name || '').toUpperCase();
+  const state = type.state === 'in' || type.state === 'post' ? type.state : 'pre';
+  if (/POSTPONED/.test(name)) return { state: 'pre', text: 'Ertelendi', off: true };
+  if (/CANCEL/.test(name)) return { state: 'post', text: 'İptal', off: true };
+  if (/SUSPEND|ABANDON/.test(name)) return { state: 'post', text: 'Yarıda kaldı', off: true };
+  if (/DELAY/.test(name)) return { state: 'pre', text: 'Gecikmeli', off: false };
+  if (state === 'in') {
+    if (/HALFTIME/.test(name)) return { state, text: 'Devre arası' };
+    if (/SHOOTOUT/.test(name)) return { state, text: 'Penaltılar' };
+    const clock = String((st && st.displayClock) || '').trim();
+    return { state, text: clock && clock !== "0'" ? clock : 'Canlı' };
+  }
+  if (state === 'post') {
+    if (/PEN/.test(name)) return { state, text: 'MS (pen.)' };
+    if (/AET|EXTRA/.test(name)) return { state, text: 'MS (uzatma)' };
+    return { state, text: 'MS' };
+  }
+  return { state, text: '' };
+}
+
+const intOrNull = (v) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
+function side(c, played) {
+  const team = (c && c.team) || {};
+  const raw = team.displayName || team.shortDisplayName || team.name || team.location || '?';
+  return {
+    name: String(raw),
+    label: teamLabel(raw),
+    abbr: String(team.abbreviation || '').slice(0, 4),
+    logo: typeof team.logo === 'string' && /^https?:\/\//i.test(team.logo) ? team.logo : '',
+    score: played ? intOrNull(c && c.score) : null,
+    pen: c && c.shootoutScore != null ? intOrNull(c.shootoutScore) : null,
+  };
+}
+
+// ESPN scoreboard yanıtı → maç listesi (bozuk kayıtlar atlanır, hata atmaz).
+export function parseScoreboard(json, leagueId) {
+  const out = [];
+  const events = json && Array.isArray(json.events) ? json.events : [];
+  for (const ev of events) {
+    try {
+      const comp = ev && Array.isArray(ev.competitions) ? ev.competitions[0] : null;
+      if (!comp) continue;
+      const cs = Array.isArray(comp.competitors) ? comp.competitors : [];
+      const home = cs.find((c) => c && c.homeAway === 'home') || cs[0];
+      const away = cs.find((c) => c && c.homeAway === 'away') || cs[1];
+      if (!home || !away || home === away) continue;
+      const t = Date.parse(ev.date || comp.date || comp.startDate || '');
+      if (!Number.isFinite(t)) continue;
+      const status = statusOf(comp.status || ev.status);
+      const played = status.state !== 'pre';
+      out.push({
+        id: `${leagueId}:${ev.id || t}`,
+        lg: leagueId,
+        t,
+        state: status.state,
+        text: status.text,
+        off: !!status.off,
+        home: side(home, played),
+        away: side(away, played),
+      });
+    } catch {
+      /* bozuk kayıt atlanır */
+    }
+  }
+  return out;
+}
+
+const startOfDay = (ms) => new Date(ms).setHours(0, 0, 0, 0);
+
+function withTimeout(p, ms) {
+  let timer;
+  return Promise.race([p, new Promise((_, rej) => (timer = setTimeout(() => rej(new Error('Sunucu zamanında yanıt vermedi')), ms)))]).finally(() => clearTimeout(timer));
+}
+
+// Dün'den (back) bugünden itibaren ahead gün sonrasına kadar tüm liglerin maçları. Bir lig alınamazsa diğerleri yine gelir.
+// Döner: { matches, okCount, failed: [lig kimlikleri] }; hiçbir lig alınamazsa hata atar.
+export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4 } = {}) {
+  const today = startOfDay(now);
+  const from = today - back * DAY;
+  const to = today + (ahead + 1) * DAY;
+  const matches = [];
+  const failed = [];
+  let okCount = 0;
+  const queue = [...leagues];
+  async function worker() {
+    for (let lg = queue.shift(); lg; lg = queue.shift()) {
+      const url = scoreboardUrl(lg.id, from - DAY, to + DAY, base);
+      let json = null;
+      for (let n = 0; n < 2 && json === null; n++) {
+        try {
+          json = await withTimeout(net.json(url), timeoutMs);
+        } catch {
+          json = null;
+        }
+      }
+      if (json === null) {
+        failed.push(lg.id);
+        continue;
+      }
+      okCount++;
+      for (const m of parseScoreboard(json, lg.id)) if (m.t >= from && m.t < to) matches.push(m);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, leagues.length)) }, worker));
+  if (!okCount) throw new Error('Maç bilgisi alınamadı. İnternet bağlantınızı denetleyin.');
+  const seen = new Set();
+  const uniq = matches.filter((m) => !seen.has(m.id) && seen.add(m.id));
+  uniq.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
+  return { matches: uniq, okCount, failed };
+}
+
+// ---- gün ve lig süzgeci ----
+
+const DAYS_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+
+// Yerel takvim gününün sayısal anahtarı (gece yarısı, ms)
+export const dayStart = startOfDay;
+
+export function dayLabel(dayMs, now = Date.now()) {
+  const diff = Math.round((dayMs - startOfDay(now)) / DAY);
+  if (diff === 0) return 'Bugün';
+  if (diff === 1) return 'Yarın';
+  if (diff === -1) return 'Dün';
+  const d = new Date(dayMs);
+  return `${DAYS_TR[d.getDay()]} ${d.getDate()} ${MONTHS_TR[d.getMonth()]}`;
+}
+
+// Gün şeridi: dünden başlayıp ahead gün sonrasına kadar gün başlangıçları
+export function dayStrip(now = Date.now(), back = 1, ahead = 7) {
+  const today = startOfDay(now);
+  const out = [];
+  for (let i = -back; i <= ahead; i++) out.push(new Date(today).setDate(new Date(today).getDate() + i));
+  return out;
+}
+
+export const matchesOnDay = (matches, dayMs) => matches.filter((m) => startOfDay(m.t) === dayMs);
+
+// Liglere göre bölümler (LEAGUES sırası); her bölümde maçlar saat sırasında. leagueId verilirse yalnız o lig.
+export function sections(matches, leagueId = '') {
+  const out = [];
+  for (const lg of LEAGUES) {
+    if (leagueId && lg.id !== leagueId) continue;
+    const list = matches.filter((m) => m.lg === lg.id).sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
+    if (list.length) out.push({ lg, matches: list });
+  }
+  return out;
+}
+
+export const hasLive = (matches) => matches.some((m) => m.state === 'in');

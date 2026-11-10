@@ -1558,6 +1558,23 @@ function verTap() {
   renderTab();
 }
 
+// Spor (futbol): maç takvimi ve skorlar; maçın kanalı TV rehberinden bulunur. Modül ilk kullanımda yüklenir.
+async function openSportsPage() {
+  try {
+    const m = await import('./sports-ui.js');
+    m.openSports({
+      net,
+      store,
+      toast,
+      liveItems: () => visibleAll('live'),
+      epgBetween: (from, to) => S.epg.between(from, to),
+      play: (items, index) => playLive(items, index),
+    });
+  } catch (e) {
+    toast('Spor ekranı açılamadı: ' + ((e && e.message) || e));
+  }
+}
+
 async function openAdmin() {
   try {
     const m = await import('./admin-ui.js');
@@ -1804,6 +1821,7 @@ function renderHome(v) {
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
+      <button class="tile mini t-sport" data-go="sport">${miniIc('ball')}<b>Spor</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       <button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>
     </div>
@@ -1834,6 +1852,7 @@ function goTo(go) {
   if (go === 'dl') return downloadsSheet();
   if (go === 'cats') return categoriesPage();
   if (go === 'guide') return guidePage();
+  if (go === 'sport') return openSportsPage();
   setTab(go);
 }
 

@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 48,
+    title: 'Spor: futbol maç takvimi ve skorlar',
+    items: [
+      'Ana ekranda yeni “Spor” kutusu: Süper Lig, Premier Lig, La Liga, Serie A, Bundesliga, Ligue 1, Şampiyonlar Ligi, Avrupa ve Konferans Ligi ile milli maçlar; dünden bir hafta sonrasına gün gün takvim, lig süzgeci',
+      'Skorlar ve dakika dakikada bir yenilenir (anlık değil); sayfa açıkken canlı maç varsa kendiliğinden güncellenir',
+      'Maçın hangi kanalda olduğu TV rehberinden bulunur: maça dokununca kanal doğrudan açılır. Rehberde bulunamazsa yayıncının adı (beIN SPORTS, S Sport, TRT / Tabii, A Spor / ATV; tahmini) yazılır ve dokununca listenizdeki o yayıncının kanalları gösterilir',
+      'Çocuk modunda “Spor” kutusu gizlidir (çocuk profilinde gizlenmesi gereken kutuların gizleme kuralı da onarıldı)',
+    ],
+  },
+  {
     id: 47,
     title: 'Hatırlatıcı bildirim uyarısı',
     items: [
