@@ -9,12 +9,17 @@ const DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 
 //  - Aday yön doğrultusunda olmalı; kapsayıcının içindeki aday, kapsayıcıdan yalnız merkez karşılaştırmasıyla seçilir
 //    (içinde düğmeleri olan kutu/kart/hücreden o düğmelere geçilebilsin).
 //  - Sağ/sol: aynı satırdaki (dikeyde örtüşen) aday, daha yakın ama satır dışındaki adaya her zaman tercih edilir.
-//  - Yukarı/aşağı ve satır dışı adaylar: yön eksenindeki boşluk + dik eksendeki boşluk (ağırlıklı) + merkez kayması.
+//  - Yukarı/aşağı: Android'in odak bulucusu gibi. Kaynakla yatayda örtüşen ("ışındaki") aday, ışın dışındakine ancak kendi yakın kenarı
+//    ötekinin uzak kenarından yakınsa üstün gelir; aksi halde 13·(yön mesafesi)² + (merkez kayması)² küçük olan seçilir.
+//    Böylece sağa yaslı seçici/düğme satırları, uzaktaki tam genişlik düğmenin gölgesinde kalıp atlanmaz.
+//  - Satır dışı yatay adaylar: yön eksenindeki boşluk + dik eksendeki boşluk (ağırlıklı) + merkez kayması.
 export function pickNext(cur, rects, dir) {
   const cx = (cur.l + cur.r) / 2;
   const cy = (cur.t + cur.b) / 2;
+  const vertical = dir === 'up' || dir === 'down';
   let best = -1;
   let bestScore = Infinity;
+  let bestC = null; // yalnız dikey hareket: en iyi adayın ölçüleri
   for (let i = 0; i < rects.length; i++) {
     const r = rects[i];
     if (r === cur) continue;
@@ -24,6 +29,7 @@ export function pickNext(cur, rects, dir) {
     let prim;
     let gap;
     let off;
+    let far = 0; // yön eksenindeki uzak kenara uzaklık (dikey hareketin ışın karşılaştırması için)
     if (dir === 'right') {
       if (!(rx > cx && (inside || r.r > cur.r))) continue;
       prim = Math.max(0, r.l - cur.r);
@@ -37,16 +43,28 @@ export function pickNext(cur, rects, dir) {
     } else if (dir === 'down') {
       if (!(ry > cy && (inside || r.b > cur.b))) continue;
       prim = Math.max(0, r.t - cur.b);
+      far = Math.max(0, r.b - cur.b);
       gap = Math.max(0, Math.max(cur.l, r.l) - Math.min(cur.r, r.r));
       off = Math.abs(rx - cx);
     } else {
       if (!(ry < cy && (inside || r.t < cur.t))) continue;
       prim = Math.max(0, cur.t - r.b);
+      far = Math.max(0, cur.t - r.t);
       gap = Math.max(0, Math.max(cur.l, r.l) - Math.min(cur.r, r.r));
       off = Math.abs(rx - cx);
     }
-    const horizontal = dir === 'left' || dir === 'right';
-    const score = (horizontal && gap > 0 ? 1e6 : 0) + prim + gap * 3 + off * 0.35;
+    if (vertical) {
+      // Android'in odak bulucusu gibi: kaynağın altındaki/üstündeki "ışında" (yatayda örtüşen) aday, ışın dışındakine ancak ondan belirgin
+      // yakınsa üstün gelir; ışın dışı aday daha yakınsa (ör. sağa yaslı seçici satırı, uzaktaki tam genişlik düğme yerine) o seçilir.
+      const c = { beam: gap === 0, prim, far, w: 13 * prim * prim + off * off };
+      const beats = (a, b) => a.beam && !b.beam && a.prim < b.far;
+      if (!bestC || beats(c, bestC) || (!beats(bestC, c) && c.w < bestC.w)) {
+        best = i;
+        bestC = c;
+      }
+      continue;
+    }
+    const score = (gap > 0 ? 1e6 : 0) + prim + gap * 3 + off * 0.35;
     if (score < bestScore) {
       bestScore = score;
       best = i;
@@ -121,11 +139,13 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     const lock = doc.getElementById('lock'); // şifre ekranı her şeyin üstünde: odak yalnız onun içinde gezer
     if (lock) return lock;
     const layers = doc.querySelectorAll('#sheets > .sheet-back, #sheets > .pg');
+    const playing = doc.body.classList.contains('player-open');
     if (layers.length) {
       const top = layers[layers.length - 1];
-      return top.classList.contains('sheet-back') ? top.querySelector('.sheet') || top : top;
+      // Tam ekran oynatıcı açıkken altında kalan sayfa (ör. film ayrıntısı) kumandanın değildir: yalnız oynatıcının üstüne açılan katmanlar kapsam olur.
+      if (!playing || top.classList.contains('over-player')) return top.classList.contains('sheet-back') ? top.querySelector('.sheet') || top : top;
     }
-    if (doc.body.classList.contains('player-open')) return doc.querySelector('#pl-ui.show');
+    if (playing) return doc.querySelector('#pl-ui.show');
     return doc.getElementById('app');
   }
 
@@ -137,19 +157,40 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     return win.getComputedStyle(el).visibility !== 'hidden';
   };
 
-  // Öğenin merkezi, kaydırılabilir üst kutularının görünen alanında mı? (görünmeyen satırlara atlamayı önler)
-  function inClip(el, scope) {
+  // Öğe şu an görünmese bile bir kaydırma alanını (ya da sayfayı) kaydırarak görünür kılınabiliyorsa ulaşılabilirdir: kumanda ona gidince alan kayar.
+  // Kaydırılamayan bir kutu tarafından kırpılan (gizli) öğeler ulaşılamaz sayılır; yalnız başka aday kalmazsa son çare olarak denenirler.
+  function reachable(el, scope) {
     const b = el.getBoundingClientRect();
     const x = (b.left + b.right) / 2;
     const y = (b.top + b.bottom) / 2;
-    if (x < 0 || y < 0 || x > win.innerWidth || y > win.innerHeight) return false;
+    const need = { x: x < 0 || x > win.innerWidth, y: y < 0 || y > win.innerHeight };
+    const can = { x: false, y: false };
     for (let p = el.parentElement; p && p !== scope.parentElement; p = p.parentElement) {
       const o = win.getComputedStyle(p);
-      if (o.overflowX === 'visible' && o.overflowY === 'visible') continue;
+      const cx = o.overflowX !== 'visible';
+      const cy = o.overflowY !== 'visible';
+      if (!cx && !cy) continue;
       const c = p.getBoundingClientRect();
-      if (x < c.left - 1 || x > c.right + 1 || y < c.top - 1 || y > c.bottom + 1) return false;
+      const sx = cx && /auto|scroll/.test(o.overflowX) && p.scrollWidth > p.clientWidth + 1;
+      const sy = cy && /auto|scroll/.test(o.overflowY) && p.scrollHeight > p.clientHeight + 1;
+      const outX = cx && (x < c.left - 1 || x > c.right + 1);
+      const outY = cy && (y < c.top - 1 || y > c.bottom + 1);
+      if ((outX && !sx) || (outY && !sy)) return false;
+      if (outX) need.x = true;
+      if (outY) need.y = true;
+      if (sx) can.x = true;
+      if (sy) can.y = true;
     }
-    return true;
+    const se = doc.scrollingElement || root;
+    return (!need.x || can.x || se.scrollWidth > win.innerWidth + 1) && (!need.y || can.y || se.scrollHeight > win.innerHeight + 1);
+  }
+
+  // Öğenin en yakın dikey kaydırma alanı (kapsam içinde), yoksa null
+  function scrollerOf(el, scope) {
+    for (let p = el.parentElement; p && p !== scope.parentElement; p = p.parentElement) {
+      if (/auto|scroll/.test(win.getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight + 1) return p;
+    }
+    return null;
   }
 
   const candidates = (scope) => [...scope.querySelectorAll(FOCUSABLE)].filter((el) => !el.matches('[tabindex="-1"]') && visible(el));
@@ -191,7 +232,16 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
       const i = pickNext(curRect, rects, dir);
       return i < 0 ? null : arr[i];
     };
-    const target = pass(list.filter((e) => e !== cur && inClip(e, scope))) || pass(list.filter((e) => e !== cur));
+    let target = null;
+    if (dir === 'up' || dir === 'down') {
+      // Odak bir kaydırma alanının içindeyse ve alan o yöne hâlâ kayabiliyorsa, alanın kendi (şimdilik görünmeyen) öğeleri alan dışındaki
+      // uzak ama görünür düğmelere (başlıktaki kapat tuşu gibi) tercih edilir; yoksa kumanda içeriği atlayıp başlığa sıçrardı.
+      const sc = scrollerOf(cur, scope);
+      if (sc && (dir === 'down' ? sc.scrollTop + sc.clientHeight < sc.scrollHeight - 1 : sc.scrollTop > 1)) {
+        target = pass(list.filter((e) => e !== cur && sc.contains(e) && reachable(e, scope)));
+      }
+    }
+    target = target || pass(list.filter((e) => e !== cur && reachable(e, scope))) || pass(list.filter((e) => e !== cur));
     if (!target) return false;
     focusEl(target, scope);
     return true;
@@ -213,8 +263,10 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
         const atEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
         if (!((dir === 'left' && atStart) || (dir === 'right' && atEnd))) return;
       }
-      if (el && el.tagName === 'INPUT' && el.type === 'range' && (dir === 'left' || dir === 'right')) return;
-      if (move(dir, el)) e.preventDefault();
+      const isRange = !!el && el.tagName === 'INPUT' && el.type === 'range';
+      if (isRange && (dir === 'left' || dir === 'right')) return;
+      // ↑↓ kaydırıcının değerini oynatmasın (ilerleme çubuğunda film ileri-geri giderdi): odak komşu öğeye geçer, geçecek yer yoksa tuş yutulur
+      if (move(dir, el) || isRange) e.preventDefault();
       return;
     }
     if ((e.key === 'Enter' || e.key === ' ') && el) {

@@ -3828,6 +3828,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./admin.cjs').adminSection({ browser, base, mock, ok, sleep, SHOTS });
   await require('./theme.cjs').themeSection({ browser, base, mock, ok, sleep, SHOTS });
   await require('./v104.cjs').v104Section({ browser, base, mock, ok, sleep, SHOTS });
+  await require('./kumanda.cjs').kumandaSection({ browser, base, mock, ok, sleep });
 
   await browser.close();
   www.close();

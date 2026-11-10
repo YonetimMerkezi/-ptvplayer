@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 43,
+    title: 'Kumanda düzeltmeleri',
+    items: [
+      'Film oynatıcıda ilerleme çubuğunun altındaki düğmelere artık inilebiliyor; çubukta aşağı/yukarı tuşu filmi sarmıyor (sarmak için sağ/sol)',
+      'Film ayrıntı sayfası oynatıcının altında kumandayı çalmıyor: oklar doğrudan oynatıcı denetimlerinde geziyor',
+      'Ayarlar’da Tema rengi ve sağa yaslı seçici satırları atlanmıyor; ekranın dışında kalan satırlara da aşağı/yukarı okla gidilip liste kayıyor',
+    ],
+  },
+  {
     id: 42,
     title: 'Canlı yayın kaydı düzeltmesi',
     items: [

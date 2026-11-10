@@ -100,3 +100,18 @@ test('kapsayıcı içindeki düğmelere geçilir (çoklu ekran hücresi, kart, s
   assert.equal(pickNext(full, all, 'down'), 0, 'düğmeden aşağı: kendi hücresine döner');
   assert.equal(pickNext(cell, all, 'right'), 4, 'hücreden sağa: yandaki hücre (iç düğmeler değil)');
 });
+
+test('aşağı: ışın dışındaki yakın satır, uzaktaki tam genişlik düğmeye tercih edilir (sağa yaslı seçici atlanmaz)', () => {
+  const swatch = R(540, 100, 60, 60); // ortadaki tema düğmesi
+  const select = R(850, 190, 90, 38); // hemen altta, sağa yaslı seçici satırı (ışın dışı)
+  const wide = R(0, 620, 940, 44); // çok aşağıda tam genişlik düğme (ışında)
+  assert.equal(pickNext(swatch, [swatch, wide, select], 'down'), 2);
+  assert.equal(pickNext(wide, [swatch, wide, select], 'up'), 2, 'yukarı: tam genişlik düğmeden en yakın satır seçicisine');
+});
+
+test('aşağı: yakın ışındaki aday, uzaktaki ışın dışı adaya göre önceliklidir', () => {
+  const cur = R(100, 100, 100, 50);
+  const near = R(100, 170, 100, 50); // hemen altta, ışında
+  const farSide = R(500, 400, 100, 50); // uzakta ve yanda
+  assert.equal(pickNext(cur, [cur, farSide, near], 'down'), 2);
+});
