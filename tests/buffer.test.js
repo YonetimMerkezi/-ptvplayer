@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from '../www/js/buffer.js';
 
 test('yayın önbelleği düzeyleri ve varsayılan', () => {
-  assert.deepEqual(BUFFER_LEVELS.map(([id]) => id), ['normal', 'high', 'max']);
+  assert.deepEqual(BUFFER_LEVELS.map(([id]) => id), ['fast', 'normal', 'high', 'max']);
   assert.equal(DEFAULT_BUFFER, 'high');
 });
 

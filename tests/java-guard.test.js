@@ -344,3 +344,15 @@ test('metin paylaşımı (rapor, davet): yöntem eklentide ve köprüde, paylaş
   assert.match(m[1], /call\.reject/, 'hata kullanıcıya bildirilmeli');
   assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /shareText: call\('shareText'\)/);
 });
+
+test('yayın önbelleği: JS’teki her düzeyin yerelde karşılığı var, "fast" küçük ve hızlı başlar', async () => {
+  const { BUFFER_LEVELS } = await import('../www/js/buffer.js');
+  const fn = kaynak.match(/private static DefaultLoadControl loadControlFor\(String level\) \{[\s\S]*?return b\.build\(\);/);
+  assert.ok(fn, 'loadControlFor bulunmalı');
+  for (const [id] of BUFFER_LEVELS) if (id !== 'high') assert.match(fn[0], new RegExp('"' + id + '"\\.equals\\(level\\)'), id + ' düzeyi yerelde işlenmeli');
+  const f = fn[0].match(/"fast"\.equals\(level\)\)\s*\{[\s\S]*?setBufferDurationsMs\((\d+), (\d+), (\d+), (\d+)\)/);
+  assert.ok(f, 'fast düzeyi süreleri ayarlamalı');
+  const [min, max, play, rebuf] = f.slice(1).map(Number);
+  assert.ok(min <= max && play <= min && rebuf <= min, 'Media3 kısıtları: başlama süreleri en az arabelleği aşamaz');
+  assert.ok(play <= 1500, 'fast: yarım-bir saniyede başlamalı');
+});

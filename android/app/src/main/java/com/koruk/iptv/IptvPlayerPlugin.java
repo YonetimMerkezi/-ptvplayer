@@ -256,6 +256,9 @@ public class IptvPlayerPlugin extends Plugin {
         DefaultLoadControl.Builder b = new DefaultLoadControl.Builder();
         if ("max".equals(level)) {
             b.setBufferDurationsMs(45000, 180000, 4000, 15000).setTargetBufferBytes(96 * 1024 * 1024);
+        } else if ("fast".equals(level)) {
+            // hızlı kanal geçişi: az biriktir, 1 sn dolunca başla (küçük bellek kullanır)
+            b.setBufferDurationsMs(5000, 20000, 1000, 2000).setTargetBufferBytes(24 * 1024 * 1024);
         } else if ("normal".equals(level)) {
             b.setBufferDurationsMs(15000, 60000, 2500, 5000);
         } else {

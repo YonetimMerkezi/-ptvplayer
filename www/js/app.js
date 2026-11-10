@@ -31,12 +31,13 @@ import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
+import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
 import { clampDelay } from './avsync.js';
 import { normalizeNight, DEFAULT_NIGHT } from './night.js';
-import { INTRO_OPTIONS, DEFAULT_INTRO, normalizeIntro } from './nextup.js';
+import { INTRO_OPTIONS, DEFAULT_INTRO, normalizeIntro, pickNextMovie } from './nextup.js';
 import { subParams, subLabel, DEFAULT_SUB } from './subtitle.js';
 import { PLAYER_ACTIONS, HOME_ACTIONS, DEFAULT_PLAYER, DEFAULT_HOME, COLORS, normalizeKeys, actionFor } from './remote.js';
 import { watchNextItems, watchNextPayload, parseDeepLink } from './tvhome.js';
@@ -83,6 +84,11 @@ function applyFontScale() {
 }
 applyFontScale();
 applyTheme(store.pref('set.theme', DEFAULT_THEME));
+// Hafif mod (animasyon/gölge/bulanıklık kapalı) ve devam çubuklarını gizleme: kök öğede işaret, CSS uygular.
+const applyLiteMode = () => applyLite(store.pref('set.lite', DEFAULT_LITE), document, navigator);
+const applyProgPref = () => document.documentElement.toggleAttribute('data-noprog', !setting('showProg'));
+applyLiteMode();
+applyProgPref();
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
@@ -1229,6 +1235,15 @@ const factsOf = (rows) => rows.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(k
 const yearOf = (y) => (y ? String(y).slice(0, 4) : '');
 const starsOf = (r) => (r ? `★ ${r}` : '');
 
+// Film bitince (ya da son 15 sn'de) aynı kategoriden bir sonraki izlenmemiş film önerilir; kendiliğinden başlamaz.
+function movieCtx(it) {
+  if (!setting('movieNext')) return null;
+  const done = (x) => S.prog[x.id] || null;
+  const sug = pickNextMovie(it, visibleAll('movie'), done, (x) => isBad(x.id));
+  if (!sug) return null;
+  return { items: [it, sug], index: 0, movie: true, autoNext: false, play: (m) => startPlay(m, { ctx: movieCtx(m) }) };
+}
+
 function openMovie(it) {
   const p = store.progress(sid(), it.id);
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
@@ -1236,9 +1251,9 @@ function openMovie(it) {
     cls: 'dt-pg',
     html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
     mount: (body) => {
-      $('#mv-play', body).addEventListener('click', () => startPlay(it));
+      $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
       const st = $('#mv-start', body);
-      if (st) st.addEventListener('click', () => startPlay(it, { startAt: 0 }));
+      if (st) st.addEventListener('click', () => startPlay(it, { startAt: 0, ctx: movieCtx(it) }));
       const cb = $('#mv-cast', body);
       if (cb) cb.addEventListener('click', () => castItem(it, null, { startMs: p && p.pos > 0 ? Math.max(0, p.pos - 3000) : 0 }));
       $('#mv-fold', body).addEventListener('click', () => folderSheet('movie', it));
@@ -1293,7 +1308,7 @@ function seriesPlayer(it, all) {
 
 function openSeries(it) {
   return openPage({
-    cls: 'dt-pg',
+    cls: 'dt-pg dt-sp',
     html: '<div class="empty"><div class="spinner" style="border-color:#fff3;border-top-color:var(--accent)"></div></div>',
     mount: async (body) => {
       let info;
@@ -1342,12 +1357,13 @@ function openSeries(it) {
           .map((e) => {
             const pr = S.prog[e.id];
             const pct = pr && pr.dur > 0 ? Math.round((pr.pos / pr.dur) * 100) : 0;
-            const row = `<button class="epi" data-ep="${esc(e.id)}"><b>${e.episodeNum}</b><span class="t">${esc(e.title)}${e.durationSec ? `<small>${Math.round(e.durationSec / 60)} dk</small>` : ''}${pct ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${icon('play')}</button>`;
+            const th = e.logo ? `<span class="epi-th"><img src="${esc(e.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></span>` : '';
+            const row = `<button class="epi${th ? ' has-th' : ''}" data-ep="${esc(e.id)}"><b>${e.episodeNum}</b>${th}<span class="t">${esc(e.title)}${e.durationSec ? `<small>${Math.round(e.durationSec / 60)} dk</small>` : ''}${pct ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${icon('play')}</button>`;
             return dlUi ? `<div class="epi-w">${row}<button class="icon-btn epi-dl" data-dl="${esc(e.id)}"></button></div>` : row;
           })
           .join('');
         const scroll = body.scrollTop;
-        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
+        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
         body.scrollTop = scroll;
         if (dlUi) paintDl();
         const c = $('#sr-cont', body);
@@ -2957,11 +2973,12 @@ function playerSheet() {
   openSheet({
     title: 'Oynatıcı ayarları',
     html:
-      `<div class="sel-row"><span>Yayın önbelleği<small>Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
+      `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
       `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
       chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
       chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
+      chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +
       `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Altyazı görünümü<small id="g-sub-s">${esc(subLabel(store.pref('sub', DEFAULT_SUB)))}</small></span><button class="btn sm ghost" id="g-sub">Ayarla</button></div>` : '') +
       `<div class="sel-row"><span>Kumanda renkli tuşları<small>Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin</small></span><button class="btn sm ghost" id="g-rm">Ayarla</button></div>` +
@@ -3005,7 +3022,9 @@ function generalSheet() {
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
+      chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ile bölümlerde izleme ilerlemesi') +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
+      `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
       `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
       `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
@@ -3019,6 +3038,7 @@ function generalSheet() {
           const on = !setting(c.dataset.k);
           store.setPref('set.' + c.dataset.k, on);
           c.classList.toggle('on', on);
+          if (c.dataset.k === 'showProg') applyProgPref();
           S.list && S.list.refreshRows();
         } else if (e.target.id === 'g-clr') {
           store.clearRecents(sid());
@@ -3033,6 +3053,10 @@ function generalSheet() {
           x.classList.toggle('on', x === b);
           x.setAttribute('aria-checked', String(x === b));
         });
+      });
+      $('#g-lite', body).addEventListener('change', (e) => {
+        store.setPref('set.lite', normalizeLite(e.target.value));
+        applyLiteMode();
       });
       $('#g-tv', body).addEventListener('change', (e) => {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));

@@ -53,3 +53,37 @@ test('normalizeIntro', () => {
   assert.equal(normalizeIntro(0), 0);
   assert.ok(INTRO_OPTIONS.some(([s]) => s === DEFAULT_INTRO));
 });
+
+// ---- film önerisi
+import { pickNextMovie, WATCHED_RATIO } from '../www/js/nextup.js';
+
+const mv = (id, group = 'Aksiyon') => ({ id, kind: 'movie', group, name: 'F' + id });
+const mctx = (o = {}) => ({ movie: true, autoNext: false, index: 0, items: [{}, {}], ...o });
+
+test('nextUp (film): son 15 sn ve bitişte kart durur, sayaçla değil', () => {
+  const m = (o) => st({ item: { kind: 'movie' }, ep: null, dur: 6000000, ...o });
+  assert.equal(nextUp(m({ pos: 6000000 - COUNTDOWN_MS - 1 }), mctx()).show, false);
+  assert.deepEqual(nextUp(m({ pos: 6000000 - COUNTDOWN_MS }), mctx()), { show: true, secs: 15, movie: true });
+  assert.deepEqual(nextUp(m({ pos: 6000000, status: 'ended' }), mctx()), { show: true, secs: 0, movie: true });
+  assert.equal(nextUp(m({ pos: 6000000 - 5000 }), mctx({ index: 1 })).show, false); // öneri yok
+  assert.equal(nextUp(m({ pos: 6000000 - 5000 }), mctx(), { enabled: false }).show, false);
+  assert.equal(nextUp(m({ pos: 6000000 - 5000, live: true }), mctx()).show, false);
+  // dizi bölümü bittiğinde (ended) kart yok: orada otomatik geçiş çalışır
+  assert.equal(nextUp(st({ status: 'ended', pos: 2400000 }), ctx()).show, false);
+});
+
+test('pickNextMovie: aynı kategoride sıradaki, izlenmişleri atlar, sona gelince başa döner', () => {
+  const all = [mv(1), mv(2, 'Dram'), mv(3), mv(4), mv(5)];
+  assert.equal(pickNextMovie(all[0], all, () => null).id, 3); // Dram atlanır
+  assert.equal(pickNextMovie(all[2], all, () => null).id, 4);
+  assert.equal(pickNextMovie(all[3], all, () => null).id, 5);
+  assert.equal(pickNextMovie(all[4], all, () => null).id, 1); // başa dön
+  const prog = (x) => (x.id === 3 ? { pos: 95, dur: 100 } : x.id === 4 ? { pos: 50, dur: 100 } : null);
+  assert.equal(pickNextMovie(all[0], all, prog).id, 4); // %95 izlenen 3 atlanır, yarım kalan 4 önerilir
+  assert.ok(WATCHED_RATIO > 0 && WATCHED_RATIO <= 1);
+  assert.equal(pickNextMovie(all[0], all, () => null, (x) => x.id === 3).id, 4); // skip (çalışmıyor işaretli)
+  assert.equal(pickNextMovie(all[1], all, () => null), null); // kategoride tek film
+  assert.equal(pickNextMovie(null, all, () => null), null);
+  assert.equal(pickNextMovie(all[0], null, () => null), null);
+  assert.equal(pickNextMovie(mv(9), [mv(9)], () => null), null);
+});

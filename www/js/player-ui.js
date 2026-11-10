@@ -350,12 +350,16 @@ export function createPlayerUI({ engine, player, env }) {
   const autoNextOn = () => (env.autoNext ? env.autoNext() : true);
   function renderNextUp(st) {
     const card = q('#pl-nextup');
-    const r = epKey(st) === nextDismissed ? { show: false } : nextUp(st, ctx, { enabled: autoNextOn() });
+    const r = epKey(st) === nextDismissed ? { show: false } : nextUp(st, ctx, { enabled: ctx && ctx.movie ? true : autoNextOn() });
     card.hidden = !r.show;
     if (!r.show) return;
     const nxt = ctx.items[ctx.index + 1];
     q('#nu-name').textContent = (nxt && (nxt.label || nxt.title || nxt.name)) || '';
-    q('#nu-s').textContent = r.secs + ' sn';
+    // Film önerisi kendiliğinden başlamaz: sayaç yok, düğme yalnız "Oynat"
+    q('#nu-h').textContent = r.movie ? 'Sıradaki film önerisi' : 'Sonraki bölüm';
+    q('#nu-l').textContent = r.movie ? 'Oynat' : 'Şimdi oynat · ';
+    q('#nu-s').textContent = r.movie ? '' : r.secs + ' sn';
+    q('#nu-no').textContent = r.movie ? 'Kapat' : 'İptal';
   }
   function renderIntro(st) {
     const b = q('#pl-intro');

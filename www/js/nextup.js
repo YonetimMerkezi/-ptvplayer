@@ -22,15 +22,41 @@ export const normalizeIntro = (v) => (INTRO_OPTIONS.some(([s]) => s === Number(v
 const playing = (st) => st.status === 'playing' || st.status === 'buffering' || st.status === 'paused';
 
 // Sonraki bölüm kartı: { show, secs } — ctx.items listesinde sonraki öğe varsa ve süre bitmeye 15 sn kala.
+// Film önerisi (ctx.movie): son 15 sn'den filmin bitişine kadar kart durur, kendiliğinden başlamaz; { show, secs, movie:true }.
 export function nextUp(st, ctx, { enabled = true } = {}) {
   const none = { show: false, secs: 0 };
-  if (!enabled || !st || !st.item || !ctx || !ctx.autoNext || !Array.isArray(ctx.items)) return none;
-  if (st.item.kind === 'live' || st.live || !playing(st)) return none;
+  if (!enabled || !st || !st.item || !ctx || !(ctx.autoNext || ctx.movie) || !Array.isArray(ctx.items)) return none;
+  if (st.item.kind === 'live' || st.live) return none;
   if (ctx.index >= ctx.items.length - 1) return none;
   if (!(st.dur >= MIN_DURATION_MS)) return none;
   const left = st.dur - st.pos;
+  if (ctx.movie) {
+    if (st.status === 'ended') return { show: true, secs: 0, movie: true };
+    if (!playing(st) || left <= 0 || left > COUNTDOWN_MS) return none;
+    return { show: true, secs: Math.max(1, Math.ceil(left / 1000)), movie: true };
+  }
+  if (!playing(st)) return none;
   if (left <= 0 || left > COUNTDOWN_MS) return none;
   return { show: true, secs: Math.max(1, Math.ceil(left / 1000)) };
+}
+
+// Film önerisi: aynı kategoride bu filmden sonra gelen ilk film; izlenmişleri (%90+) ve skip(x) olanları atlar,
+// listenin sonuna gelince başa döner. Uygun film yoksa null.
+export const WATCHED_RATIO = 0.9;
+export function pickNextMovie(cur, all, progressOf, skip) {
+  if (!cur || !Array.isArray(all)) return null;
+  const g = cur.group || 'Diğer';
+  const same = all.filter((x) => x && x.kind === 'movie' && (x.group || 'Diğer') === g);
+  const at = same.findIndex((x) => x.id === cur.id);
+  const order = at < 0 ? same : [...same.slice(at + 1), ...same.slice(0, at)];
+  for (const x of order) {
+    if (x.id === cur.id) continue;
+    if (skip && skip(x)) continue;
+    const p = progressOf ? progressOf(x) : null;
+    if (p && p.dur > 0 && p.pos / p.dur >= WATCHED_RATIO) continue;
+    return x;
+  }
+  return null;
 }
 
 // Intro atla düğmesi: dizi bölümünde, başlangıçta; { show, to } — to: atlanacak konum (ms).

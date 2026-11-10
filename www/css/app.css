@@ -529,8 +529,34 @@ html.native-playing #sheets .pg:not(.over-player) { visibility: hidden; }
 .dt-facts dd { margin: 0; overflow-wrap: anywhere; }
 .dt-load { color: var(--muted); }
 .dt-eps .chips { padding-left: 0; padding-right: 0; }
+.dt-eps-h, .epi-th { display: none; }
+/* Yatay / geniş ekran (TV, tablet, yatay telefon): film = ayrıntılar solda, büyük afiş sağda;
+   dizi = ayrıntılar solda, bölümler ortada (küçük resimli), büyük afiş sağda. Dikey telefon yukarıdaki düzende kalır. */
 @media (orientation: landscape) and (min-width: 640px) {
-  .dt { grid-template-columns: minmax(150px, 22%) 1fr; grid-template-areas: "pos head" "pos body"; grid-template-rows: auto 1fr; }
+  .dt { max-width: none; grid-template-columns: minmax(0, 1fr) minmax(150px, 26%); grid-template-areas: "head pos" "body pos"; grid-template-rows: auto 1fr; gap: 14px 28px; align-items: start; }
+  .dt-pos { width: 100%; max-height: 100%; border-radius: 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55); }
+  .dt-t { font-size: clamp(1.5rem, 3.2vw, 2.75rem); font-weight: 800; line-height: 1.1; }
+  .dt-sp .pg-body { display: flex; flex-direction: column; overflow: hidden; }
+  .dt-sp .dt { flex: 1; width: 100%; min-height: 0; grid-template-columns: minmax(0, 1fr) minmax(280px, 33%) minmax(140px, 22%); grid-template-areas: "head eps pos" "plot eps pos" "facts eps pos" "rest eps pos"; grid-template-rows: auto auto auto minmax(0, 1fr); }
+  .dt-sp .dt-body { display: contents; }
+  .dt-sp .dt-body h2 { display: none; }
+  .dt-sp .dt-plot { grid-area: plot; margin: 0; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .dt-sp .dt-facts { grid-area: facts; margin: 0; }
+  .dt-sp .dt-eps { grid-area: eps; min-height: 0; max-height: 100%; overflow-y: auto; padding-right: 4px; -webkit-overflow-scrolling: touch; }
+  .dt-sp .dt-eps-h { display: block; margin: 0 0 8px; font-size: 0.9375rem; letter-spacing: 0.06em; font-weight: 800; }
+  .dt-sp .dt-eps-h small { color: var(--muted); font-weight: 600; }
+  .dt-sp .epi, .dt-sp .epi-w { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+  .dt-sp .epi-w .epi { border: 0; margin: 0; background: none; }
+  .dt-sp .epi { padding: 8px; min-height: 76px; }
+  .dt-sp .epi-w .epi { padding: 8px; }
+  .dt-sp .epi-th { display: block; flex: none; width: 112px; aspect-ratio: 16 / 9; border-radius: 9px; overflow: hidden; background: var(--raised); }
+  .dt-sp .epi-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .dt-sp .epi .t { font-weight: 600; line-height: 1.25; }
+}
+@media (orientation: landscape) and (min-width: 640px) and (max-height: 520px) {
+  .dt-sp .dt-facts { display: none; }
+  .dt-sp .dt-plot { -webkit-line-clamp: 3; }
+  .dt-sp .epi-th { width: 84px; }
 }
 
 /* genel arama */
@@ -805,3 +831,10 @@ body.kid-mode .home .hero .re,
 .dl-row.on .rec-play small { color: var(--accent); }
 .dl-bar { display: block; width: 100%; height: 3px; border-radius: 2px; background: var(--line); margin-top: 6px; overflow: hidden; }
 .dl-bar i { display: block; height: 100%; background: var(--accent); }
+
+/* Ayarlar > Devam çubuklarını göster kapalıysa */
+html[data-noprog] .card .prog, html[data-noprog] .epi .bar { display: none; }
+
+/* Hafif mod: animasyon, gölge ve bulanıklık kapalı (yükleme göstergesi ve kayıt noktası dönmeye devam eder) */
+html[data-lite] *:not(.spinner):not(.spin):not(.hs-dot), html[data-lite] *::before, html[data-lite] *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-lite] .mq { text-overflow: ellipsis; }

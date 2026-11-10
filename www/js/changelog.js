@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 37,
+    title: 'Yeni film ve dizi ekranı',
+    items: [
+      'Yatay ve geniş ekranda (TV, tablet) film ve dizi ayrıntısı: solda ayrıntılar, ortada bölümler, sağda büyük afiş; bölümlerde küçük resim (sağlayıcı verirse)',
+      'Genel ayarlar › Hafif mod: animasyon, gölge ve bulanıklığı kapatır; 2 GB ve altı bellekli cihazda otomatik açılır',
+      'Oynatıcı ayarları › Yayın önbelleği: kanalı çabuk açan “Hızlı” düzey eklendi',
+      'Genel ayarlar › Devam çubuklarını göster: film kutuları ve bölümlerdeki izleme çubuğu gizlenebilir',
+      'Film bitince aynı kategoriden bir sonraki film önerilir (Oynatıcı ayarlarından kapatılabilir)',
+    ],
+  },
+  {
     id: 36,
     title: 'Çok renkli temalar',
     items: [
