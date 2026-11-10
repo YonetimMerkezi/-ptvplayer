@@ -387,6 +387,21 @@ test('yayın kaydı: biçim kayıttan önce tanınır; desteklenmeyen yayında b
   assert.match(rec, /pendReq != requester/, 'başka isteğin artığı yeni isteğe karışmamalı');
 });
 
+test('hatırlatıcı: alarm olayları günlüğe yazılır, bildirim engeli saptanır, Planlananlar\'da deneme düğmeleri vardır', () => {
+  const recv = oku('PlanReceiver.java');
+  assert.match(recv, /PlanStore\.log\(c, "alarm geldi/, 'alarm tetiklenince günlüğe yazılmalı');
+  assert.match(recv, /Notifier\.reminder\(c, plan\)/);
+  const note = oku('Notifier.java');
+  assert.match(note, /areNotificationsEnabled\(\)/, 'uygulama bildirimleri kapalıysa saptanmalı');
+  assert.match(note, /getNotificationChannel\(CH_REMIND\)/, 'kanal kapatılmışsa saptanmalı');
+  const store = oku('PlanStore.java');
+  assert.match(store, /static void addTest\(/, 'gerçek alarm yolundan geçen deneme planı');
+  const plug = oku('IptvPlayerPlugin.java');
+  for (const m of ['planDiag', 'planTest', 'planOpenSettings']) assert.match(plug, new RegExp('public void ' + m + '\\('), m + ' eklentide olmalı');
+  const bridge = readFileSync(new URL('../www/js/bridge.js', import.meta.url), 'utf8');
+  for (const m of ['planDiag', 'planTest', 'planOpenSettings']) assert.match(bridge, new RegExp(m + ': call'), m + ' köprüde olmalı');
+});
+
 test('yayın kaydı: şifreli HLS (AES-128) parçalar kayıt için çözülür, oynatıcıya giden veri değişmez, SAMPLE-AES baştan reddedilir', () => {
   const sniff = oku('StreamSniff.java');
   assert.match(sniff, /static Crypto cryptoFor\(String uri\)/, 'parça için anahtar+IV verilmeli');

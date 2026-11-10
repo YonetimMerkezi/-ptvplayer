@@ -79,7 +79,7 @@ final class TapDataSource implements DataSource {
         cipher = null;
         tailLen = 0;
         declared = n;
-        desc = describe(dataSpec.uri, n);
+        desc = describe(dataSpec.uri, n, dataSpec.position);
         total = 0;
         eof = false;
         try {
@@ -255,7 +255,7 @@ final class TapDataSource implements DataSource {
     }
 
     // Tanılama için isteğin kısa tanımı (yalnız dosya adı + sunucunun bildirdiği tür + boyut).
-    private String describe(Uri uri, long length) {
+    private String describe(Uri uri, long length, long position) {
         try {
             String type = null;
             Map<String, List<String>> h = upstream.getResponseHeaders();
@@ -267,7 +267,7 @@ final class TapDataSource implements DataSource {
                     }
                 }
             }
-            return StreamSniff.describeRequest(uri == null ? null : uri.getPath(), type, length);
+            return StreamSniff.describeRequest(uri == null ? null : uri.getPath(), type, length, position);
         } catch (RuntimeException e) {
             return "";
         }

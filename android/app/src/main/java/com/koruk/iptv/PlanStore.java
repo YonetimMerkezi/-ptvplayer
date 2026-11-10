@@ -132,6 +132,61 @@ final class PlanStore {
         }
     }
 
+    // ------------------------------------------------------------------ tanılama: alarmlar gerçekten çalıştı mı?
+
+    private static final String LOG_KEY = "log";
+    private static final int LOG_MAX = 8;
+
+    /** Alarm/bildirim olaylarından kısa bir günlük tutar (Planlananlar ekranında gösterilir); hata oynatmayı/alarmı etkilemez. */
+    static void log(Context c, String text) {
+        synchronized (LOCK) {
+            try {
+                JSONArray old = new JSONArray(c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(LOG_KEY, "[]"));
+                JSONArray out = new JSONArray();
+                int from = Math.max(0, old.length() - (LOG_MAX - 1));
+                for (int i = from; i < old.length(); i++) out.put(old.optString(i));
+                out.put(new java.text.SimpleDateFormat("dd.MM HH:mm:ss", java.util.Locale.getDefault()).format(new java.util.Date()) + " " + text);
+                c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(LOG_KEY, out.toString()).apply();
+            } catch (JSONException | RuntimeException ignored) {
+                // günlük yazılamadı: önemli değil
+            }
+        }
+    }
+
+    static JSONArray readLog(Context c) {
+        try {
+            return new JSONArray(c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(LOG_KEY, "[]"));
+        } catch (JSONException e) {
+            return new JSONArray();
+        }
+    }
+
+    /** Bildirim hattının uçtan uca denenmesi: gerçek alarm yolundan (AlarmManager → PlanReceiver → bildirim) geçen bir deneme planı. */
+    static void addTest(Context c, int seconds) {
+        long at = System.currentTimeMillis() + Math.max(2, seconds) * 1000L;
+        JSONObject o = new JSONObject();
+        try {
+            o.put("id", "test:" + at);
+            o.put("kind", "rem");
+            o.put("at", at);
+            o.put("s", at);
+            o.put("e", at + 60000L);
+            o.put("src", "");
+            o.put("chId", "");
+            o.put("chName", "Deneme");
+            o.put("title", "Deneme bildirimi");
+        } catch (JSONException e) {
+            return;
+        }
+        synchronized (LOCK) {
+            JSONArray list = readLocked(c);
+            list.put(o);
+            write(c, list);
+            scheduleAlarm(c, o);
+        }
+        log(c, "deneme alarmı kuruldu (" + seconds + " sn)");
+    }
+
     /** Tam zamanlı alarm izni var mı (Android 12+ ayarlarda kapalı olabilir). */
     static boolean canExact(Context c) {
         if (Build.VERSION.SDK_INT < 31) return true;

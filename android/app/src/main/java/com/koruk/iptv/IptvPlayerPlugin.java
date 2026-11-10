@@ -2239,6 +2239,67 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // Planlananlar ekranındaki "bildirim denemesi" için tanı bilgisi: izinler, kanal durumu, pil kısıtı ve son alarm olayları.
+    @PluginMethod
+    public void planDiag(final PluginCall call) {
+        Context ctx = getContext();
+        JSObject o = planStatusObj();
+        o.put("sdk", Build.VERSION.SDK_INT);
+        o.put("brand", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
+        String blocked = Notifier.blockedReason(ctx);
+        o.put("blocked", blocked == null ? "" : blocked);
+        boolean battery = true; // true: kısıtlama yok
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+            if (pm != null && Build.VERSION.SDK_INT >= 23) battery = pm.isIgnoringBatteryOptimizations(ctx.getPackageName());
+        } catch (RuntimeException ignored) {
+            // pil durumu okunamadı
+        }
+        o.put("batteryFree", battery);
+        JSArray log = new JSArray();
+        org.json.JSONArray l = PlanStore.readLog(ctx);
+        for (int i = 0; i < l.length(); i++) log.put(l.optString(i));
+        o.put("log", log);
+        o.put("pending", PlanStore.read(ctx).length());
+        call.resolve(o);
+    }
+
+    // Gerçek alarm yolundan geçen deneme bildirimi: {seconds} sonra çalar.
+    @PluginMethod
+    public void planTest(final PluginCall call) {
+        Integer secs = call.getInt("seconds", 5);
+        PlanStore.addTest(getContext(), secs == null ? 5 : secs);
+        call.resolve(planStatusObj());
+    }
+
+    // Ayar ekranları: kind = "app" (uygulama bilgisi), "auto" (Xiaomi otomatik başlatma; yoksa uygulama bilgisi), "battery" (pil kısıtı listesi).
+    @PluginMethod
+    public void planOpenSettings(final PluginCall call) {
+        final String kind = call.getString("kind", "app");
+        main.post(() -> {
+            Activity a = getActivity();
+            if (a != null) {
+                Intent app = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()));
+                try {
+                    if ("battery".equals(kind)) {
+                        a.startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                    } else if ("auto".equals(kind)) {
+                        try {
+                            a.startActivity(new Intent().setComponent(new android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")));
+                        } catch (RuntimeException e) {
+                            a.startActivity(app); // Xiaomi sayfası yok: uygulama bilgisi
+                        }
+                    } else {
+                        a.startActivity(app);
+                    }
+                } catch (RuntimeException ignored) {
+                    // ayar ekranı açılamadı
+                }
+            }
+            call.resolve();
+        });
+    }
+
     // Bildirime dokunarak açılışta hangi kanalın açılacağı: {ch, src}; okununca sıfırlanır.
     @PluginMethod
     public void planLaunch(final PluginCall call) {

@@ -1145,6 +1145,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         window.__calls.push(['planPermissions']);
         return window.__planStatus || { notify: true, exact: true };
       },
+      // Bildirim denemesi: tanı bilgisi + gerçek alarm yolundan geçen deneme (testte yalnız çağrılar kaydedilir)
+      planDiag: async () => window.__planDiag || { sdk: 34, brand: 'Xiaomi', notify: true, exact: true, blocked: '', batteryFree: false, pending: 2, log: ['10.11 19:55:01 alarm geldi (Deneme): bildirim gönderildi'] },
+      planTest: async (a) => {
+        window.__calls.push(['planTest', a && a.seconds]);
+        return { notify: true, exact: true };
+      },
+      planOpenSettings: async (a) => {
+        window.__calls.push(['planOpenSettings', a && a.kind]);
+      },
       planLaunch: async () => window.__launch || { ch: '', src: '' },
       // Yayın sağlık testi: gerçek eklenti WebView dışından atar; burada 5'in katı kanallar 404 döner
       probe: async ({ url }) => {
@@ -2844,6 +2853,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(!(await page.$('.pl-warn')), 'izinler tamamken uyarı yok');
   ok(/Zamanlı kayıt/.test(await page.textContent('.sheet')) && /Hatırlatıcı/.test(await page.textContent('.sheet')), 'planların türü satırda yazıyor');
   await page.screenshot({ path: path.join(SHOTS, '12a-planlananlar.png') });
+  // bildirim denemesi bölümü: durum satırları, son olaylar ve düğmeler
+  ok(/Bildirim denemesi/.test(await page.textContent('.pl-diag')) && /Xiaomi/.test(await page.textContent('.pl-diag')), 'Planlananlar altında bildirim denemesi bölümü var');
+  ok(/Pil kısıtı: var/.test(await page.textContent('.pl-diag')) && /alarm geldi/.test(await page.textContent('.pl-diag')), 'pil kısıtı ve son alarm olayı gösteriliyor');
+  ok(!!(await page.$('.pl-diag [data-dg=auto]')), 'Xiaomi için Otomatik başlatma düğmesi var');
+  await page.click('.pl-diag [data-dg=t5]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'planTest' && c[1] === 5), null, { timeout: 3000 });
+  ok(true, '“5 sn sonra dene” deneme alarmı kurdu');
+  await page.click('.pl-diag [data-dg=battery]');
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'planOpenSettings' && c[1] === 'battery'), null, { timeout: 3000 });
+  ok(true, '“Pil ayarı” sistem ayarını açtı');
+  await page.evaluate(() => { window.__planDiag = { sdk: 33, brand: 'samsung', notify: true, exact: true, blocked: 'uygulama bildirimleri kapalı', batteryFree: true, pending: 0, log: [] }; });
+  await page.click('.sheet [data-close]');
+  await page.click('[data-set=plans]');
+  await page.waitForSelector('.pl-diag');
+  ok(/Bildirimler: KAPALI \(uygulama bildirimleri kapalı\)/.test(await page.textContent('.pl-diag')) && !(await page.$('.pl-diag [data-dg=auto]')) && /Henüz alarm tetiklenmedi/.test(await page.textContent('.pl-diag')), 'bildirim engeli yazıyor; Xiaomi dışında otomatik başlatma düğmesi yok');
+  await page.evaluate(() => { window.__planDiag = null; });
   await page.click('.sheet [data-close]');
   await page.evaluate(() => { window.__planStatus = { notify: false, exact: true }; });
   await page.click('[data-set=plans]');

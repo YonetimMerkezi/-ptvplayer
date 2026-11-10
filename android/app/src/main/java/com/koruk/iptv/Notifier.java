@@ -51,9 +51,24 @@ final class Notifier {
         return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(ms));
     }
 
-    static void reminder(Context c, JSONObject plan) {
+    /** Bildirimler bu uygulama için kapalı mı (sistem ayarı ya da kanal kapatılmış)? Kapalıysa nedeni, açıksa null. */
+    static String blockedReason(Context c) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
+        if (nm == null) return "bildirim hizmeti yok";
+        ensureChannels(c);
+        if (Build.VERSION.SDK_INT >= 24 && !nm.areNotificationsEnabled()) return "uygulama bildirimleri kapalı";
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel ch = nm.getNotificationChannel(CH_REMIND);
+            if (ch != null && ch.getImportance() == NotificationManager.IMPORTANCE_NONE) return "hatırlatıcı kanalı kapalı";
+        }
+        return null;
+    }
+
+    /** Hatırlatıcı bildirimini gösterir; dönen metin günlüğe yazılır ("gönderildi" ya da engel nedeni). */
+    static String reminder(Context c, JSONObject plan) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return "bildirim hizmeti yok";
+        String blocked = blockedReason(c);
         String title = plan.optString("title", "Program");
         long s = plan.optLong("s", 0L);
         long leftMin = Math.max(0L, (s - System.currentTimeMillis() + 30000L) / 60000L);
@@ -66,6 +81,7 @@ final class Notifier {
             .setAutoCancel(true)
             .build();
         nm.notify(plan.optString("id", "").hashCode(), n);
+        return blocked == null ? "bildirim gönderildi" : "bildirim gönderildi ama ENGELLİ: " + blocked;
     }
 
     static Notification recording(Context c, String name, long until, PendingIntent stop) {

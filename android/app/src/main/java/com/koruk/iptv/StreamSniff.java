@@ -60,6 +60,7 @@ final class StreamSniff {
     private static final Map<String, byte[]> keys = new HashMap<>();
     private static String lastReq = ""; // son medya isteğinin kısa tanımı (adres sonu, tür, boyut)
     private static String lastErr = ""; // tanıma sırasında yutulan iç hata
+    private static String lastMore = ""; // ilk baytlar ve paket boyutu izi (tanınmayan yayın için)
     private static final Set<String> keyUris = new HashSet<>();
 
     static final class KeyRef {
@@ -99,6 +100,7 @@ final class StreamSniff {
             lastSig = "";
             lastReq = "";
             lastErr = "";
+            lastMore = "";
             segKeys.clear();
             keys.clear();
             keyUris.clear();
@@ -142,8 +144,12 @@ final class StreamSniff {
     }
 
     static String hex(byte[] b, int len) {
+        return hex(b, len, 8);
+    }
+
+    static String hex(byte[] b, int len, int max) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < Math.min(len, 8); i++) {
+        for (int i = 0; i < Math.min(len, max); i++) {
             if (i > 0) sb.append(' ');
             sb.append(String.format(Locale.ROOT, "%02X", b[i] & 0xFF));
         }
@@ -161,6 +167,19 @@ final class StreamSniff {
         }
     }
 
+    /** Verinin hangi paket boyutuyla "senkron baytı" (0x47) deseni gösterdiği: ör. "188:hayır 192:hayır 204:hayır". Tanılama için. */
+    static String syncTrace(byte[] b, int len) {
+        int[] sizes = {188, 192, 204};
+        StringBuilder sb = new StringBuilder();
+        for (int s : sizes) {
+            boolean hit = false;
+            for (int i = 0; i < s && !hit; i++) hit = i + 2 * s < len && (b[i] & 0xFF) == 0x47 && (b[i + s] & 0xFF) == 0x47 && (b[i + 2 * s] & 0xFF) == 0x47;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(s).append(hit ? ":var" : ":yok");
+        }
+        return sb.toString();
+    }
+
     /** noteMedia + isteğin kısa tanımı (kayıt reddi mesajında gösterilir). */
     static void noteMedia(int kind, byte[] head, int len, String desc) {
         if (kind == AUDIO || kind == IGNORE || kind == PLAYLIST || kind == UNDECIDED || kind == MP4_INIT) return;
@@ -168,6 +187,7 @@ final class StreamSniff {
             lastMedia = kind;
             lastSig = hex(head, len);
             lastReq = desc == null ? "" : desc;
+            lastMore = hex(head, len, 24) + "; " + syncTrace(head, len);
         }
     }
 
@@ -179,7 +199,7 @@ final class StreamSniff {
     }
 
     /** İsteğin kısa tanımı: yalnız dosya adı (adresteki kullanıcı/şifre bölümleri asla girmez), tür, boyut. */
-    static String describeRequest(String path, String contentType, long length) {
+    static String describeRequest(String path, String contentType, long length, long position) {
         StringBuilder sb = new StringBuilder();
         if (path != null && !path.isEmpty()) {
             String name = path.substring(path.lastIndexOf('/') + 1);
@@ -194,6 +214,10 @@ final class StreamSniff {
         if (length >= 0) {
             if (sb.length() > 0) sb.append("; ");
             sb.append("boyut: ").append(length);
+        }
+        if (position > 0) {
+            if (sb.length() > 0) sb.append("; ");
+            sb.append("konum: ").append(position);
         }
         return sb.toString();
     }
@@ -380,7 +404,7 @@ final class StreamSniff {
                 default:
                     v.error = encrypted
                         ? "Bu yayın şifreli (HLS) olduğundan kaydedilemiyor"
-                        : "Bu yayının biçimi tanınmadı (başlık: " + lastSig + "; liste: " + (listSeen ? "var" : "yok") + extra() + "), kaydedilemiyor";
+                        : "Bu yayının biçimi tanınmadı (başlık: " + lastSig + "; liste: " + (listSeen ? "var" : "yok") + extra() + (lastMore.isEmpty() ? "" : "; ilk24: " + lastMore) + "), kaydedilemiyor";
                     return v;
             }
         }
