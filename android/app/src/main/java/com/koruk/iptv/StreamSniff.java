@@ -1,7 +1,13 @@
 package com.koruk.iptv;
 
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Oynatıcının okuduğu isteklerin ilk baytlarına bakıp yayın biçimini tanır (TapDataSource besler).
@@ -9,7 +15,9 @@ import java.util.Locale;
  *  - TS: art arda üç paketin 0x47 ile başladığı akış (HLS parçası ya da doğrudan .ts).
  *  - fMP4 (HLS-CMAF): parça istekleri styp/moof/sidx ile başlar; başlangıç bölümü (ftyp+moov) ayrıca saklanır ve kayda en başa yazılır.
  *  - MKV, FLV, uzun MP4 akışı ve tanınmayan/şifreli veri kaydedilemez.
- * Oynatma listelerinden (m3u8) yalnız şifreli olup olmadığı ve fMP4 kullanıp kullanmadığı okunur.
+ * Oynatma listelerinden (m3u8) şifreleme ve fMP4 kullanımı okunur. HLS AES-128 şifreli parçalar için hangi parçanın hangi anahtar/IV ile
+ * şifrelendiği (liste) ve anahtarın kendisi (oynatıcının kendi isteğinden) saklanır: kayıt, şifreli parçayı çözerek düz TS yazar
+ * (oynatıcıya giden veri değişmez; o kendi çözer). SAMPLE-AES ve DRM kaydedilemez.
  */
 final class StreamSniff {
     static final int HEAD = 3 * 188 + 1;
@@ -37,9 +45,43 @@ final class StreamSniff {
     private static final Object LOCK = new Object();
     private static int lastMedia;
     private static byte[] init;
-    private static boolean encrypted;
+    private static boolean encrypted; // AES-128 ya da başka şifreleme bildirildi
+    private static boolean sampleAes; // çözülemeyen şifreleme (SAMPLE-AES, DRM)
+    private static boolean listSeen;
     private static boolean fmp4List;
     private static String lastSig = "";
+    // HLS AES-128: parça (yol+sorgu) → anahtar adresi ve IV; anahtar adresi (yol+sorgu) → 16 baytlık anahtar
+    private static final Map<String, KeyRef> segKeys = new LinkedHashMap<String, KeyRef>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, KeyRef> e) {
+            return size() > 600;
+        }
+    };
+    private static final Map<String, byte[]> keys = new HashMap<>();
+    private static final Set<String> keyUris = new HashSet<>();
+
+    static final class KeyRef {
+        final String keyUri;
+        final byte[] iv; // null → parça sıra numarasından türetilir
+        final long seq;
+
+        KeyRef(String keyUri, byte[] iv, long seq) {
+            this.keyUri = keyUri;
+            this.iv = iv;
+            this.seq = seq;
+        }
+    }
+
+    /** Çözme bilgisi: AES-128/CBC anahtarı ve IV. */
+    static final class Crypto {
+        final byte[] key;
+        final byte[] iv;
+
+        Crypto(byte[] key, byte[] iv) {
+            this.key = key;
+            this.iv = iv;
+        }
+    }
 
     private StreamSniff() {}
 
@@ -49,8 +91,13 @@ final class StreamSniff {
             lastMedia = UNDECIDED;
             init = null;
             encrypted = false;
+            sampleAes = false;
+            listSeen = false;
             fmp4List = false;
             lastSig = "";
+            segKeys.clear();
+            keys.clear();
+            keyUris.clear();
         }
     }
 
@@ -72,6 +119,8 @@ final class StreamSniff {
     static int classify(byte[] b, int len, boolean last) {
         int off = 0;
         if (len >= 10 && (b[0] & 0xFF) == 0xEF && (b[1] & 0xFF) == 0xBB && (b[2] & 0xFF) == 0xBF) off = 3; // UTF-8 BOM
+        // Oynatıcı listenin başındaki boşluk/satır sonlarını yok sayar; burada da öyle
+        while (off < len && off < 64 && (b[off] == ' ' || b[off] == '\t' || b[off] == '\r' || b[off] == '\n')) off++;
         if (len - off >= 7 && b[off] == '#' && b[off + 1] == 'E' && b[off + 2] == 'X' && b[off + 3] == 'T' && b[off + 4] == 'M' && b[off + 5] == '3' && b[off + 6] == 'U') return PLAYLIST;
         if (len >= 8) {
             if (fourcc(b, 4, "ftyp") || fourcc(b, 4, "moov")) return MP4_INIT;
@@ -123,21 +172,139 @@ final class StreamSniff {
         }
     }
 
-    /** Oynatma listesi okundu: şifreleme ve fMP4 işaretleri aranır. */
-    static void noteList(byte[] text, int len) {
+    /** İstek adresinden yol+sorgu (sunucu/şema farkı ve yönlendirme önemsenmez): parça ve anahtar eşleştirmesinin anahtarı. */
+    static String norm(String uri) {
+        if (uri == null) return "";
+        String u = uri;
+        int h = u.indexOf('#');
+        if (h >= 0) u = u.substring(0, h);
+        int sch = u.indexOf("://");
+        if (sch >= 0) {
+            int slash = u.indexOf('/', sch + 3);
+            u = slash >= 0 ? u.substring(slash) : "/";
+        }
+        return u;
+    }
+
+    private static String resolve(String base, String ref) {
+        try {
+            return base == null || base.isEmpty() ? ref : URI.create(base).resolve(ref.trim()).toString();
+        } catch (RuntimeException e) {
+            return ref.trim();
+        }
+    }
+
+    private static String attr(String line, String name) {
+        int at = line.indexOf(name + "=");
+        if (at < 0) return null;
+        int v = at + name.length() + 1;
+        if (v >= line.length()) return "";
+        if (line.charAt(v) == '"') {
+            int e = line.indexOf('"', v + 1);
+            return line.substring(v + 1, e < 0 ? line.length() : e);
+        }
+        int e = line.indexOf(',', v);
+        return line.substring(v, e < 0 ? line.length() : e).trim();
+    }
+
+    private static byte[] hexIv(String v) {
+        if (v == null) return null;
+        String h = v.startsWith("0x") || v.startsWith("0X") ? v.substring(2) : v;
+        if (h.length() > 32 || h.isEmpty()) return null;
+        while (h.length() < 32) h = "0" + h;
+        byte[] out = new byte[16];
+        try {
+            for (int i = 0; i < 16; i++) out[i] = (byte) Integer.parseInt(h.substring(i * 2, i * 2 + 2), 16);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return out;
+    }
+
+    static byte[] seqIv(long seq) {
+        byte[] iv = new byte[16];
+        for (int i = 0; i < 8; i++) iv[15 - i] = (byte) (seq >>> (8 * i));
+        return iv;
+    }
+
+    /** Oynatma listesi okundu: şifreleme, fMP4 işaretleri ve (AES-128 ise) parça→anahtar eşleştirmesi çıkarılır. base: listenin son adresi. */
+    static void noteList(byte[] text, int len, String base) {
         String s = new String(text, 0, len, java.nio.charset.StandardCharsets.ISO_8859_1);
         boolean enc = false;
-        int at = 0;
-        while ((at = s.indexOf("#EXT-X-KEY", at)) >= 0) {
-            int end = s.indexOf('\n', at);
-            String line = s.substring(at, end < 0 ? s.length() : end).toUpperCase(Locale.ROOT);
-            if (line.contains("METHOD=") && !line.contains("METHOD=NONE")) enc = true;
-            at += 10;
+        boolean bad = false;
+        boolean map = false;
+        long seq = 0;
+        KeyRef cur = null;
+        Map<String, KeyRef> found = new LinkedHashMap<>();
+        Set<String> keyList = new HashSet<>();
+        for (String raw : s.split("\n")) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
+                try {
+                    seq = Long.parseLong(line.substring(22).trim());
+                } catch (NumberFormatException ignored) {
+                    // sıra numarası okunamadı: 0 varsayılır
+                }
+            } else if (line.startsWith("#EXT-X-KEY:")) {
+                String method = attr(line.toUpperCase(Locale.ROOT), "METHOD");
+                if (method == null || method.equals("NONE")) {
+                    cur = null;
+                } else if (method.equals("AES-128")) {
+                    enc = true;
+                    String uri = attr(line, "URI");
+                    if (uri != null && !uri.isEmpty()) {
+                        String abs = norm(resolve(base, uri));
+                        cur = new KeyRef(abs, hexIv(attr(line, "IV")), 0);
+                        keyList.add(abs);
+                    } else {
+                        cur = null;
+                        bad = true;
+                    }
+                } else {
+                    enc = true;
+                    bad = true; // SAMPLE-AES, DRM...
+                    cur = null;
+                }
+            } else if (line.startsWith("#EXT-X-MAP")) {
+                map = true;
+            } else if (!line.startsWith("#")) {
+                if (cur != null) found.put(norm(resolve(base, line)), new KeyRef(cur.keyUri, cur.iv, seq));
+                seq++;
+            }
         }
-        boolean map = s.contains("#EXT-X-MAP");
         synchronized (LOCK) {
+            listSeen = true;
             if (enc) encrypted = true;
+            if (bad) sampleAes = true;
             if (map) fmp4List = true;
+            segKeys.putAll(found);
+            keyUris.addAll(keyList);
+        }
+    }
+
+    /** Bu adres, listelerde bildirilmiş bir şifre anahtarı mı? (oynatıcının anahtar isteği saklanır) */
+    static boolean isKeyUri(String uri) {
+        synchronized (LOCK) {
+            return keyUris.contains(norm(uri));
+        }
+    }
+
+    static void noteKey(String uri, byte[] key) {
+        if (key == null || key.length != 16) return;
+        synchronized (LOCK) {
+            keys.put(norm(uri), key);
+        }
+    }
+
+    /** Bu parça AES-128 şifreliyse ve anahtarı alınmışsa çözme bilgisi, değilse null. */
+    static Crypto cryptoFor(String uri) {
+        synchronized (LOCK) {
+            KeyRef r = segKeys.get(norm(uri));
+            if (r == null) return null;
+            byte[] key = keys.get(r.keyUri);
+            if (key == null) return null;
+            return new Crypto(key, r.iv != null ? r.iv : seqIv(r.seq));
         }
     }
 
@@ -149,7 +316,8 @@ final class StreamSniff {
             switch (lastMedia) {
                 case TS:
                 case UNDECIDED:
-                    if (lastMedia == UNDECIDED && encrypted) v.error = "Bu yayın şifreli (HLS) olduğundan kaydedilemiyor";
+                    if (sampleAes) v.error = "Bu yayın SAMPLE-AES/DRM şifreli olduğundan kaydedilemiyor";
+                    else if (lastMedia == UNDECIDED && encrypted) v.error = "Bu yayın şifreli (HLS) ve anahtarı henüz alınmadı; birkaç saniye sonra tekrar deneyin";
                     return v; // henüz bir şey okunmadıysa denenir; veri gelmezse kayıt kendiliğinden biter
                 case MP4_FRAG:
                     if (init != null && init.length > 0) v.init = init;
@@ -167,7 +335,7 @@ final class StreamSniff {
                 default:
                     v.error = encrypted
                         ? "Bu yayın şifreli (HLS) olduğundan kaydedilemiyor"
-                        : "Bu yayının biçimi tanınmadı (başlık: " + lastSig + "), kaydedilemiyor";
+                        : "Bu yayının biçimi tanınmadı (başlık: " + lastSig + "; liste: " + (listSeen ? "var" : "yok") + "), kaydedilemiyor";
                     return v;
             }
         }

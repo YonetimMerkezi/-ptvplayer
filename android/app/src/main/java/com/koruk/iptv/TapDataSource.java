@@ -10,10 +10,16 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
 /**
  * Oynatıcının okuduğu baytları, kayıt açıkken StreamRecorder'a da verir (liste/anahtar dosyaları hariç).
  * Kayıt olsun olmasın her isteğin ilk baytlarına bakıp yayın biçimini StreamSniff'e bildirir (kayıt başlamadan "kaydedilebilir mi" denetlenir).
- * Oynatmayı hiçbir koşulda bozmaz: kayıt ve tanıma tarafındaki hata yutulur.
+ * HLS AES-128 şifreli parçalar (liste ve anahtar StreamSniff'te bilinirse) kayıt/tanıma için çözülür; oynatıcıya giden veri değişmez,
+ * oynatıcı şifreyi kendi çözer.
+ * Oynatmayı hiçbir koşulda bozmaz: kayıt, tanıma ve çözme tarafındaki hata yutulur.
  */
 final class TapDataSource implements DataSource {
     static final class Factory implements DataSource.Factory {
@@ -38,6 +44,16 @@ final class TapDataSource implements DataSource {
     private int kind;
     private StreamSniff.Capture capture;
     private boolean progFlagged;
+    // anahtar isteği: 16 baytı saklanır
+    private String keyUri;
+    private StreamSniff.Capture keyCapture;
+    // AES-128 çözme: cipher doluysa deliver() çözülmüş baytları alır
+    private Cipher cipher;
+    private final byte[] tail = new byte[16]; // çözülmüş son blok (sonda dolgu ayıklanır)
+    private int tailLen;
+    private long declared; // açılışta bildirilen uzunluk (-1: bilinmiyor)
+    private long total; // bu istekte okunan bayt
+    private boolean eof; // istek sonuna kadar okundu
 
     private TapDataSource(DataSource upstream) {
         this.upstream = upstream;
@@ -57,31 +73,94 @@ final class TapDataSource implements DataSource {
         kind = StreamSniff.UNDECIDED;
         capture = null;
         progFlagged = false;
+        keyUri = null;
+        keyCapture = null;
+        cipher = null;
+        tailLen = 0;
+        declared = n;
+        total = 0;
+        eof = false;
+        try {
+            String u = dataSpec.uri == null ? null : dataSpec.uri.toString();
+            if (u != null) {
+                if (StreamSniff.isKeyUri(u)) {
+                    keyUri = u;
+                    keyCapture = new StreamSniff.Capture(64);
+                } else if (dataSpec.position == 0) {
+                    StreamSniff.Crypto c = StreamSniff.cryptoFor(u);
+                    if (c != null) {
+                        Cipher ci = Cipher.getInstance("AES/CBC/NoPadding");
+                        ci.init(Cipher.DECRYPT_MODE, new SecretKeySpec(c.key, "AES"), new IvParameterSpec(c.iv));
+                        cipher = ci;
+                    }
+                }
+            }
+        } catch (Exception | LinkageError e) {
+            cipher = null; // çözme kurulamadı: veri şifreli haliyle incelenir
+        }
         return n;
     }
 
     @Override
     public int read(byte[] buffer, int offset, int length) throws IOException {
         int n = upstream.read(buffer, offset, length);
-        if (n > 0) {
-            boolean wasFirst = first;
-            try {
-                sniff(buffer, offset, n);
-            } catch (RuntimeException ignored) {
-                // tanıma oynatmayı etkilemez
+        if (n < 0) eof = true; // RESULT_END_OF_INPUT
+        else total += n;
+        try {
+            if (n > 0) {
+                if (keyCapture != null) keyCapture.add(buffer, offset, n);
+                if (cipher != null) decryptChunk(buffer, offset, n);
+                else deliver(buffer, offset, n);
             }
-            // Adres/başlık "liste" gibi görünse de içerik TS ya da fMP4 parçasıysa istek kayda alınır (yanlış ad/Content-Type'a güvenilmez).
-            if (!tapping && wasFirst && (kind == StreamSniff.TS || kind == StreamSniff.MP4_FRAG) && isHttp(upstream.getUri())) tapping = true;
-            if (tapping && StreamRecorder.active()) {
-                try {
-                    if (!StreamRecorder.write(this, buffer, offset, n, wasFirst)) tapping = false;
-                } catch (RuntimeException ignored) {
-                    tapping = false;
-                }
-            }
-            first = false;
+        } catch (RuntimeException ignored) {
+            // kayıt/tanıma/çözme oynatmayı etkilemez
+            cipher = null;
+            tapping = false;
         }
         return n;
+    }
+
+    // Şifreli parçanın bir bölümünü çözüp (son blok dolgu için bekletilir) deliver()'a verir.
+    private void decryptChunk(byte[] b, int off, int n) {
+        byte[] dec = cipher.update(b, off, n);
+        if (dec == null || dec.length == 0) return;
+        byte[] all = new byte[tailLen + dec.length];
+        System.arraycopy(tail, 0, all, 0, tailLen);
+        System.arraycopy(dec, 0, all, tailLen, dec.length);
+        int keep = Math.min(16, all.length);
+        int emit = all.length - keep;
+        System.arraycopy(all, emit, tail, 0, keep);
+        tailLen = keep;
+        if (emit > 0) deliver(all, 0, emit);
+    }
+
+    // Parça sonuna kadar okunduysa bekleyen son blok, PKCS7 dolgusu ayıklanarak verilir; yarıda kesilen istekte atılır
+    // (ortadaki bir bloğun son baytı dolgu sayılıp veri kırpılmasın).
+    private void finishCrypto() {
+        boolean complete = eof || (declared >= 0 && total >= declared);
+        if (cipher != null && complete && total % 16 == 0 && tailLen == 16) {
+            int pad = tail[15] & 0xFF;
+            int real = pad >= 1 && pad <= 16 ? 16 - pad : 16;
+            if (real > 0) deliver(tail, 0, real);
+        }
+        cipher = null;
+        tailLen = 0;
+    }
+
+    // Tanıma + (kayıt açıksa) kayda yazma; veri çözülmüşse çözülmüş baytlar gelir.
+    private void deliver(byte[] b, int off, int n) {
+        boolean wasFirst = first;
+        first = false;
+        sniff(b, off, n);
+        // Adres/başlık "liste" gibi görünse de içerik TS ya da fMP4 parçasıysa istek kayda alınır (yanlış ad/Content-Type'a güvenilmez).
+        if (!tapping && wasFirst && (kind == StreamSniff.TS || kind == StreamSniff.MP4_FRAG) && isHttp(upstream.getUri())) tapping = true;
+        if (tapping && StreamRecorder.active()) {
+            try {
+                if (!StreamRecorder.write(this, b, off, n, wasFirst)) tapping = false;
+            } catch (RuntimeException ignored) {
+                tapping = false;
+            }
+        }
     }
 
     // İsteğin ilk baytlarından türü belirler; başlangıç bölümü (fMP4) ve oynatma listesi metni biriktirilir.
@@ -126,7 +205,7 @@ final class TapDataSource implements DataSource {
         }
     }
 
-    // İstek bitti: kısa kalan istekler eldeki baytlarla sınıflanır, biriken başlangıç bölümü/liste bildirilir.
+    // İstek bitti: kısa kalan istekler eldeki baytlarla sınıflanır, biriken başlangıç bölümü/liste/anahtar bildirilir.
     private void finishSniff() {
         if (kind == StreamSniff.UNDECIDED && headLen > 0) decide(StreamSniff.classify(head, headLen, true));
         if (capture != null) {
@@ -134,10 +213,13 @@ final class TapDataSource implements DataSource {
                 if (!capture.overflow) StreamSniff.noteInit(capture.bytes());
             } else if (kind == StreamSniff.PLAYLIST) {
                 byte[] t = capture.bytes();
-                StreamSniff.noteList(t, t.length);
+                Uri last = upstream.getUri();
+                StreamSniff.noteList(t, t.length, last == null ? null : last.toString());
             }
         }
+        if (keyCapture != null && keyUri != null) StreamSniff.noteKey(keyUri, keyCapture.bytes());
         capture = null;
+        keyCapture = null;
         kind = StreamSniff.IGNORE;
         headLen = 0;
     }
@@ -156,6 +238,7 @@ final class TapDataSource implements DataSource {
     public void close() throws IOException {
         try {
             try {
+                finishCrypto(); // yalnız tüm parça okunduysa anlamlı; yarım kalan istekte kalan blok yazılmaz
                 finishSniff();
             } catch (RuntimeException ignored) {
                 // tanıma oynatmayı etkilemez
