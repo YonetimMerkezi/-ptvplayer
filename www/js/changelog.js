@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 52,
+    title: 'Spor: maç bazında güncel yayın kanalı',
+    items: [
+      'Maç satırlarında “Yayın: kanal adı” artık Spor Ekranı’nın (sporekrani.com) günlük TV yayın akışından gelir: TFF alt ligleri dahil Türkiye’deki gerçek kanal yazılır; dokununca listenizdeki karşılığı önerilir. Spor Ekranı alınamazsa yedek olarak TheSportsDB kullanılır',
+      'Yayın hakları tablosu yalnızca en son çare: kayıt bulunamazsa yarışma adına göre “tahmini” yayıncı yazılır (1. Lig, Türkiye Kupası, 2.-3. Lig ve büyük Avrupa ligleri LiveScore maçlarında da). Uluslar Ligi’nde Türkiye dışı maçlar için A Spor, A Haber, A2 ve S Sport Plus aday olarak önerilir',
+      'Durum satırında yayın listesinin kaç maça eşleştiği yazar; kaynak alınamazsa ya da sayfa yapısı değişmişse neden listenin üstünde görünür',
+    ],
+  },
+  {
     id: 51,
     title: 'Spor: ikinci kaynakla daha eksiksiz maç takvimi',
     items: [

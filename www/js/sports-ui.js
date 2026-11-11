@@ -7,10 +7,14 @@ import {
   matchesOnDay, sections, chipsFor, capSections, hasLive,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
+import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
+import { SE_BASE, loadSeDay, seChannelsFor, seDiagText } from './sports-se.js';
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v1'; // LiveScore gün listeleri
 const LS_CACHE_DAYS = 5;
+const TV_CACHE_KEY = 'sports-tv:v2'; // yayın listeleri (gün bazlı): Spor Ekranı, yedek olarak TheSportsDB
+const TV_FRESH_MS = 3 * 3600e3; // yayın programı sık değişmez
 const CACHE_MAX_AGE = 6 * 3600e3; // kayıtlı veri bundan eskiyse hiç gösterilmez
 const FRESH_MS = 2 * 60e3; // bundan yeni veri yeniden indirilmez
 const LS_FUTURE_MS = 30 * 60e3; // ileri günlerin LiveScore listesi bu süre yeni sayılır
@@ -20,11 +24,13 @@ const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
 const MAX_ROWS = 500;
 
-// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, lsHosts?, now? }
+// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, lsHosts?, tvHosts?, seBase?, now? }
 export function openSports(env) {
   const { net, store, toast, liveItems, epgBetween, play } = env;
   const base = env.base || ESPN_BASE;
   const lsHosts = env.lsHosts || LS_HOSTS;
+  const tvHosts = env.tvHosts || TV_HOSTS;
+  const seBase = env.seBase || SE_BASE;
   const now = env.now || (() => Date.now());
 
   let matches = []; // birleşik liste (ESPN + LiveScore'ta olup ESPN'de olmayanlar)
@@ -36,6 +42,13 @@ export function openSports(env) {
   let lsDetail = '';
   let espnErr = '';
   let espnDetail = '';
+  const tvDays = new Map(); // gün → { at, src: 'se'|'tsdb', rows (Spor Ekranı) | events (TheSportsDB), seNote? }
+  const tvPending = new Map();
+  const tvFailAt = new Map(); // gün → son başarısız deneme (art arda denenmez)
+  let tvErr = '';
+  let tvDetail = '';
+  let tvFor = new Map(); // maç kimliği → yayın listesindeki kanal adları
+  let tvSrc = new Map(); // maç kimliği → kaynak adı
   let fetchedAt = 0;
   let failed = [];
   let err = '';
@@ -62,6 +75,7 @@ export function openSports(env) {
 
   // ---- kanal eşleştirme: TV rehberindeki program başlığından ----
   function matchChannels() {
+    matchTv();
     chan = new Map();
     const items = liveItems() || [];
     byId = new Map(items.map((i) => [i.id, i]));
@@ -95,7 +109,9 @@ export function openSports(env) {
     let foot = '';
     if (m.state !== 'post' && !m.off) {
       const bc = broadcasterFor(m);
+      const tv = tvFor.get(m.id);
       if (ch) foot = `<div class="sp-ch">${icon('play')}<span>${esc(ch.item.name)}</span></div>`;
+      else if (tv && tv.length) foot = `<div class="sp-bc">Yayın: ${esc(tv.join(', '))} <small>(${esc(tvSrc.get(m.id) || '')})</small></div>`;
       else if (bc) foot = `<div class="sp-bc">Yayıncı: ${esc(bc.names)} <small>(tahmini)</small></div>`;
       else foot = '<div class="sp-bc"><small>Yayıncı bilgisi yok</small></div>';
     }
@@ -145,6 +161,12 @@ export function openSports(env) {
         const extra = matchesOnDay(matches, day).filter((m) => m.src === 'ls').length;
         if (extra) notes.push(`LiveScore'dan +${extra} maç`);
       }
+      const tv = tvDays.get(day);
+      if (tv) {
+        const n = matchesOnDay(matches, day).filter((m) => tvFor.has(m.id)).length;
+        const len = tv.src === 'se' ? tv.rows.length : tv.events.length;
+        notes.push(len ? `Yayın: ${n} maça eşleşti (${len} kayıt)` : 'Yayın listesi boş');
+      } else if (tvErr) notes.push('Yayın listesi alınamadı');
       if (notes.length) text += ' · ' + notes.join(' · ');
     } else if (lsBusy) text = 'LiveScore yükleniyor…';
     else text = '';
@@ -156,6 +178,9 @@ export function openSports(env) {
     const bits = [];
     if (espnErr && matches.length) bits.push(`ESPN: ${espnDetail || espnErr}`);
     if (lsErr && !lsBusy && !lsDays.has(day)) bits.push(`LiveScore: ${lsDetail || lsErr}`);
+    if (tvErr && !tvDays.has(day)) bits.push(tvDetail || tvErr);
+    const tvd = tvDays.get(day);
+    if (tvd && tvd.seNote) bits.push(`Spor Ekranı: ${tvd.seNote}`);
     return bits.length ? `<p class="hint sp-detail sp-src">${bits.map(esc).join(' · ')}</p>` : '';
   }
 
@@ -202,6 +227,14 @@ export function openSports(env) {
     } catch {
       /* kayıtlı veri yok */
     }
+    try {
+      const c = await store.cache.get(TV_CACHE_KEY);
+      if (c && Array.isArray(c.days)) {
+        for (const [d, v] of c.days) if (v && (v.src === 'se' ? Array.isArray(v.rows) : Array.isArray(v.events)) && v.at && now() - v.at < CACHE_MAX_AGE) tvDays.set(Number(d), v);
+      }
+    } catch {
+      /* kayıtlı veri yok */
+    }
     return e;
   }
 
@@ -210,6 +243,78 @@ export function openSports(env) {
     const ls = [];
     for (const v of lsDays.values()) ls.push(...v.matches);
     matches = ls.length ? mergeSources(espn, ls).matches : espn;
+  }
+
+  // TV yayın listesindeki kanal adlarını maçlara eşler (yalnız oynanmamış maçlar).
+  function matchTv() {
+    tvFor = new Map();
+    tvSrc = new Map();
+    for (const [d, v] of tvDays) {
+      const items = v.src === 'se' ? v.rows : v.events;
+      if (!items || !items.length) continue;
+      for (const m of matchesOnDay(matches, d)) {
+        if (m.state === 'post' || m.off) continue;
+        const names = v.src === 'se' ? seChannelsFor(m, items) : tvChannelsFor(m, items);
+        if (names.length) {
+          tvFor.set(m.id, names);
+          tvSrc.set(m.id, v.src === 'se' ? 'Spor Ekranı' : 'TheSportsDB');
+        }
+      }
+    }
+  }
+
+  // Önce Spor Ekranı (Türkiye'ye özel, maç bazında kanal); alınamazsa ya da futbol kaydı yoksa yedek olarak TheSportsDB.
+  function loadTv(d) {
+    if (tvPending.has(d)) return tvPending.get(d);
+    const p = (async () => {
+      let seNote = '';
+      try {
+        const r = await loadSeDay({ net, dayMs: d, base: seBase });
+        if (r.rows.length) {
+          await saveTv(d, { at: now(), src: 'se', rows: r.rows });
+          return;
+        }
+        seNote = seDiagText(r.diag);
+      } catch (e) {
+        seNote = (e && e.detail) || (e && e.message) || 'hata';
+      }
+      try {
+        const r = await loadTvDay({ net, dayMs: d, hosts: tvHosts });
+        const old = tvDays.get(d);
+        const oldLen = old ? (old.src === 'se' ? old.rows.length : old.events.length) : 0;
+        if (!r.events.length && oldLen) return; // yedek kaynakta da bir şey yok: önceki (iyi) liste korunur
+        await saveTv(d, { at: now(), src: 'tsdb', events: r.events, seNote });
+      } catch (e) {
+        tvErr = (e && e.message) || 'Yayın listesi alınamadı';
+        tvDetail = `Spor Ekranı: ${seNote} · TheSportsDB: ${(e && e.detail) || tvErr}`;
+        tvFailAt.set(d, now());
+      }
+    })().finally(() => tvPending.delete(d));
+    tvPending.set(d, p);
+    return p;
+  }
+
+  async function saveTv(d, entry) {
+    tvDays.delete(d);
+    tvDays.set(d, entry);
+    tvErr = '';
+    tvDetail = '';
+    try {
+      await store.cache.set(TV_CACHE_KEY, { at: now(), days: [...tvDays].slice(-LS_CACHE_DAYS) });
+    } catch {
+      /* kayıt başarısız olsa da liste çalışır */
+    }
+  }
+
+  // Günün yayın listesi eskiyse indirilir; ana liste beklemez, gelince satırlar tazelenir.
+  async function ensureTv(d, force = false) {
+    const v = tvDays.get(d);
+    if ((!force && v && now() - v.at < TV_FRESH_MS) || tvPending.has(d)) return;
+    if (tvFailAt.has(d) && now() - tvFailAt.get(d) < 10 * 60e3) return; // başarısızsa 10 dakika sonra yeniden
+    await loadTv(d);
+    if (!page.el.isConnected) return;
+    matchTv();
+    keepFocus(draw);
   }
 
   const lastAt = () => Math.max(fetchedAt, ...[...lsDays.values()].map((v) => v.at));
@@ -303,6 +408,7 @@ export function openSports(env) {
     errDetail = '';
     if (!quiet) drawStatus();
     const d0 = day;
+    if (!quiet) tvFailAt.clear(); // elle yenilemede yayın listesi de yeniden denenir
     const lsDue = !quiet || (lsLiveDay(d0) && now() - ((lsDays.get(d0) || {}).at || 0) >= LS_LIVE_MS);
     try {
       await Promise.all([loadEspn(), lsDue ? loadLs(d0) : null]);
@@ -324,6 +430,7 @@ export function openSports(env) {
     pickFirstDay();
     keepFocus(draw);
     if (day !== d0) ensureLs(day);
+    ensureTv(day, !quiet); // elle yenilemede yayın listesi de yeniden indirilir
   }
 
   // İlk açılışta bugün maç yoksa maçı olan ilk güne geçilir.
@@ -351,19 +458,23 @@ export function openSports(env) {
     if (ch) return play([ch.item], 0);
     if (m.state === 'post') return openDetail(m); // biten maçta açılacak kanal yok: olaylar/istatistik
     if (m.off) return toast(m.text, 1600);
-    if (!broadcasterFor(m)) return openDetail(m);
+    if (!broadcasterFor(m) && !(tvFor.get(m.id) || []).length) return openDetail(m);
     openCandidates(m);
   }
 
-  // Rehberde eşleşme yokken: yayıncının (tahmini) kanallarından birini seçtirir.
+  // Rehberde eşleşme yokken: TV listesindeki kanalların ve yayıncının (tahmini) kanallarının listenizdeki karşılıklarından birini seçtirir.
   function openCandidates(m) {
     const bc = broadcasterFor(m);
-    if (!bc) return toast('Bu maçın yayıncısı belli değil', 2600);
-    const cands = channelsOfBroadcaster(liveItems() || [], bc.keys);
-    if (!cands.length) return toast(`Listenizde ${bc.names} kanalı bulunamadı`, 3200);
+    const names = tvFor.get(m.id) || [];
+    if (!bc && !names.length) return toast('Bu maçın yayıncısı belli değil', 2600);
+    const items = liveItems() || [];
+    const cands = channelsByName(items, names);
+    if (bc) for (const c of channelsOfBroadcaster(items, bc.keys)) if (!cands.some((x) => x.id === c.id)) cands.push(c);
+    const label = names.length ? names.join(', ') : bc.names;
+    if (!cands.length) return toast(`Listenizde ${label} kanalı bulunamadı`, 3200);
     openSheet({
-      title: `${bc.names} kanalları`,
-      html: `<p class="sp-hint">${esc(m.home.label)} – ${esc(m.away.label)} maçı için rehberde eşleşme bulunamadı. Yayıncının kanallarından birini açabilirsiniz.</p><div class="sp-cands">${cands
+      title: names.length ? 'Yayın kanalları' : `${bc.names} kanalları`,
+      html: `<p class="sp-hint">${esc(m.home.label)} – ${esc(m.away.label)} maçı için rehberde eşleşme bulunamadı. ${names.length ? `Yayın listesine (${esc(tvSrc.get(m.id) || '')}) göre maç <b>${esc(names.join(', '))}</b> kanalında; listenizdeki karşılıkları:` : 'Yayıncının kanallarından birini açabilirsiniz.'}</p><div class="sp-cands">${cands
         .map((c, i) => `<div class="row" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span>${esc(c.name)}</span></div></div></div>`)
         .join('')}</div>`,
       mount: (body, api) => {
@@ -387,7 +498,7 @@ export function openSports(env) {
   async function openDetail(m) {
     try {
       const mod = await import('./sports-detail-ui.js');
-      mod.openMatchDetail({ net, toast, liveItems, epgBetween, play, base, now, openCandidates }, m);
+      mod.openMatchDetail({ net, toast, liveItems, epgBetween, play, base, now, openCandidates, tvOf: (x) => tvFor.get(x.id) || [], tvSrcOf: (x) => tvSrc.get(x.id) || '' }, m);
     } catch (e) {
       toast('Ayrıntı açılamadı: ' + ((e && e.message) || e), 3000);
     }
@@ -401,6 +512,7 @@ export function openSports(env) {
       const nd = q(`#sp-days [data-day="${day}"]`);
       if (nd && nd.focus) nd.focus({ preventScroll: true });
       ensureLs(day);
+      ensureTv(day);
       return;
     }
     const l = e.target.closest('[data-lg]');
@@ -447,6 +559,7 @@ export function openSports(env) {
     // İndirme çizimden önce başlar: ilk çizimde "yükleniyor" görünür ("Maç yok" yanıp sönmez).
     if (!c || now() - c.at > FRESH_MS || lsStale(day)) refresh({ quiet: !!(c || lsDays.size) });
     draw();
+    ensureTv(day);
     timer = setInterval(tick, LIVE_REFRESH_MS);
   })();
 

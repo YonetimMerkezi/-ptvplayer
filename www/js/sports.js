@@ -11,6 +11,9 @@ export const BROADCASTERS = {
   ssport: { name: 'S Sport', keys: ['s sport', 'ssport'] },
   trt: { name: 'TRT / Tabii', keys: ['trt spor', 'trt 1', 'trt1', 'tabii spor', 'tabii'] },
   aspor: { name: 'A Spor / ATV', keys: ['a spor', 'atv'] },
+  ahaber: { name: 'A Haber', keys: ['a haber', 'ahaber'] },
+  a2: { name: 'A2', keys: ['a2', 'a2 tv'] },
+  tivibu: { name: 'Tivibu Spor', keys: ['tivibu spor', 'tivibuspor', 'tivibu'] },
 };
 
 // Sıra, ekrandaki bölüm sırasıdır. bc: yayıncı(lar); tr: Türkiye oynuyorsa yayıncı(lar).
@@ -24,7 +27,7 @@ export const LEAGUES = [
   { id: 'ita.1', name: 'Serie A', bc: ['ssport'] },
   { id: 'ger.1', name: 'Bundesliga', bc: ['ssport'] },
   { id: 'fra.1', name: 'Ligue 1', bc: ['bein'] },
-  { id: 'uefa.nations', name: 'UEFA Uluslar Ligi', bc: [], tr: ['aspor'] },
+  { id: 'uefa.nations', name: 'UEFA Uluslar Ligi', bc: ['aspor', 'ahaber', 'a2', 'ssport'], tr: ['aspor'] }, // Türkiye dışı maçlar haftaya göre bu kanallara dağılır
   { id: 'fifa.friendly', name: 'Hazırlık maçları (milli)', bc: [], tr: ['aspor'] },
   { id: 'uefa.euroq', name: 'EURO Elemeleri', bc: [], tr: ['aspor'] },
 ];
@@ -150,7 +153,7 @@ export function teamKeys(name) {
   };
 }
 
-const hasAny = (paddedText, phrases) => phrases.some((p) => paddedText.includes(' ' + p + ' '));
+export const hasAny = (paddedText, phrases) => phrases.some((p) => paddedText.includes(' ' + p + ' '));
 
 // Program başlığı (+ açıklaması) iki takımı da içeriyorsa ve yayın başlangıcı maça yakınsa o program bu maçındır.
 // hits: [{ id, p: { s, e, t, d } }] (TV rehberi). findPrograms: eşleşenlerin hepsi (maça en yakın başlangıçtan uzağa);
@@ -191,9 +194,11 @@ export function slicePrograms(sorted, from, to) {
 // Rehberde karşılığı yoksa gösterilecek yayıncı (tahmini): { names: 'beIN SPORTS', keys: ['bein'] } ya da null.
 export function broadcasterFor(match) {
   const lg = leagueOf(match.lg);
-  if (!lg) return null;
-  let keys = lg.bc || [];
-  if (lg.tr && (isTurkey(match.home.name) || isTurkey(match.away.name))) keys = lg.tr;
+  const turkey = isTurkey(match.home.name) || isTurkey(match.away.name);
+  // ESPN tablosunda olmayan (LiveScore) yarışmalar: yayıncı, yarışmanın adından çıkarılmış (match.bc); Türkiye'nin milli maçı A Spor / ATV
+  let keys = lg ? lg.bc || [] : match.bc || [];
+  if (!lg && !keys.length && turkey && match.grp === 'int') keys = ['aspor'];
+  if (lg && lg.tr && turkey) keys = lg.tr;
   if (!keys.length) return null;
   return { names: keys.map((k) => BROADCASTERS[k].name).join(' / '), keys: [...keys] };
 }

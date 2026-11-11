@@ -89,6 +89,34 @@ export function groupOf(country) {
   return 'oth';
 }
 
+// Türkiye yayın hakları (2026-27, basında çıkan dağılım; değişebilir): [ülke, yarışma adı (sadeleşmiş, tam eşleşme), yayıncı anahtarları].
+// Yalnız adı kesin tanınan yarışmalar listelenir (yan lig/kadın/genç yarışmaları için yayıncı uydurulmaz).
+const RIGHTS = [
+  ['turkey', /^(trendyol )?super lig$/, ['bein']],
+  ['turkey', /^((tff|trendyol) )?1 (lig|league)$/, ['bein']],
+  ['turkey', /^(turkiye kupasi|ziraat turkiye kupasi|turkish cup|turkiye cup|super kupa|super cup)$/, ['aspor']],
+  ['turkey', /^((tff|nesine) )?(2|3) lig$/, ['tivibu']],
+  ['england', /^premier league$/, ['bein']],
+  ['england', /^fa cup$/, ['trt']],
+  ['france', /^ligue 1$/, ['bein']],
+  ['germany', /^bundesliga$/, ['ssport']],
+  ['spain', /^(laliga|la liga|primera division)$/, ['ssport']],
+  ['italy', /^serie a$/, ['ssport']],
+  ['netherlands', /^eredivisie$/, ['ssport']],
+  ['portugal', /^(primeira liga|liga portugal)$/, ['ssport']],
+  ['scotland', /^premiership$/, ['ssport']],
+  ['saudi arabia', /^(pro league|saudi pro league|roshn saudi league)$/, ['ssport']],
+  ['europe', /^(uefa )?(champions league|europa league|conference league|super cup)$/, ['trt']],
+  ['world', /^uefa nations league$/, ['aspor', 'ahaber', 'a2', 'ssport']],
+  ['europe', /^uefa nations league$/, ['aspor', 'ahaber', 'a2', 'ssport']],
+];
+export function rightsOf(country, stage) {
+  const c = norm(country);
+  const n = norm(stage);
+  const r = RIGHTS.find(([cc, re]) => cc === c && re.test(n));
+  return r ? [...r[2]] : [];
+}
+
 // Grup içi sıra: Türkiye'de Süper Lig, kupa, 1. Lig önce.
 function orderOf(grp, name) {
   if (grp !== 'tr') return 5;
@@ -111,6 +139,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
       const grp = groupOf(cnm);
       const name = [cnm && trCountry(cnm), snm].filter(Boolean).join(' · ') || 'Diğer';
       const ord = orderOf(grp, snm);
+      const bc = rightsOf(cnm, snm);
       for (const ev of arr(st && st.Events)) {
         try {
           const a = ev && arr(ev.T1)[0];
@@ -140,6 +169,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
             lgName: name,
             grp,
             ord,
+            bc,
             src: 'ls',
             t,
             state: status.state,

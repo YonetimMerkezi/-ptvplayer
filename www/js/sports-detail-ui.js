@@ -116,8 +116,9 @@ export function openMatchDetail(env, m) {
         .join('')}</div>`;
     } else {
       const bc = broadcasterFor(m);
-      html += `<p class="sd-note">Rehberinizde bu maç bulunamadı.${bc ? ` Tahmini yayıncı: <b>${esc(bc.names)}</b>` : ''}</p>`;
-      if (bc) html += `<button class="btn ghost" id="sd-bcs">${icon('list')}${esc(bc.names)} kanallarını göster</button>`;
+      const tv = (env.tvOf && env.tvOf(m)) || [];
+      html += `<p class="sd-note">Rehberinizde bu maç bulunamadı.${tv.length ? ` Yayın listesine göre (${esc((env.tvSrcOf && env.tvSrcOf(m)) || '')}): <b>${esc(tv.join(', '))}</b>` : bc ? ` Tahmini yayıncı: <b>${esc(bc.names)}</b>` : ''}</p>`;
+      if (bc || tv.length) html += `<button class="btn ghost" id="sd-bcs">${icon('list')}${esc(tv.length ? 'Yayın kanallarını' : bc.names + ' kanallarını')} göster</button>`;
     }
     html += '<div id="sd-intl"></div>';
     el.innerHTML = html;

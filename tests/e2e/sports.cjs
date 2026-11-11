@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [] };
+  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -76,7 +76,53 @@ function fakeEspn() {
       ],
     };
   };
+  // Sahte TheSportsDB TV listesi: tvMode 'empty' (kayıt yok), 'data', 'fail' (HTTP 500), 'badshape' (beklenmeyen JSON)
+  const tvBody = () => ({
+    tvevents: [
+      { idEvent: '1', strSport: 'Soccer', strEvent: 'Arsenal vs Chelsea', strChannel: 'TRT Spor', strCountry: 'Turkey', strTimeStamp: at(0, 19, 0).toISOString() },
+      { idEvent: '2', strSport: 'Soccer', strEvent: 'Bandirmaspor vs Manisa FK', strChannel: 'Tabii', strCountry: 'Turkey', strTimeStamp: at(0, 15, 0).toISOString() },
+      { idEvent: '3', strSport: 'Soccer', strEvent: 'Arsenal vs Chelsea', strChannel: 'Sky Sports', strCountry: 'United Kingdom', strTimeStamp: at(0, 19, 0).toISOString() },
+    ],
+  });
+  // Sahte Spor Ekranı günlük sayfası: seMode 'data0' (ilgisiz bir futbol satırı), 'data' (maçlarımızın satırları), 'fail' (HTTP 500),
+  // 'nofootball' (yalnız tenis), 'blocked' (maç bağlantısı olmayan sayfa)
+  const tsi = (d) => {
+    const x = new Date(d.getTime() + 3 * 3600e3);
+    const p2 = (n) => String(n).padStart(2, '0');
+    return { date: `${x.getUTCFullYear()}/${p2(x.getUTCMonth() + 1)}/${p2(x.getUTCDate())}`, time: `${p2(x.getUTCHours())}:${p2(x.getUTCMinutes())}` };
+  };
+  let seId = 1000;
+  const seRow = (sport, d, title, channels) => {
+    const t = tsi(d);
+    const chs = channels.map((c) => `<img src="/x.png" alt="${c}">`).join('') + channels.map((c) => `<b>${c}</b>`).join('');
+    return `<a class="row" href="https://www.sporekrani.com/home/match/${seId++}/${t.date}/x-hangi-kanalda"><span>${sport}</span><span>${t.time}</span><span>${title}</span>${chs}</a>`;
+  };
+  const seBody = () => {
+    const base = seRow('Futbol', at(0, 13, 0), 'Kepez Bld. - Balıkesirspor TFF 3. Lig', ['Tivibu Spor 1']);
+    if (st.seMode === 'nofootball') return `<div>${seRow('Tenis', at(0, 1, 0), 'C.Gauff - L.Noskova WTA', ['Bein Sports Max 1'])}</div>`;
+    if (st.seMode === 'blocked') return '<html><body>Just a moment...</body></html>';
+    if (st.seMode !== 'data') return `<div>${base}</div>`;
+    return `<div>${base}${seRow('Futbol', at(0, 19, 0), 'Arsenal - Chelsea Premier Lig', ['TRT Spor'])}${seRow('Futbol', at(0, 15, 0), 'Bandırmaspor - Manisa FK TFF 1. Lig', ['Tabii'])}${seRow('Futbol', at(0, 20, 0), 'Galatasaray - Fenerbahçe Süper Lig', ['beIN Sports 1', 'beIN Sports Max 2'])}${seRow('Basketbol', at(0, 20, 0), 'Anadolu Efes - Real Madrid EuroLeague', ['S Sport'])}</div>`;
+  };
   async function install(ctx) {
+    await ctx.route('https://www.sporekrani.com/**', async (route) => {
+      st.seCalls.push(route.request().url());
+      if (st.seMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
+      const key = (/day\/(\d{4}-\d\d-\d\d)/.exec(route.request().url()) || [])[1];
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const mode = st.seMode;
+      if (key !== today && mode === 'data') st.seMode = 'data0';
+      const body = seBody();
+      st.seMode = mode;
+      return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/html; charset=utf-8' }, body });
+    });
+    await ctx.route('https://www.thesportsdb.com/**', async (route) => {
+      st.tvCalls.push(route.request().url());
+      if (st.tvMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
+      const body = st.tvMode === 'badshape' ? { Message: 'premium' } : st.tvMode === 'data' ? tvBody() : { tvevents: null };
+      return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    });
     await ctx.route(/https:\/\/prod-(cdn-)?public-api\.livescore\.com\/.*/, async (route) => {
       const url = route.request().url();
       const key = (/soccer\/(\d{8})\//.exec(url) || [])[1] || '';
@@ -369,6 +415,97 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(!(await g.$('.sp-src')) && !/LiveScore alınamadı/.test(await g.textContent('#sp-upd')), 'LiveScore düzelince uyarı kalktı, maçlar tamamlandı');
   ok(G.errs.length === 0, 'sayfa hatası yok (LiveScore yok): ' + G.errs.join(' | '));
   await G.ctx.close();
+  espn.st.lsMode = 'empty';
+
+  // ---- yayın bilgisi: Spor Ekranı (maç bazında kanal), yedek TheSportsDB, yarışma adından yayıncı
+  espn.st.lsMode = 'data';
+  espn.st.seMode = 'data';
+  espn.st.tvMode = 'empty';
+  espn.st.seCalls.length = 0;
+  espn.st.tvCalls.length = 0;
+  const H = await mk({ width: 390, height: 844 });
+  const h = H.page;
+  await h.evaluate(() => {
+    const { S } = window.__iptv;
+    S.cat.live[1].name = 'TR: TRT SPOR HD';
+  });
+  await h.click('.shortcuts .t-sport');
+  await h.waitForFunction(() => /maça eşleşti/.test((document.querySelector('#sp-upd') || {}).textContent || ''), null, { timeout: 12000 });
+  ok(/Yayın: 3 maça eşleşti \(4 kayıt\)/.test(await h.textContent('#sp-upd')), 'durum satırı: yayın eşleşmesi (basketbol satırı sayılmaz): ' + (await h.textContent('#sp-upd')));
+  ok(/\/home\/day\/\d{4}-\d\d-\d\d$/.test(espn.st.seCalls[0]) && espn.st.tvCalls.length === 0, 'Spor Ekranı günlük sayfası istendi, yedek kaynağa gidilmedi: ' + espn.st.seCalls[0]);
+  const foot = (re) => h.$$eval('.sp-m', (rows, src) => { const r = rows.find((x) => new RegExp(src).test(x.textContent)); const f = r && r.querySelector('.sp-bc, .sp-ch'); return f ? f.textContent.replace(/\s+/g, ' ').trim() : ''; }, re.source);
+  ok(/Yayın: TRT Spor \(Spor Ekranı\)/.test(await foot(/Arsenal/)), 'ESPN maçında yayın listesindeki kanal yazıyor: ' + (await foot(/Arsenal/)));
+  ok(/Yayın: Tabii \(Spor Ekranı\)/.test(await foot(/Bandirmaspor/)), 'LiveScore maçında da (Bandırmaspor ı/i farkına rağmen) kanal yazıyor');
+  ok(/Yayın: beIN Sports 1, beIN Sports Max 2 \(Spor Ekranı\)/.test(await foot(/Galatasaray/)), 'birden çok kanal virgülle: ' + (await foot(/Galatasaray/)));
+  await h.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).click());
+  await h.waitForSelector('.sheet .sp-cands [data-i]', { timeout: 5000 });
+  const hc = await text(h, '.sheet .sp-cands .nm');
+  ok(hc.length === 1 && /TRT SPOR HD/.test(hc[0]), 'yayın listesindeki kanalın kullanıcı listesindeki karşılığı öneriliyor: ' + hc.join(', '));
+  ok(/Yayın kanalları/.test(await h.textContent('.sheet h3')) && /Spor Ekranı/.test(await h.textContent('.sheet .sp-hint')) && /TRT Spor/.test(await h.textContent('.sheet .sp-hint')), 'sayfa başlığı ve açıklama yayın listesine göre');
+  await h.click('.sheet .sp-cands [data-i="0"]');
+  await h.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
+  ok(true, 'önerilen kanala dokununca oynatıldı');
+  await h.goBack();
+  await h.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
+  await h.$$eval('.sp-m', (rows) => rows.find((r) => /Bandirmaspor/.test(r.textContent)).click());
+  await h.waitForFunction(() => /Listenizde Tabii kanalı bulunamadı/.test(document.querySelector('#toast').textContent), null, { timeout: 4000 });
+  ok(true, 'karşılığı olmayan kanal için açık bildirim');
+  await h.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).querySelector('[data-info]').click());
+  await h.waitForSelector('.sd-pg #sd-bc', { timeout: 6000 });
+  ok(/Yayın listesine göre \(Spor Ekranı\): TRT Spor/.test(await h.textContent('#sd-bc')) && (await h.isVisible('#sd-bcs')), 'ayrıntı: yayın listesindeki kanal ve kanalları göster düğmesi');
+  await h.goBack();
+  await h.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  await h.click('#sp-days .chip:nth-child(3)'); // yarın: LiveScore 1. Lig maçı, yayın kaydı yok → yarışma adından yayıncı
+  await h.waitForFunction(() => /Ankaragucu/.test(document.querySelector('.sp-list').textContent), null, { timeout: 8000 });
+  ok(/Yayıncı: beIN SPORTS \(tahmini\)/.test(await foot(/Ankaragucu/)), 'yayın kaydı olmayan LiveScore 1. Lig maçında yarışma adından yayıncı (tahmini): ' + (await foot(/Ankaragucu/)));
+  ok(H.errs.length === 0, 'sayfa hatası yok (yayın bilgisi): ' + H.errs.join(' | '));
+  await H.ctx.close();
+
+  // Spor Ekranı alınamazsa yedek kaynak (TheSportsDB) devreye girer; neden yazılır
+  espn.st.seMode = 'fail';
+  espn.st.tvMode = 'data';
+  espn.st.tvCalls.length = 0;
+  const I = await mk({ width: 390, height: 844 });
+  const i = I.page;
+  await i.click('.shortcuts .t-sport');
+  await i.waitForFunction(() => /Yayın: 2 maça eşleşti/.test((document.querySelector('#sp-upd') || {}).textContent || ''), null, { timeout: 15000 });
+  ok(/Yayın: TRT Spor \(TheSportsDB\)/.test(await i.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).querySelector('.sp-bc').textContent.replace(/\s+/g, ' ')))
+    && /json\/123\/eventstv\.php\?d=\d{4}-\d\d-\d\d&a=Turkey/.test(espn.st.tvCalls[0]), 'yedek kaynaktan kanal geldi (TheSportsDB)');
+  ok(/Spor Ekranı: HTTP 500/.test(await i.textContent('.sp-src')), 'asıl kaynağın hata nedeni listenin üstünde: ' + (await i.textContent('.sp-src')));
+  ok(I.errs.length === 0, 'sayfa hatası yok (yedek kaynak): ' + I.errs.join(' | '));
+  await I.ctx.close();
+
+  // İki yayın kaynağı da yoksa liste bozulmaz; nedenler yazılır
+  espn.st.tvMode = 'fail';
+  const J = await mk({ width: 390, height: 844 });
+  const j = J.page;
+  await j.click('.shortcuts .t-sport');
+  await j.waitForFunction(() => /Yayın listesi alınamadı/.test((document.querySelector('#sp-upd') || {}).textContent || ''), null, { timeout: 15000 });
+  const jsrc = await j.textContent('.sp-src');
+  ok((await j.$$('.sp-m')).length >= 4 && /Spor Ekranı: HTTP 500/.test(jsrc) && /TheSportsDB: HTTP 500/.test(jsrc), 'iki yayın kaynağı yokken maçlar listede, nedenler yazıyor: ' + jsrc);
+  espn.st.tvMode = 'badshape';
+  await j.click('#sp-ref');
+  await j.waitForFunction(() => /Beklenmeyen yanıt biçimi/.test((document.querySelector('.sp-src') || {}).textContent || ''), null, { timeout: 15000 });
+  ok(true, 'beklenmeyen yedek kaynak biçimi açıkça bildirildi');
+  ok(J.errs.length === 0, 'sayfa hatası yok (yayın kaynakları yok): ' + J.errs.join(' | '));
+  await J.ctx.close();
+
+  // Sayfa yapısı değişirse (futbol satırı çıkmıyorsa) teşhis satırı gösterir
+  espn.st.seMode = 'nofootball';
+  espn.st.tvMode = 'empty';
+  const K = await mk({ width: 390, height: 844 });
+  const k = K.page;
+  await k.click('.shortcuts .t-sport');
+  await k.waitForFunction(() => /Yayın listesi boş/.test((document.querySelector('#sp-upd') || {}).textContent || ''), null, { timeout: 15000 });
+  ok(/Spor Ekranı: 1 bağlantı, 0 futbol, 0 kanallı; örnek: Tenis \| 01:00/.test(await k.textContent('.sp-src')), 'futbol satırı yoksa teşhis (bağlantı sayısı ve örnek satır): ' + (await k.textContent('.sp-src')));
+  espn.st.seMode = 'blocked';
+  await k.click('#sp-ref');
+  await k.waitForFunction(() => /maç bağlantısı yok/.test((document.querySelector('.sp-src') || {}).textContent || ''), null, { timeout: 15000 });
+  ok(true, 'tanınmayan sayfa (engel/yapı değişikliği) açıkça bildirildi');
+  ok(K.errs.length === 0, 'sayfa hatası yok (teşhis): ' + K.errs.join(' | '));
+  await K.ctx.close();
+  espn.st.seMode = 'data0';
+  espn.st.tvMode = 'empty';
   espn.st.lsMode = 'empty';
 
   // ---- hata ekranı ve yeniden deneme (kayıtlı veri yok)

@@ -180,7 +180,14 @@ test('broadcasterFor: lige göre yayıncı; milli maçta yalnız Türkiye oynuyo
   assert.equal(broadcasterFor({ lg: 'esp.1', home: { name: 'A' }, away: { name: 'B' } }).names, 'S Sport');
   assert.equal(broadcasterFor({ lg: 'uefa.champions', home: { name: 'A' }, away: { name: 'B' } }).names, 'TRT / Tabii');
   assert.equal(broadcasterFor({ lg: 'uefa.nations', home: { name: 'Turkey' }, away: { name: 'Wales' } }).names, 'A Spor / ATV');
-  assert.equal(broadcasterFor({ lg: 'uefa.nations', home: { name: 'France' }, away: { name: 'Italy' } }), null, 'bilinmiyorsa yayıncı uydurulmaz');
+  // Uluslar Ligi'nde Türkiye dışı maçlar haftaya göre A Spor, A Haber, A2 ve S Sport Plus arasında dağılıyor: aday listesi
+  assert.deepEqual(broadcasterFor({ lg: 'uefa.nations', home: { name: 'France' }, away: { name: 'Italy' } }).keys, ['aspor', 'ahaber', 'a2', 'ssport']);
+  assert.equal(broadcasterFor({ lg: 'fifa.friendly', home: { name: 'France' }, away: { name: 'Italy' } }), null, 'bilinmiyorsa yayıncı uydurulmaz');
+  // ESPN tablosunda olmayan (LiveScore) yarışmalar: adı tanınıyorsa o yayıncı; Türkiye'nin uluslararası maçı A Spor
+  assert.equal(broadcasterFor({ lg: 'ls:1', src: 'ls', grp: 'tr', bc: ['bein'], home: { name: 'A' }, away: { name: 'B' } }).names, 'beIN SPORTS');
+  assert.equal(broadcasterFor({ lg: 'ls:2', src: 'ls', grp: 'int', bc: [], home: { name: 'Turkey' }, away: { name: 'Italy' } }).names, 'A Spor / ATV');
+  assert.equal(broadcasterFor({ lg: 'ls:3', src: 'ls', grp: 'oth', bc: [], home: { name: 'A' }, away: { name: 'B' } }), null);
+  assert.equal(broadcasterFor({ lg: 'ls:4', src: 'ls', grp: 'tr', home: { name: 'A' }, away: { name: 'B' } }), null, 'bc alanı yoksa hata atmaz');
   assert.equal(broadcasterFor({ lg: 'yok.1', home: { name: 'A' }, away: { name: 'B' } }), null);
 });
 
