@@ -472,6 +472,7 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await h.evaluate(() => {
     const { S } = window.__iptv;
     S.cat.live[1].name = 'TR: TRT SPOR HD';
+    S.cat.live[2].name = 'TR: TIVIBUSPOR 1 HD'; // TV adı “Tivibu Spor 1” (boşluklu) bitişik yazılan kanalla eşleşmeli
   });
   await h.click('.shortcuts .t-sport');
   const boxOf = (pg, re) => pg.$$eval('.sp-m', (rows, src) => { const r = rows.find((x) => new RegExp(src).test(x.textContent)); const b = r && r.querySelector('.sp-cb'); return b ? { title: b.getAttribute('title') || '', txt: b.textContent.trim(), none: b.classList.contains('none'), img: !!b.querySelector('img') } : null; }, re.source);
@@ -518,6 +519,8 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await h.waitForSelector('.sd-pg #sd-bc', { timeout: 8000 });
   await sleep(300);
   ok(/TFF 3\. Lig/.test(await h.textContent('.sd-lg')) && /Tivibu Spor 1/.test(await h.textContent('#sd-bc')) && espn.st.summaryCalls.length === sumB, 'yayın akışı maçının ayrıntısı: lig, kanal; ESPN ayrıntısı istenmedi');
+  const kch = await text(h, '#sd-bc .sd-ch .nm');
+  ok(kch.length === 1 && /TIVIBUSPOR 1 HD/.test(kch[0]) && !/listenizde bulunamadı/.test(await h.textContent('#sd-bc')), '“Tivibu Spor 1” adı listedeki “TIVIBUSPOR 1 HD” kanalıyla eşleşir: ' + kch.join(', '));
   await h.goBack();
   await h.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
   // yayın bilgisi bulunamayan maç (Leeds–Burnley): kanal listesi gösterilmez

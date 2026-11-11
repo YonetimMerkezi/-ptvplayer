@@ -96,21 +96,40 @@ export function tvChannelsFor(match, events, { tolerance = 3 * 3600e3 } = {}) {
 }
 
 const NOISE = new Set(['tr', 'turkey', 'turkiye', 'hd', 'fhd', 'uhd', 'sd', '4k', 'hevc', 'h265', 'kanal', 'channel', 'canli', 'live', 'tv', 'raw', 'hq', 'lq', '50fps', '60fps', '1080p', '720p', 'backup', 'yedek']);
-const core = (name) => norm(name).split(' ').filter((w) => w && !NOISE.has(w)).join(' ');
+const core = (name) => norm(name).split(' ').filter((w) => w && !NOISE.has(w)).map((w) => (w === 'sports' ? 'sport' : w)).join(' ');
+const tok = (name) => core(name).split(' ').filter(Boolean);
+
+// Bitişik sözcükler birleştirilince anahtara eşit olan bir pencere var mı? ("tivibu spor 1" ↔ "tivibuspor 1": boşluk farkı önemsiz)
+function windowEq(tokens, key) {
+  for (let i = 0; i < tokens.length; i++) {
+    let s = '';
+    for (let j = i; j < tokens.length; j++) {
+      s += tokens[j];
+      if (s === key) return true;
+      if (s.length >= key.length) break;
+    }
+  }
+  return false;
+}
 
 // TV listesindeki kanal adlarına karşılık gelen kullanıcı kanalları. Sadeleşmiş TV adı (en az 2 harf: "ATV", "A2", "TV8") kanal adında
-// tam sözcük olarak geçerse eşleşir; kanal adı TV adının içinde geçiyorsa yalnız her ikisi de en az 4 harfliyse (kısa adlar yanlış eşleşmesin).
+// tam sözcük (ya da bitişik sözcüklerin birleşimi: "Tivibu Spor 1" = "TIVIBUSPOR 1") olarak geçerse eşleşir; kanal adı TV adının içinde
+// geçiyorsa yalnız her ikisi de en az 4 harfliyse (kısa adlar yanlış eşleşmesin).
 // Sınır aşılırsa adı birebir tutan kanallar korunur (çok sayıda "BEIN SPORTS 1 …" varyantı arasında kesilmesinler); sıra listedeki gibidir.
 export function channelsByName(items, names, max = 14) {
-  const cores = (names || []).map(core).filter((c) => c.length >= 2);
-  if (!cores.length) return [];
+  const wants = (names || []).map((n) => { const t = tok(n); return { t, k: t.join('') }; }).filter((w) => w.k.length >= 2);
+  if (!wants.length) return [];
   const hits = [];
   for (const it of items || []) {
-    const raw = core(it.name);
-    if (!raw) continue;
-    const c = ` ${raw} `;
-    if (cores.includes(raw)) hits.push({ it, exact: true });
-    else if (cores.some((n) => c.includes(` ${n} `) || (n.length >= 4 && raw.length >= 4 && ` ${n} `.includes(c)))) hits.push({ it, exact: false });
+    const t = tok(it.name);
+    if (!t.length) continue;
+    const k = t.join('');
+    let kind = 0;
+    for (const w of wants) {
+      if (k === w.k) { kind = 2; break; }
+      if (windowEq(t, w.k) || (w.k.length >= 4 && k.length >= 4 && windowEq(w.t, k))) kind = 1;
+    }
+    if (kind) hits.push({ it, exact: kind === 2 });
   }
   if (hits.length <= max) return hits.map((h) => h.it);
   const keep = new Set([...hits.filter((h) => h.exact), ...hits.filter((h) => !h.exact)].slice(0, max));

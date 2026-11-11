@@ -104,6 +104,31 @@ test('channelsByName: kısa adlar (ATV, A2, TV8) tam sözcük olarak eşleşir; 
   assert.deepEqual(channelsByName(items, ['ATV'], 2).map((x) => x.id), ['1', '7'], 'sınır uygulanırken birebir olanlar (“TR: ATV HD” de) “ATV AVRUPA”dan önce korunur');
 });
 
+test('channelsByName: boşluk farkı önemsiz (“Tivibu Spor 1” = “TR: TIVIBUSPOR 1 HD”), numaralar karışmaz', () => {
+  const items = [
+    { id: 'g', name: 'TR: TiViBUSPOR' },
+    { id: '1h', name: 'TR: TIVIBUSPOR 1 HD' },
+    { id: '1f', name: 'TR: TiViBUSPOR 1 FHD' },
+    { id: '2h', name: 'TR: TIVIBUSPOR 2 HD' },
+    { id: '2f', name: 'TR: TIVIBUSPOR 2 FHD' },
+    { id: '3h', name: 'TR: TIVIBUSPOR 3 HD' },
+    { id: '4', name: 'TR: TIVIBUSPOR 4' },
+    { id: '5', name: 'TR: TIVIBUSPOR 5' },
+    { id: 'x', name: 'TIVIBU 1' },
+  ];
+  const ids = (names) => channelsByName(items, names).map((x) => x.id);
+  assert.deepEqual(ids(['Tivibu Spor 1']), ['g', '1h', '1f'], 'numaralı yayın + genel “Tivibu Spor”; 2–5 gelmez');
+  assert.deepEqual(ids(['Tivibu Spor 2']), ['g', '2h', '2f']);
+  assert.deepEqual(ids(['Tivibu Spor 5']), ['g', '5']);
+  assert.deepEqual(ids(['TivibuSpor 1']), ['g', '1h', '1f'], 'bitişik yazılan ad da eşleşir');
+  assert.deepEqual(ids(['Tivibu Spor']), ['g', '1h', '1f', '2h', '2f', '3h', '4', '5'], 'numarasız ad tüm Tivibu Spor kanallarını verir');
+  assert.deepEqual(ids(['Tivibu Spor 6']), ['g'], 'olmayan numara yalnız genel kanalı verir');
+  // tersi: kanal adındaki sözcükler ayrık, TV adı bitişik
+  assert.deepEqual(channelsByName([{ id: 'a', name: 'A 2' }, { id: 'b', name: 'A 3' }], ['A2']).map((x) => x.id), ['a']);
+  // “Sports”/“Sport” yazımı aynı sayılır
+  assert.deepEqual(channelsByName([{ id: 'p', name: 'S Sport Plus' }, { id: 'q', name: 'TR: BEIN SPORT 1' }], ['beIN Sports 1']).map((x) => x.id), ['q']);
+});
+
 test('loadTvDay: yedek adrese düşer; biçim/ağ hataları ayrıntıyla bildirilir; boş gün hata değildir', async () => {
   const urls = [];
   const net = { json: async (u) => (urls.push(u), urls.length === 1 ? Promise.reject(new Error('HTTP 401')) : TV) };

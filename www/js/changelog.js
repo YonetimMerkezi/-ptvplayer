@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 58,
+    title: 'Spor: boşluk farkı olan kanal adları eşleşiyor',
+    items: ['Yayın bilgisindeki “Tivibu Spor 1” gibi adlar, listenizde “TIVIBUSPOR 1 HD” diye bitişik yazılmış kanalla eşleşir; maç ekranında kanal listelenir ve dokununca açılır'],
+  },
+  {
     id: 57,
     title: 'Spor: bayraklar, takım logoları ve yedek yayın kaynakları',
     items: [
