@@ -368,12 +368,19 @@ export function createPlayerUI({ engine, player, env }) {
     if (r.show) b.dataset.to = String(r.to);
   }
 
+  // Son okunan ses/altyazı izleri (telefon kumandasına bildirilir; her okumada yerel eklentiye sorulmaz)
+  const noTracks = () => ({ audio: [], text: [], textOn: false });
+  let trackCache = noTracks();
+  const cacheTracks = (t) => (trackCache = { audio: (t && t.audio) || [], text: (t && t.text) || [], textOn: !!(t && t.textOn) });
+
   async function loadTrackButtons(st) {
     const key = st.item.id + (st.ep ? st.ep.id : '') + ':' + st.tracksVer;
     if (!env.native || tracksLoadedFor === key) return;
     tracksLoadedFor = key;
+    trackCache = noTracks();
     try {
       const t = await engine.tracks();
+      cacheTracks(t);
       q('#pl-audio').hidden = !(t.audio && t.audio.length > 1);
       q('#pl-text').hidden = !(t.text && t.text.length > 0);
     } catch {
@@ -1067,7 +1074,101 @@ export function createPlayerUI({ engine, player, env }) {
     if (k !== 'Enter') e.preventDefault();
   });
 
+  // ---- telefondan uzaktan kumanda: TV'deki oynatıcının durumu ve denetimleri ----
+
+  // Açık oynatıcının telefona bildirilecek durumu; oynatıcı kapalıysa null.
+  function remoteExt() {
+    if (!open) return null;
+    const st = player.state();
+    if (!st.item) return null;
+    return {
+      can: {
+        prev: !!ctx && ctx.index > 0,
+        next: !!ctx && ctx.index < ctx.items.length - 1,
+        last: st.item.kind === 'live' && lastIndex() >= 0,
+        golive: !q('#pl-golive').hidden,
+        fav: !q('#pl-fav').hidden,
+        audio: trackCache.audio.length > 1,
+        text: trackCache.text.length > 0,
+        night: !!engine.setNightMode,
+        sleep: true,
+        aspect: true,
+        stats: true,
+      },
+      fav: !!env.isFav(st.item),
+      stats: statsOn,
+      aspect: RESIZE[resizeIdx][1],
+      night: nightNow(),
+      sleep: { min: sleep.minutes(), left: sleep.active() ? sleep.remaining() : 0 },
+      audio: trackCache.audio,
+      text: trackCache.text,
+      textOn: trackCache.textOn,
+      epg: q('#pl-epgline').textContent || '',
+    };
+  }
+
+  // Telefondan gelen (doğrulanmış) komutu, ekrandaki düğmeye dokunmuş gibi uygular. → uygulandı mı
+  function remoteCmd(c) {
+    if (!open || !c) return false;
+    switch (c.a) {
+      case 'next':
+        go(1);
+        return true;
+      case 'prev':
+        go(-1);
+        return true;
+      case 'last':
+        lastChannel();
+        return true;
+      case 'golive':
+        if (q('#pl-golive').hidden) return false;
+        q('#pl-golive').click();
+        return true;
+      case 'fav':
+        if (q('#pl-fav').hidden) return false;
+        q('#pl-fav').click();
+        return true;
+      case 'aspect':
+        applyResize(Number.isInteger(c.v) && c.v >= 0 && c.v < RESIZE.length ? c.v : (resizeIdx + 1) % RESIZE.length, true);
+        return true;
+      case 'stats':
+        setStats(!statsOn);
+        return true;
+      case 'night': {
+        if (!engine.setNightMode) return false;
+        const level = normalizeNight(c.v);
+        env.setPref('night', level);
+        renderNightLabel();
+        Promise.resolve(engine.setNightMode(level)).catch(() => toast('Gece modu uygulanamadı', 2500));
+        hud('info', 'Gece modu: ' + nightLabel(level));
+        return true;
+      }
+      case 'sleep': {
+        const m = Number(c.v);
+        const opt = SLEEP_OPTIONS.find(([x]) => x === m);
+        if (!opt) return false;
+        sleep.set(m);
+        renderSleepLabel();
+        toast(m ? `Uyku zamanlayıcısı: ${opt[1]}` : 'Uyku zamanlayıcısı kapatıldı');
+        return true;
+      }
+      case 'audio':
+      case 'text': {
+        const list = c.a === 'audio' ? trackCache.audio : trackCache.text;
+        if (c.v && !list.some((x) => String(x.id) === c.v)) return false; // bilinmeyen iz (liste TV'de değişmiş olabilir)
+        Promise.resolve(engine.selectTrack(c.a, c.v))
+          .then(() => engine.tracks())
+          .then(cacheTracks)
+          .catch(() => toast('İz seçilemedi', 2500));
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
   return {
+    remote: { ext: remoteExt, cmd: remoteCmd },
     open: openWithLayer,
     preview: previewUi,
     expand,

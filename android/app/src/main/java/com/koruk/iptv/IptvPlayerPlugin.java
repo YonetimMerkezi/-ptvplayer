@@ -139,6 +139,8 @@ public class IptvPlayerPlugin extends Plugin {
     private volatile long castDur = -1;
     private volatile String castTitle = "";
     private volatile String castKind = "";
+    // JS'in bildirdiği oynatıcı denetimleri (ses/altyazı izleri, uyku, gece modu…); telefon kumandası /state ile okur
+    private volatile String castExt = "";
     // Veri eşitleme: telefondan gelen istek uygulamaya (JS) iletilir, yanıt castSyncReply ile dönene kadar beklenir.
     private final ConcurrentHashMap<String, BlockingQueue<String[]>> syncWaiting = new ConcurrentHashMap<>();
     private final AtomicInteger syncSeq = new AtomicInteger();
@@ -1892,6 +1894,31 @@ public class IptvPlayerPlugin extends Plugin {
                 if (am == null) return "Ses ayarlanamıyor";
                 am.setStreamVolume(AudioManager.STREAM_MUSIC, (int) Math.max(0, Math.min(am.getStreamMaxVolume(AudioManager.STREAM_MUSIC), v)), AudioManager.FLAG_SHOW_UI);
                 return null;
+            case "mute":
+                if (am == null) return "Ses ayarlanamıyor";
+                if (Build.VERSION.SDK_INT < 23) return "Bu Android sürümünde sessize alma desteklenmiyor";
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, am.isStreamMute(AudioManager.STREAM_MUSIC) ? AudioManager.ADJUST_UNMUTE : AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI);
+                return null;
+            case "next":
+            case "prev":
+            case "last":
+            case "golive":
+            case "fav":
+            case "stats":
+            case "aspect":
+            case "night":
+            case "sleep":
+            case "audio":
+            case "text":
+            case "key":
+                // oynatıcı denetimleri uygulamanın (JS) elinde: komut doğrulanıp orada uygulanır
+                try {
+                    final JSObject cmd = new JSObject(body);
+                    main.post(() -> notifyListeners("castCmd", cmd));
+                } catch (JSONException e) {
+                    return "Geçersiz komut";
+                }
+                return null;
             default:
                 return "Bilinmeyen komut";
         }
@@ -1902,13 +1929,17 @@ public class IptvPlayerPlugin extends Plugin {
         int cur = 0;
         int max = 0;
         boolean fixed = false;
+        boolean muted = false;
         if (am != null) {
             cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
             max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
             fixed = Build.VERSION.SDK_INT >= 21 && am.isVolumeFixed();
+            muted = Build.VERSION.SDK_INT >= 23 && am.isStreamMute(AudioManager.STREAM_MUSIC);
         }
+        final String ext = castExt;
         return "{\"active\":" + castActive + ",\"state\":" + CastServer.q(castState) + ",\"pos\":" + castPos + ",\"dur\":" + castDur + ",\"live\":" + castLive
-                + ",\"title\":" + CastServer.q(castTitle) + ",\"kind\":" + CastServer.q(castKind) + ",\"vol\":{\"cur\":" + cur + ",\"max\":" + max + ",\"fixed\":" + fixed + "}}";
+                + ",\"title\":" + CastServer.q(castTitle) + ",\"kind\":" + CastServer.q(castKind) + ",\"vol\":{\"cur\":" + cur + ",\"max\":" + max + ",\"fixed\":" + fixed + ",\"muted\":" + muted + "}"
+                + (ext.isEmpty() ? "" : ",\"ext\":" + ext) + "}";
     }
 
     // Alıcıyı açar (TV'de ayar açıksa uygulama başlarken çağrılır). Eşleşmiş telefonlar korunur.
@@ -1973,6 +2004,22 @@ public class IptvPlayerPlugin extends Plugin {
     public void castNow(final PluginCall call) {
         castTitle = call.getData().optString("title", "");
         castKind = call.getData().optString("kind", "");
+        call.resolve();
+    }
+
+    // Oynatıcının telefon kumandasına gösterilecek denetim durumu (JSON nesnesi); boş/geçersizse temizlenir.
+    @PluginMethod
+    public void castExt(final PluginCall call) {
+        String raw = call.getData().optString("json", "");
+        String ok = "";
+        if (raw.length() > 0 && raw.length() <= 16384) {
+            try {
+                ok = new JSONObject(raw).toString(); // geçerli bir nesne değilse atılır; /state yanıtı bozulmasın
+            } catch (JSONException e) {
+                ok = "";
+            }
+        }
+        castExt = ok;
         call.resolve();
     }
 

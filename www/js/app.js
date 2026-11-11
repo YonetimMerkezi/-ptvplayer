@@ -36,6 +36,7 @@ import { CAPTION_LINES, DEFAULT_CAPTION, normalizeCaption, captionPx, applyCapti
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
+import { REMOTE_KEYS } from './cast.js';
 import { clampDelay } from './avsync.js';
 import { normalizeNight, DEFAULT_NIGHT } from './night.js';
 import { INTRO_OPTIONS, DEFAULT_INTRO, normalizeIntro, pickNextMovie } from './nextup.js';
@@ -4277,6 +4278,9 @@ const castUi = createCastUI({
   stopCast: () => {
     if (pui.isOpen()) pui.close();
   },
+  // Telefon kumandası: oynatıcı denetimleri ve yön tuşları (sayfa içinde gezinme)
+  remoteExt: () => pui.remote.ext(),
+  remoteCmd: (c) => (c.a === 'key' ? dpad.sendKey(REMOTE_KEYS[c.v]) : pui.remote.cmd(c)),
   guard: () => backupGuard(),
   busy: () => pui.isOpen(),
   onSynced: () => afterSync(),

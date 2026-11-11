@@ -45,6 +45,7 @@ function fakeEspn() {
         { type: { text: 'Kickoff' }, clock: { displayValue: "0'" } },
         { type: { text: 'Goal' }, scoringPlay: true, clock: { displayValue: "12'" }, team: { id: '1' }, participants: [{ athlete: { displayName: 'Cenk Tosun' } }] },
         { type: { text: 'Yellow Card' }, clock: { displayValue: "30'" }, team: { id: '2' }, participants: [{ athlete: { displayName: 'Uğurcan Çakır' } }] },
+        { type: { text: 'Halftime' }, clock: { displayValue: "45'+2'" } },
         { type: { text: 'Substitution' }, clock: { displayValue: "60'" }, team: { id: '1' }, participants: [{ athlete: { displayName: 'Rafa Silva' } }, { athlete: { displayName: 'Semih Kılıçsoy' } }] },
       ],
       boxscore: { teams: [
@@ -251,6 +252,14 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   const lgl = await text(a, '.sp-m .sp-l2');
   ok(lgl[0] === 'Süper Lig' && lgl[2] === 'Premier Lig' && lgl[3] === 'Süper Lig · 12. hafta', 'her satırda lig/turnuva ve tur bilgisi: ' + lgl.join(' | '));
 
+  // kumanda odağı: rozet/logo geldikçe liste yeniden çizilse de odaktaki satır korunur (gün çiplerine fırlamaz)
+  await a.evaluate(() => document.documentElement.classList.add('kbd'));
+  const focId = await a.evaluate(() => { const r = document.querySelectorAll('.sp-m')[1]; r.focus(); return r.dataset.id; });
+  await sleep(2500);
+  const stay = await a.evaluate(() => { const e = document.activeElement; return e && e.classList.contains('sp-m') ? e.dataset.id : (e && (e.className || e.tagName)); });
+  ok(stay === focId, 'arka planda liste yenilense de (rozet/logo) kumanda odağı satırda kalır: ' + stay);
+  await a.evaluate(() => document.documentElement.classList.remove('kbd'));
+
   // canlı skor
   const live = await a.$eval('.sp-m.on', (e) => e.textContent.replace(/\s+/g, ' ').trim());
   ok(/67'/.test(live) && /Beşiktaş/.test(live) && /Trabzonspor/.test(live) && /1/.test(live), 'canlı maç: dakika ve skor görünüyor: ' + live);
@@ -287,7 +296,8 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(/Tüpraş Stadyumu, İstanbul/.test(head) && /Hakem: Cüneyt Çakır/.test(head) && /Seyirci: 41/.test(head), 'ayrıntı: stat, hakem, seyirci');
   const evs = await text(a, '.sd-e');
   const has = (t, ...parts) => parts.every((p) => t.includes(p));
-  ok(evs.length === 3 && has(evs[0], "12'", 'Cenk Tosun') && has(evs[1], "30'", 'Uğurcan') && has(evs[2], "60'", 'Rafa Silva', 'Semih'), 'ayrıntı: gol, kart, değişiklik olayları (' + evs.join(' | ') + ')');
+  ok(evs.length === 4 && has(evs[0], "12'", 'Cenk Tosun', '1–0') && has(evs[1], "30'", 'Uğurcan') && has(evs[2], 'Devre arası', '1–0') && has(evs[3], "60'", 'Rafa Silva', 'Semih'), 'ayrıntı: gol (skorla), kart, devre arası, değişiklik olayları (' + evs.join(' | ') + ')');
+  ok((await a.$$eval('.sd-sub .in b', (e) => e.map((x) => x.textContent))).join() === 'Rafa Silva' && (await a.$$eval('.sd-sub .out', (e) => e.map((x) => x.textContent.trim()))).join().includes('Semih'), 'ayrıntı: oyuncu değişikliğinde giren ve çıkan ayrı yazılır');
   ok(await a.$$eval('.sd-e.home', (e) => e.length) === 2 && (await a.$$eval('.sd-e.away', (e) => e.length)) === 1, 'ayrıntı: olaylar takımına göre sol/sağda');
   const stats = await text(a, '.sd-s');
   ok(stats.length === 2 && /58%.*Topla oynama.*42%/.test(stats[0]) && /11.*Şut.*5/.test(stats[1]), 'ayrıntı: istatistik satırları (' + stats.join(' | ') + ')');

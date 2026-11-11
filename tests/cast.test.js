@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, viewOf, createRemote, parseJson } from '../www/js/cast.js';
+import { buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, viewOf, createRemote, parseJson, parseRemoteCmd, extOf, REMOTE_KEYS } from '../www/js/cast.js';
 
 const T = [{ url: 'http://a/x.m3u8', mime: 'hls' }, { url: 'http://b/x.m3u8', alt: 'Yedek', headers: { 'User-Agent': 'U' } }];
 
@@ -234,4 +234,82 @@ test('syncResult: başarı, eşleşme kaldırılmış, TV hatası/zaman aşımı
   assert.equal(syncResult({ status: 422, body: '' }).msg, 'Eşitleme yapılamadı');
   assert.equal(syncResult({ status: 0, body: '' }).msg, 'TV’ye ulaşılamadı');
   assert.equal(syncResult(null).ok, false);
+});
+
+// ---- telefon kumandası: TV'deki oynatıcının ek denetimleri ----
+
+test('parseRemoteCmd: bilinen komutları ve değerlerini doğrular, gerisini reddeder', () => {
+  for (const a of ['next', 'prev', 'last', 'golive', 'fav', 'stats']) assert.deepEqual(parseRemoteCmd({ a, v: 'x', fazla: 1 }), { a });
+  assert.deepEqual(parseRemoteCmd({ a: 'aspect' }), { a: 'aspect' });
+  assert.deepEqual(parseRemoteCmd({ a: 'aspect', v: 2 }), { a: 'aspect', v: 2 });
+  assert.deepEqual(parseRemoteCmd({ a: 'aspect', v: 99 }), { a: 'aspect' }); // döngü: geçersiz sıra yok sayılır
+  for (const v of Object.keys(REMOTE_KEYS)) assert.deepEqual(parseRemoteCmd({ a: 'key', v }), { a: 'key', v });
+  assert.equal(parseRemoteCmd({ a: 'key', v: 'F5' }), null);
+  assert.equal(parseRemoteCmd({ a: 'key', v: 'constructor' }), null); // prototip anahtarları tuş sayılmaz
+  assert.equal(parseRemoteCmd({ a: 'key' }), null);
+  assert.deepEqual(parseRemoteCmd({ a: 'sleep', v: 30 }), { a: 'sleep', v: 30 });
+  assert.deepEqual(parseRemoteCmd({ a: 'sleep', v: '45' }), { a: 'sleep', v: 45 });
+  assert.deepEqual(parseRemoteCmd({ a: 'sleep', v: 0 }), { a: 'sleep', v: 0 });
+  assert.equal(parseRemoteCmd({ a: 'sleep', v: 7 }), null);
+  assert.deepEqual(parseRemoteCmd({ a: 'night', v: 'low' }), { a: 'night', v: 'low' });
+  assert.equal(parseRemoteCmd({ a: 'night', v: '' }), null);
+  assert.equal(parseRemoteCmd({ a: 'night', v: 'x'.repeat(21) }), null);
+  assert.deepEqual(parseRemoteCmd({ a: 'audio', v: '2' }), { a: 'audio', v: '2' });
+  assert.equal(parseRemoteCmd({ a: 'audio', v: '' }), null); // ses izi kapatılamaz
+  assert.deepEqual(parseRemoteCmd({ a: 'text', v: '' }), { a: 'text', v: '' }); // boş = altyazı kapalı
+  assert.equal(parseRemoteCmd({ a: 'text', v: 5 }), null);
+  for (const kotu of [null, undefined, 'next', 5, {}, { a: 5 }, { a: 'format' }, { a: 'stop' }, { a: 'seekBy', v: 1 }]) assert.equal(parseRemoteCmd(kotu), null);
+});
+
+test('extOf: eksik ya da bozuk bildirimde her şey kapalı; geçerli bildirim temizlenerek geçer', () => {
+  const bos = extOf(undefined);
+  assert.ok(Object.values(bos.can).every((x) => x === false));
+  assert.deepEqual([bos.audio, bos.text, bos.fav, bos.night, bos.sleepMin, bos.epg], [[], [], false, 'off', 0, '']);
+  assert.deepEqual(extOf('metin'), bos);
+  assert.deepEqual(extOf({ can: 'evet' }), bos);
+  assert.equal(extOf({ can: { next: 'true' } }).can.next, false); // yalnız gerçek true
+  const x = extOf({
+    can: { prev: true, next: true, audio: true, text: true, night: true, sleep: true, aspect: true, stats: true, fav: true, last: false },
+    fav: true,
+    stats: true,
+    aspect: 'Doldur',
+    night: 'high',
+    sleep: { min: 30, left: 1500000.4 },
+    audio: [{ id: 1, label: 'Türkçe', selected: true }, { id: 'a2', label: '' }, { label: 'kimliksiz' }, null],
+    text: [{ id: 't1', label: 'İngilizce' }],
+    textOn: true,
+    epg: 'Haber · 20:00–21:00',
+  });
+  assert.equal(x.can.prev && x.can.audio && x.can.stats && !x.can.last, true);
+  assert.deepEqual([x.fav, x.stats, x.aspect, x.night, x.sleepMin, x.sleepLeft, x.textOn, x.epg], [true, true, 'Doldur', 'high', 30, 1500000, true, 'Haber · 20:00–21:00']);
+  assert.deepEqual(x.audio, [{ id: '1', label: 'Türkçe', selected: true }, { id: 'a2', label: 'a2', selected: false }]);
+  assert.deepEqual(x.text, [{ id: 't1', label: 'İngilizce', selected: false }]);
+  assert.equal(extOf({ audio: Array.from({ length: 80 }, (_, i) => ({ id: String(i), label: 'x' })) }).audio.length, 24);
+  assert.equal(extOf({ epg: 'e'.repeat(500) }).epg.length, 200);
+  assert.equal(extOf({ sleep: { min: -5, left: -1 } }).sleepMin, 0);
+});
+
+test('viewOf: ext, sessiz ve en yüksek ses TV durumundan gelir', () => {
+  const v = viewOf({ active: true, state: 'playing', vol: { cur: 4, max: 15, fixed: false, muted: true }, ext: { fav: true, can: { next: true } } });
+  assert.equal(v.muted, true);
+  assert.equal(v.volMax, 15);
+  assert.equal(v.ext.fav, true);
+  assert.equal(v.ext.can.next, true);
+  const e = viewOf({ active: true });
+  assert.equal(e.muted, false);
+  assert.equal(e.ext.can.next, false);
+});
+
+test('uzaktan kumanda (yalnız kumanda): TV’de oynayan olmasa da ya da oynayan bitse de kapanmaz', async () => {
+  const f = fake();
+  const log = [];
+  const resp = [st({ active: false }), st({ active: true, state: 'playing' }), st({ active: false }), st({ active: false }), st({ active: false }), st({ active: false })];
+  const rm = createRemote({ request: async () => resp.shift(), keep: true, onView: (v) => log.push(v.active), onEnd: (r) => log.push('end:' + r), setT: f.setT, clearT: f.clearT, now: () => 1e9, grace: 1 });
+  rm.start();
+  await flush();
+  for (let i = 0; i < 5; i++) await f.run();
+  assert.deepEqual(log, [false, true, false, false, false, false]);
+  assert.equal(f.pending().length, 1); // yoklama sürüyor
+  rm.stop();
+  assert.equal(f.pending().length, 0);
 });

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { nativePlugin } from '../www/js/bridge.js';
+import { parseRemoteCmd } from '../www/js/cast.js';
 import { fileURLToPath } from 'node:url';
 
 const kaynak = readFileSync(
@@ -213,9 +214,20 @@ test('yayın kaydı yöntemleri köprüde de var', () => {
   }
 });
 
+test('telefon kumandası: Java’nın JS’e ilettiği komutlar JS’in kabul ettikleriyle birebir aynı, durum yanıtı ext taşır', () => {
+  const govde = kaynak.slice(kaynak.indexOf('private String castCommand('), kaynak.indexOf('private String castStateJson('));
+  const iletilen = [...govde.slice(govde.indexOf('case "mute"')).matchAll(/case "(\w+)":/g)].map((m) => m[1]).filter((a) => a !== 'mute');
+  const ornek = { next: {}, prev: {}, last: {}, golive: {}, fav: {}, stats: {}, aspect: {}, night: { v: 'low' }, sleep: { v: 30 }, audio: { v: '1' }, text: { v: '' }, key: { v: 'ok' } };
+  assert.deepEqual([...iletilen].sort(), Object.keys(ornek).sort(), 'Java ile JS komut listesi ayrışmış');
+  for (const [a, ek] of Object.entries(ornek)) assert.equal(parseRemoteCmd({ a, ...ek })?.a, a, `${a} JS’te kabul edilmiyor`);
+  assert.match(kaynak, /public void castExt\(/);
+  assert.ok(kaynak.includes('",\\"ext\\":" + ext'), 'durum yanıtına ext eklenmiyor');
+  assert.match(kaynak, /new JSONObject\(raw\)\.toString\(\)/, 'ext JSON’u doğrulanmadan yanıta gömülmemeli');
+});
+
 test('telefondan TV\'ye oynatma: yöntemler köprüde, sunucu eşleşmesiz isteği ve yanlış kod denemelerini reddeder', () => {
   const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
-  for (const m of ['castStart', 'castStop', 'castInfo', 'castPairOpen', 'castPairClose', 'castUnpair', 'castNow', 'castDiscover', 'castRequest']) {
+  for (const m of ['castStart', 'castStop', 'castInfo', 'castPairOpen', 'castPairClose', 'castUnpair', 'castNow', 'castExt', 'castDiscover', 'castRequest']) {
     assert.match(kaynak, new RegExp(`public void ${m}\\(`), `${m} Java'da yok`);
     assert.equal(typeof pl[m], 'function', `${m} köprüde yok`);
   }

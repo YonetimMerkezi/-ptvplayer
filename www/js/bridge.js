@@ -68,6 +68,7 @@ export function nativePlugin(name, win = globalThis.window) {
     castPairClose: call('castPairClose'),
     castUnpair: call('castUnpair'),
     castNow: call('castNow'),
+    castExt: call('castExt'),
     castDiscover: call('castDiscover'),
     castRequest: call('castRequest'),
   };

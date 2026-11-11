@@ -298,22 +298,37 @@ export function openSports(env) {
       <div class="sp-main"><div class="sp-l1"><span class="sp-when">${when}</span><span class="sp-tt">${title}</span></div>${lgl ? `<div class="sp-l2">${esc(lgl)}</div>` : ''}</div>${chBox(m)}</div>`;
   }
 
-  function drawChips() {
+  // Çizimler odağı korur ve içerik değişmediyse DOM'a dokunmaz: rozet/logo geldikçe yinelenen yeniden çizim, kumandada odaktaki satırı yok edip
+  // bir sonraki tuşta odağı gün çiplerine fırlatıyordu.
+  const drawn = new Map();
+  function put(el, html) {
+    if (drawn.get(el) === html && el.isConnected) return false;
+    drawn.set(el, html);
+    el.innerHTML = html;
+    return true;
+  }
+  const drawChips = () => keepFocus(drawChipsNow);
+  const drawList = () => keepFocus(drawListNow);
+
+  function drawChipsNow() {
     const t = now();
     const strip = dayStrip(t);
-    q('#sp-days').innerHTML = strip
+    put(q('#sp-days'), strip
       .map((d) => {
         const n = chipsFor(matchesOnDay(matches, d)).all; // “Tümü” sayısıyla aynı (diğer ülkeler hariç)
         return `<button class="chip${d === day ? ' on' : ''}" data-day="${d}"${d === day ? ' data-autofocus' : ''}>${esc(dayLabel(d, t))}${n ? `<small>${n}</small>` : ''}</button>`;
       })
-      .join('');
+      .join(''));
     const { all, chips } = chipsFor(matchesOnDay(matches, day));
     if (lg && !chips.some((c) => c.id === lg)) lg = '';
-    q('#sp-lgs').innerHTML =
+    put(q('#sp-lgs'),
       `<button class="chip${lg === '' ? ' on' : ''}" data-lg="">Tümü<small>${all}</small></button>` +
-      chips.map((c) => `<button class="chip${lg === c.id ? ' on' : ''}" data-lg="${esc(c.id)}">${esc(c.name)}<small>${c.count}</small></button>`).join('');
+      chips.map((c) => `<button class="chip${lg === c.id ? ' on' : ''}" data-lg="${esc(c.id)}">${esc(c.name)}<small>${c.count}</small></button>`).join(''));
     const on = q('#sp-days .chip.on');
-    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+    if (on && on.scrollIntoView && !on.dataset.seen) {
+      on.dataset.seen = '1'; // yalnız seçili gün değişince ortala (her çizimde kaydırma yerini bozmasın)
+      on.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }
   }
 
   function drawStatus() {
@@ -343,26 +358,26 @@ export function openSports(env) {
     return bits.length ? `<p class="hint sp-detail sp-src"${showDiag ? '' : ' hidden'}>${bits.map(esc).join(' · ')}</p>` : '';
   }
 
-  function drawList() {
+  function drawListNow() {
     const list = q('#sp-list');
     if (!list) return;
     const { secs, hidden } = capSections(sections(matchesOnDay(matches, day), lg), MAX_ROWS);
     if (!secs.length) {
       // Gün için yayın akışı henüz indirilmediyse (ya da iniyorsa) “Maç yok” yerine “yükleniyor”: takvim oradan da gelebilir
       const waiting = loading || lsBusy || tvPending.has(day) || (!tvDays.has(day) && !tvFailAt.has(day));
-      list.innerHTML = waiting
+      put(list, waiting
         ? '<div class="empty"><p>Maçlar yükleniyor…</p></div>'
         : err
           ? `<div class="empty"><h3>Maçlar alınamadı</h3><p>${esc(err)}</p>${errDetail ? `<p class="hint sp-detail">Ayrıntı: ${esc(errDetail)}</p>` : ''}<button class="btn" id="sp-retry">Yeniden dene</button></div>`
-          : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`;
+          : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`);
       return;
     }
     loadRem();
     const rows = secs.flatMap((x) => x.matches).sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
-    list.innerHTML =
+    put(list,
       sourceNote() +
       rows.map(rowHtml).join('') +
-      (hidden ? `<p class="hint sp-more">… ve ${hidden} maç daha. Listeyi daraltmak için yukarıdan bir lig seçin.</p>` : '');
+      (hidden ? `<p class="hint sp-more">… ve ${hidden} maç daha. Listeyi daraltmak için yukarıdan bir lig seçin.</p>` : ''));
     queueBadges(rows);
   }
 

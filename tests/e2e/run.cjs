@@ -1247,6 +1247,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         return { running: true };
       },
       castNow: async (a) => window.__calls.push(['castNow', a.title, a.kind]),
+      castExt: async (a) => {
+        window.__calls.push(['castExt', a.json]);
+        window.__lastExt = a.json;
+      },
       castDiscover: async () => ({ devices: window.__found || [] }),
       castRequest: async (a) => {
         const tv = (window.__tv = window.__tv || { token: 'tok123', code: '123456', played: [], cmds: [], state: { active: false } });
@@ -1261,7 +1265,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         if (a.path === '/play') {
           const p = JSON.parse(a.body);
           tv.played.push(p);
-          tv.state = { active: true, state: 'playing', pos: p.startMs || 0, dur: p.kind === 'live' ? -1 : 600000, live: p.kind === 'live', title: p.title, kind: p.kind, vol: { cur: 5, max: 15, fixed: false } };
+          tv.state = {
+            active: true,
+            state: 'playing',
+            pos: p.startMs || 0,
+            dur: p.kind === 'live' ? -1 : 600000,
+            live: p.kind === 'live',
+            title: p.title,
+            kind: p.kind,
+            vol: { cur: 5, max: 15, fixed: false, muted: false },
+            // TV'deki oynatıcının bildirdiği denetimler (gerçekte TV'nin JS'i castExt ile gönderir)
+            ext: {
+              can: { prev: false, next: true, last: false, golive: false, fav: true, audio: true, text: true, night: true, sleep: true, aspect: true, stats: true },
+              fav: false,
+              stats: false,
+              aspect: 'Sığdır',
+              night: 'off',
+              sleep: { min: 0, left: 0 },
+              audio: [{ id: '0:0', label: 'Türkçe', selected: true }, { id: '1:0', label: 'İngilizce', selected: false }],
+              text: [{ id: '2:0', label: 'Türkçe', selected: false }],
+              textOn: false,
+              epg: '',
+            },
+          };
           return { status: 200, body: '{"ok":true}' };
         }
         if (a.path === '/cmd') {
@@ -1274,6 +1300,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           else if (c.a === 'seekBy') st.pos = Math.max(0, st.pos + c.v);
           else if (c.a === 'seekTo') st.pos = c.v;
           else if (c.a === 'stop') tv.state = { active: false };
+          else if (c.a === 'mute') st.vol.muted = !st.vol.muted;
+          else if (c.a === 'setVol') st.vol.cur = c.v;
+          else if (st.ext && c.a === 'aspect') st.ext.aspect = ['Sığdır', 'Yakınlaştır', 'Doldur'][(['Sığdır', 'Yakınlaştır', 'Doldur'].indexOf(st.ext.aspect) + 1) % 3];
+          else if (st.ext && c.a === 'fav') st.ext.fav = !st.ext.fav;
+          else if (st.ext && c.a === 'stats') st.ext.stats = !st.ext.stats;
+          else if (st.ext && c.a === 'night') st.ext.night = c.v;
+          else if (st.ext && c.a === 'sleep') st.ext.sleep = { min: c.v, left: c.v * 60000 };
+          else if (st.ext && c.a === 'audio') st.ext.audio = st.ext.audio.map((t) => ({ ...t, selected: t.id === c.v }));
+          else if (st.ext && c.a === 'text') {
+            st.ext.textOn = !!c.v;
+            st.ext.text = st.ext.text.map((t) => ({ ...t, selected: t.id === c.v }));
+          }
           return { status: 200, body: '{"ok":true}' };
         }
         if (a.path === '/sync') {
@@ -1745,6 +1783,75 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#cs-vup');
   await page.click('#cs-vdn');
   ok(await page.evaluate(() => window.__tv.cmds.some((c) => c.a === 'volUp') && window.__tv.cmds.some((c) => c.a === 'volDown')), 'ses komutları TV’ye gitti');
+  // ---- tam kumanda: oynatıcı denetimleri TV'den okunur ve telefondan yönetilir ----
+  const lastCmd = () => page.evaluate(() => window.__tv.cmds[window.__tv.cmds.length - 1]);
+  const vis = (id) => page.evaluate((i) => !document.querySelector(i).hidden, id);
+  await page.waitForFunction(() => !document.querySelector('#cs-audio').hidden, null, { timeout: 5000 });
+  ok((await vis('#cs-audio')) && (await vis('#cs-text')) && (await vis('#cs-night')) && (await vis('#cs-sleep')) && (await vis('#cs-aspect')) && (await vis('#cs-stats')) && (await vis('#cs-fav')), 'kumandada TV’nin sunduğu denetimler görünüyor: ses dili, altyazı, gece modu, uyku, en-boy, bilgi, favori');
+  ok(!(await vis('#cs-last')) && !(await vis('#cs-golive')) && !(await vis('#cs-prev')) && (await vis('#cs-next')), 'TV’nin sunmadığı denetimler (son kanal, canlıya dön, önceki) gizli; sonraki var');
+  await page.click('#cs-next');
+  await page.waitForFunction(() => window.__tv.cmds.some((c) => c.a === 'next'), null, { timeout: 5000 });
+  ok(true, '“Sonraki” TV’deki listede ilerletmek için TV’ye gitti (telefonda liste yok)');
+  await page.click('#cs-mute');
+  await page.waitForFunction(() => document.querySelector('#cs-mute').classList.contains('on'), null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'mute' && (await page.getAttribute('#cs-mute', 'aria-pressed')) === 'true', 'sessize alma TV’ye gitti ve düğme basılı gösteriliyor');
+  await page.click('#cs-mute');
+  await page.waitForFunction(() => !document.querySelector('#cs-mute').classList.contains('on'), null, { timeout: 5000 });
+  await page.$eval('#cs-vol', (e) => {
+    e.value = '40';
+    e.dispatchEvent(new Event('input', { bubbles: true }));
+    e.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForFunction(() => window.__tv.cmds.some((c) => c.a === 'setVol'), null, { timeout: 5000 });
+  ok((await page.evaluate(() => window.__tv.cmds.find((c) => c.a === 'setVol').v)) === 6, 'ses çubuğu TV’nin ses basamağına çevrilip gönderildi (%40 → 6/15)');
+  await page.click('#cs-audio');
+  await page.waitForSelector('.sheet .list-item[data-id="1:0"]');
+  ok((await page.$$('.sheet .list-item')).length === 2 && (await page.$$('.sheet .list-item[data-id="0:0"] .ok')).length === 1, 'ses dili listesi TV’den geldi, seçili olan işaretli');
+  await page.click('.sheet .list-item[data-id="1:0"]');
+  await page.waitForFunction(() => window.__tv.state.ext.audio[1].selected, null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'audio' && (await lastCmd()).v === '1:0', 'ses dili seçimi TV’ye gitti');
+  await sleep(1300);
+  await page.click('#cs-audio');
+  await page.waitForSelector('.sheet .list-item[data-id="1:0"] .ok');
+  ok(true, 'liste yeniden açılınca yeni seçim işaretli');
+  await page.click('.sheet [data-close]');
+  await page.waitForSelector('.sheet', { state: 'detached' });
+  await page.click('#cs-text');
+  await page.waitForSelector('.sheet .list-item[data-id=""]');
+  ok(/Kapalı/.test(await page.textContent('.sheet .list-item[data-id=""]')) && (await page.$$('.sheet .list-item[data-id=""] .ok')).length === 1, 'altyazı listesinde “Kapalı” seçili');
+  await page.click('.sheet .list-item[data-id="2:0"]');
+  await page.waitForFunction(() => document.querySelector('#cs-text').classList.contains('on'), null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'text' && (await lastCmd()).v === '2:0', 'altyazı açıldı ve düğme etkin gösteriliyor');
+  await page.click('#cs-text');
+  await page.click('.sheet .list-item[data-id=""]');
+  await page.waitForFunction(() => !document.querySelector('#cs-text').classList.contains('on'), null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'text' && (await lastCmd()).v === '', 'altyazı “Kapalı” komutu boş kimlikle gitti');
+  await page.click('#cs-night');
+  await page.waitForSelector('.sheet .list-item[data-id="strong"]');
+  await page.click('.sheet .list-item[data-id="strong"]');
+  await page.waitForFunction(() => /Gece: Güçlü/.test(document.querySelector('#cs-night span').textContent), null, { timeout: 5000 });
+  ok((await lastCmd()).v === 'strong', 'gece modu seçildi; düğmede düzey yazıyor');
+  await page.click('#cs-sleep');
+  await page.waitForSelector('.sheet .list-item[data-id="30"]');
+  await page.click('.sheet .list-item[data-id="30"]');
+  await page.waitForFunction(() => /Uyku: 30 dk/.test(document.querySelector('#cs-sleep span').textContent), null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'sleep' && (await lastCmd()).v === 30, 'uyku zamanlayıcısı 30 dk kuruldu; kalan süre düğmede');
+  await page.click('#cs-aspect');
+  await page.waitForFunction(() => document.querySelector('#cs-aspect span').textContent === 'Yakınlaştır', null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'aspect', 'en-boy kipi TV’de değişti ve yeni kip düğmede yazıyor');
+  await page.click('#cs-stats');
+  await page.waitForFunction(() => document.querySelector('#cs-stats').classList.contains('on'), null, { timeout: 5000 });
+  await page.click('#cs-fav');
+  await page.waitForFunction(() => document.querySelector('#cs-fav').dataset.fav === 'true' && /star-on/.test(document.querySelector('#cs-fav').innerHTML), null, { timeout: 5000 });
+  ok((await lastCmd()).a === 'fav' && /Favoride/.test(await page.textContent('#cs-fav')), 'bilgi kutusu açıldı, favori işaretlendi');
+  ok(!(await vis('#cs-pad')), 'yön tuşları başta kapalı');
+  await page.click('#cs-padt');
+  ok(await vis('#cs-pad'), '“Yön tuşları” paneli açıldı');
+  for (const k of ['up', 'down', 'left', 'right', 'ok', 'back']) {
+    await page.click(`#cs-pad [data-k="${k}"]`);
+    await page.waitForFunction((x) => window.__tv.cmds.some((c) => c.a === 'key' && c.v === x), k, { timeout: 5000 });
+  }
+  ok(true, 'yukarı/aşağı/sol/sağ/Tamam/Geri tuşları TV’ye gitti');
   await page.screenshot({ path: path.join(SHOTS, '12-tv-kumanda.png') });
   await page.click('#cs-stop');
   await page.waitForSelector('.cast-pg', { state: 'detached' });
@@ -1852,6 +1959,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => /ile eşleşti/.test(document.querySelector('#toast').textContent), null, { timeout: 8000 });
   ok(((await page.evaluate(() => window.__iptv.store.pref('cast.tvs', []))).length) === 1 && (await page.$('.cast-row-d')) !== null, 'kod girilince TV eşleşti, ekran açık kaldı');
   ok(/Eşleşmiş/.test(await page.textContent('.cast-row-d')), 'liste “Eşleşmiş” gösteriyor');
+  // yalnız kumanda: TV’de ne oynuyorsa (ya da hiçbir şey) uygulamadan görülüp yönetilir
+  ok(/Kumanda/.test(await page.textContent('.cast-row-d [data-remote]')), 'eşleşmiş ve bulunan TV için “Kumanda” düğmesi var');
+  await page.click('.cast-row-d [data-remote]');
+  await page.waitForSelector('.cast-pg', { timeout: 10000 });
+  await page.waitForFunction(() => /oynatılan yok/.test(document.querySelector('#cs-state').textContent), null, { timeout: 5000 });
+  ok(await page.evaluate(() => document.querySelector('#cs-media').hidden && document.querySelector('#cs-tools').hidden && document.querySelector('#cs-stop').hidden), 'TV’de oynayan yokken ortam denetimleri ve “durdur” gizli');
+  ok(await page.evaluate(() => !document.querySelector('#cs-pad').hidden && document.querySelector('#cs-padt').hidden), 'oynayan yokken yön tuşları hep açık (TV’de gezinmek için)');
+  await page.click('#cs-pad [data-k="down"]');
+  await page.waitForFunction(() => window.__tv.cmds.some((c) => c.a === 'key' && c.v === 'down'), null, { timeout: 5000 });
+  ok(true, 'yön tuşu oynatma olmadan da TV’ye gitti');
+  await page.evaluate(() => {
+    window.__tv.state = { active: true, state: 'playing', pos: 5000, dur: -1, live: true, title: 'TV’nin kendi kanalı', kind: 'live', vol: { cur: 5, max: 15, fixed: false, muted: false }, ext: { can: { next: true, prev: true, last: true, fav: true, aspect: true, sleep: true, stats: true }, epg: 'Haber · 20:00–21:00', aspect: 'Sığdır', audio: [], text: [] } };
+  });
+  await page.waitForFunction(() => document.querySelector('#cs-title').textContent === 'TV’nin kendi kanalı' && !document.querySelector('#cs-media').hidden, null, { timeout: 5000 });
+  ok(/Haber · 20:00/.test(await page.textContent('#cs-epg')) && (await page.evaluate(() => document.querySelector('#cs-prog').hidden)), 'TV’nin kendi oynattığı canlı kanal adı ve yayın akışıyla görünüyor, sarma çubuğu yok');
+  ok(await page.evaluate(() => !document.querySelector('#cs-last').hidden && !document.querySelector('#cs-prev').hidden && document.querySelector('#cs-golive').hidden), 'canlıda “Son kanal” ve önceki/sonraki var');
+  await page.click('#cs-last');
+  await page.waitForFunction(() => window.__tv.cmds.some((c) => c.a === 'last'), null, { timeout: 5000 });
+  await page.evaluate(() => (window.__tv.state = { active: false }));
+  await sleep(3500);
+  ok((await page.$('.cast-pg')) !== null && /oynatılan yok/.test(await page.textContent('#cs-state')), 'TV’de oynatma bitince yalnız kumanda kapanmıyor, “oynatılan yok” gösteriyor');
+  await page.click('.cast-pg [data-close]');
+  await page.waitForSelector('.cast-pg', { state: 'detached' });
   await ctx.close();
 
   // veri eşitleme: telefon başlatır, iki cihaz birbirinin eksiklerini alır, var olan değişmez
@@ -2040,10 +2170,54 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(await page.$eval('#pl-tv', (b) => b.hidden || getComputedStyle(b).display === 'none') && await page.$eval('#pl-fav', (b) => b.hidden), 'TV’de “TV’de oynat” ve favori düğmeleri yok');
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castNow' && c[1] === 'Evdeki Film'), null, { timeout: 5000 });
   ok(true, 'çalan medyanın adı kumanda için eklentiye bildirildi');
+  // telefon kumandası: oynatıcının durumu eklentiye bildirilir, gelen komutlar ekrandaki düğmeler gibi uygulanır
+  await page.waitForFunction(() => {
+    try {
+      const e = JSON.parse(window.__lastExt || '');
+      return e.can && e.can.audio && e.can.text;
+    } catch {
+      return false;
+    }
+  }, null, { timeout: 8000 });
+  const ex = await page.evaluate(() => JSON.parse(window.__lastExt));
+  ok(ex.aspect === 'Sığdır' && ex.audio.length === 2 && ex.audio[0].selected && ex.text.length === 1 && ex.can.stats && ex.can.sleep && ex.can.night && !ex.can.fav && !ex.can.next && ex.sleep.min === 0, 'TV’deki oynatıcının denetim durumu (ses/altyazı izleri, en-boy, uyku…) eklentiye bildirildi');
+  await page.evaluate(() => window.__emit('castCmd', { a: 'aspect' }));
+  await page.waitForFunction(() => document.querySelector('#pl-aspect-l').textContent === 'Yakınlaştır', null, { timeout: 5000 });
+  await page.waitForFunction(() => JSON.parse(window.__lastExt).aspect === 'Yakınlaştır', null, { timeout: 5000 });
+  ok(true, 'telefondan gelen “en-boy” komutu TV’de uygulandı ve yeni durum bildirildi');
+  await page.focus('#pl-aspect');
+  await page.evaluate(() => window.__emit('castCmd', { a: 'key', v: 'ok' }));
+  await page.waitForFunction(() => document.querySelector('#pl-aspect-l').textContent === 'Doldur', null, { timeout: 5000 });
+  ok(true, 'telefondaki “Tamam” tuşu TV’de odaktaki düğmeye bastı');
+  await page.evaluate(() => window.__emit('castCmd', { a: 'stats' }));
+  await page.waitForFunction(() => !document.querySelector('#pl-stats-box').hidden, null, { timeout: 5000 });
+  await page.evaluate(() => window.__emit('castCmd', { a: 'sleep', v: 30 }));
+  await page.waitForFunction(() => JSON.parse(window.__lastExt).sleep.min === 30 && JSON.parse(window.__lastExt).stats === true, null, { timeout: 5000 });
+  ok(/dk/.test(await page.textContent('#pl-sleep-l')), 'bilgi kutusu ve uyku zamanlayıcısı telefondan açıldı');
+  await page.evaluate(() => window.__emit('castCmd', { a: 'night', v: 'medium' }));
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'night' && c[1] === 'medium'), null, { timeout: 5000 });
+  await page.evaluate(() => window.__emit('castCmd', { a: 'audio', v: '1:0' }));
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'audio' && c[2] === '1:0'), null, { timeout: 5000 });
+  await page.evaluate(() => window.__emit('castCmd', { a: 'text', v: '' }));
+  await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'text' && c[2] === ''), null, { timeout: 5000 });
+  ok(true, 'gece modu, ses dili ve altyazı kapatma telefondan uygulandı');
+  await page.evaluate(() => {
+    window.__emit('castCmd', { a: 'audio', v: 'yok-boyle-iz' });
+    window.__emit('castCmd', { a: 'sleep', v: 7 });
+    window.__emit('castCmd', { a: 'format', v: 'c:' });
+    window.__emit('castCmd', { a: 'key', v: 'F5' });
+    window.__emit('castCmd', null);
+  });
+  await sleep(300);
+  ok(!(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[2] === 'yok-boyle-iz'))) && (await page.evaluate(() => JSON.parse(window.__lastExt).sleep.min)) === 30, 'bilinmeyen iz, geçersiz uyku süresi, bilinmeyen komut ve tuş yok sayıldı');
+  await page.evaluate(() => window.__emit('castCmd', { a: 'sleep', v: 0 }));
+  await page.waitForFunction(() => JSON.parse(window.__lastExt).sleep.min === 0, null, { timeout: 5000 });
   ok(!(await page.evaluate(() => window.__iptv.store.progress(window.__iptv.S.source.id, 'cast:x') || window.__iptv.store.recents(window.__iptv.S.source.id).some((r) => /Evdeki/.test(r.name)))), 'TV’de gelen oynatma son izlenenlere/ilerlemeye yazılmadı');
   await page.evaluate(() => window.__emit('castStop', {}));
   await page.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
   ok(true, 'telefondan “durdur” gelince TV oynatıcıyı kapattı');
+  await page.waitForFunction(() => window.__lastExt === '', null, { timeout: 5000 });
+  ok(true, 'oynatıcı kapanınca kumandaya boş denetim durumu bildirildi');
   // Ayarlar › Telefondan oynat
   await page.click('#h-set');
   await page.waitForSelector('.set-grid');

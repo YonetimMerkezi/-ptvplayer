@@ -378,7 +378,10 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     // Yerel kumanda tuşlarını (kanal +/-, medya, menü…) sayfadaki klavye olayına çevirir
     sendKey(key) {
       const target = doc.activeElement || doc;
-      target.dispatchEvent(new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      const ev = new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(ev);
+      // Betikle gönderilen Enter, düğmenin kendi tıklamasını başlatmaz (yalnız gerçek tuş başlatır): kimse işlemediyse biz tıklarız
+      if (key === 'Enter' && !ev.defaultPrevented && target !== doc && target !== doc.body && /^(BUTTON|A|SUMMARY)$/.test(target.tagName) && !target.disabled) target.click();
     },
   };
 }

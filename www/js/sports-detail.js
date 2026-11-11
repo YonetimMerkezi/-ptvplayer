@@ -28,6 +28,34 @@ export function eventKind(ke) {
   return null;
 }
 
+// Devre arası / maç sonu işaretleri (ESPN keyEvents): çizelgede ayraç olur, o ana kadarki skorla gösterilir.
+export function markerKind(ke) {
+  const t = `${str(ke && ke.type && ke.type.text)} ${str(ke && ke.type && ke.type.type)}`.toLowerCase();
+  if (/start|begin|kick.?off/.test(t)) return null;
+  if (/half.?time|end 1st half|end first half/.test(t)) return 'ht';
+  if (/full.?time|end regular time|end 2nd half|end second half|end of match|match end/.test(t)) return 'ft';
+  return null;
+}
+
+// "45'+2'" gibi uzatma dakikaları da sıralanır: 45.02
+export function minuteValue(v) {
+  const m = /(\d+)(?:\D*?\+\s*(\d+))?/.exec(str(v));
+  if (!m) return NaN;
+  return Number(m[1]) + (m[2] ? Number(m[2]) / 100 : 0);
+}
+
+// Gol türüne ek bilgi (küçük etiket)
+function detailOf(ke, kind) {
+  const t = `${str(ke && ke.type && ke.type.text)} ${str(ke && ke.shortText)}`.toLowerCase();
+  if (kind === 'goal') {
+    if (ke && ke.penaltyKick === true || /penalty/.test(t)) return 'penaltı';
+    if (/free.?kick/.test(t)) return 'serbest vuruş';
+    if (/header/.test(t)) return 'kafa';
+  }
+  if (kind === 'red' && /yellow.?red|second.?yellow/.test(t)) return 'ikinci sarıdan';
+  return '';
+}
+
 export const KIND_LABEL = { goal: 'Gol', own: 'Kendi kalesine gol', penmiss: 'Penaltı kaçtı', yellow: 'Sarı kart', red: 'Kırmızı kart', sub: 'Oyuncu değişikliği', var: 'VAR' };
 
 // Gösterilecek istatistikler: [ESPN adı, Türkçe etiket, yüzde mi]
@@ -57,24 +85,51 @@ function sideIds(j, comp) {
 
 function parseEvents(j, ids) {
   const out = [];
-  for (const ke of arr(j.keyEvents)) {
+  arr(j.keyEvents).forEach((ke, idx) => {
     try {
-      const kind = eventKind(ke);
-      if (!kind) continue;
+      const mark = eventKind(ke) ? null : markerKind(ke);
+      const kind = eventKind(ke) || mark;
+      if (!kind) return;
       const teamId = str(ke.team && ke.team.id);
       const parts = arr(ke.participants).map((p) => str(p && p.athlete && (p.athlete.displayName || p.athlete.fullName))).filter(Boolean);
       const clock = (ke.clock && (ke.clock.displayValue || (ke.clock.value != null ? Math.round(ke.clock.value / 60) + "'" : ''))) || '';
       out.push({
         kind,
+        mark: !!mark,
+        idx,
         minute: str(clock),
         side: teamId && teamId === ids.home ? 'home' : teamId && teamId === ids.away ? 'away' : '',
-        player: parts[0] || '',
-        other: parts[1] || '', // oyuncu değişikliğinde çıkan (ya da gole asist yapan)
+        player: parts[0] || '', // oyuncu değişikliğinde giren oyuncu
+        other: parts[1] || '', // oyuncu değişikliğinde çıkan
+        detail: detailOf(ke, kind),
+        score: '',
         text: str(ke.shortText || ke.text).slice(0, 160),
       });
     } catch {
       /* bozuk olay atlanır */
     }
+  });
+  // Dakikaya göre sırala (aynı dakikada ESPN sırası); dakikası okunamayan olay bir öncekinin yerinde kalır
+  let last = 0;
+  for (const e of out) {
+    const v = minuteValue(e.minute);
+    e.key = Number.isFinite(v) ? (last = v) : last;
+  }
+  out.sort((a, b) => a.key - b.key || a.idx - b.idx);
+  // Golden sonraki skor; takımı bilinmeyen gol varsa o noktadan sonra skor yazılmaz
+  let h = 0;
+  let a = 0;
+  let known = true;
+  for (const e of out) {
+    if (e.kind === 'goal' || e.kind === 'own') {
+      const side = e.kind === 'own' ? (e.side === 'home' ? 'away' : e.side === 'away' ? 'home' : '') : e.side;
+      if (side === 'home') h++;
+      else if (side === 'away') a++;
+      else known = false;
+    }
+    if (known && (e.kind === 'goal' || e.kind === 'own' || e.mark)) e.score = `${h}–${a}`;
+    delete e.key;
+    delete e.idx;
   }
   return out;
 }

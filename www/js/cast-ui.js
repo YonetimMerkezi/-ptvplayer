@@ -1,11 +1,13 @@
 // Telefondan TV'ye oynatma: ekranlar. Telefonda "TV'de oynat" seçici + uzaktan kumanda sayfası,
 // TV'de Ayarlar › Telefondan oynat (eşleştirme kodu) ve gelen oynatma isteğinin karşılanması.
-import { CAST_PORT, CODE_LEN, buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, createRemote } from './cast.js';
+import { CAST_PORT, CODE_LEN, buildCast, parseCast, parseRemoteCmd, createDevices, mergeDevices, pairResult, sendResult, syncResult, createRemote } from './cast.js';
+import { SLEEP_OPTIONS, fmtRemaining } from './sleep.js';
+import { NIGHT_LEVELS, nightLabel } from './night.js';
 import { makeSnapshot, parseSnapshot, applySnapshot, emptyAdded, addedTotal, describeAdded, syncMessage } from './sync.js';
 
 const AUTO_SYNC_MS = 3 * 60 * 1000; // kendiliğinden eşitleme denemeleri arası
 
-// deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast(), guard()?, busy()?, onSynced() }
+// deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast(), remoteExt()?, remoteCmd(cmd)?, guard()?, busy()?, onSynced() }
 export function createCastUI(deps) {
   const { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration } = deps;
   const devices = createDevices(store);
@@ -61,7 +63,7 @@ export function createCastUI(deps) {
             const rows = list
               .map(
                 (d, i) =>
-                  `<div class="cast-row-d"><button class="rec-play" data-i="${i}">${icon('tv')}<span class="t">${esc(d.name)}</span><small>${d.saved ? (d.online ? 'Eşleşmiş · bağlanabilir' : 'Eşleşmiş · bulunamadı') : manage ? 'Eşleşmemiş · dokunup TV’deki kodu girin' : 'Yeni · kod gerekir'} · ${esc(d.host)}${now[d.id] && !manage ? ` · Şu an: ${esc(now[d.id].title || 'oynatılıyor')}` : ''}</small></button>${now[d.id] && !manage ? `<button class="icon-btn" data-remote="${i}" aria-label="Kumandayı aç">${icon('play')}</button>` : ''}${d.saved ? `<button class="icon-btn" data-forget="${i}" aria-label="Eşleşmeyi kaldır">${icon('trash')}</button>` : ''}</div>`,
+                  `<div class="cast-row-d"><button class="rec-play" data-i="${i}">${icon('tv')}<span class="t">${esc(d.name)}</span><small>${d.saved ? (d.online ? 'Eşleşmiş · bağlanabilir' : 'Eşleşmiş · bulunamadı') : manage ? 'Eşleşmemiş · dokunup TV’deki kodu girin' : 'Yeni · kod gerekir'} · ${esc(d.host)}${now[d.id] && !manage ? ` · Şu an: ${esc(now[d.id].title || 'oynatılıyor')}` : ''}</small></button>${manage && d.saved && d.online ? `<button class="btn sm" data-remote="${i}">Kumanda</button>` : now[d.id] && !manage ? `<button class="icon-btn" data-remote="${i}" aria-label="Kumandayı aç">${icon('play')}</button>` : ''}${d.saved ? `<button class="icon-btn" data-forget="${i}" aria-label="Eşleşmeyi kaldır">${icon('trash')}</button>` : ''}</div>`,
               )
               .join('');
             box.innerHTML = (rows || `<p class="hint">${searching ? 'TV aranıyor…' : 'TV bulunamadı. TV’de uygulamanın açık olduğundan ve aynı Wi‑Fi’ye bağlı olduğundan emin olun, ya da IP adresini yazın.'}</p>`) + (rows && searching ? '<p class="hint">Aranıyor…</p>' : '') + (!searching ? '<button class="btn g" id="cs-again">Yeniden ara</button>' : '');
@@ -111,9 +113,16 @@ export function createCastUI(deps) {
             if (rm) {
               const d = list[Number(rm.dataset.remote)];
               const full = d && devices.get(d.id);
-              if (!full || !now[d.id]) return;
+              if (!full || !(manage || now[d.id])) return;
+              const live = { ...full, host: d.host, port: d.port || full.port };
               api.close();
-              finish({ ...full, host: d.host, port: d.port || full.port, remoteOnly: now[d.id] });
+              if (manage) {
+                // Ayarlar › Telefondan oynat: TV'de ne oynuyorsa (ya da hiçbir şey) uygulamadan görülüp yönetilir
+                finish(null);
+                remoteScreen(live, now[d.id] || {}, { keep: true });
+                return;
+              }
+              finish({ ...live, remoteOnly: now[d.id] });
               return;
             }
             const pick = e.target.closest('[data-i]');
@@ -171,7 +180,7 @@ export function createCastUI(deps) {
     if (!plugin) return toast('TV’ye oynatma yalnız Android uygulamasında çalışır');
     const dev = await chooseTv();
     if (!dev) return;
-    if (dev.remoteOnly) return remoteScreen(dev, { kind: dev.remoteOnly.kind, title: dev.remoteOnly.title }, {}); // TV zaten oynatıyor: yalnız kumanda
+    if (dev.remoteOnly) return remoteScreen(dev, { kind: dev.remoteOnly.kind, title: dev.remoteOnly.title }, {}); // TV zaten oynatıyor: yalnız kumanda (oynatma bitince kumanda da kapanır)
     const payload = buildCast(args);
     const res = sendResult(await request(dev, '/play', 'POST', JSON.stringify(payload)));
     if (res.unpaired) {
@@ -246,43 +255,94 @@ export function createCastUI(deps) {
     }
   }
 
+  // Uzaktan kumanda sayfası. args: { step?, onProgress?, keep? } — keep: yalnız kumanda (TV'de bir şey oynamasa da açık kalır).
   function remoteScreen(dev, sent, args) {
     let cur = sent;
     let seeking = false;
+    let dragVol = false;
+    let padOn = false;
     let lastView = null;
     let lastSave = 0;
+    const keep = !!args.keep;
     const hasStep = !!args.step;
+    const btn = (id, ic, label, cls = 'tool') => `<button class="${cls}" id="${id}" aria-label="${label}">${icon(ic)}<span>${label}</span></button>`;
+    const dkey = (k, label, inner) => `<button class="big-btn sm" data-k="${k}" aria-label="${label}">${inner}</button>`;
     const page = openPage({
       cls: 'cast-pg',
       title: dev.name,
       html:
-        `<div class="cast"><div class="cast-now"><div class="cast-ic">${icon('tv')}</div><b id="cs-title"></b><span id="cs-state">Gönderildi…</span><small>${esc(dev.name)} üzerinde oynuyor</small></div>` +
+        `<div class="cast"><div class="cast-now"><div class="cast-ic">${icon('tv')}</div><b id="cs-title"></b><span id="cs-state">Gönderildi…</span><small id="cs-epg" hidden></small><small>${esc(dev.name)} üzerinde</small></div>` +
+        `<div class="cast-media" id="cs-media">` +
         `<div class="cast-prog" id="cs-prog"><span id="cs-pos">0:00</span><input id="cs-seek" type="range" min="0" max="1000" value="0" aria-label="Konum"><span id="cs-dur">0:00</span></div>` +
-        `<div class="cast-btns">${hasStep ? `<button class="big-btn" id="cs-prev" aria-label="Önceki kanal">${icon('prev')}</button>` : ''}<button class="big-btn sm" id="cs-rew" aria-label="10 sn geri">${icon('rew')}<i>10</i></button><button class="big-btn lg" id="cs-play" aria-label="Oynat/Duraklat">${icon('pause')}</button><button class="big-btn sm" id="cs-fwd" aria-label="10 sn ileri">${icon('fwd')}<i>10</i></button>${hasStep ? `<button class="big-btn" id="cs-next" aria-label="Sonraki kanal">${icon('next')}</button>` : ''}</div>` +
-        `<div class="cast-vol" id="cs-volrow"><button class="tool" id="cs-vdn">${icon('audio')}<span>Ses −</span></button><button class="tool" id="cs-vup">${icon('audio')}<span>Ses +</span></button></div>` +
+        `<div class="cast-btns"><button class="big-btn" id="cs-prev" aria-label="Önceki" hidden>${icon('prev')}</button><button class="big-btn sm" id="cs-rew" aria-label="10 sn geri">${icon('rew')}<i>10</i></button><button class="big-btn lg" id="cs-play" aria-label="Oynat/Duraklat">${icon('pause')}</button><button class="big-btn sm" id="cs-fwd" aria-label="10 sn ileri">${icon('fwd')}<i>10</i></button><button class="big-btn" id="cs-next" aria-label="Sonraki" hidden>${icon('next')}</button></div>` +
+        `</div>` +
+        `<div class="cast-vol" id="cs-volrow"><button class="tool" id="cs-vdn" aria-label="Sesi kıs">${icon('audio')}<span>−</span></button><button class="tool" id="cs-mute" aria-label="Sessiz" aria-pressed="false">${icon('mute')}</button><input id="cs-vol" type="range" min="0" max="100" value="0" aria-label="Ses"><button class="tool" id="cs-vup" aria-label="Sesi aç">${icon('audio')}<span>+</span></button></div>` +
+        `<div class="cast-tools" id="cs-tools">${btn('cs-audio', 'audio', 'Ses dili')}${btn('cs-text', 'cc', 'Altyazı')}${btn('cs-night', 'moon', 'Gece modu')}${btn('cs-sleep', 'timer', 'Uyku')}${btn('cs-aspect', 'aspect', 'Sığdır')}${btn('cs-stats', 'activity', 'Bilgi')}${btn('cs-fav', 'star', 'Favori')}${btn('cs-last', 'swap', 'Son kanal')}${btn('cs-golive', 'tv', 'Canlıya dön')}</div>` +
+        `<button class="tool cast-padt" id="cs-padt" aria-pressed="false">${icon('grid')}<span>Yön tuşları</span></button>` +
+        `<div class="cast-pad" id="cs-pad" hidden><span></span>${dkey('up', 'Yukarı', icon('up'))}<span></span>${dkey('left', 'Sol', icon('chev-l'))}${dkey('ok', 'Tamam', '<b>OK</b>')}${dkey('right', 'Sağ', icon('chev-r'))}<span></span>${dkey('down', 'Aşağı', icon('down'))}${dkey('back', 'Geri', icon('back'))}</div>` +
         `<button class="btn g cast-stop" id="cs-stop">${icon('close')}TV’de durdur</button></div>`,
       mount: (body) => {
-        const $ = (s) => body.querySelector(s);
-        const setTitle = () => ($('#cs-title').textContent = (lastView && lastView.title) || cur.title);
+        const $ = (sel) => body.querySelector(sel);
+        const setTitle = () => ($('#cs-title').textContent = (lastView && lastView.title) || cur.title || '');
+        // etiket + (varsa) açık durumu
+        const setTool = (id, { show, label, on }) => {
+          const b = $(id);
+          b.hidden = !show;
+          if (label != null) b.querySelector('span').textContent = label;
+          if (on != null) {
+            b.classList.toggle('on', on);
+            b.setAttribute('aria-pressed', String(on));
+          }
+        };
         setTitle();
         const remote = createRemote({
           request: (path, method, b) => request(dev, path, method, b || ''),
-          sent: cur,
+          sent: keep ? null : cur, // yalnız kumandada canlı/film bilgisi TV'den okunur (TV kendi kendine kanal değiştirebilir)
+          keep,
           onView: (v) => {
             if (!page.el.isConnected) return remote.stop();
             lastView = v;
+            const x = v.ext;
             setTitle();
             $('#cs-state').textContent = v.text;
+            $('#cs-epg').textContent = x.epg;
+            $('#cs-epg').hidden = !x.epg || !v.active;
+            $('#cs-media').hidden = !v.active;
             $('#cs-play').innerHTML = icon(v.paused ? 'play' : 'pause');
-            $('#cs-prog').hidden = cur.kind === 'live';
+            $('#cs-prog').hidden = v.live || !v.canSeek;
             $('#cs-rew').hidden = $('#cs-fwd').hidden = !v.canSeek;
+            $('#cs-prev').hidden = !(hasStep || x.can.prev);
+            $('#cs-next').hidden = !(hasStep || x.can.next);
             $('#cs-volrow').hidden = !v.canVol;
+            $('#cs-mute').classList.toggle('on', v.muted);
+            $('#cs-mute').setAttribute('aria-pressed', String(v.muted));
+            if (!dragVol) $('#cs-vol').value = String(v.vol);
             if (!seeking && v.canSeek) {
               $('#cs-pos').textContent = fmtDuration(v.pos);
               $('#cs-dur').textContent = fmtDuration(v.dur);
               $('#cs-seek').value = String(Math.round(v.pct * 1000));
             }
-            if (cur.kind !== 'live' && v.active && v.canSeek && args.onProgress && Date.now() - lastSave > 5000) {
+            const live = v.live;
+            $('#cs-tools').hidden = !v.active;
+            setTool('#cs-audio', { show: x.can.audio });
+            setTool('#cs-text', { show: x.can.text, on: x.textOn });
+            setTool('#cs-night', { show: x.can.night, label: x.night === 'off' ? 'Gece modu' : 'Gece: ' + nightLabel(x.night), on: x.night !== 'off' });
+            setTool('#cs-sleep', { show: x.can.sleep, label: x.sleepMin ? 'Uyku: ' + fmtRemaining(x.sleepLeft) : 'Uyku', on: x.sleepMin > 0 });
+            setTool('#cs-aspect', { show: x.can.aspect, label: x.aspect || 'Sığdır' });
+            setTool('#cs-stats', { show: x.can.stats, on: x.stats });
+            setTool('#cs-fav', { show: x.can.fav, label: x.fav ? 'Favoride' : 'Favori', on: x.fav });
+            if ($('#cs-fav').dataset.fav !== String(x.fav)) {
+              $('#cs-fav').dataset.fav = String(x.fav);
+              $('#cs-fav').querySelector('svg').outerHTML = icon(x.fav ? 'star-on' : 'star');
+            }
+            setTool('#cs-last', { show: x.can.last && live });
+            setTool('#cs-golive', { show: x.can.golive });
+            // TV'de oynayan yokken (yalnız kumanda) yön tuşları hep açık; kapatma düğmesi de gerekmez
+            const idle = keep && !v.active;
+            $('#cs-pad').hidden = !(padOn || idle);
+            $('#cs-padt').hidden = idle;
+            $('#cs-stop').hidden = !v.active;
+            if (v.active && args.onProgress && !v.live && v.canSeek && Date.now() - lastSave > 5000) {
               lastSave = Date.now();
               args.onProgress(v.pos, v.dur);
             }
@@ -306,12 +366,64 @@ export function createCastUI(deps) {
           if (!r.ok) toast(r.msg);
           return r;
         };
-        const play = $('#cs-play');
-        play.addEventListener('click', () => cmd({ a: 'toggle' }));
+        // TV'deki listeyi (ses dili, altyazı, gece modu, uyku) telefonda seçtirir; seçilen kimlik komutla gider
+        const choose = (title, rows, pick, hint = '') => {
+          const sh = openSheet({
+            title,
+            html: hint + rows.map((r) => `<button class="list-item" data-id="${esc(r.id)}"><span class="t">${esc(r.label)}</span>${r.on ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`).join(''),
+            mount: (sbody) =>
+              sbody.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-id]');
+                if (!b) return;
+                sh.close();
+                pick(b.dataset.id);
+              }),
+          });
+        };
+        const ext = () => (lastView ? lastView.ext : null);
+        $('#cs-play').addEventListener('click', () => cmd({ a: 'toggle' }));
         $('#cs-rew').addEventListener('click', () => cmd({ a: 'seekBy', v: -10000 }));
         $('#cs-fwd').addEventListener('click', () => cmd({ a: 'seekBy', v: 10000 }));
         $('#cs-vup').addEventListener('click', () => cmd({ a: 'volUp' }));
         $('#cs-vdn').addEventListener('click', () => cmd({ a: 'volDown' }));
+        $('#cs-mute').addEventListener('click', () => cmd({ a: 'mute' }));
+        const vol = $('#cs-vol');
+        vol.addEventListener('input', () => (dragVol = true));
+        vol.addEventListener('change', async () => {
+          if (lastView && lastView.volMax > 0) await cmd({ a: 'setVol', v: Math.round((Number(vol.value) / 100) * lastView.volMax) });
+          dragVol = false;
+        });
+        $('#cs-audio').addEventListener('click', () => {
+          const x = ext();
+          if (x) choose('Ses dili', x.audio.map((t) => ({ id: t.id, label: t.label, on: t.selected })), (id) => cmd({ a: 'audio', v: id }));
+        });
+        $('#cs-text').addEventListener('click', () => {
+          const x = ext();
+          if (x) choose('Altyazı', [{ id: '', label: 'Kapalı', on: !x.textOn }, ...x.text.map((t) => ({ id: t.id, label: t.label, on: x.textOn && t.selected }))], (id) => cmd({ a: 'text', v: id }));
+        });
+        $('#cs-night').addEventListener('click', () => {
+          const x = ext();
+          if (x) choose('Gece modu', NIGHT_LEVELS.map(([id, label]) => ({ id, label, on: id === x.night })), (id) => cmd({ a: 'night', v: id }));
+        });
+        $('#cs-sleep').addEventListener('click', () => {
+          const x = ext();
+          if (x) choose('Uyku zamanlayıcısı', SLEEP_OPTIONS.map(([m, label]) => ({ id: String(m), label, on: m === x.sleepMin })), (id) => cmd({ a: 'sleep', v: Number(id) }), x.sleepMin ? `<p class="hint">Kalan süre: ${fmtRemaining(x.sleepLeft)}. Süre dolunca TV’de oynatma durur.</p>` : '');
+        });
+        $('#cs-aspect').addEventListener('click', () => cmd({ a: 'aspect' }));
+        $('#cs-stats').addEventListener('click', () => cmd({ a: 'stats' }));
+        $('#cs-fav').addEventListener('click', () => cmd({ a: 'fav' }));
+        $('#cs-last').addEventListener('click', () => cmd({ a: 'last' }));
+        $('#cs-golive').addEventListener('click', () => cmd({ a: 'golive' }));
+        $('#cs-padt').addEventListener('click', () => {
+          padOn = !padOn;
+          $('#cs-pad').hidden = !padOn;
+          $('#cs-padt').classList.toggle('on', padOn);
+          $('#cs-padt').setAttribute('aria-pressed', String(padOn));
+        });
+        $('#cs-pad').addEventListener('click', (e) => {
+          const k = e.target.closest('[data-k]');
+          if (k) cmd({ a: 'key', v: k.dataset.k });
+        });
         $('#cs-stop').addEventListener('click', async () => {
           await cmd({ a: 'stop' });
           remote.stop();
@@ -326,20 +438,19 @@ export function createCastUI(deps) {
           if (lastView && lastView.dur > 0) await cmd({ a: 'seekTo', v: Math.round((Number(seek.value) / 1000) * lastView.dur) });
           seeking = false;
         });
-        if (hasStep) {
-          const go = async (d) => {
-            const n = args.step(d);
-            if (!n) return toast(d < 0 ? 'Bu ilk kanal' : 'Bu son kanal');
-            const p = buildCast(n);
-            const r = sendResult(await request(dev, '/play', 'POST', JSON.stringify(p)));
-            if (!r.ok) return toast(r.msg);
-            cur = p;
-            lastView = null;
-            setTitle();
-          };
-          $('#cs-prev').addEventListener('click', () => go(-1));
-          $('#cs-next').addEventListener('click', () => go(1));
-        }
+        const go = async (d) => {
+          if (!hasStep) return cmd({ a: d < 0 ? 'prev' : 'next' }); // TV'nin kendi listesinde (kanal/bölüm) gezer
+          const n = args.step(d);
+          if (!n) return toast(d < 0 ? 'Bu ilk kanal' : 'Bu son kanal');
+          const p = buildCast(n);
+          const r = sendResult(await request(dev, '/play', 'POST', JSON.stringify(p)));
+          if (!r.ok) return toast(r.msg);
+          cur = p;
+          lastView = null;
+          setTitle();
+        };
+        $('#cs-prev').addEventListener('click', () => go(-1));
+        $('#cs-next').addEventListener('click', () => go(1));
         remote.start();
       },
     });
@@ -350,6 +461,24 @@ export function createCastUI(deps) {
   // Alıcı (eşleştirme kodunu üreten taraf) yalnız TV'dir; telefon kodu TV'den alıp girer.
   const wantReceiver = () => !!deps.isTv() && !!store.pref('cast.on', true);
 
+  // Oynatıcının denetim durumunu (ses/altyazı izleri, uyku, gece modu…) telefon kumandası okusun diye eklentiye bildirir.
+  // Yalnız değişince gider; oynatıcı kapalıysa boş bildirilir.
+  let extTimer = 0;
+  let extSent = '';
+  function pushExt() {
+    if (!receiver) return;
+    let json = '';
+    try {
+      const e = deps.remoteExt ? deps.remoteExt() : null;
+      json = e ? JSON.stringify(e) : '';
+    } catch {
+      json = '';
+    }
+    if (json === extSent) return;
+    extSent = json;
+    plugin.castExt({ json }).catch(() => {});
+  }
+
   async function startReceiver() {
     if (!plugin || !wantReceiver()) return;
     try {
@@ -357,6 +486,7 @@ export function createCastUI(deps) {
     } catch {
       receiver = null;
     }
+    if (receiver && !extTimer) extTimer = setInterval(pushExt, 1000);
   }
 
   async function stopReceiver() {
@@ -367,6 +497,9 @@ export function createCastUI(deps) {
       /* zaten kapalı */
     }
     receiver = null;
+    clearInterval(extTimer);
+    extTimer = 0;
+    extSent = '';
   }
 
   function listen() {
@@ -376,6 +509,11 @@ export function createCastUI(deps) {
       if (r) deps.playCast(r);
     }).catch(() => {});
     plugin.addListener('castStop', () => deps.stopCast()).catch(() => {});
+    // Telefon kumandasından gelen oynatıcı komutları (sonraki/önceki, ses dili, altyazı, uyku, yön tuşları…)
+    plugin.addListener('castCmd', (e) => {
+      const c = parseRemoteCmd(e);
+      if (c && deps.remoteCmd) deps.remoteCmd(c);
+    }).catch(() => {});
     // Telefondan veri eşitleme: gelen veri bu TV'nin verisiyle birleştirilir, birleşmiş veri telefona yanıt olur.
     plugin.addListener('castSync', (e) => {
       let reply;
@@ -511,5 +649,5 @@ export function createCastUI(deps) {
     });
   }
 
-  return { sendToTv, syncWithTv, autoSync, receiverSheet, startReceiver, listen, nowPlaying, devices };
+  return { sendToTv, syncWithTv, autoSync, receiverSheet, startReceiver, listen, nowPlaying, pushExt, devices };
 }

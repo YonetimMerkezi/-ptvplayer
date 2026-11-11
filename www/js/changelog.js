@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 60,
+    title: 'Telefondan TV’yi tam yönetme, daha belirgin odak, maç olayları',
+    items: [
+      'Telefon, TV’de oynayan şeyi (TV’nin kendi açtığı kanal ya da film dahil) görüp yönetir: oynat/duraklat, sarma, önceki/sonraki, sessiz, ses çubuğu, ses dili, altyazı, gece modu, uyku zamanlayıcısı, en-boy, yayın bilgisi, favori, son kanal ve yön tuşları',
+      'Ayarlar > Telefondan oynat listesinde eşleşmiş TV’nin yanındaki “Kumanda” düğmesi, TV’de bir şey oynamasa da kumandayı açar; TV’de gezinmek için yön tuşları hazırdır',
+      'TV kumandasında odaktaki düğme artık dolgu rengiyle tersine döner ve büyür; oynatıcı denetimleri ve her ekrandaki düğmeler nerede olduğunuzu belli eder',
+      'Spor: filtre düğmeleri artık imleci kendiliğinden kendine çekmiyor',
+      'Maç ayrıntısı: gol dakikaları ve skor akışı, kartlar, oyuncu değişikliği (giren/çıkan), devre arası ve maç sonu işaretleri (yalnız ayrıntı veren maçlarda)',
+      'Sunset ve Neon temalarında soluk kalan yazılar ve etiket düğmelerinin renk karşıtlığı düzeltildi'
+    ],
+  },
+  {
     id: 59,
     title: 'Spor: maç hatırlatıcısı',
     items: [

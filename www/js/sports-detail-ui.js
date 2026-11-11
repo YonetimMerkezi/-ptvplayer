@@ -44,12 +44,18 @@ function eventIcon(kind) {
 function eventText(e) {
   const who = e.player;
   const lab = KIND_LABEL[e.kind] || '';
-  if (e.kind === 'sub') return `<b>${esc(who || lab)}</b>${e.other ? `<small> ⇄ ${esc(e.other)}</small>` : ''}`;
-  if (e.kind === 'own') return `<b>${esc(who)}</b><small> (kendi kalesine)</small>`;
+  const tag = e.detail ? `<small> (${esc(e.detail)})</small>` : '';
+  const sc = e.score ? `<small class="sd-sc"> ${esc(e.score)}</small>` : '';
+  // Oyuncu değişikliği: giren ve çıkan ayrı ayrı yazılır (yön belli olsun)
+  if (e.kind === 'sub') return `<span class="sd-sub"><span class="in"><i aria-hidden="true">▲</i><b>${esc(who || lab)}</b></span>${e.other ? `<span class="out"><i aria-hidden="true">▼</i>${esc(e.other)}</span>` : ''}</span>`;
+  if (e.kind === 'own') return `<b>${esc(who)}</b><small> (kendi kalesine)</small>${sc}`;
   if (e.kind === 'penmiss') return `<b>${esc(who)}</b><small> (penaltı kaçtı)</small>`;
-  if (who) return `<b>${esc(who)}</b>`;
-  return `<small>${esc(e.text || lab)}</small>`;
+  if (e.kind === 'goal') return `<b>${esc(who || lab)}</b>${tag}${sc}`;
+  if (who) return `<b>${esc(who)}</b>${tag}`;
+  return `<small>${esc(e.text || lab)}${e.detail ? ` (${esc(e.detail)})` : ''}</small>`;
 }
+
+const MARK_LABEL = { ht: 'Devre arası', ft: 'Maç sonu' };
 
 // env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), ensureTv(m), badgeOf?(takım adı), remind?: { leads, label(dk), can(m), get(m), set(m, dk), clear(m), last() }, base?, now? }
 export function openMatchDetail(env, m) {
@@ -158,6 +164,7 @@ export function openMatchDetail(env, m) {
     if (!d.events.length) return '';
     const rows = d.events
       .map((e) => {
+        if (e.mark) return `<div class="sd-e mark"><div class="sd-mk">${esc(MARK_LABEL[e.kind] || '')}${e.score ? ` · ${esc(e.score)}` : ''}</div></div>`;
         const txt = `<div class="sd-et">${eventIcon(e.kind)}<span>${eventText(e)}</span></div>`;
         return `<div class="sd-e ${e.side || 'mid'}"><div class="sd-eh">${e.side === 'home' ? txt : ''}</div><div class="sd-em">${esc(e.minute)}</div><div class="sd-ea">${e.side === 'away' ? txt : ''}${e.side === '' ? txt : ''}</div></div>`;
       })

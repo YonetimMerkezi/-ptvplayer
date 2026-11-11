@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { broadcastGroups, summaryUrl, eventIdOf, eventKind, parseSummary, loadSummary, STAT_ROWS } from '../www/js/sports-detail.js';
+import { broadcastGroups, summaryUrl, eventIdOf, eventKind, markerKind, minuteValue, parseSummary, loadSummary, STAT_ROWS } from '../www/js/sports-detail.js';
 import { parseBroadcasts, parseScoreboard, findPrograms, findProgram } from '../www/js/sports.js';
 
 const SUMMARY = {
@@ -71,12 +71,13 @@ test('parseSummary: olaylar takıma ve dakikaya göre, ilgisiz olaylar atılır'
   assert.deepEqual(d.events.map((e) => [e.kind, e.minute, e.side, e.player]), [
     ['goal', "12'", 'home', 'Icardi'],
     ['yellow', "30'", 'away', 'Fred'],
+    ['ht', "45'", '', ''],
     ['sub', "60'", 'home', 'Mertens'],
     ['own', "64'", 'away', 'Djiku'],
     ['penmiss', "66'", 'away', 'Tadic'],
     ['red', "70'", '', ''],
   ]);
-  assert.equal(d.events[2].other, 'Zaha');
+  assert.equal(d.events[3].other, 'Zaha');
   assert.equal(d.status.state, 'in');
   assert.equal(d.status.text, "67'");
   assert.equal(d.home.score, 2);
@@ -130,7 +131,7 @@ test('loadSummary: adres, fast bayrağı, hata ayrıntısı', async () => {
   const net = { json: async (u, o) => { calls.push([u, o]); return SUMMARY; } };
   const d = await loadSummary({ net, match: { id: 'tur.1:42', lg: 'tur.1' }, base: 'http://b/soccer/' });
   assert.deepEqual(calls, [['http://b/soccer/tur.1/summary?event=42', { fast: true }]]);
-  assert.equal(d.events.length, 6);
+  assert.equal(d.events.length, 7); // 6 olay + devre arası ayracı
   await assert.rejects(loadSummary({ net: { json: async () => { throw new Error('HTTP 404'); } }, match: { id: 'a:1', lg: 'a' } }), (e) => /ayrıntısı alınamadı/.test(e.message) && e.detail === 'HTTP 404');
   await assert.rejects(loadSummary({ net: { json: async () => null }, match: { id: 'a:1', lg: 'a' } }), (e) => e.detail === 'Boş yanıt');
   await assert.rejects(loadSummary({ net: { json: () => new Promise(() => {}) }, match: { id: 'a:1', lg: 'a' }, timeoutMs: 30 }), (e) => /zamanında/.test(e.detail));
@@ -206,4 +207,65 @@ test('broadcastGroups: yayın kanalı listede yoksa açık not; rehber zaten bul
   assert.deepEqual(same.map((x) => x.id), ['epg'], 'aynı kanal yalnız rehber grubunda');
   const mixed = broadcastGroups({ epgChans: [{ item: ITEMS[2] }], tvNames: ['Olmayan Kanal XYZ'], items: ITEMS });
   assert.deepEqual(mixed.map((x) => x.id), ['epg'], 'rehber kanalı varken listede olmayan kanal notu gösterilmez');
+});
+
+test('minuteValue / markerKind: uzatma dakikaları ve devre arası işaretleri', () => {
+  assert.equal(minuteValue("12'"), 12);
+  assert.equal(minuteValue("45'+2'"), 45.02);
+  assert.equal(minuteValue("90'+11'"), 90.11);
+  assert.ok(Number.isNaN(minuteValue('')));
+  assert.equal(markerKind({ type: { text: 'Halftime' } }), 'ht');
+  assert.equal(markerKind({ type: { text: 'End Regular Time' } }), 'ft');
+  assert.equal(markerKind({ type: { text: 'Full Time' } }), 'ft');
+  assert.equal(markerKind({ type: { text: 'Kickoff' } }), null);
+  assert.equal(markerKind({ type: { text: 'Start 2nd Half' } }), null);
+  assert.equal(markerKind({ type: { text: 'Goal' } }), null);
+});
+
+test('parseSummary: olaylar dakikaya göre sıralanır, golde skor, devre arası/maç sonu ayracı, ayrıntı etiketi', () => {
+  const ev = (type, min, team, who, extra = {}) => ({ type: { text: type }, clock: { displayValue: min }, team: team ? { id: team } : undefined, participants: who ? [{ athlete: { displayName: who } }] : [], ...extra });
+  const j = {
+    header: { competitions: [{ competitors: [{ homeAway: 'home', id: '10' }, { homeAway: 'away', id: '20' }] }] },
+    keyEvents: [
+      ev('Yellow Card', "80'", '20', 'Z'),
+      ev('Goal', "90'+4'", '20', 'Geç Gol'), // uzatmada: 90'dan sonra
+      ev('Goal - Header', "12'", '10', 'Kafa Golcü', { scoringPlay: true }),
+      ev('Full Time', "90'+6'"),
+      ev('Penalty - Scored', "45'+2'", '20', 'Penaltıcı', { scoringPlay: true }),
+      ev('Halftime', "45'+3'"),
+      ev('Own Goal', "70'", '20', 'Kalesine'),
+      ev('Yellow Red Card', "85'", '10', 'İkinci'),
+      { type: { text: 'Substitution' }, clock: { displayValue: "60'" }, team: { id: '10' }, participants: [{ athlete: { displayName: 'Giren' } }, { athlete: { displayName: 'Çıkan' } }] },
+    ],
+  };
+  const d = parseSummary(j, {});
+  assert.deepEqual(d.events.map((e) => [e.minute, e.kind, e.score]), [
+    ["12'", 'goal', '1–0'],
+    ["45'+2'", 'goal', '1–1'],
+    ["45'+3'", 'ht', '1–1'],
+    ["60'", 'sub', ''],
+    ["70'", 'own', '2–1'], // deplasmanın kendi kalesine golü ev sahibine yazılır
+    ["80'", 'yellow', ''],
+    ["85'", 'red', ''],
+    ["90'+4'", 'goal', '2–2'],
+    ["90'+6'", 'ft', '2–2'],
+  ]);
+  assert.equal(d.events[0].detail, 'kafa');
+  assert.equal(d.events[1].detail, 'penaltı');
+  assert.equal(d.events[6].detail, 'ikinci sarıdan');
+  assert.equal(d.events[3].player, 'Giren');
+  assert.equal(d.events[3].other, 'Çıkan');
+  assert.ok(d.events[2].mark && d.events[8].mark && !d.events[0].mark);
+});
+
+test('parseSummary: takımı bilinmeyen golden sonra skor yazılmaz', () => {
+  const j = {
+    header: { competitions: [{ competitors: [{ homeAway: 'home', id: '10' }, { homeAway: 'away', id: '20' }] }] },
+    keyEvents: [
+      { type: { text: 'Goal' }, clock: { displayValue: "5'" }, team: { id: '10' }, participants: [{ athlete: { displayName: 'A' } }] },
+      { type: { text: 'Goal' }, clock: { displayValue: "9'" }, participants: [{ athlete: { displayName: 'B' } }] },
+      { type: { text: 'Goal' }, clock: { displayValue: "20'" }, team: { id: '20' }, participants: [{ athlete: { displayName: 'C' } }] },
+    ],
+  };
+  assert.deepEqual(parseSummary(j, {}).events.map((e) => e.score), ['1–0', '', '']);
 });

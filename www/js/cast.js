@@ -150,6 +150,56 @@ export function syncResult(r) {
   return { ok: false, msg: 'TV’ye ulaşılamadı' };
 }
 
+// ---- TV'deki oynatıcının ek denetimleri (telefon kumandası) ----
+
+// Telefon → TV komutları (ses ve sarma dışındakiler TV'deki uygulamaya iletilir); v: komutun değeri.
+export const REMOTE_KEYS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', ok: 'Enter', back: 'Escape' };
+export const SLEEP_MINUTES = [0, 15, 30, 45, 60, 90, 120];
+const PLAIN_CMDS = new Set(['next', 'prev', 'last', 'golive', 'fav', 'stats']);
+
+// TV tarafı: gelen komutu doğrular → { a, v? } | null
+export function parseRemoteCmd(c) {
+  if (!c || typeof c !== 'object' || typeof c.a !== 'string') return null;
+  const a = c.a;
+  if (PLAIN_CMDS.has(a)) return { a };
+  if (a === 'aspect') return Number.isInteger(c.v) && c.v >= 0 && c.v < 8 ? { a, v: c.v } : { a };
+  if (a === 'key') return typeof c.v === 'string' && Object.hasOwn(REMOTE_KEYS, c.v) ? { a, v: c.v } : null;
+  if (a === 'sleep') return SLEEP_MINUTES.includes(Number(c.v)) ? { a, v: Number(c.v) } : null;
+  if (a === 'night') return typeof c.v === 'string' && c.v.length > 0 && c.v.length <= 20 ? { a, v: c.v } : null;
+  if (a === 'audio') return typeof c.v === 'string' && c.v.length > 0 && c.v.length <= 64 ? { a, v: c.v } : null;
+  if (a === 'text') return typeof c.v === 'string' && c.v.length <= 64 ? { a, v: c.v } : null; // '' = altyazı kapalı
+  return null;
+}
+
+const trackList = (a) =>
+  Array.isArray(a)
+    ? a
+        .filter((x) => x && (typeof x.id === 'string' || typeof x.id === 'number'))
+        .slice(0, 24)
+        .map((x) => ({ id: clean(x.id, 64), label: clean(x.label, 80) || clean(x.id, 64), selected: x.selected === true }))
+    : [];
+
+// TV'nin bildirdiği ek durumu telefonda kullanılacak güvenli biçime getirir (eksik/bozuksa her şey kapalı).
+export function extOf(e) {
+  const x = e && typeof e === 'object' ? e : {};
+  const can = x.can && typeof x.can === 'object' ? x.can : {};
+  const C = (k) => can[k] === true;
+  const sl = x.sleep && typeof x.sleep === 'object' ? x.sleep : {};
+  return {
+    can: { prev: C('prev'), next: C('next'), last: C('last'), golive: C('golive'), fav: C('fav'), audio: C('audio'), text: C('text'), night: C('night'), sleep: C('sleep'), aspect: C('aspect'), stats: C('stats') },
+    fav: x.fav === true,
+    stats: x.stats === true,
+    aspect: clean(x.aspect, 30),
+    night: clean(x.night, 20) || 'off',
+    sleepMin: Math.max(0, Math.round(num(sl.min))),
+    sleepLeft: Math.max(0, Math.round(num(sl.left))),
+    audio: trackList(x.audio),
+    text: trackList(x.text),
+    textOn: x.textOn === true,
+    epg: clean(x.epg, 200),
+  };
+}
+
 // ---- uzaktan kumanda ekranı için durum ----
 
 const STATE_TEXT = { playing: 'Oynatılıyor', paused: 'Duraklatıldı', buffering: 'Yükleniyor…', ended: 'Bitti', idle: 'Hazırlanıyor…' };
@@ -174,11 +224,14 @@ export function viewOf(st, sent = null) {
     canSeek: !live && dur > 0,
     canVol: max > 0 && !vol.fixed,
     vol: max > 0 ? Math.round((num(vol.cur) / max) * 100) : 0,
+    muted: vol.muted === true,
+    volMax: max,
+    ext: extOf(s.ext),
   };
 }
 
 // Uzaktan kumanda: durumu yoklar, komut gönderir. request(path, method, body) → Promise<{status, body}>.
-export function createRemote({ request, sent = null, onView, onEnd, onLost, onUnpaired, setT = setTimeout, clearT = clearTimeout, now = Date.now, pollMs = POLL_MS, lostAfter = LOST_AFTER, grace = GRACE_MS }) {
+export function createRemote({ request, sent = null, keep = false, onView, onEnd, onLost, onUnpaired, setT = setTimeout, clearT = clearTimeout, now = Date.now, pollMs = POLL_MS, lostAfter = LOST_AFTER, grace = GRACE_MS }) {
   let stopped = true;
   let timer = 0;
   let fails = 0;
@@ -222,7 +275,9 @@ export function createRemote({ request, sent = null, onView, onEnd, onLost, onUn
     const st = parseJson(r.body);
     if (st) {
       if (onView) onView(viewOf(st, sent));
-      if (st.active) {
+      if (keep) {
+        // yalnız kumanda: TV'de bir şey oynamasa da (ya da oynayan bitse de) kumanda açık kalır
+      } else if (st.active) {
         sawActive = true;
         idle = 0;
       } else if (sawActive) {
