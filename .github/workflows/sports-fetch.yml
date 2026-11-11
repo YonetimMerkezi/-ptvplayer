@@ -1,0 +1,42 @@
+name: Spor sayfa örnekleri
+
+# Geçici: yayın akışı sitelerinin gerçek HTML'ini indirip bu dala kaydeder (ayrıştırıcıları gerçek yapıya göre yazmak için).
+on:
+  push:
+    branches: [sports-fetch]
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: İndir
+        run: |
+          mkdir -p samples
+          UA="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+          D0=$(TZ=Europe/Istanbul date +%F)
+          D2=$(TZ=Europe/Istanbul date -d "+2 day" +%F)
+          : > samples/status.txt
+          get() {
+            name="$1"; url="$2"
+            code=$(curl -sS -L -m 40 -A "$UA" -H "Accept-Language: tr-TR,tr;q=0.9,en;q=0.5" -o "samples/$name" -w "%{http_code} %{size_download} %{content_type}" "$url" 2>&1) || code="curl-hata: $code"
+            echo "$name | $url | $code" >> samples/status.txt
+          }
+          get se-$D2.html "https://www.sporekrani.com/home/day/$D2"
+          get mr-$D2.html "https://www.macrehberi.com/gun/$D2"
+          get mr-$D0.html "https://www.macrehberi.com/gun/$D0"
+          get sd-today.html "https://www.sahadan.com/tv-programi"
+          get lst-$D2.html "https://www.livesoccertv.com/tr/schedules/$D2/"
+          get tsdb-team.json "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=Galatasaray"
+          get flag-tr.png "https://flagcdn.com/w80/tr.png"
+          cat samples/status.txt
+      - name: Kaydet
+        run: |
+          git config user.name "sports-fetch"
+          git config user.email "sports-fetch@users.noreply.github.com"
+          git add samples
+          git commit -m "Spor sayfa örnekleri" || true
+          git push origin HEAD:sports-fetch
