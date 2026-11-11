@@ -100,7 +100,7 @@ const NATIONS = [
   ['Mexico', 'Meksika'], ['Japan', 'Japonya'], ['South Korea', 'Güney Kore'], ['Morocco', 'Fas'], ['Uruguay', 'Uruguay'],
 ];
 
-const norm = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
+export const norm = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
 const GENERIC = new Set(['fc', 'cf', 'sc', 'afc', 'ac', 'as', 'ssc', 'fk', 'sk', 'bk', 'sv', 'vfb', 'vfl', 'tsg', 'ud', 'cd', 'rcd', 'ca', 'us', 'og', 'club', 'de', 'the', 'calcio', 'bsc', 'cfc', 'kv', 'sl', 'if', 'ik']);
 // Tek başına bir takımı ayırt etmeyen sözcükler (tek sözcükle eşleştirmede kullanılmaz)
 const AMBIG = new Set(['manchester', 'borussia', 'olympique', 'sporting', 'racing', 'united', 'albion', 'rovers', 'wanderers', 'athletic', 'atletico', 'saint', 'dynamo', 'spartak', 'lokomotiv', 'internacional', 'national', 'republic', 'district', 'herzegovina']);
@@ -132,6 +132,22 @@ export function teamPhrases(name) {
   out = [...set].filter((p) => p.length >= 3);
   phraseCache.set(core, out);
   return out;
+}
+
+// Kaynakları birleştirirken takım eşitliği için: kesin adlar (tam ad, sadeleşmiş ad, bilinen ek yazımlar) ve ayırt edici sözcükler.
+// teamPhrases'ten daha tutucudur (tek bir sözcük paylaşmak yetmez: Real Madrid ≠ Atletico Madrid).
+export function teamKeys(name) {
+  const core = norm(name);
+  const strong = new Set([core]);
+  for (const a of ALIAS[core] || []) strong.add(a);
+  for (const a of NATION_ALIAS.get(core) || []) strong.add(a);
+  const words = core.split(' ').filter((w) => w && !GENERIC.has(w));
+  if (words.length) strong.add(words.join(' '));
+  return {
+    strong: new Set([...strong].filter((p) => p.length >= 3)),
+    words: new Set(words.filter((w) => w.length >= 7 && !AMBIG.has(w))),
+    single: words.length === 1 && words[0].length >= 7 ? words[0] : '',
+  };
 }
 
 const hasAny = (paddedText, phrases) => phrases.some((p) => paddedText.includes(' ' + p + ' '));
@@ -317,7 +333,7 @@ export function parseScoreboard(json, leagueId) {
 
 const startOfDay = (ms) => new Date(ms).setHours(0, 0, 0, 0);
 
-function withTimeout(p, ms) {
+export function withTimeout(p, ms) {
   let timer;
   return Promise.race([p, new Promise((_, rej) => (timer = setTimeout(() => rej(new Error('Sunucu zamanında yanıt vermedi')), ms)))]).finally(() => clearTimeout(timer));
 }
@@ -404,15 +420,86 @@ export function dayStrip(now = Date.now(), back = 1, ahead = 7) {
 
 export const matchesOnDay = (matches, dayMs) => matches.filter((m) => startOfDay(m.t) === dayMs);
 
-// Liglere göre bölümler (LEAGUES sırası); her bölümde maçlar saat sırasında. leagueId verilirse yalnız o lig.
+// İkinci kaynaktan (LiveScore) gelen, ESPN tablosunda olmayan yarışmaların grupları. Sıra ekrandaki sıradır.
+// "oth" yalnız kendi düğmesinden görünür ("Tümü" listesini binlerce alt lig maçıyla doldurmaz).
+export const GROUPS = [
+  { id: 'tr', name: 'Türkiye · diğer' },
+  { id: 'int', name: 'Uluslararası' },
+  { id: 'eu', name: 'Avrupa ligleri' },
+  { id: 'oth', name: 'Diğer ülkeler' },
+];
+const groupIndex = (id) => {
+  const i = GROUPS.findIndex((g) => g.id === id);
+  return i < 0 ? GROUPS.length - 1 : i;
+};
+
+// Liglere göre bölümler: önce LEAGUES sırasıyla ESPN ligleri, sonra ikinci kaynağın yarışmaları (grup, sıra, ad).
+// leagueId: '' (tümü: "oth" grubu hariç), bir lig/yarışma kimliği ya da 'g:<grup>' (grubun tümü).
 export function sections(matches, leagueId = '') {
   const out = [];
+  const byGroup = leagueId.startsWith('g:') ? leagueId.slice(2) : '';
   for (const lg of LEAGUES) {
     if (leagueId && lg.id !== leagueId) continue;
     const list = matches.filter((m) => m.lg === lg.id).sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
     if (list.length) out.push({ lg, matches: list });
   }
-  return out;
+  const extra = new Map();
+  for (const m of matches) {
+    if (leagueOf(m.lg)) continue;
+    const g = m.grp || 'oth';
+    if (leagueId) {
+      if (byGroup ? g !== byGroup : m.lg !== leagueId) continue;
+    } else if (g === 'oth') continue;
+    let sec = extra.get(m.lg);
+    if (!sec) extra.set(m.lg, (sec = { lg: { id: m.lg, name: m.lgName || 'Diğer', grp: g, ord: Number(m.ord) || 0 }, matches: [] }));
+    sec.matches.push(m);
+  }
+  const rest = [...extra.values()];
+  for (const s of rest) s.matches.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
+  rest.sort((a, b) => groupIndex(a.lg.grp) - groupIndex(b.lg.grp) || a.lg.ord - b.lg.ord || a.lg.name.localeCompare(b.lg.name, 'tr'));
+  return out.concat(rest);
+}
+
+// Seçili günün lig düğmeleri: { all: "Tümü" sayısı, chips: [{ id, name, count }] } (ESPN ligleri, sonra ikinci kaynağın grupları).
+export function chipsFor(dayMatches) {
+  const counts = new Map();
+  const groups = new Map();
+  let all = 0;
+  for (const m of dayMatches) {
+    if (leagueOf(m.lg)) {
+      counts.set(m.lg, (counts.get(m.lg) || 0) + 1);
+      all++;
+      continue;
+    }
+    const g = m.grp || 'oth';
+    groups.set(g, (groups.get(g) || 0) + 1);
+    if (g !== 'oth') all++;
+  }
+  const chips = LEAGUES.filter((l) => counts.has(l.id)).map((l) => ({ id: l.id, name: l.name, count: counts.get(l.id) }));
+  for (const g of GROUPS) if (groups.has(g.id)) chips.push({ id: 'g:' + g.id, name: g.name, count: groups.get(g.id) });
+  return { all, chips };
+}
+
+// Çok uzun listeleri keser (alt lig yığınları düşük güçlü TV kutularını yormasın): en çok max maç; kesilen sayısı hidden.
+export function capSections(secs, max = 500) {
+  let left = max;
+  let hidden = 0;
+  const out = [];
+  for (const s of secs) {
+    if (left <= 0) {
+      hidden += s.matches.length;
+      continue;
+    }
+    if (s.matches.length <= left) {
+      out.push(s);
+      left -= s.matches.length;
+    } else {
+      out.push({ lg: s.lg, matches: s.matches.slice(0, left) });
+      hidden += s.matches.length - left;
+      left = 0;
+    }
+  }
+  return { secs: out, hidden };
 }
 
 export const hasLive = (matches) => matches.some((m) => m.state === 'in');

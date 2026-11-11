@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [] };
+  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -59,7 +59,32 @@ function fakeEspn() {
     1: comp('pre', 'STATUS_SCHEDULED', undefined, undefined, { comp: { geoBroadcasts: [{ media: { shortName: 'Paramount+' }, region: 'us' }] } }),
     3: { ...comp('post', 'STATUS_FULL_TIME', '2', '2'), keyEvents: [{ type: { text: 'Goal' }, scoringPlay: true, clock: { displayValue: "5'" }, team: { id: '2' }, participants: [{ athlete: { displayName: 'Deneme Oyuncu' } }] }] },
   });
+  // Sahte LiveScore: lsMode 'empty' (boş gün), 'data' (ESPN'de olmayan maçlar + bir yinelenen), 'fail' (HTTP 500), 'badshape' (beklenmeyen JSON)
+  const lsBody = (key) => {
+    const e = (eid, a, b, hh, mm, o = {}) => ({ Eid: eid, Esd: `${key}${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}00`, Eps: 'NS', T1: [{ Nm: a }], T2: [{ Nm: b }], ...o });
+    const todayKey = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    if (key !== todayKey) return { Stages: [{ Sid: 'tff1', Cnm: 'Turkey', Snm: 'TFF 1. Lig', Events: [e('x' + key, 'Ankaragucu', 'Bursaspor', 18, 0)] }] };
+    return {
+      Stages: [
+        { Sid: 'tff1', Cnm: 'Turkey', Snm: 'TFF 1. Lig', Events: [e('t1', 'Bandirmaspor', 'Manisa FK', 15, 0)] },
+        { Sid: 'sl', Cnm: 'Turkey', Snm: 'Super Lig', Events: [e('t2', 'Galatasaray', 'Fenerbahce', 20, 0), e('t3', 'Besiktas', 'Trabzonspor', 17, 0, { Eps: "67'", Tr1: '1', Tr2: '0' })] },
+        { Sid: 'br', Cnm: 'Brazil', Snm: 'Serie A', Events: [e('b1', 'Flamengo', 'Palmeiras', 22, 0, { Eps: "34'", Tr1: '1', Tr2: '0' })] },
+        { Sid: 'ch', Cnm: 'England', Snm: 'Championship', Events: [e('c1', 'Leeds', 'Burnley', 20, 45)] },
+      ],
+    };
+  };
   async function install(ctx) {
+    await ctx.route(/https:\/\/prod-(cdn-)?public-api\.livescore\.com\/.*/, async (route) => {
+      const url = route.request().url();
+      const key = (/soccer\/(\d{8})\//.exec(url) || [])[1] || '';
+      st.lsCalls.push({ key, url });
+      if (st.lsMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
+      const body = st.lsMode === 'badshape' ? { hata: 1 } : st.lsMode === 'data' ? lsBody(key) : { Stages: [] };
+      return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    });
     await ctx.route('https://site.api.espn.com/**', async (route) => {
       const sm = /soccer\/([^/]+)\/summary\?event=(\d+)/.exec(route.request().url());
       if (sm) {
@@ -267,6 +292,85 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await B.ctx.close();
   espn.st.fail = false;
 
+  // ---- ikinci kaynak (LiveScore): ESPN'de olmayan maçlar tamamlanır, yinelenenler tek görünür
+  espn.st.lsMode = 'data';
+  espn.st.lsCalls.length = 0;
+  const E = await mk({ width: 390, height: 844 });
+  const e = E.page;
+  await e.click('.shortcuts .t-sport');
+  await e.waitForFunction(() => /Türkiye · diğer/.test((document.querySelector('#sp-lgs') || {}).textContent || ''), null, { timeout: 12000 });
+  const eLgs = await text(e, '#sp-lgs .chip');
+  ok(eLgs.some((t) => t.startsWith('Türkiye · diğer')) && eLgs.some((t) => t.startsWith('Avrupa ligleri')) && eLgs.some((t) => t.startsWith('Diğer ülkeler')), 'ikinci kaynağın grupları lig çiplerinde: ' + eLgs.join(' | '));
+  const eHeads = await text(e, '.sp-lg-h');
+  ok(eHeads.includes('Türkiye · TFF 1. Lig') && eHeads.includes('İngiltere · Championship') && !eHeads.some((t) => /Brezilya/.test(t)), 'ESPN’de olmayan yarışmalar bölüm olarak geldi, “diğer ülkeler” Tümü’de yok: ' + eHeads.join(', '));
+  ok(eHeads[0] === 'Süper Lig' && eHeads.indexOf('Türkiye · TFF 1. Lig') > eHeads.indexOf('Premier Lig'), 'ESPN ligleri önce, ikinci kaynak sonra');
+  const eRows = await text(e, '.sp-m');
+  ok(eRows.filter((t) => /Galatasaray/.test(t)).length === 1, 'iki kaynakta da olan maç (Galatasaray) tek satır');
+  ok(eRows.filter((t) => /Beşiktaş|Besiktas/.test(t)).length === 1, 'iki kaynakta da olan canlı maç tek satır');
+  ok(eRows.some((t) => /Bandirmaspor/.test(t) && /15:00/.test(t)), 'ikinci kaynağın maçı saatiyle listede: ' + eRows.find((t) => /Bandirmaspor/.test(t)));
+  ok(/LiveScore'dan \+3 maç/.test(await e.textContent('#sp-upd')), 'durum satırı ikinci kaynağın katkısını söylüyor: ' + (await e.textContent('#sp-upd')));
+  ok(espn.st.lsCalls.length === 1 && espn.st.lsCalls[0].key === (await e.evaluate(() => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; })), 'bugünün LiveScore listesi bir kez indirildi');
+  ok(/countryCode=TR/.test(espn.st.lsCalls[0].url), 'LiveScore adresi ülke ve dil parametreli');
+  await e.click('#sp-lgs [data-lg="g:oth"]');
+  const oth = await text(e, '.sp-m');
+  ok(oth.length === 1 && /Flamengo/.test(oth[0]) && /34'/.test(oth[0]) && (await e.$$('.sp-m.on')).length === 1, 'Diğer ülkeler: canlı maç dakikası ve skoruyla: ' + oth.join(' | '));
+  ok(/Brezilya · Serie A/.test(await e.textContent('.sp-lg-h')), 'Brezilya bölümü Türkçe ülke adıyla');
+  await e.click('#sp-lgs [data-lg=""]');
+  await e.click('#sp-days .chip:nth-child(3)'); // yarın
+  await e.waitForFunction(() => /Ankaragucu/.test(document.querySelector('.sp-list').textContent), null, { timeout: 8000 });
+  ok(espn.st.lsCalls.length === 2, 'başka güne geçince o günün listesi indirildi');
+  await e.click('#sp-days .chip:nth-child(2)'); // bugün
+  await e.waitForSelector('.sp-m');
+  await sleep(300);
+  ok(espn.st.lsCalls.length === 2, 'taze günde yeniden indirme yok');
+  // LiveScore maçının ayrıntısı: olay/istatistik yok, açık not; ESPN ayrıntısı çağrılmaz
+  const sumBefore = espn.st.summaryCalls.length;
+  await e.$$eval('.sp-m', (rows) => rows.find((r) => /Bandirmaspor/.test(r.textContent)).querySelector('[data-info]').click());
+  await e.waitForSelector('.sd-pg .sd-note', { timeout: 6000 });
+  await sleep(300);
+  ok(/LiveScore kaynağından/.test(await e.textContent('#sd-body')) && /Bandirmaspor/.test(await e.textContent('.sd-head')) && /Türkiye · TFF 1. Lig/.test(await e.textContent('.sd-head')), 'LiveScore maçı ayrıntısı: lig adı ve açıklama');
+  ok(espn.st.summaryCalls.length === sumBefore, 'LiveScore maçı için ESPN ayrıntısı istenmedi');
+  await e.goBack();
+  await e.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  await e.screenshot({ path: path.join(SHOTS, '83-spor-livescore.png') });
+  ok(E.errs.length === 0, 'sayfa hatası yok (ikinci kaynak): ' + E.errs.join(' | '));
+  await E.ctx.close();
+
+  // ESPN çökerse maçlar LiveScore'dan gelir (hata ekranı yok); nedeni listenin üstünde yazar
+  espn.st.fail = true;
+  const F = await mk({ width: 390, height: 844 });
+  const f = F.page;
+  await f.click('.shortcuts .t-sport');
+  await f.waitForFunction(() => document.querySelectorAll('.sp-m').length > 0, null, { timeout: 25000 });
+  const fHeads = await text(f, '.sp-lg-h');
+  ok(!(await f.$('.sp-list .empty h3')) && fHeads.includes('Türkiye · Super Lig') && fHeads.includes('Türkiye · TFF 1. Lig'), 'ESPN yokken LiveScore maçları listede: ' + fHeads.join(', '));
+  ok(/ESPN alınamadı/.test(await f.textContent('#sp-upd')), 'durum satırı: ESPN alınamadı: ' + (await f.textContent('#sp-upd')));
+  ok(/ESPN: .*HTTP 500/.test(await f.textContent('.sp-src')), 'ESPN hata nedeni listenin üstünde');
+  ok((await text(f, '.sp-m')).filter((t) => /Galatasaray/.test(t)).length === 1, 'ESPN yokken Galatasaray maçı LiveScore’dan tek satır');
+  ok(F.errs.length === 0, 'sayfa hatası yok (ESPN yok): ' + F.errs.join(' | '));
+  await F.ctx.close();
+  espn.st.fail = false;
+
+  // LiveScore çökerse ESPN listesi eskisi gibi; neden yazılır, düzelince “Yenile” ile tamamlanır
+  espn.st.lsMode = 'fail';
+  const G = await mk({ width: 390, height: 844 });
+  const g = G.page;
+  await g.click('.shortcuts .t-sport');
+  await g.waitForFunction(() => /LiveScore alınamadı/.test((document.querySelector('#sp-upd') || {}).textContent || ''), null, { timeout: 15000 });
+  ok((await g.$$('.sp-m')).length === 4 && !(await g.$('.sp-list .empty h3')), 'LiveScore yokken ESPN listesi bozulmadı');
+  ok(/LiveScore: HTTP 500/.test(await g.textContent('.sp-src')), 'LiveScore hata nedeni gösteriliyor: ' + (await g.textContent('.sp-src')));
+  espn.st.lsMode = 'badshape';
+  await g.click('#sp-ref');
+  await g.waitForFunction(() => /Beklenmeyen yanıt biçimi/.test((document.querySelector('.sp-src') || {}).textContent || ''), null, { timeout: 15000 });
+  ok(true, 'beklenmeyen LiveScore biçimi açıkça bildirildi');
+  espn.st.lsMode = 'data';
+  await g.click('#sp-ref');
+  await g.waitForFunction(() => /Bandirmaspor/.test(document.querySelector('.sp-list').textContent), null, { timeout: 15000 });
+  ok(!(await g.$('.sp-src')) && !/LiveScore alınamadı/.test(await g.textContent('#sp-upd')), 'LiveScore düzelince uyarı kalktı, maçlar tamamlandı');
+  ok(G.errs.length === 0, 'sayfa hatası yok (LiveScore yok): ' + G.errs.join(' | '));
+  await G.ctx.close();
+  espn.st.lsMode = 'empty';
+
   // ---- hata ekranı ve yeniden deneme (kayıtlı veri yok)
   espn.st.fail = true;
   espn.st.failDelay = 600; // “yükleniyor” görüntüsü yoklanabilsin
@@ -276,7 +380,7 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(/yükleniyor/.test(await c.textContent('.sp-list')), 'indirme sürerken “yükleniyor” görünüyor (“Maç yok” değil)');
   await c.waitForSelector('.sp-list .empty h3', { timeout: 20000 });
   ok(/Maçlar alınamadı/.test(await c.textContent('.sp-list .empty h3')) && /İnternet bağlantınızı denetleyin/.test(await c.textContent('.sp-list .empty')), 'hiçbir lig alınamazsa açık hata ekranı');
-  ok(/Ayrıntı: [a-z0-9.]+: HTTP 500/.test(await c.textContent('.sp-list .empty')), 'hata ekranı nedeni gösteriyor (ör. “tur.1: HTTP 500”)');
+  ok(/Ayrıntı: ESPN: [a-z0-9.]+: HTTP 500/.test(await c.textContent('.sp-list .empty')), 'hata ekranı nedeni gösteriyor (ör. “tur.1: HTTP 500”)');
   await c.screenshot({ path: path.join(SHOTS, '81-spor-hata.png') });
   espn.st.fail = false;
   espn.st.failDelay = 0;

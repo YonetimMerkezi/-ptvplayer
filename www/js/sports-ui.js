@@ -3,24 +3,39 @@
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage, openSheet } from './ui.js';
 import {
-  LEAGUES, ESPN_BASE, loadMatches, findProgram, slicePrograms, broadcasterFor, channelsOfBroadcaster, dayStrip, dayStart, dayLabel,
-  matchesOnDay, sections, hasLive,
+  ESPN_BASE, loadMatches, findProgram, slicePrograms, broadcasterFor, channelsOfBroadcaster, dayStrip, dayStart, dayLabel,
+  matchesOnDay, sections, chipsFor, capSections, hasLive,
 } from './sports.js';
+import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
 
-const CACHE_KEY = 'sports:v1';
+const CACHE_KEY = 'sports:v1'; // ESPN maçları
+const LS_CACHE_KEY = 'sports-ls:v1'; // LiveScore gün listeleri
+const LS_CACHE_DAYS = 5;
 const CACHE_MAX_AGE = 6 * 3600e3; // kayıtlı veri bundan eskiyse hiç gösterilmez
 const FRESH_MS = 2 * 60e3; // bundan yeni veri yeniden indirilmez
+const LS_FUTURE_MS = 30 * 60e3; // ileri günlerin LiveScore listesi bu süre yeni sayılır
+const LS_LIVE_MS = 2 * 60e3; // canlı maç varken LiveScore günü en sık bu aralıkla yenilenir (gün yanıtı büyüktür)
 const LIVE_REFRESH_MS = 60e3;
 const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
+const MAX_ROWS = 500;
 
-// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, now? }
+// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, lsHosts?, now? }
 export function openSports(env) {
   const { net, store, toast, liveItems, epgBetween, play } = env;
   const base = env.base || ESPN_BASE;
+  const lsHosts = env.lsHosts || LS_HOSTS;
   const now = env.now || (() => Date.now());
 
-  let matches = [];
+  let matches = []; // birleşik liste (ESPN + LiveScore'ta olup ESPN'de olmayanlar)
+  let espn = [];
+  const lsDays = new Map(); // gün → { at, matches } (LiveScore)
+  const lsPending = new Map(); // gün → devam eden indirme
+  let lsBusy = 0;
+  let lsErr = '';
+  let lsDetail = '';
+  let espnErr = '';
+  let espnDetail = '';
   let fetchedAt = 0;
   let failed = [];
   let err = '';
@@ -98,19 +113,15 @@ export function openSports(env) {
     const strip = dayStrip(t);
     q('#sp-days').innerHTML = strip
       .map((d) => {
-        const n = matchesOnDay(matches, d).length;
+        const n = chipsFor(matchesOnDay(matches, d)).all; // “Tümü” sayısıyla aynı (diğer ülkeler hariç)
         return `<button class="chip${d === day ? ' on' : ''}" data-day="${d}"${d === day ? ' data-autofocus' : ''}>${esc(dayLabel(d, t))}${n ? `<small>${n}</small>` : ''}</button>`;
       })
       .join('');
-    const today = matchesOnDay(matches, day);
-    if (lg && !today.some((m) => m.lg === lg)) lg = '';
-    const counts = new Map();
-    for (const m of today) counts.set(m.lg, (counts.get(m.lg) || 0) + 1);
+    const { all, chips } = chipsFor(matchesOnDay(matches, day));
+    if (lg && !chips.some((c) => c.id === lg)) lg = '';
     q('#sp-lgs').innerHTML =
-      `<button class="chip${lg === '' ? ' on' : ''}" data-lg="">Tümü<small>${today.length}</small></button>` +
-      LEAGUES.filter((l) => counts.has(l.id))
-        .map((l) => `<button class="chip${lg === l.id ? ' on' : ''}" data-lg="${l.id}">${esc(l.name)}<small>${counts.get(l.id)}</small></button>`)
-        .join('');
+      `<button class="chip${lg === '' ? ' on' : ''}" data-lg="">Tümü<small>${all}</small></button>` +
+      chips.map((c) => `<button class="chip${lg === c.id ? ' on' : ''}" data-lg="${esc(c.id)}">${esc(c.name)}<small>${c.count}</small></button>`).join('');
     const on = q('#sp-days .chip.on');
     if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
@@ -123,25 +134,49 @@ export function openSports(env) {
     else if (loading) text = 'Güncelleniyor…';
     else if (err && fetchedAt) text = `Güncellenemedi · kayıtlı veri (${fmtClock(fetchedAt)})`;
     else if (err) text = err;
-    else if (failed.length) text = `Son güncelleme ${fmtClock(fetchedAt)} · ${failed.length} lig alınamadı`;
-    else if (fetchedAt) text = `Son güncelleme ${fmtClock(fetchedAt)}`;
+    else if (fetchedAt) {
+      text = `Son güncelleme ${fmtClock(fetchedAt)}`;
+      const notes = [];
+      if (espnErr) notes.push('ESPN alınamadı');
+      else if (failed.length) notes.push(`${failed.length} lig alınamadı`);
+      if (lsBusy) notes.push('LiveScore yükleniyor…');
+      else if (lsErr) notes.push('LiveScore alınamadı');
+      else {
+        const extra = matchesOnDay(matches, day).filter((m) => m.src === 'ls').length;
+        if (extra) notes.push(`LiveScore'dan +${extra} maç`);
+      }
+      if (notes.length) text += ' · ' + notes.join(' · ');
+    } else if (lsBusy) text = 'LiveScore yükleniyor…';
     else text = '';
     el.textContent = text;
+  }
+
+  // Kaynaklardan biri alınamadıysa neden listenin üstünde görünür (telefondan bildirilen ekran görüntüsünde teşhis için).
+  function sourceNote() {
+    const bits = [];
+    if (espnErr && matches.length) bits.push(`ESPN: ${espnDetail || espnErr}`);
+    if (lsErr && !lsBusy && !lsDays.has(day)) bits.push(`LiveScore: ${lsDetail || lsErr}`);
+    return bits.length ? `<p class="hint sp-detail sp-src">${bits.map(esc).join(' · ')}</p>` : '';
   }
 
   function drawList() {
     const list = q('#sp-list');
     if (!list) return;
-    const secs = sections(matchesOnDay(matches, day), lg);
+    const { secs, hidden } = capSections(sections(matchesOnDay(matches, day), lg), MAX_ROWS);
     if (!secs.length) {
       list.innerHTML = loading && !fetchedAt
         ? '<div class="empty"><p>Maçlar yükleniyor…</p></div>'
         : err && !fetchedAt
           ? `<div class="empty"><h3>Maçlar alınamadı</h3><p>${esc(err)}</p>${errDetail ? `<p class="hint sp-detail">Ayrıntı: ${esc(errDetail)}</p>` : ''}<button class="btn" id="sp-retry">Yeniden dene</button></div>`
-          : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>`;
+          : lsBusy
+            ? '<div class="empty"><p>LiveScore’dan maçlar yükleniyor…</p></div>'
+            : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`;
       return;
     }
-    list.innerHTML = secs.map((s) => `<h4 class="sp-lg-h">${esc(s.lg.name)}</h4>${s.matches.map(rowHtml).join('')}`).join('');
+    list.innerHTML =
+      sourceNote() +
+      secs.map((s) => `<h4 class="sp-lg-h">${esc(s.lg.name)}</h4>${s.matches.map(rowHtml).join('')}`).join('') +
+      (hidden ? `<p class="hint sp-more">… ve ${hidden} maç daha. Listeyi daraltmak için yukarıdan bir lig seçin.</p>` : '');
   }
 
   function draw() {
@@ -152,14 +187,114 @@ export function openSports(env) {
 
   // ---- veri ----
   async function readCache() {
+    let e = null;
     try {
       const c = await store.cache.get(CACHE_KEY);
-      if (c && Array.isArray(c.matches) && c.at && now() - c.at < CACHE_MAX_AGE) return c;
+      if (c && Array.isArray(c.matches) && c.at && now() - c.at < CACHE_MAX_AGE) e = c;
     } catch {
       /* kayıtlı veri yok */
     }
-    return null;
+    try {
+      const c = await store.cache.get(LS_CACHE_KEY);
+      if (c && Array.isArray(c.days)) {
+        for (const [d, v] of c.days) if (v && Array.isArray(v.matches) && v.at && now() - v.at < CACHE_MAX_AGE) lsDays.set(Number(d), v);
+      }
+    } catch {
+      /* kayıtlı veri yok */
+    }
+    return e;
   }
+
+  // Birleşik liste: ESPN + LiveScore'ta olup ESPN'de bulunmayanlar.
+  function recompute() {
+    const ls = [];
+    for (const v of lsDays.values()) ls.push(...v.matches);
+    matches = ls.length ? mergeSources(espn, ls).matches : espn;
+  }
+
+  const lastAt = () => Math.max(fetchedAt, ...[...lsDays.values()].map((v) => v.at));
+
+  async function loadEspn() {
+    try {
+      const r = await loadMatches({ net, now: now(), base });
+      espn = r.matches;
+      failed = r.failed;
+      fetchedAt = now();
+      espnErr = '';
+      espnDetail = '';
+      try {
+        await store.cache.set(CACHE_KEY, { at: fetchedAt, matches: espn });
+      } catch {
+        /* kayıt başarısız olsa da liste çalışır */
+      }
+    } catch (e) {
+      espnErr = (e && e.message) || 'Maç bilgisi alınamadı';
+      espnDetail = (e && e.detail) || '';
+    }
+  }
+
+  // Bir günün LiveScore listesi. Aynı gün için indirme sürüyorsa onu bekler.
+  function loadLs(d) {
+    if (lsPending.has(d)) return lsPending.get(d);
+    lsBusy++;
+    const p = (async () => {
+      try {
+        const r = await loadLiveScoreDay({ net, dayMs: d, now: now(), hosts: lsHosts });
+        lsDays.delete(d);
+        lsDays.set(d, { at: now(), matches: r.matches });
+        lsErr = '';
+        lsDetail = '';
+        try {
+          await store.cache.set(LS_CACHE_KEY, { at: now(), days: [...lsDays].slice(-LS_CACHE_DAYS) });
+        } catch {
+          /* kayıt başarısız olsa da liste çalışır */
+        }
+      } catch (e) {
+        lsErr = (e && e.message) || 'LiveScore verisi alınamadı';
+        lsDetail = (e && e.detail) || '';
+      } finally {
+        lsBusy--;
+        lsPending.delete(d);
+      }
+    })();
+    lsPending.set(d, p);
+    return p;
+  }
+
+  // Günün LiveScore listesi eskiyse (ya da hiç yoksa) indirir; gelince ekranı tazeler. Odak, düğme yeniden çizilse de korunur.
+  function lsStale(d) {
+    const v = lsDays.get(d);
+    if (!v) return true;
+    const t0 = dayStart(now());
+    const age = now() - v.at;
+    return age > (d < t0 ? CACHE_MAX_AGE : d === t0 ? FRESH_MS : LS_FUTURE_MS);
+  }
+
+  async function ensureLs(d) {
+    if (!lsStale(d) || lsPending.has(d)) return;
+    drawStatus();
+    if (!matchesOnDay(matches, d).length) drawList();
+    await loadLs(d);
+    if (!page.el.isConnected) return;
+    recompute();
+    matchChannels();
+    pickFirstDay();
+    keepFocus(draw);
+  }
+
+  // Yeniden çizimde odaktaki düğme/satır kaybolmasın (kumanda).
+  function keepFocus(fn) {
+    const a = document.activeElement;
+    const had = a && a !== document.body && root.contains(a);
+    const key = had ? { day: a.dataset.day, lg: a.dataset.lg, id: a.dataset.id, ref: a.id } : null;
+    fn();
+    if (!key || (document.activeElement && document.activeElement !== document.body && root.contains(document.activeElement))) return;
+    const sel = key.day ? `[data-day="${key.day}"]` : key.lg != null ? `[data-lg="${key.lg}"]` : key.id ? `[data-id="${key.id}"]` : key.ref ? `#${key.ref}` : '';
+    const el = sel && root.querySelector(sel);
+    if (el && el.focus) el.focus({ preventScroll: true });
+  }
+
+  const lsLiveDay = (d) => matchesOnDay(matches, d).some((m) => m.src === 'ls' && (m.state === 'in' || (m.state === 'pre' && m.t - now() < 10 * 60e3 && m.t - now() > -60e3)));
 
   async function refresh({ quiet = false } = {}) {
     if (loading) return;
@@ -167,27 +302,28 @@ export function openSports(env) {
     err = '';
     errDetail = '';
     if (!quiet) drawStatus();
+    const d0 = day;
+    const lsDue = !quiet || (lsLiveDay(d0) && now() - ((lsDays.get(d0) || {}).at || 0) >= LS_LIVE_MS);
     try {
-      const r = await loadMatches({ net, now: now(), base });
-      matches = r.matches;
-      failed = r.failed;
-      fetchedAt = now();
-      try {
-        await store.cache.set(CACHE_KEY, { at: fetchedAt, matches });
-      } catch {
-        /* kayıt başarısız olsa da liste çalışır */
-      }
-    } catch (e) {
-      err = (e && e.message) || 'Maç bilgisi alınamadı';
-      errDetail = (e && e.detail) || '';
-      if (fetchedAt && !quiet) toast('Skorlar güncellenemedi', 2200);
+      await Promise.all([loadEspn(), lsDue ? loadLs(d0) : null]);
     } finally {
       loading = false;
     }
+    const lsAny = [...lsDays.values()].some((v) => v.matches.length);
+    if (espnErr && !lsAny) {
+      // ESPN yok ve LiveScore'tan da maç gelmedi: eski davranış (kayıtlı veri varsa onu gösterir, yoksa hata ekranı)
+      err = espnErr;
+      errDetail = [`ESPN: ${espnDetail || espnErr}`, lsErr && `LiveScore: ${lsDetail || lsErr}`].filter(Boolean).join(' · ');
+      if (fetchedAt && !quiet) toast('Skorlar güncellenemedi', 2200);
+    } else if (lsDays.size) {
+      fetchedAt = Math.max(fetchedAt, lastAt());
+    }
     if (!page.el.isConnected) return;
+    recompute();
     matchChannels();
     pickFirstDay();
-    draw();
+    keepFocus(draw);
+    if (day !== d0) ensureLs(day);
   }
 
   // İlk açılışta bugün maç yoksa maçı olan ilk güne geçilir.
@@ -264,6 +400,7 @@ export function openSports(env) {
       draw();
       const nd = q(`#sp-days [data-day="${day}"]`);
       if (nd && nd.focus) nd.focus({ preventScroll: true });
+      ensureLs(day);
       return;
     }
     const l = e.target.closest('[data-lg]');
@@ -297,14 +434,18 @@ export function openSports(env) {
   // ---- açılış: kayıtlı veri hemen, ardından güncel veri ----
   (async () => {
     const c = await readCache();
-    if (c && !matches.length) {
-      matches = c.matches;
+    if (c && !espn.length) {
+      espn = c.matches;
       fetchedAt = c.at;
+    }
+    if (c || lsDays.size) {
+      recompute();
+      if (!fetchedAt) fetchedAt = lastAt();
       matchChannels();
       pickFirstDay();
     }
     // İndirme çizimden önce başlar: ilk çizimde "yükleniyor" görünür ("Maç yok" yanıp sönmez).
-    if (!c || now() - c.at > FRESH_MS) refresh({ quiet: !!c });
+    if (!c || now() - c.at > FRESH_MS || lsStale(day)) refresh({ quiet: !!(c || lsDays.size) });
     draw();
     timer = setInterval(tick, LIVE_REFRESH_MS);
   })();

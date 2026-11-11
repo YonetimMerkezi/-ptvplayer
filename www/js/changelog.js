@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 51,
+    title: 'Spor: ikinci kaynakla daha eksiksiz maç takvimi',
+    items: [
+      'Maç takvimi artık iki kaynaktan birleştirilir: ESPN’de olmayan Türkiye alt ligleri ve kupa, uluslararası maçlar, büyük Avrupa ligleri ve diğer ülkelerin maçları LiveScore’dan tamamlanır; iki kaynakta da olan maç tek satır görünür',
+      'Lig düğmelerinde yeni gruplar: Türkiye · diğer, Uluslararası, Avrupa ligleri ve Diğer ülkeler (Diğer ülkeler yalnız kendi düğmesinde görünür). Canlı maçlarda dakika ve skor gelir',
+      'Kaynaklardan biri alınamazsa diğeriyle devam edilir; neden listenin üstünde yazar. LiveScore’dan gelen maçların ayrıntısında olay/istatistik/kadro yoktur (yalnız skor, durum ve yayın)',
+    ],
+  },
+  {
     id: 50,
     title: 'Spor: maç ayrıntıları ve yayın bilgisi',
     items: [

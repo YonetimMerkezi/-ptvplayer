@@ -56,7 +56,8 @@ function eventText(e) {
 export function openMatchDetail(env, m) {
   const base = env.base || ESPN_BASE;
   const now = env.now || (() => Date.now());
-  const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || '';
+  const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || m.lgName || '';
+  const ls = m.src === 'ls'; // ikinci kaynak: olay/istatistik/kadro ayrıntısı yok, yalnız skor, durum ve yayın
   let data = null;
   let loading = false;
   let err = '';
@@ -180,7 +181,9 @@ export function openMatchDetail(env, m) {
     const pre = live() === 'pre';
     el.innerHTML =
       eventsHtml(data) + statsHtml(data) + lineupHtml(data) +
-      (data.empty ? `<p class="sd-note">${pre ? 'Maç başlayınca olaylar, istatistikler ve kadro burada görünür.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
+      (data.lsOnly
+        ? '<p class="sd-note">Bu maç LiveScore kaynağından geliyor; olay, istatistik ve kadro ayrıntısı bu maç için sunulmuyor.</p>'
+        : data.empty ? `<p class="sd-note">${pre ? 'Maç başlayınca olaylar, istatistikler ve kadro burada görünür.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
   }
 
   function drawStatus() {
@@ -197,7 +200,9 @@ export function openMatchDetail(env, m) {
     if (!data) drawBody();
     drawStatus();
     try {
-      data = await loadSummary({ net: env.net, match: m, base });
+      if (ls) {
+        data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], stats: [], lineups: {}, intl: [], empty: true, lsOnly: true };
+      } else data = await loadSummary({ net: env.net, match: m, base });
       fetchedAt = now();
     } catch (e) {
       err = (e && e.message) || 'Maç ayrıntısı alınamadı';
