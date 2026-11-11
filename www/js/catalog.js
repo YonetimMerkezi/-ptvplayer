@@ -190,9 +190,39 @@ export async function loadSeriesInfo(source, net, item) {
   return info;
 }
 
-export async function loadVodInfo(source, net, item) {
-  if (source.type !== 'xtream') return null;
-  return X.mapVodInfo(await net.json(X.apiUrl(sourceCfg(source), 'get_vod_info', { vod_id: item.streamId })));
+// Film ayrıntısı: odakta önizleme ile ayrıntı sayfası aynı sonucu kullanır (bir film için tek istek, sonuç bellekte kalır).
+// Hata önbelleğe alınmaz; sonraki deneme yeniden ister. En eski kayıt belirli sayıdan sonra atılır.
+const VOD_CACHE_MAX = 300;
+const vodDone = new Map();
+const vodBusy = new Map();
+const vodKey = (source, item) => `${source.id || ''}|${item.streamId}`;
+
+export function peekVodInfo(source, item) {
+  return source.type === 'xtream' ? vodDone.get(vodKey(source, item)) || null : null;
+}
+
+export function loadVodInfo(source, net, item) {
+  if (source.type !== 'xtream') return Promise.resolve(null);
+  const k = vodKey(source, item);
+  if (vodDone.has(k)) return Promise.resolve(vodDone.get(k));
+  if (vodBusy.has(k)) return vodBusy.get(k);
+  const p = (async () => {
+    try {
+      const info = X.mapVodInfo(await net.json(X.apiUrl(sourceCfg(source), 'get_vod_info', { vod_id: item.streamId })));
+      vodDone.set(k, info);
+      while (vodDone.size > VOD_CACHE_MAX) vodDone.delete(vodDone.keys().next().value);
+      return info;
+    } finally {
+      vodBusy.delete(k);
+    }
+  })();
+  vodBusy.set(k, p);
+  return p;
+}
+
+export function clearVodInfoCache() {
+  vodDone.clear();
+  vodBusy.clear();
 }
 
 // Arşivli (catch-up) kanalın geçmiş programları; yalnız Xtream. Dönen her program { s, e, t, d, archive }.

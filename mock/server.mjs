@@ -86,7 +86,7 @@ function xtream(url, base) {
       }
       return { info: { plot: `${s.name} hikâyesi`, genre: 'Dram', releaseDate: '2024-01-01' }, episodes };
     }
-    case 'get_vod_info': return { info: { plot: 'Filmin konusu burada.', genre: 'Aksiyon', releasedate: '2023-05-01', duration_secs: 40 } };
+    case 'get_vod_info': return { info: { plot: 'Filmin konusu burada.', genre: 'Aksiyon', releasedate: '2023-05-01', duration_secs: 40, cast: 'Clara Lindqvist, Julian Vance, Mateo Silva', director: 'Henrik Lindholm', backdrop_path: [`${base}/backdrop/${q.get('vod_id')}.svg`] } };
     case 'get_short_epg': {
       const now = Math.floor(Date.now() / 1000);
       return { epg_listings: [0, 1, 2].map((i) => ({ title: b64(`Kısa Program ${i}`), description: b64('Ayrıntı'), start_timestamp: String(now - 600 + i * 3600), stop_timestamp: String(now + 3000 + i * 3600) })) };
@@ -141,6 +141,11 @@ export function startMock(port = 0) {
     if (p === '/player_api.php') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(xtream(url, base)));
     if (p === '/epg.xml.gz') return res.writeHead(200, { 'Content-Type': 'application/gzip' }).end(gzipSync(xtmlCache()));
     if (p === '/xmltv.php' || p === '/epg.xml') return res.writeHead(200, { 'Content-Type': 'application/xml' }).end(xtmlCache());
+    // film arka planı: renkli geniş görsel (TV vitrini denemesi)
+    if (p.startsWith('/backdrop/')) {
+      const h = (Number(p.replace(/\D/g, '')) * 47) % 360;
+      return res.writeHead(200, { 'Content-Type': 'image/svg+xml' }).end(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h},70%,38%)"/><stop offset="1" stop-color="hsl(${(h + 70) % 360},75%,22%)"/></linearGradient></defs><rect width="160" height="90" fill="url(#g)"/><circle cx="118" cy="38" r="22" fill="hsl(${(h + 30) % 360},80%,62%)" opacity="0.55"/></svg>`);
+    }
     if (p.startsWith('/logo/')) return res.writeHead(200, { 'Content-Type': 'image/svg+xml' }).end(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#38bdf8"/></svg>`);
     if (/^\/live\/u\/p\/\d+\.m3u8$/.test(p)) return sendFile(req, res, join(MEDIA, 'hls', 'index.m3u8'), 'application/vnd.apple.mpegurl');
     if (/^\/live\/u\/p\/\d+\.ts$/.test(p)) return res.writeHead(404).end('ts yok');

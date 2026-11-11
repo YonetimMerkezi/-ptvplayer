@@ -223,3 +223,33 @@ test('arşiv ve zamanlı kayıt adresleri yalnız Xtream canlı kanalda', () => 
   assert.equal(recordTarget({ type: 'm3u' }, { kind: 'live', url: 'http://a/b.m3u8' }), null, 'yalnız HLS olan kanal kaydedilemez');
   assert.equal(recordTarget({ type: 'm3u' }, { kind: 'live', url: 'http://a/b.ts' }).url, 'http://a/b.ts');
 });
+
+test('film ayrıntısı: bir film için tek istek, sonuç bellekte; hata önbelleğe alınmaz', async () => {
+  const { loadVodInfo, peekVodInfo, clearVodInfoCache } = await import('../www/js/catalog.js');
+  clearVodInfoCache();
+  const src = { id: 's1', type: 'xtream', server: 'http://h.example', user: 'u', pass: 'p' };
+  const it = { streamId: '7' };
+  let n = 0;
+  let fail = true;
+  const net = {
+    json: async () => {
+      n++;
+      await new Promise((r) => setImmediate(r));
+      if (fail) throw new Error('ağ');
+      return { info: { plot: 'Özet', backdrop_path: ['https://i.example/b.jpg'] } };
+    },
+  };
+  await assert.rejects(loadVodInfo(src, net, it));
+  assert.equal(peekVodInfo(src, it), null);
+  fail = false;
+  const [a, b] = await Promise.all([loadVodInfo(src, net, it), loadVodInfo(src, net, it)]);
+  assert.equal(n, 2, 'hata sonrası bir, eşzamanlı iki çağrı tek istek');
+  assert.equal(a.plot, 'Özet');
+  assert.equal(a, b);
+  assert.equal(peekVodInfo(src, it).backdrop, 'https://i.example/b.jpg');
+  await loadVodInfo(src, net, it);
+  assert.equal(n, 2, 'üçüncü çağrı bellekten');
+  assert.equal(peekVodInfo({ ...src, id: 's2' }, it), null, 'başka kaynakta ayrı anahtar');
+  assert.equal(await loadVodInfo({ type: 'm3u', id: 'x' }, net, it), null);
+  clearVodInfoCache();
+});

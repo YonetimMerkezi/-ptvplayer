@@ -188,7 +188,8 @@ export class VirtualList {
     const h = this.el.clientHeight || 600;
     const top = Math.floor(n / this.cols) * this.rowH;
     const cur = this._tw ? this._goal : this.el.scrollTop;
-    const m = Math.min(this.rowH, h / 4);
+    // komşu satıra pay: görünüm bir satıra güç yetiriyorsa (alçak TV ekranı + büyük kutular) odaktaki satır halkasıyla birlikte tam görünür kalır
+    const m = Math.max(0, Math.min(this.rowH, h / 4, (h - this.rowH) / 2));
     let to = cur;
     if (top - m < cur) to = top - m;
     else if (top + this.rowH + m > cur + h) to = top + this.rowH + m - h;

@@ -110,3 +110,18 @@ test('arşiv rehberi: has_archive işaretli programlar', () => {
   assert.equal(r[1].archive, true);
   assert.equal(r[1].s, 2000000);
 });
+
+test('geniş arka plan: backdrop_path dizi ya da metin gelebilir, geçersiz adres alınmaz', () => {
+  assert.equal(X.firstUrl(['', 'ftp://x', 'https://i.example/b1.jpg', 'https://i.example/b2.jpg']), 'https://i.example/b1.jpg');
+  assert.equal(X.firstUrl('http://i.example/b.jpg'), 'http://i.example/b.jpg');
+  assert.equal(X.firstUrl([]), '');
+  assert.equal(X.firstUrl(undefined), '');
+  assert.equal(X.firstUrl([null, 5, 'javascript:alert(1)']), '');
+  const ser = X.mapSeries([{ series_id: 2, name: 'Dizi', cover: 'c.jpg', backdrop_path: ['https://i.example/s.jpg'] }], []);
+  assert.equal(ser[0].backdrop, 'https://i.example/s.jpg');
+  assert.equal(X.mapSeries([{ series_id: 3, name: 'D' }], [])[0].backdrop, '');
+  const info = X.mapVodInfo({ info: { plot: 'P', movie_image: 'm.jpg', backdrop_path: ['https://i.example/v.jpg'] } });
+  assert.equal(info.backdrop, 'https://i.example/v.jpg');
+  assert.equal(info.logo, 'm.jpg');
+  assert.equal(X.mapVodInfo({ info: { movie_image: 'm.jpg' } }).backdrop, '');
+});

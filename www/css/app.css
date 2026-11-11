@@ -221,6 +221,23 @@ html[data-nocap] .card .cap { display: none; } /* Ayarlar > Kutudaki ad: Gizli *
 .card .fav { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 14px; background: rgba(0,0,0,0.55); display: grid; place-items: center; color: var(--gold); }
 .card .fav .ic { width: 18px; height: 18px; }
 
+/* TV vitrini (hero.js): kategorinin içinde odaktaki film/dizinin geniş arka planı + bilgisi. Yalnız TV kipinde (app.js heroActive). */
+#hero-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; display: none; opacity: 0; transition: opacity 0.4s ease; }
+html.hero-on #hero-bg.has { display: block; opacity: 1; }
+html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !important; }
+#hero-bg i { position: absolute; inset: 0; background: center 22% / cover no-repeat; opacity: 0; transition: opacity 0.4s ease; }
+#hero-bg i.on { opacity: 1; }
+#hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.6) 40%, rgba(0, 0, 0, 0.1) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 28%, rgba(0, 0, 0, 0.72) 60%, rgba(0, 0, 0, 0.94) 100%); }
+#hero { flex: none; height: 38vh; max-width: 64%; padding: 4px 6px 0; overflow: hidden; font-size: clamp(14px, 2.3vh, 24px); } /* yazılar ekran yüksekliğine göre ölçülür: 960×540 ile 1920×1080 aynı oranda */
+.hero-t { margin: 0 0 0.4em; font-size: 2.1em; line-height: 1.1; font-weight: 800; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
+.hero-m { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.9em; min-height: 1.8em; margin-bottom: 0.6em; font-size: 1.05em; color: #e3ebee; }
+.hero-m span + span::before { content: "•"; margin-right: 0.9em; color: var(--muted); }
+.hero-r { padding: 0.15em 0.7em; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-weight: 800; }
+.hero-c { margin: 0 0 0.3em; color: #e3ebee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-c b { margin-right: 0.5em; color: var(--muted); font-weight: 600; }
+.hero-p { margin: 0.5em 0 0; font-size: 1.02em; line-height: 1.4; color: #e3ebee; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+@media (max-height: 640px) { .hero-d { display: none; } } /* 960×540 gibi alçak ekranda yönetmen satırı yer açar */
+
 .empty { margin: auto; max-width: 320px; padding: 24px; text-align: center; color: var(--muted); }
 .empty h3 { margin: 0 0 8px; color: var(--text); font-size: 1.0625rem; }
 .empty .btn { margin-top: 16px; }

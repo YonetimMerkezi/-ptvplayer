@@ -111,6 +111,13 @@ export function mapLive(list, cats) {
   }));
 }
 
+// backdrop_path: bazı panellerde dizi, bazılarında düz metin; ilk geçerli adres alınır.
+export function firstUrl(v) {
+  const a = Array.isArray(v) ? v : [v];
+  for (const x of a) if (typeof x === 'string' && /^https?:\/\//i.test(x.trim())) return x.trim();
+  return '';
+}
+
 export function mapVod(list, cats) {
   const cm = catMap(cats);
   return objs(list).map((s) => ({
@@ -136,6 +143,7 @@ export function mapSeries(list, cats) {
     logo: s.cover || '',
     group: cm.get(String(s.category_id)) || '',
     plot: s.plot || '',
+    backdrop: firstUrl(s.backdrop_path),
     rating: num(s.rating_5based || s.rating),
     added: num(s.last_modified),
   }));
@@ -186,6 +194,7 @@ export function mapVodInfo(json) {
     rating: i.rating_5based || i.rating || '',
     durationSec: num(i.duration_secs),
     logo: i.movie_image || (Array.isArray(i.backdrop_path) ? i.backdrop_path[0] : '') || '',
+    backdrop: firstUrl(i.backdrop_path),
   };
 }
 

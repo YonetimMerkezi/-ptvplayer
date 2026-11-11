@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 66,
+    title: 'TV vitrini: gezerken filmin arka planı ve konusu',
+    items: [
+      'TV’de film ve dizi kategorisinde kumandayla gezerken odaktaki yapımın geniş arka planı, adı, puanı, süresi, türü, oyuncuları ve konusu üstte görünür; Tamam yine ayrıntı sayfasını açar',
+      'Kutular TV’de büyüdü; vitrin Genel ayarlar > TV vitrini ile kapatılabilir. Telefonda değişiklik yok',
+      'Film bilgisi bellekte tutulur: vitrinde görülen filmin ayrıntı sayfası anında açılır'
+    ],
+  },
+  {
     id: 65,
     title: 'Film ve dizi ayrıntısında kompakt düğmeler',
     items: [

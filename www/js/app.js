@@ -5,7 +5,7 @@ import { createStore } from './store.js';
 import { createNet } from './net.js';
 import {
   loadCatalog, catalogToStorable, catalogFromStorable, emptyCatalog, search, groupList, inGroup,
-  playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
+  playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, peekVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
   loadArchiveEpg, archiveTargets, recordTarget,
 } from './catalog.js';
 import { makePlan, activePlans, addPlan, removePlan, hasPlan, recConflict, planId, planWhen, REMIND_LEAD_MIN } from './plan.js';
@@ -29,6 +29,7 @@ import { marquee } from './marquee.js';
 import { holeClip } from './hole.js';
 import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
+import { createHero, heroModel, heroCellW } from './hero.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
@@ -476,6 +477,7 @@ function renderTab() {
   if (kidActive() && (S.tab === 'sources' || S.tab === 'multi')) S.tab = 'home'; // çocuk modunda ayarlar ve çoklu ekran yok
   S.list && S.list.destroy();
   S.list = null;
+  heroOff();
   const v = $('#view');
   v.onclick = null;
   const split = S.tab === 'live' && S.split && !!S.source;
@@ -759,9 +761,104 @@ function drawCatbar(kind, mode, all) {
 }
 
 function renderBrowse(v, kind) {
-  v.innerHTML = `${catbarHtml()}<div id="list"></div><div id="empty" hidden></div>`;
+  v.innerHTML = `${catbarHtml()}<div id="hero" hidden></div><div id="list"></div><div id="empty" hidden></div>`;
   wireCatbar(kind);
+  $('#list').addEventListener('focusin', (e) => {
+    if (!heroActive(kind, S.listMode)) return;
+    const c = e.target.closest && e.target.closest('.card');
+    const it = c && S.items[Number(c.dataset.i)];
+    if (it) hero.focus(it);
+  });
   refreshList();
+}
+
+// ---- TV vitrini (hero.js): kategorinin içinde kumandayla gezilen film/dizi kutusunun geniş arka planı, adı, puanı, özeti.
+// Yalnız TV kipinde ve film/dizi kutuları görünürken açık; telefonda hiçbir şey değişmez. Ayar: Genel ayarlar > TV vitrini.
+const heroActive = (kind, mode) => isTvUi() && setting('tvHero') && mode === 'items' && (kind === 'movie' || kind === 'series');
+const hero = createHero({
+  peek: (it) => (S.source ? peekVodInfo(S.source, it) : null),
+  canLoad: (it) => !!S.source && S.source.type === 'xtream' && it.kind === 'movie',
+  load: (it) => loadVodInfo(S.source, net, it),
+  paint: paintHero,
+});
+
+function paintHero(it, info) {
+  const box = $('#hero');
+  if (!box || box.hidden) return;
+  const m = heroModel(it, info);
+  box.innerHTML =
+    `<h2 class="hero-t">${esc(m.title)}</h2>` +
+    `<div class="hero-m">${m.rating ? `<b class="hero-r">★ ${esc(m.rating)}</b>` : ''}${m.meta.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` +
+    (m.cast ? `<p class="hero-c"><b>Oyuncular</b> ${esc(m.cast)}</p>` : '') +
+    (m.director ? `<p class="hero-c hero-d"><b>Yönetmen</b> ${esc(m.director)}</p>` : '') +
+    (m.plot ? `<p class="hero-p">${esc(m.plot)}</p>` : '');
+  paintHeroBg(m.bg);
+}
+
+// Arka plan: iki katman çapraz geçer; yeni görsel yüklenene dek eskisi durur (boş/yanıp sönme olmaz). Önce geniş görsel, olmazsa afiş.
+let heroBgSeq = 0;
+let heroBgUrl = '';
+function paintHeroBg(urls) {
+  const el = $('#hero-bg');
+  if (!el) return;
+  const seq = ++heroBgSeq;
+  const next = (n) => {
+    if (seq !== heroBgSeq) return;
+    const url = urls[n];
+    if (!url) {
+      heroBgUrl = '';
+      el.classList.remove('has');
+      for (const i of el.children) i.classList.remove('on');
+      return;
+    }
+    if (url === heroBgUrl) return;
+    const im = new Image();
+    im.referrerPolicy = 'no-referrer';
+    im.onload = () => {
+      if (seq !== heroBgSeq) return;
+      const [a, b] = el.children;
+      const to = a.classList.contains('on') ? b : a;
+      const from = to === a ? b : a;
+      to.style.backgroundImage = `url(${JSON.stringify(url)})`;
+      to.classList.add('on');
+      from.classList.remove('on');
+      el.classList.add('has');
+      heroBgUrl = url;
+    };
+    im.onerror = () => next(n + 1);
+    im.src = url;
+  };
+  next(0);
+}
+
+function heroOff() {
+  document.documentElement.classList.remove('hero-on');
+  hero.stop();
+  paintHeroBg([]);
+}
+
+// Liste (yeniden) çizilince: vitrin bu kategori için açık mı? Açıksa ilk kutu gösterilir (kumandada odak zaten ilk kutuya gelir).
+function heroSync(kind, mode) {
+  const box = $('#hero');
+  if (!box) return;
+  const on = heroActive(kind, mode);
+  box.hidden = !on;
+  document.documentElement.classList.toggle('hero-on', on);
+  if (!on) {
+    box.innerHTML = '';
+    return heroOff();
+  }
+  if (!S.items.length) {
+    box.innerHTML = '';
+    hero.stop();
+    return paintHeroBg([]);
+  }
+  const cur = hero.current;
+  if (!cur) hero.reset(); // kategoriye yeni girildi: önceki hatalar yeni denemeyi engellemesin
+  if (!cur || !S.items.some((x) => x.id === cur.id)) {
+    hero.stop();
+    hero.focus(S.items[0]);
+  }
 }
 
 function mountList(kind, mode = 'items') {
@@ -790,7 +887,7 @@ function mountList(kind, mode = 'items') {
   } else {
     const gap = 10;
     S.list = new VirtualList(el, {
-      minCellW: 104,
+      minCellW: heroActive(kind, mode) ? heroCellW(window.innerWidth) : 104, // TV vitrini açıkken kutular büyük, altta 1-2 satır görünür
       gap,
       cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(store.pref('set.caption', DEFAULT_CAPTION), fontScale()), // ad alanı: Ayarlar > Kutudaki ad (varsayılan 3 satır = 66 px)
       render: (it, i) => card(it, i),
@@ -829,6 +926,7 @@ function refreshList(keepScroll = false) {
   S.cats = mode === 'cats' ? categoryRows(kind) : [];
   const rows = mode === 'cats' ? S.cats : S.items;
   S.list.setItems(rows, keepScroll);
+  heroSync(kind, mode);
   restoreCatCursor(kind);
   drawCrumb(kind);
   const empty = $('#empty');
@@ -3093,6 +3191,7 @@ function generalSheet() {
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ile bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
+      (isTvUi() ? chkRow('tvHero', 'TV vitrini', 'Film ve dizi kutularında gezerken odaktaki yapımın arka planı, özeti ve oyuncuları üstte görünür') : '') +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
@@ -3110,6 +3209,7 @@ function generalSheet() {
           store.setPref('set.' + c.dataset.k, on);
           c.classList.toggle('on', on);
           if (c.dataset.k === 'showProg' || c.dataset.k === 'epThumbs') applyViewPrefs();
+          if (c.dataset.k === 'tvHero') renderTab(); // kutu boyutu ve vitrin alanı değişti: liste yeniden kurulur
           S.list && S.list.refreshRows();
         } else if (e.target.id === 'g-clr') {
           store.clearRecents(sid());
@@ -4671,9 +4771,12 @@ if (nativePlugin) {
 const dpad = initDpad({ topLayer });
 let tvDetected = /[?&]tv=1\b/.test(location.search);
 // TV modu (ayarlardan Otomatik/Açık/Kapalı): açıkken kumanda kipi, büyük yazı ve geniş kenar boşlukları; yerelde ayrıca yatay kilit.
+let lastTvUi = null;
 function applyTvMode() {
   const on = resolveTv(store.pref('set.tvmode', DEFAULT_TV_MODE), tvDetected);
   dpad.setTv(on);
+  if (lastTvUi !== null && lastTvUi !== isTvUi() && S.source && (S.tab === 'movies' || S.tab === 'series')) renderTab(); // TV kipi açılıp kapanınca vitrin ve kutu boyutu uyar
+  lastTvUi = isTvUi();
   if (nativePlugin) nativePlugin.setTvMode({ on }).catch(() => {});
   layoutPreview();
 }

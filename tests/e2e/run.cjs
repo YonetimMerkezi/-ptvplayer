@@ -4004,6 +4004,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./v104.cjs').v104Section({ browser, base, mock, ok, sleep, SHOTS });
   await require('./kumanda.cjs').kumandaSection({ browser, base, mock, ok, sleep });
   await require('./liste.cjs').listeSection({ browser, base, mock, ok, sleep });
+  await require('./vitrin.cjs').vitrinSection({ browser, base, mock, ok, sleep });
   await require('./sports.cjs').sportsSection({ browser, base, mock, ok, sleep, SHOTS });
 
   await browser.close();
