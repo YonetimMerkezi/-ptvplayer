@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 56,
+    title: 'Spor: kısa adlı kanallar bulunuyor',
+    items: ['Yayın bilgisindeki ATV, A2, TV8 gibi kısa adlı kanallar artık listenizdeki karşılığıyla eşleşir; maç ekranında “Bu kanallar listenizde bulunamadı” yerine kanal listelenir ve dokununca açılır'],
+  },
+  {
     id: 55,
     title: 'Spor: hata düzeltmesi',
     items: ['Aynı saatte birden fazla maç olduğunda listenin yalnızca ilk maçı gösterip “LEAGUES is not defined” hatası vermesi düzeltildi'],

@@ -79,10 +79,29 @@ test('channelsByName: TV kanal adından kullanıcının kanalları', () => {
   assert.deepEqual(channelsByName(items, ['TRT Spor']).map((x) => x.id), ['3']);
   assert.deepEqual(channelsByName(items, ['tabii']).map((x) => x.id), ['4']);
   assert.deepEqual(channelsByName(items, ['TRT Spor', 'A Haber']).map((x) => x.id), ['3', '5']);
-  assert.deepEqual(channelsByName(items, ['xx']).map((x) => x.id), [], 'çok kısa ad eşleşmez');
+  assert.deepEqual(channelsByName(items, ['xx']).map((x) => x.id), [], 'eşleşen kanal yoksa boş');
+  assert.deepEqual(channelsByName(items, ['x']).map((x) => x.id), [], 'tek harfli ad eşleşmez');
   assert.deepEqual(channelsByName(items, []), []);
   assert.deepEqual(channelsByName(null, ['a haber']), []);
   assert.equal(channelsByName(Array.from({ length: 40 }, (_, i) => ({ id: String(i), name: 'beIN SPORTS 1 ' + i })), ['bein sports 1'], 5).length, 5);
+});
+
+test('channelsByName: kısa adlar (ATV, A2, TV8) tam sözcük olarak eşleşir; kısa adlar yanlış eşleşmez', () => {
+  const items = [
+    { id: '1', name: 'TR: ATV HD' },
+    { id: '2', name: 'ATV AVRUPA' },
+    { id: '3', name: 'CATV Movies' },
+    { id: '4', name: 'A2 FHD' },
+    { id: '5', name: 'A' },
+    { id: '6', name: 'TV8' },
+    { id: '7', name: 'ATV' },
+    { id: '8', name: 'A Spor' },
+  ];
+  assert.deepEqual(channelsByName(items, ['ATV']).map((x) => x.id), ['1', '2', '7'], 'sıra listedeki gibi, “CATV” gelmez');
+  assert.deepEqual(channelsByName(items, ['A2']).map((x) => x.id), ['4']);
+  assert.deepEqual(channelsByName(items, ['TV8']).map((x) => x.id), ['6']);
+  assert.deepEqual(channelsByName(items, ['A Spor']).map((x) => x.id), ['8'], '“A” kanalı “A Spor”a karışmaz');
+  assert.deepEqual(channelsByName(items, ['ATV'], 2).map((x) => x.id), ['1', '7'], 'sınır uygulanırken birebir olanlar (“TR: ATV HD” de) “ATV AVRUPA”dan önce korunur');
 });
 
 test('loadTvDay: yedek adrese düşer; biçim/ağ hataları ayrıntıyla bildirilir; boş gün hata değildir', async () => {

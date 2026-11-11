@@ -95,20 +95,24 @@ export function tvChannelsFor(match, events, { tolerance = 3 * 3600e3 } = {}) {
   return out;
 }
 
-const NOISE = new Set(['tr', 'turkey', 'turkiye', 'hd', 'fhd', 'uhd', 'sd', '4k', 'hevc', 'h265', 'kanal', 'channel', 'canli', 'live', 'tv']);
+const NOISE = new Set(['tr', 'turkey', 'turkiye', 'hd', 'fhd', 'uhd', 'sd', '4k', 'hevc', 'h265', 'kanal', 'channel', 'canli', 'live', 'tv', 'raw', 'hq', 'lq', '50fps', '60fps', '1080p', '720p', 'backup', 'yedek']);
 const core = (name) => norm(name).split(' ').filter((w) => w && !NOISE.has(w)).join(' ');
 
-// TV listesindeki kanal adlarına karşılık gelen kullanıcı kanalları: sadeleşmiş ad birbirinin içinde geçiyorsa (en az 4 harf).
+// TV listesindeki kanal adlarına karşılık gelen kullanıcı kanalları. Sadeleşmiş TV adı (en az 2 harf: "ATV", "A2", "TV8") kanal adında
+// tam sözcük olarak geçerse eşleşir; kanal adı TV adının içinde geçiyorsa yalnız her ikisi de en az 4 harfliyse (kısa adlar yanlış eşleşmesin).
+// Sınır aşılırsa adı birebir tutan kanallar korunur (çok sayıda "BEIN SPORTS 1 …" varyantı arasında kesilmesinler); sıra listedeki gibidir.
 export function channelsByName(items, names, max = 14) {
-  const cores = (names || []).map(core).filter((c) => c.length >= 4);
+  const cores = (names || []).map(core).filter((c) => c.length >= 2);
   if (!cores.length) return [];
-  const out = [];
+  const hits = [];
   for (const it of items || []) {
-    const c = ` ${core(it.name)} `;
-    if (c.trim().length >= 4 && cores.some((n) => c.includes(` ${n} `) || ` ${n} `.includes(c))) {
-      out.push(it);
-      if (out.length >= max) break;
-    }
+    const raw = core(it.name);
+    if (!raw) continue;
+    const c = ` ${raw} `;
+    if (cores.includes(raw)) hits.push({ it, exact: true });
+    else if (cores.some((n) => c.includes(` ${n} `) || (n.length >= 4 && raw.length >= 4 && ` ${n} `.includes(c)))) hits.push({ it, exact: false });
   }
-  return out;
+  if (hits.length <= max) return hits.map((h) => h.it);
+  const keep = new Set([...hits.filter((h) => h.exact), ...hits.filter((h) => !h.exact)].slice(0, max));
+  return hits.filter((h) => keep.has(h)).map((h) => h.it);
 }
