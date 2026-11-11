@@ -876,12 +876,16 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sp-m.on { background: rgba(255, 255, 255, 0.09); }
 .sp-detail { overflow-wrap: anywhere; max-width: 92%; margin: 6px auto 12px; }
 .sp-main { flex: 1; min-width: 0; }
-.sp-l1 { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-weight: 700; font-size: 1.0625rem; }
+.sp-l1 { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 700; font-size: 1.0625rem; }
 .sp-when { flex: none; min-width: 44px; font-variant-numeric: tabular-nums; }
 .sp-when time { color: var(--text); }
 .sp-live { color: var(--danger); }
 .sp-ft { font-size: 0.8125rem; color: var(--muted); font-weight: 600; }
-.sp-tt { min-width: 0; overflow-wrap: anywhere; }
+.sp-tt { min-width: 0; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.sp-tm { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.sp-tt .sp-flag { width: 20px; height: 20px; }
+.sp-vs { color: var(--muted); font-weight: 400; }
+.sp-vs .sp-sc { color: var(--text); font-weight: 700; }
 .sp-sc { font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
 .sp-sc small { font-weight: 400; color: var(--muted); }
 .sp-l2 { margin-top: 3px; padding-left: 54px; color: var(--muted); font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -890,8 +894,12 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sp-cb span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .sp-cb small { color: var(--muted); font-weight: 600; }
 .sp-cb.none { background: rgba(255, 255, 255, 0.07); color: var(--muted); }
-.sp-flag { width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
-.sp-flag img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sp-flag { position: relative; width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+/* görsel yokken ya da yüklenene kadar takımın baş harfi (görsel yüklenince .ok ile gizlenir) */
+.sp-flag::before { content: attr(data-i); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255, 255, 255, 0.1); color: var(--muted); font-size: 0.6875rem; font-weight: 700; }
+.sp-flag.ok::before { visibility: hidden; }
+.sp-flag img { position: relative; max-width: 100%; max-height: 100%; object-fit: contain; }
+.sp-flag.fl img { border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14); }
 .sp-hint { margin: 0 0 10px; color: var(--muted); font-size: 0.875rem; }
 
 /* maç ayrıntısı */
@@ -903,6 +911,7 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sd-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
 .sd-team { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .sd-team .sp-flag { width: 44px; height: 44px; }
+.sd-team .sp-flag::before { font-size: 1.125rem; }
 .sd-mid { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 84px; }
 .sd-score { font-size: 1.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sd-score.sd-vs { font-size: 1.25rem; color: var(--muted); }

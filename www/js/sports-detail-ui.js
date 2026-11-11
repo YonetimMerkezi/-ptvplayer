@@ -5,6 +5,7 @@ import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel } from './sports.js';
 import { loadSummary, KIND_LABEL, broadcastGroups } from './sports-detail.js';
+import { sideLogo, logoHtml } from './sports-logos.js';
 
 const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
@@ -32,8 +33,6 @@ export function channelsFor(env, m) {
   return out;
 }
 
-const flag = (side) => `<span class="sp-flag">${side.logo ? `<img src="${esc(side.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
-
 function eventIcon(kind) {
   if (kind === 'yellow') return '<i class="sd-card y" aria-hidden="true"></i>';
   if (kind === 'red') return '<i class="sd-card r" aria-hidden="true"></i>';
@@ -52,10 +51,11 @@ function eventText(e) {
   return `<small>${esc(e.text || lab)}</small>`;
 }
 
-// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), ensureTv(m), base?, now? }
+// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), ensureTv(m), badgeOf?(takım adı), base?, now? }
 export function openMatchDetail(env, m) {
   const base = env.base || ESPN_BASE;
   const now = env.now || (() => Date.now());
+  const teamLogo = (side, other) => logoHtml(sideLogo(side, other, env.badgeOf), side.label, esc);
   const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || m.lgName || '';
   const lite = m.src === 'ls' || m.src === 'se'; // ESPN dışı maç: olay/istatistik/kadro ayrıntısı yok, yalnız skor, durum ve yayın
   let data = null;
@@ -98,9 +98,9 @@ export function openMatchDetail(env, m) {
     const where = [(data && data.venue) || m.venue, data && data.city].filter(Boolean).join(', ');
     const meta = [where, data && data.referee ? `Hakem: ${data.referee}` : '', data && data.attendance ? `Seyirci: ${data.attendance.toLocaleString('tr-TR')}` : ''].filter(Boolean);
     q('#sd-top').innerHTML = `<div class="sd-lg">${esc(lgName)}${m.round ? ` <small>· ${esc(m.round)}</small>` : ''}</div>
-      <div class="sd-teams"><div class="sd-team">${flag(m.home)}<span>${esc(m.home.label)}</span></div>
+      <div class="sd-teams"><div class="sd-team">${teamLogo(m.home, m.away)}<span>${esc(m.home.label)}</span></div>
         <div class="sd-mid">${mid}<span class="${stClass}">${stText}</span>${pen}</div>
-        <div class="sd-team">${flag(m.away)}<span>${esc(m.away.label)}</span></div></div>
+        <div class="sd-team">${teamLogo(m.away, m.home)}<span>${esc(m.away.label)}</span></div></div>
       ${meta.length ? `<div class="sd-meta">${meta.map(esc).join(' · ')}</div>` : ''}`;
   }
 

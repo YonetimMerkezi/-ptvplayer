@@ -8,11 +8,17 @@ import {
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
-import { SE_BASE, loadSeDay, seInfoFor, seDiagText, mergeSe } from './sports-se.js';
+import { SCHED_BASES, loadSchedDay, seInfoFor, mergeSe } from './sports-se.js';
+import { BADGE_HOST, badgeSearchUrl, pickBadge, sideLogo, logoHtml, nationFlags } from './sports-logos.js';
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v1'; // LiveScore gün listeleri
 const LS_CACHE_DAYS = 5;
+const BADGE_CACHE_KEY = 'sports-badges:v1'; // kulüp rozeti arama sonuçları (ad → adres ya da boş)
+const BADGE_HIT_MS = 30 * 864e5; // bulunan rozet bu süre geçerli
+const BADGE_MISS_MS = 3 * 864e5; // bulunamayan ad bu süre yeniden aranmaz
+const BADGE_GAP_MS = 2200; // aramalar arası bekleme (ücretsiz anahtar dakikada ~30 istek)
+const BADGE_BACKOFF_MS = 2 * 60e3; // hata/sınır aşımında bu süre aranmaz
 const TV_CACHE_KEY = 'sports-tv:v3'; // yayın akışı (gün bazlı): hem takvim hem kanal bilgisi; yedek kaynak yalnız kanal
 const TV_FRESH_MS = 3 * 3600e3; // yayın programı sık değişmez
 const CACHE_MAX_AGE = 6 * 3600e3; // kayıtlı veri bundan eskiyse hiç gösterilmez
@@ -24,13 +30,14 @@ const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
 const MAX_ROWS = 500;
 
-// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, lsHosts?, tvHosts?, seBase?, now? }
+// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, lsHosts?, tvHosts?, schedBases?, now? }
 export function openSports(env) {
   const { net, store, toast, liveItems, epgBetween, play } = env;
   const base = env.base || ESPN_BASE;
   const lsHosts = env.lsHosts || LS_HOSTS;
   const tvHosts = env.tvHosts || TV_HOSTS;
-  const seBase = env.seBase || SE_BASE;
+  const badgeHost = env.badgeHost || BADGE_HOST;
+  const schedBases = env.schedBases || SCHED_BASES;
   const now = env.now || (() => Date.now());
 
   let matches = []; // birleşik liste (ESPN + diğer kaynaklarda olup ESPN'de olmayanlar)
@@ -50,6 +57,11 @@ export function openSports(env) {
   let tvFor = new Map(); // maç kimliği → yayın listesindeki kanal adları
   let tvLogo = new Map(); // maç kimliği → { kanal adı (sadeleşmiş): logo adresi }
   const logoByName = new Map(); // kanal adı → listenizdeki karşılığının logosu
+  const badges = new Map(); // takım adı (sadeleşmiş) → { u: rozet adresi | '', at }
+  const badgeQ = []; // aranacak takım adları
+  let badgeBusy = false;
+  let badgePause = 0;
+  let badgeSaveT = 0;
   let showDiag = false; // durum satırına dokununca teknik ayrıntı açılır
   let fetchedAt = 0;
   let failed = [];
@@ -145,10 +157,75 @@ export function openSports(env) {
     return `<div class="sp-cb" title="${esc(names.length ? names.join(', ') : label)}">${body}${more}</div>`;
   }
 
+  // ---- takım simgeleri: bayrak (milli takım) / ESPN logosu / rozet araması ----
+  const bkey = (name) => fold(name);
+  // Rozet adresi; boyut eki: satırda '/tiny' (50px), ayrıntı başlığında '/small' (200px)
+  const badgeOf = (name, size = 'tiny') => {
+    const e = badges.get(bkey(name));
+    return e && e.u ? `${e.u}/${size}` : '';
+  };
+  const asked = new Set(); // bu oturumda aranan (ya da kuyruktaki) adlar
+  function saveBadgesSoon() {
+    clearTimeout(badgeSaveT);
+    badgeSaveT = setTimeout(() => {
+      const map = {};
+      for (const [k, v] of [...badges].slice(-600)) map[k] = [v.u, v.at];
+      Promise.resolve(store.cache.set(BADGE_CACHE_KEY, { at: now(), map })).catch(() => {});
+    }, 1500);
+  }
+  let redrawT = 0;
+  function redrawSoon() {
+    clearTimeout(redrawT);
+    redrawT = setTimeout(() => {
+      if (page.el.isConnected) drawList();
+    }, 400);
+  }
+  async function runBadges() {
+    if (badgeBusy) return;
+    badgeBusy = true;
+    try {
+      while (badgeQ.length && page.el.isConnected && now() >= badgePause) {
+        const name = badgeQ.shift();
+        try {
+          const json = await net.json(badgeSearchUrl(name, badgeHost), { fast: true });
+          badges.set(bkey(name), { u: pickBadge(json, name), at: now() });
+          saveBadgesSoon();
+          redrawSoon();
+        } catch {
+          // sınır aşımı/ağ hatası: bir süre aranmaz, sonuç kaydedilmez (sonra yeniden denenir)
+          badgePause = now() + BADGE_BACKOFF_MS;
+          asked.delete(bkey(name));
+          for (const n of badgeQ.splice(0)) asked.delete(bkey(n));
+          break;
+        }
+        await new Promise((r) => setTimeout(r, env.badgeGapMs ?? globalThis.__sportsBadgeGapMs ?? BADGE_GAP_MS)); // __sportsBadgeGapMs: yalnız testler için
+      }
+    } finally {
+      badgeBusy = false;
+    }
+  }
+  // Görünen maçlarda logosu olmayan kulüpler için rozet araması (milli takım maçlarında bayrak olduğu için aranmaz)
+  function queueBadges(rows) {
+    // oynanmamış/canlı maçlar önce (biten maçın rozeti sonra aranır)
+    for (const m of [...rows.filter((x) => x.state !== 'post'), ...rows.filter((x) => x.state === 'post')]) {
+      if (nationFlags(m.home.name, m.away.name)) continue;
+      for (const side of [m.home, m.away]) {
+        const k = bkey(side.name);
+        if (side.logo || asked.has(k) || !k) continue;
+        const e = badges.get(k);
+        if (e && now() - e.at < (e.u ? BADGE_HIT_MS : BADGE_MISS_MS)) continue;
+        asked.add(k);
+        badgeQ.push(side.name);
+      }
+    }
+    if (badgeQ.length) runBadges();
+  }
+  const teamHtml = (side, other) => `<span class="sp-tm">${logoHtml(sideLogo(side, other, badgeOf), side.label, esc)}<span>${esc(side.label)}</span></span>`;
+
   function rowHtml(m) {
     const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : `<time>${fmtClock(m.t)}</time>`;
     const sc = score(m);
-    const title = sc ? `${esc(m.home.label)} ${sc} ${esc(m.away.label)}` : `${esc(m.home.label)} - ${esc(m.away.label)}`;
+    const title = `${teamHtml(m.home, m.away)}<span class="sp-vs">${sc ? ` ${sc} ` : ' - '}</span>${teamHtml(m.away, m.home)}`;
     const lgl = lgLine(m);
     return `<div class="sp-m${m.state === 'in' ? ' on' : ''}" role="button" tabindex="0" data-id="${esc(m.id)}">
       <div class="sp-main"><div class="sp-l1"><span class="sp-when">${when}</span><span class="sp-tt">${title}</span></div>${lgl ? `<div class="sp-l2">${esc(lgl)}</div>` : ''}</div>${chBox(m)}</div>`;
@@ -195,7 +272,7 @@ export function openSports(env) {
     if (lsErr && !lsBusy && !lsDays.has(day)) bits.push(`LiveScore: ${lsDetail || lsErr}`);
     if (tvErr && !tvDays.has(day)) bits.push(tvDetail || tvErr);
     const tvd = tvDays.get(day);
-    if (tvd && tvd.seNote) bits.push(`Spor Ekranı: ${tvd.seNote}`);
+    if (tvd && tvd.seNote) bits.push(`Yayın akışı: ${tvd.seNote}`);
     return bits.length ? `<p class="hint sp-detail sp-src"${showDiag ? '' : ' hidden'}>${bits.map(esc).join(' · ')}</p>` : '';
   }
 
@@ -218,6 +295,7 @@ export function openSports(env) {
       sourceNote() +
       rows.map(rowHtml).join('') +
       (hidden ? `<p class="hint sp-more">… ve ${hidden} maç daha. Listeyi daraltmak için yukarıdan bir lig seçin.</p>` : '');
+    queueBadges(rows);
   }
 
   function draw() {
@@ -242,6 +320,14 @@ export function openSports(env) {
       }
     } catch {
       /* kayıtlı veri yok */
+    }
+    try {
+      const c = await store.cache.get(BADGE_CACHE_KEY);
+      if (c && c.map && typeof c.map === 'object') {
+        for (const [k, v] of Object.entries(c.map)) if (Array.isArray(v) && typeof v[1] === 'number') badges.set(k, { u: typeof v[0] === 'string' ? v[0] : '', at: v[1] });
+      }
+    } catch {
+      /* kayıtlı rozet yok */
     }
     try {
       const c = await store.cache.get(TV_CACHE_KEY);
@@ -293,18 +379,18 @@ export function openSports(env) {
     }
   }
 
-  // Önce Spor Ekranı (maç takvimi + Türkiye'ye özel kanal bilgisi); alınamazsa ya da futbol kaydı yoksa yedek olarak TheSportsDB (yalnız kanal).
+  // Önce yayın akışı siteleri (maç takvimi + Türkiye'ye özel kanal bilgisi; biri alınamazsa sıradaki denenir); hiçbiri olmazsa ya da futbol kaydı yoksa yedek olarak TheSportsDB (yalnız kanal).
   function loadTv(d) {
     if (tvPending.has(d)) return tvPending.get(d);
     const p = (async () => {
       let seNote = '';
       try {
-        const r = await loadSeDay({ net, dayMs: d, base: seBase });
+        const r = await loadSchedDay({ net, dayMs: d, bases: schedBases, nowMs: now() });
+        seNote = r.note;
         if (r.rows.length) {
-          await saveTv(d, { at: now(), src: 'se', rows: r.rows, seNote: seDiagText(r.diag, r.rows.length) });
+          await saveTv(d, { at: now(), src: 'se', via: r.via, rows: r.rows, seNote });
           return;
         }
-        seNote = seDiagText(r.diag, 0);
       } catch (e) {
         seNote = (e && e.detail) || (e && e.message) || 'hata';
       }
@@ -316,7 +402,7 @@ export function openSports(env) {
         await saveTv(d, { at: now(), src: 'tsdb', events: r.events, seNote });
       } catch (e) {
         tvErr = (e && e.message) || 'Yayın listesi alınamadı';
-        tvDetail = `Spor Ekranı: ${seNote} · TheSportsDB: ${(e && e.detail) || tvErr}`;
+        tvDetail = `${seNote} · TheSportsDB: ${(e && e.detail) || tvErr}`;
         tvFailAt.set(d, now());
       }
     })().finally(() => tvPending.delete(d));
@@ -507,6 +593,7 @@ export function openSports(env) {
       mod.openMatchDetail(
         {
           net, toast, liveItems, epgBetween, play, base, now,
+          badgeOf: (name) => badgeOf(name, 'small'),
           tvOf: (x) => tvFor.get(x.id) || [],
           ensureTv: (x) => ensureTv(dayStart(x.t)),
         },

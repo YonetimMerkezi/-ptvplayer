@@ -1,6 +1,7 @@
-// Spor Ekranı (sporekrani.com) günlük yayın akışı sayfası: maç takvimi (saat, takımlar, yarışma) ve maçın Türkiye'de hangi kanalda olduğu.
-// Resmî bir API değil, herkese açık HTML sayfasıdır; sayfa yapısı değişebilir. Bu yüzden ayrıştırıcı esnektir (satırın yapılandırılmış
-// parçaları ya da düz metni ile çalışır) ve ne okuduğunu gösteren bir teşhis (diag) döndürür. Hiçbir okuma hata atmaz.
+// Yayın akışı siteleri: maç takvimi (saat, takımlar, yarışma) ve maçın Türkiye'deki kanalları.
+// Birincil: Spor Ekranı (sporekrani.com). Yedekler sırayla: Maç Rehberi (macrehberi.com, aynı yayıncının günlük sayfası), Sahadan (yalnız bugün),
+// LiveSoccerTV. Resmî API değil, herkese açık HTML sayfalarıdır; sayfa yapısı değişebilir. Bu yüzden ayrıştırıcılar esnektir (satırın yapılandırılmış
+// parçaları ya da düz metni ile çalışır) ve ne okuduklarını gösteren bir teşhis (diag) döndürür. Hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
 import { fold } from './util.js';
 import { norm, hasAny, teamPhrases, teamLabel, withTimeout } from './sports.js';
@@ -39,23 +40,33 @@ export function tokensOf(inner) {
 
 const eqTok = (a, b) => fold(a) === fold(b);
 
-// <img> etiketlerinden kanal adı → logo adresi (alt metni kanal adıdır; tembel yüklemede data-src olabilir)
-export function logosOf(inner, base = SE_BASE) {
-  const out = {};
+// Bağlantının iç HTML'indeki <img> etiketleri → [{ alt, url }]. Adres: boyutlandırılmış srcset varsa onun ilki, yoksa tembel yükleme (data-src) ya da src.
+export function imgsOf(inner, base = SE_BASE) {
+  const out = [];
   for (const m of String(inner).matchAll(/<img\b[^>]*>/gi)) {
     const tag = m[0];
-    const alt = (/\balt\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag) || []);
-    const name = decodeEntities(alt[1] ?? alt[2] ?? '').trim();
-    const srcM = /\bdata-(?:src|lazy-src|original)\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag) || /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag) || [];
-    const raw = decodeEntities(srcM[1] ?? srcM[2] ?? '').trim();
-    if (!name || !raw || raw.startsWith('data:')) continue;
+    const attr = (re) => {
+      const x = re.exec(tag) || [];
+      return decodeEntities(x[1] ?? x[2] ?? '').trim();
+    };
+    const alt = attr(/\balt\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const srcset = attr(/\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/i).split(',')[0].trim().split(/\s+/)[0];
+    const raw = srcset || attr(/\bdata-(?:src|lazy-src|original)\s*=\s*(?:"([^"]*)"|'([^']*)')/i) || attr(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    if (!raw || raw.startsWith('data:')) continue;
     try {
       const u = new URL(raw, base);
-      if (u.protocol === 'https:' || u.protocol === 'http:') out[fold(name)] = u.href;
+      if (u.protocol === 'https:' || u.protocol === 'http:') out.push({ alt, url: u.href });
     } catch {
       /* geçersiz adres atlanır */
     }
   }
+  return out;
+}
+
+// <img> etiketlerinden ad → logo adresi (alt metni kanal adıdır)
+export function logosOf(inner, base = SE_BASE) {
+  const out = {};
+  for (const { alt, url } of imgsOf(inner, base)) if (alt) out[fold(alt)] = url;
   return out;
 }
 
@@ -157,58 +168,90 @@ function dedupe(list) {
   return out.slice(0, 6);
 }
 
-const ANCHOR = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*\/home\/match\/(\d+)\/(\d{4})\/(\d{1,2})\/(\d{1,2})\/[^"]*)"|'([^']*\/home\/match\/(\d+)\/(\d{4})\/(\d{1,2})\/(\d{1,2})\/[^']*)')[^>]*>([\s\S]*?)<\/a>/gi;
+const hrefRe = (path) => new RegExp(`<a\\b[^>]*?\\bhref\\s*=\\s*(?:"([^"]*${path}[^"]*)"|'([^']*${path}[^']*)')[^>]*>([\\s\\S]*?)<\\/a>`, 'gi');
+// Spor Ekranı: /home/match/{id}/{Y}/{M}/{D}/slug; Maç Rehberi: /mac/{id}/{Y}/{M}/{D}/slug
+const SE_ANCHOR = '/(?:home/match|mac)/(\\d+)/(\\d{4})/(\\d{1,2})/(\\d{1,2})/';
 
-// Saat (Türkiye saati, UTC+3 sabit) + tarih (bağlantıdan) → ms
+// Saat (Türkiye saati, UTC+3 sabit) + tarih → ms
 export const seTime = (y, mo, d, hh, mm) => Date.parse(`${y}-${pad(mo)}-${pad(d)}T${pad(hh)}:${pad(mm)}:00+03:00`);
 
-// Günlük sayfa HTML'i → { rows: [{ id, t, title, teams, comp, channels, logos }], diag }. rows: takımları okunan futbol satırları
-// (kanalı olmayanlar da; channels boş). diag: { bytes, anchors, football, withChannel, sample } — sayfa yapısı değiştiyse neden anlaşılsın.
+const isTime = (t) => /^\d{1,2}[:.]\d{2}$/.test(t);
+
+// Satır futbol mu: spor simgesi (alt metni "Futbol"; Sahadan'da simge adresi .../sports/1.png) ya da simge yoksa ilk sözcük
+function isFootball(imgs, tokens) {
+  const sp = imgs.find((i) => /\/sports\//.test(i.url));
+  if (sp) return /\/icons\/sports\/1\.png/.test(sp.url) || fold(sp.alt) === 'futbol';
+  return fold((tokens[0] || '').split(' ')[0]) === 'futbol';
+}
+
+// Bir bağlantının iç HTML'i → { teams, comp, channels, logos, title, hh, mm } | null (futbol değil / okunamadı).
+// Kanallar varsa görsellerinden (alt metni kanal adı) okunur; görseller yoksa metindeki "X X" tekrarlarından çıkarılır.
+function rowOf(inner, base, diag) {
+  const tokens = tokensOf(inner).filter((t) => !/^[a-z]+(?:_[a-z]+)+$/.test(t)); // simge yazı tipi adları (chevron_right…) metin değildir
+  if (!tokens.length) return null;
+  const flat = tokens.join(' ');
+  const imgs = imgsOf(inner, base);
+  if (!diag.sample) diag.sample = tokens.join(' | ').slice(0, 140);
+  if (!isFootball(imgs, tokens)) return null; // başka spor ya da program
+  diag.football++;
+  const chImgs = imgs.filter((i) => /\/(?:channels|providers)\//.test(i.url));
+  const skip = new Set(imgs.map((i) => fold(i.alt)));
+  const toks = chImgs.length ? tokens.filter((t) => !skip.has(fold(t))) : tokens;
+  const ti = toks.findIndex(isTime);
+  let hh;
+  let mm;
+  let after;
+  if (ti >= 0) {
+    [hh, mm] = toks[ti].split(/[:.]/).map(Number);
+    after = toks.slice(ti + 1);
+  } else {
+    const fm = /(?:^|\s)(\d{1,2})[:.](\d{2})(?:\s|$)/.exec(flat);
+    if (!fm) return null;
+    hh = Number(fm[1]);
+    mm = Number(fm[2]);
+    after = [flat.slice(flat.indexOf(fm[0]) + fm[0].length).trim()];
+  }
+  if (!(hh <= 23 && mm <= 59)) return null;
+  let channels;
+  let rest;
+  if (chImgs.length) {
+    channels = dedupe(chImgs.map((i) => i.alt)).filter((c) => !noChannel(c));
+    rest = after.filter((c) => !noChannel(c));
+  } else {
+    const ex = extractChannels(after);
+    channels = ex.channels.filter((c) => !noChannel(c));
+    rest = ex.rest.filter((c) => !noChannel(c));
+  }
+  diag.fsample = diag.fsample || tokens.join(' | ').slice(0, 160);
+  const { teams, comp } = splitTitle(rest);
+  if (!teams) return null;
+  if (channels.length) diag.withChannel++;
+  return { teams, comp: comp.slice(0, 80), channels, logos: logosOf(inner, base), title: rest.join(' ').slice(0, 160), hh, mm };
+}
+
+const newDiag = (src) => ({ bytes: src.length, anchors: 0, football: 0, withChannel: 0, sample: '', fsample: '' });
+
+// Günlük sayfa HTML'i (Spor Ekranı / Maç Rehberi) → { rows: [{ id, t, title, teams, comp, channels, logos }], diag }. rows: takımları okunan futbol
+// satırları (kanalı olmayanlar da; channels boş). diag: { bytes, anchors, football, withChannel, sample, fsample } — sayfa yapısı değiştiyse neden anlaşılsın.
 export function parseSporEkrani(html, base = SE_BASE) {
   const src = typeof html === 'string' ? html : '';
   const rows = [];
   const seen = new Set();
-  const diag = { bytes: src.length, anchors: 0, football: 0, withChannel: 0, sample: '', fsample: '' };
-  ANCHOR.lastIndex = 0;
-  for (let m = ANCHOR.exec(src); m; m = ANCHOR.exec(src)) {
+  const diag = newDiag(src);
+  const re = hrefRe(SE_ANCHOR);
+  for (let m = re.exec(src); m; m = re.exec(src)) {
     try {
       diag.anchors++;
       const id = m[2] || m[7];
       const y = m[3] || m[8];
       const mo = m[4] || m[9];
       const d = m[5] || m[10];
-      const tokens = tokensOf(m[11]);
-      if (!tokens.length) continue;
-      const flat = tokens.join(' ');
-      if (!diag.sample) diag.sample = tokens.join(' | ').slice(0, 140);
-      if (fold(tokens[0].split(' ')[0]) !== 'futbol') continue; // başka spor
-      diag.football++;
-      const ti = tokens.findIndex((t) => /^\d{1,2}[:.]\d{2}$/.test(t));
-      let hh;
-      let mm;
-      let after;
-      if (ti >= 0) {
-        [hh, mm] = tokens[ti].split(/[:.]/).map(Number);
-        after = tokens.slice(ti + 1);
-      } else {
-        const fm = /(?:^|\s)(\d{1,2})[:.](\d{2})(?:\s|$)/.exec(flat);
-        if (!fm) continue;
-        hh = Number(fm[1]);
-        mm = Number(fm[2]);
-        after = [flat.slice(flat.indexOf(fm[0]) + fm[0].length).trim()];
-      }
-      const t = seTime(y, mo, d, hh, mm);
-      if (!Number.isFinite(t) || hh > 23 || mm > 59) continue;
-      const ex = extractChannels(after);
-      const channels = ex.channels.filter((c) => !noChannel(c));
-      const rest = ex.rest.filter((c) => !noChannel(c));
-      diag.fsample = diag.fsample || tokens.join(' | ').slice(0, 160);
-      const { teams, comp } = splitTitle(rest);
-      if (!teams) continue;
-      if (channels.length) diag.withChannel++;
-      if (seen.has(id)) continue;
+      const r = rowOf(m[11], base, diag);
+      if (!r) continue;
+      const t = seTime(y, mo, d, r.hh, r.mm);
+      if (!Number.isFinite(t) || seen.has(id)) continue;
       seen.add(id);
-      rows.push({ id, t, title: rest.join(' ').slice(0, 160), teams, comp: comp.slice(0, 80), channels, logos: logosOf(m[11], base) });
+      rows.push({ id, t, title: r.title, teams: r.teams, comp: r.comp, channels: r.channels, logos: r.logos });
     } catch {
       /* bozuk satır atlanır */
     }
@@ -216,24 +259,119 @@ export function parseSporEkrani(html, base = SE_BASE) {
   return { rows, diag };
 }
 
-// Bir günün sayfasını indirir. Döner: { rows, diag, url }; sayfa alınamazsa ya da maç bağlantısı yoksa hata atar (hata.detail: neden).
-export async function loadSeDay({ net, dayMs, base = SE_BASE, timeoutMs = 20000 } = {}) {
-  const url = seUrl(dayMs, base);
-  let html;
-  try {
-    html = await withTimeout(net.text(url, { fast: true }), timeoutMs);
-  } catch (e) {
-    const err = new Error('Spor Ekranı sayfası alınamadı.');
-    err.detail = String((e && e.message) || e || 'hata').slice(0, 100);
-    throw err;
+const TR_MONTHS = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'];
+
+// Sahadan TV programı: yalnız bugünü gösterir (sayfadaki "11 Kasım 2026" başlığı istenen günle uyuşmalı). Satır bağlantısı /mac/{ad}-vs-{ad}/{kod}; yarışma adı yok.
+export function parseSahadan(html, base = 'https://www.sahadan.com', dayMs = Date.now()) {
+  const src = typeof html === 'string' ? html : '';
+  const rows = [];
+  const diag = newDiag(src);
+  const day = new Date(dayMs);
+  const hm = /(\d{1,2})\s+(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})/i.exec(decodeEntities(src.replace(/<[^>]*>/g, ' ')));
+  if (hm) {
+    const mi = TR_MONTHS.indexOf(fold(hm[2]));
+    if (Number(hm[1]) !== day.getDate() || mi !== day.getMonth() || Number(hm[3]) !== day.getFullYear()) {
+      diag.sample = `sayfa günü: ${hm[0]}`;
+      return { rows, diag };
+    }
   }
-  const r = parseSporEkrani(html, base);
-  if (!r.diag.anchors) {
-    const err = new Error('Spor Ekranı sayfa biçimi tanınmadı.');
-    err.detail = `${r.diag.bytes} bayt, maç bağlantısı yok`;
-    throw err;
+  const re = hrefRe('/mac/[a-z0-9-]+/[a-z0-9]{10,}');
+  const seen = new Set();
+  for (let m = re.exec(src); m; m = re.exec(src)) {
+    try {
+      diag.anchors++;
+      const href = m[1] || m[2];
+      const id = href.split('/').pop();
+      const r = rowOf(m[3], base, diag);
+      if (!r || seen.has(id)) continue;
+      const t = seTime(day.getFullYear(), day.getMonth() + 1, day.getDate(), r.hh, r.mm);
+      seen.add(id);
+      rows.push({ id, t, title: r.title, teams: r.teams, comp: '', channels: r.channels, logos: {} });
+    } catch {
+      /* bozuk satır atlanır */
+    }
   }
-  return { ...r, url };
+  return { rows, diag };
+}
+
+const REGIONS = new Set(['avrupa', 'dunya', 'asya', 'afrika', 'kuzey amerika', 'guney amerika', 'orta amerika', 'okyanusya', 'uluslararasi', 'uluslararasi kulupler']);
+
+// LiveSoccerTV günlük program: yarışma başlık satırları (tr.sortable_comp) ve maç satırları (tr.matchrow; kickoff UTC ms: dv='…'). Yalnız futbol.
+// Kanallar sayfayı isteyen kişinin ülkesine göredir (Türkiye'den açılınca Türkiye'deki kanallar).
+export function parseLiveSoccerTv(html, base = 'https://www.livesoccertv.com') {
+  const src = typeof html === 'string' ? html : '';
+  const rows = [];
+  const diag = newDiag(src);
+  const seen = new Set();
+  let comp = '';
+  const text = (x) => decodeEntities(String(x).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  for (const m of src.matchAll(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi)) {
+    try {
+      const attrs = m[1];
+      const inner = m[2];
+      if (/\bclass\s*=\s*["'][^"']*sortable_comp/i.test(attrs)) {
+        const c = /class="r_complink"[^>]*>([\s\S]*?)<\/a>/i.exec(inner);
+        const name = c ? text(c[1]) : '';
+        const i = name.indexOf(' - ');
+        const region = i > 0 ? name.slice(0, i) : '';
+        comp = i > 0 ? (REGIONS.has(norm(region)) ? name.slice(i + 3) : `${region} ${name.slice(i + 3)}`) : name;
+        continue;
+      }
+      if (!/\bclass\s*=\s*["'][^"']*matchrow/i.test(attrs)) continue;
+      diag.anchors++;
+      diag.football++;
+      const id = (/\bid\s*=\s*"?(\d+)/i.exec(attrs) || [])[1];
+      const dv = /\bdv\s*=\s*['"](\d{10,})['"]/i.exec(inner);
+      const link = /<a\b[^>]*href\s*=\s*"[^"]*\/match\/[^"]*"[^>]*>([\s\S]*?)<\/a>/i.exec(inner);
+      const title = (link && /\btitle\s*=\s*"([^"]*)"/i.exec(link[0])) || [];
+      const name = decodeEntities(title[1] || (link ? text(link[1]) : '')).trim();
+      const teams = name.split(/\s+vs?\.?\s+/i).map((x) => x.trim());
+      if (!id || !dv || teams.length !== 2 || !teams[0] || !teams[1] || seen.has(id)) continue;
+      const chans = [];
+      for (const c of inner.matchAll(/<a\b[^>]*href\s*=\s*"[^"]*\/channels\/[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)) chans.push(text(c[1]));
+      const channels = dedupe(chans);
+      if (channels.length) diag.withChannel++;
+      diag.fsample = diag.fsample || `${name} | ${channels.join(', ')}`.slice(0, 160);
+      seen.add(id);
+      rows.push({ id, t: Number(dv[1]), title: name.slice(0, 160), teams, comp: comp.slice(0, 80), channels, logos: {} });
+    } catch {
+      /* bozuk satır atlanır */
+    }
+  }
+  return { rows, diag };
+}
+
+// Yayın akışı kaynakları (sırayla denenir: ilk satır veren kullanılır)
+export const SCHED_BASES = { se: SE_BASE, mr: 'https://www.macrehberi.com', sd: 'https://www.sahadan.com', lst: 'https://www.livesoccertv.com' };
+const SCHED = [
+  { key: 'se', label: 'Spor Ekranı', url: (d, b) => seUrl(d, b.se), parse: (h, b) => parseSporEkrani(h, b.se) },
+  { key: 'mr', label: 'Maç Rehberi', url: (d, b) => `${b.mr}/gun/${seDateKey(d)}`, parse: (h, b) => parseSporEkrani(h, b.mr) },
+  { key: 'sd', label: 'Sahadan', todayOnly: true, url: (d, b) => `${b.sd}/tv-programi`, parse: (h, b, d) => parseSahadan(h, b.sd, d) },
+  { key: 'lst', label: 'LiveSoccerTV', url: (d, b) => `${b.lst}/tr/schedules/${seDateKey(d)}/`, parse: (h, b) => parseLiveSoccerTv(h, b.lst) },
+];
+
+// Bir günün yayın akışı: kaynaklar sırayla denenir, ilk satır veren kullanılır. Döner: { rows, diag, url, via, note }; sayfa tanınan ama futbol satırı olmayan
+// bir kaynak varsa boş sonuç döner; hiçbir kaynak alınamazsa hata atar (hata.detail: her kaynağın nedeni).
+export async function loadSchedDay({ net, dayMs, bases = SCHED_BASES, timeoutMs = 20000, nowMs = Date.now() } = {}) {
+  const notes = [];
+  let empty = null;
+  for (const src of SCHED) {
+    if (src.todayOnly && seDateKey(dayMs) !== seDateKey(nowMs)) continue;
+    const url = src.url(dayMs, bases);
+    try {
+      const html = await withTimeout(net.text(url, { fast: true }), timeoutMs);
+      const r = src.parse(html, bases, dayMs);
+      if (r.rows.length) return { ...r, url, via: src.key, note: [...notes, `${src.label}: ${seDiagText(r.diag, r.rows.length)}`].join(' · ') };
+      notes.push(`${src.label}: ${r.diag.anchors ? seDiagText(r.diag, 0) : `${r.diag.bytes} bayt, maç bağlantısı yok`}`);
+      if (r.diag.anchors && !empty) empty = { ...r, url, via: src.key };
+    } catch (e) {
+      notes.push(`${src.label}: ${String((e && e.message) || e || 'hata').slice(0, 100)}`);
+    }
+  }
+  if (empty) return { ...empty, note: notes.join(' · ') };
+  const err = new Error('Yayın akışı alınamadı.');
+  err.detail = notes.join(' · ').slice(0, 300) || 'hata';
+  throw err;
 }
 
 // Teşhis özeti (hiç futbol satırı çıkmadıysa): "412 bağlantı, 0 futbol, 0 kanallı; örnek: Tenis | 00:30 | …"

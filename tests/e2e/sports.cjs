@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [] };
+  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -107,6 +107,19 @@ function fakeEspn() {
     if (st.seMode !== 'data') return `<div>${tennis}</div>`; // 'data0' ve 'nofootball': yalnız futbol dışı satır
     return `<div>${seRow('Futbol', at(0, 13, 0), 'Kepez Bld. - Balıkesirspor', 'TFF 3. Lig', ['Tivibu Spor 1'])}${seRow('Futbol', at(0, 19, 0), 'Arsenal - Chelsea', 'Premier Lig', ['TRT Spor'])}${seRow('Futbol', at(0, 15, 0), 'Bandırmaspor - Manisa FK', 'TFF 1. Lig', ['Tabii'])}${seRow('Futbol', at(0, 20, 0), 'Galatasaray - Fenerbahçe', 'Süper Lig', ['beIN Sports 1', 'beIN Sports Max 2'])}${seRow('Futbol', at(0, 21, 0), 'Ermenistan - Güney Kıbrıs', 'UEFA Uluslar Ligi', [])}${seRow('Basketbol', at(0, 20, 0), 'Anadolu Efes - Real Madrid', 'EuroLeague', ['S Sport'])}</div>`;
   };
+  // Yedek yayın akışı siteleri: altMode 'fail' (HTTP 503), 'mr' (Maç Rehberi sayfası), 'lst' (LiveSoccerTV sayfası); diğer siteler 503
+  const mrRow = (sport, d, teams, comp, channels) => {
+    const t = tsi(d);
+    const chs = (channels.length ? channels : ['Yayın Yok'])
+      .map((c) => `<span><picture><img data-src="https://img.sporekrani.com/tr_h_30,w_50,c_limit/channels/${slug(c)}.png" src="https://img.sporekrani.com//tr_h_30,w_50,c_limit_preview/channels/${slug(c)}.png" alt="${c}"></picture></span>`)
+      .join('');
+    return `<a href="/mac/${seId++}/${t.date}/x-hangi-kanalda" style="text-decoration:none"><div class="row event"><div class="col sportHour flex"><div class="col sport"><img data-src="https://img.sporekrani.com/tr_h_30,w_30,c_limit/sports/f.svg" alt="${sport}" title="${sport}"></div><div class="col hour">${t.time}</div></div><div class="col nameChannels flex"><div class="col name"><div class="h2">${teams} <span>${comp} </span></div></div><div class="col channels">${chs}</div></div><div class="col arrow"><i class="q-icon material-icons">chevron_right</i></div></div></a>`;
+  };
+  const mrBody = () => `<div class="col-12 events">${mrRow('Tenis', at(0, 1, 0), 'C.Gauff - L.Noskova', 'WTA', ['Bein Sports Max 1'])}${mrRow('Futbol', at(0, 13, 0), 'Kepez Bld. - Balıkesirspor', 'TFF 3. Lig', ['Tivibu Spor 1'])}${mrRow('Futbol', at(0, 15, 0), 'Bandırmaspor - Manisa FK', 'TFF 1. Lig', ['Tabii'])}${mrRow('Futbol', at(0, 19, 0), 'Arsenal - Chelsea', 'Premier Lig', ['TRT Spor'])}${mrRow('Futbol', at(0, 21, 0), 'Ermenistan - Güney Kıbrıs', 'UEFA Uluslar Ligi', [])}</div>`;
+  const lstBody = () => {
+    const row = (id, d, teams, chans) => `<tr id="${id}" class="matchrow" data-ko="x" data-has-tv="1"><td class='timecol'><span class="timecell"><span id='ko${id}' class='ts' dv='${d.getTime()}' df='H:MM'>00:00</span></span></td><td valign="top" id="match" class="matchcol"><div class="match-ch-flex"><div class="match-name-col"><a href="/tr/match/a-vs-b/q${id}#${id}" title="${teams}" id="g${id}">${teams}</a></div><div id="channels" class="channels-col"><div class="mchannels disable-link">${chans.map((c) => `<a href="/tr/channels/${slug(c)}/" class="homech">${c}</a>`).join(', ')}</div></div></div></td></tr>`;
+    return `<table class="schedules"><tr class="sortable_comp" id="1"><td colspan="3" class="r_comprow"><a href="/tr/competitions/x/" class="r_complink"><span class="flag turkey">Türkiye - TFF 3. Lig</span></a></td></tr>${row(7001, at(0, 13, 0), 'Kepez Bld. vs Balıkesirspor', ['Tivibu Spor 1'])}</table>`;
+  };
   async function install(ctx) {
     await ctx.route('https://www.sporekrani.com/**', async (route) => {
       st.seCalls.push(route.request().url());
@@ -121,7 +134,26 @@ function fakeEspn() {
       return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/html; charset=utf-8' }, body });
     });
     await ctx.route('https://img.sporekrani.com/**', (route) => route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'image/png' }, body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }));
+    const altRoute = (kind, body) => async (route) => {
+      st.altCalls.push(route.request().url());
+      if (st.altMode !== kind) return route.fulfill({ status: 503, headers: CORS, body: 'hata' });
+      return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/html; charset=utf-8' }, body: body() });
+    };
+    await ctx.route('https://www.macrehberi.com/**', altRoute('mr', mrBody));
+    await ctx.route('https://www.livesoccertv.com/**', altRoute('lst', lstBody));
+    await ctx.route('https://www.sahadan.com/**', altRoute('sd', () => '<html></html>'));
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    await ctx.route('https://flagcdn.com/**', (route) => route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'image/png' }, body: PNG }));
+    await ctx.route('https://r2.thesportsdb.com/**', (route) => route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'image/png' }, body: PNG }));
     await ctx.route('https://www.thesportsdb.com/**', async (route) => {
+      const bq = /searchteams\.php\?t=([^&]*)/.exec(route.request().url());
+      if (bq) {
+        const name = decodeURIComponent(bq[1]);
+        st.badgeCalls.push(name);
+        const known = ['Arsenal', 'Chelsea'].includes(name);
+        const body = known ? { teams: [{ strTeam: name, strSport: 'Soccer', strBadge: `https://r2.thesportsdb.com/images/media/team/badge/${name.toLowerCase()}.png` }] } : { teams: null };
+        return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      }
       st.tvCalls.push(route.request().url());
       if (st.tvMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
       const body = st.tvMode === 'badshape' ? { Message: 'premium' } : st.tvMode === 'data' ? tvBody() : { tvevents: null };
@@ -165,7 +197,7 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
     const errs = [];
     page.on('pageerror', (e) => errs.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && !/Failed to load resource/.test(m.text()) && errs.push(m.text()));
-    await page.addInitScript(() => localStorage.setItem('iptv.pref.seen.changelog', '999'));
+    await page.addInitScript(() => { localStorage.setItem('iptv.pref.seen.changelog', '999'); window.__sportsBadgeGapMs = 30; });
     if (init) await page.addInitScript(init);
     await page.goto(base);
     await page.waitForSelector('#f');
@@ -497,6 +529,24 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await h.click('#sp-days .chip:nth-child(3)'); // yarın: ikinci kaynaktaki 1. Lig maçı, yayın kaydı yok
   await h.waitForFunction(() => /Ankaragucu/.test(document.querySelector('.sp-list').textContent), null, { timeout: 8000 });
   ok((await boxOf(h, /Ankaragucu/)).none, 'yayın kaydı olmayan maçta tahmin yok, “Yayın yok”');
+  // takım simgeleri: kulüp rozeti aranır (bulunursa görsel, yoksa baş harf yer tutucu), milli takım maçında iki bayrak
+  while (await h.$('.sd-pg')) await h.click('.sd-pg [data-close]'); // açık ayrıntı sayfaları kapanır
+  await h.waitForSelector('.sp-pg .sp-m', { timeout: 8000 });
+  await h.click('#sp-days .chip:nth-child(2)'); // bugün
+  await h.waitForFunction(() => [...document.querySelectorAll('.sp-m')].some((r) => /Arsenal/.test(r.textContent) && r.querySelector('.sp-flag img[src*="/badge/arsenal.png/tiny"]')), null, { timeout: 30000 });
+  ok(true, 'ESPN logosu olmayan kulüp için rozet bulundu ve satırda görünüyor');
+  const ph = await h.$$eval('.sp-m', (rows) => { const r = rows.find((x) => /Liverpool/.test(x.textContent)); return [...r.querySelectorAll('.sp-flag')].map((f) => ({ i: f.dataset.i, img: !!f.querySelector('img') })); });
+  ok(ph.length === 2 && ph[0].i === 'L' && !ph[0].img, 'rozeti bulunamayan takımda baş harf yer tutucu: ' + JSON.stringify(ph));
+  ok(!(await h.evaluate(() => document.querySelector('.sp-m .sp-flag').textContent)), 'yer tutucu harf CSS ile çizilir (metin değil)');
+  await h.click('#sp-days .chip:nth-child(5)');
+  const trRow = () => [...document.querySelectorAll('.sp-m')].find((r) => /^Türkiye/.test(r.querySelector('.sp-tt').textContent.trim()));
+  await h.waitForFunction(`(${trRow})()`, null, { timeout: 8000 });
+  const fl = await h.evaluate(`((${trRow})() && [...(${trRow})().querySelectorAll('.sp-flag.fl img')].map((i) => i.getAttribute('src')))`);
+  ok(fl.length === 2 && fl[0] === 'https://flagcdn.com/w80/tr.png' && fl[1] === 'https://flagcdn.com/w80/gb-wls.png', 'milli takım maçında iki ülke bayrağı: ' + fl.join(', '));
+  await h.evaluate(`(${trRow})().click()`);
+  await h.waitForSelector('.sd-team .sp-flag.fl img', { timeout: 8000 });
+  ok((await h.$$('.sd-team .sp-flag.fl img')).length === 2, 'maç ayrıntısı başlığında da iki bayrak');
+  await h.click('.sd-pg [data-close]');
   ok(H.errs.length === 0, 'sayfa hatası yok (yayın bilgisi): ' + H.errs.join(' | '));
   await H.ctx.close();
 
@@ -512,6 +562,37 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(/Spor Ekranı: HTTP 500/.test(await i.textContent('.sp-src')), 'asıl kaynağın hata nedeni listenin üstünde: ' + (await i.textContent('.sp-src')));
   ok(I.errs.length === 0, 'sayfa hatası yok (yedek kaynak): ' + I.errs.join(' | '));
   await I.ctx.close();
+
+  // Spor Ekranı çökerse sıradaki yedek site: Maç Rehberi; o da çökerse (Sahadan bugünü verir ama burada 503) LiveSoccerTV. Kaynak adı görünmez.
+  espn.st.tvMode = 'empty';
+  espn.st.altMode = 'mr';
+  espn.st.altCalls.length = 0;
+  const M2 = await mk({ width: 390, height: 844 });
+  const m2 = M2.page;
+  await m2.click('.shortcuts .t-sport');
+  await m2.waitForFunction(() => [...document.querySelectorAll('.sp-m')].some((r) => /Kepez/.test(r.textContent) && (r.querySelector('.sp-cb') || {}).title === 'Tivibu Spor 1'), null, { timeout: 15000 });
+  const bnd = await m2.$$eval('.sp-m', (rows) => { const r = rows.find((x) => /Kepez/.test(x.textContent)); return { l2: r.querySelector('.sp-l2').textContent }; });
+  ok(bnd.l2 === 'TFF 3. Lig', 'Spor Ekranı yokken Maç Rehberi’nden lig ve kanal geldi: ' + bnd.l2);
+  ok((await boxOf(m2, /Band[ıi]rmaspor/)).title === 'Tabii', 'Maç Rehberi’ndeki kanal ESPN/ikinci kaynak maçına da eşlendi');
+  ok(/macrehberi\.com\/gun\/\d{4}-\d\d-\d\d$/.test(espn.st.altCalls[0]), 'yedek site günlük adresinden alındı: ' + espn.st.altCalls[0]);
+  ok(!/Maç Rehberi|Spor Ekranı|Sahadan|LiveSoccerTV/.test(await m2.evaluate(() => document.querySelector('.sp-pg').innerText)), 'yedek sitenin adı da görünmüyor');
+  ok(/Spor Ekranı: HTTP 500/.test(await m2.textContent('.sp-src')) && /Maç Rehberi: \d+ bağlantı/.test(await m2.textContent('.sp-src')), 'teşhis: her kaynağın durumu: ' + (await m2.textContent('.sp-src')));
+  ok(M2.errs.length === 0, 'sayfa hatası yok (Maç Rehberi): ' + M2.errs.join(' | '));
+  await M2.ctx.close();
+
+  espn.st.altMode = 'lst';
+  espn.st.altCalls.length = 0;
+  const L2 = await mk({ width: 390, height: 844 });
+  const l2 = L2.page;
+  await l2.click('.shortcuts .t-sport');
+  await l2.waitForFunction(() => [...document.querySelectorAll('.sp-m')].some((r) => /Kepez/.test(r.textContent) && (r.querySelector('.sp-cb') || {}).title === 'Tivibu Spor 1'), null, { timeout: 15000 });
+  const lrow = await l2.$$eval('.sp-m', (rows) => rows.find((x) => /Kepez/.test(x.textContent)).querySelector('.sp-l2').textContent);
+  ok(lrow === 'Türkiye TFF 3. Lig', 'üçüncü yedek (LiveSoccerTV): lig ve kanal geldi: ' + lrow);
+  const altOrder = espn.st.altCalls.map((u) => (/macrehberi/.test(u) ? 'mr' : /sahadan/.test(u) ? 'sd' : /livesoccertv/.test(u) ? 'lst' : '?'));
+  ok(altOrder.slice(0, 3).join(',') === 'mr,sd,lst', 'yedekler sırayla denendi: ' + altOrder.join(','));
+  ok(L2.errs.length === 0, 'sayfa hatası yok (LiveSoccerTV): ' + L2.errs.join(' | '));
+  await L2.ctx.close();
+  espn.st.altMode = 'fail';
 
   // İki yayın kaynağı da yoksa liste bozulmaz; nedenler yazılır
   espn.st.tvMode = 'fail';

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, loadSeDay, seChannelsFor, seInfoFor, seDiagText, seTime, logosOf, splitTitle, seMatches, mergeSe, fixTr, compGroup } from '../www/js/sports-se.js';
+import { readFileSync } from 'node:fs';
+import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, parseSahadan, parseLiveSoccerTv, loadSchedDay, SCHED_BASES, imgsOf, seChannelsFor, seInfoFor, seDiagText, seTime, logosOf, splitTitle, seMatches, mergeSe, fixTr, compGroup } from '../www/js/sports-se.js';
 
 const DAYMS = new Date(2026, 10, 12, 0, 0, 0).getTime();
 const href = (id, y, m, d, slug) => `https://www.sporekrani.com/home/match/${id}/${y}/${m}/${d}/${slug}-hangi-kanalda`;
@@ -90,20 +91,115 @@ test('parseSporEkrani: bozuk/boş girdiler hata atmaz, aynı maç tekrarlanmaz',
   assert.equal(parseSporEkrani(dup).rows.length, 1);
 });
 
-test('loadSeDay: sayfa, ağ hatası, tanınmayan sayfa', async () => {
+test('loadSchedDay: birincil kaynak, ağ hatası ve tanınmayan sayfa', async () => {
   const urls = [];
   const net = { text: async (u, o) => (urls.push([u, o]), STRUCT) };
-  const r = await loadSeDay({ net, dayMs: DAYMS });
+  const r = await loadSchedDay({ net, dayMs: DAYMS, nowMs: DAYMS });
+  assert.equal(urls.length, 1, 'ilk kaynak satır verince diğerlerine gidilmez');
   assert.equal(urls[0][0], 'https://www.sporekrani.com/home/day/2026-11-12');
   assert.deepEqual(urls[0][1], { fast: true });
   assert.equal(r.rows.length, 4);
-  await assert.rejects(loadSeDay({ net: { text: async () => Promise.reject(new Error('HTTP 403')) }, dayMs: DAYMS }), (e) => /alınamadı/.test(e.message) && /HTTP 403/.test(e.detail));
-  await assert.rejects(loadSeDay({ net: { text: async () => '<html>Just a moment...</html>' }, dayMs: DAYMS }), (e) => /tanınmadı/.test(e.message) && /bayt, maç bağlantısı yok/.test(e.detail));
-  await assert.rejects(loadSeDay({ net: { text: () => new Promise(() => {}) }, dayMs: DAYMS, timeoutMs: 20 }), (e) => /zamanında/.test(e.detail));
+  assert.equal(r.via, 'se');
+  // hiçbir kaynak alınamazsa hata: nedenler kaynak adıyla
+  const all = (f) => ({ net: { text: f }, dayMs: DAYMS, nowMs: DAYMS, timeoutMs: 50 });
+  await assert.rejects(loadSchedDay(all(async () => Promise.reject(new Error('HTTP 403')))), (e) => /alınamadı/.test(e.message) && /Spor Ekranı: HTTP 403/.test(e.detail) && /Maç Rehberi: HTTP 403/.test(e.detail) && /Sahadan: HTTP 403/.test(e.detail) && /LiveSoccerTV: HTTP 403/.test(e.detail));
+  await assert.rejects(loadSchedDay(all(async () => '<html>Just a moment...</html>')), (e) => /bayt, maç bağlantısı yok/.test(e.detail));
+  await assert.rejects(loadSchedDay(all(() => new Promise(() => {}))), (e) => /zamanında/.test(e.detail));
   // maç bağlantıları var ama futbol yok: hata değil (satır yok), teşhis var
-  const nf = await loadSeDay({ net: { text: async () => '<a href="/home/match/9/2026/11/12/t">Tenis 10:00 A - B WTA Bein Sports Max 1 Bein Sports Max 1</a>' }, dayMs: DAYMS });
+  const tenis = '<a href="/home/match/9/2026/11/12/t">Tenis 10:00 A - B WTA Bein Sports Max 1 Bein Sports Max 1</a>';
+  const nf = await loadSchedDay({ net: { text: async () => tenis }, dayMs: DAYMS, nowMs: DAYMS });
   assert.equal(nf.rows.length, 0);
-  assert.equal(seDiagText(nf.diag), '1 bağlantı, 0 futbol, 0 kanallı; örnek: Tenis | 10:00 | A - B WTA Bein Sports Max 1 Bein Sports Max 1'.replace(/ \| /g, ' | ').replace('Tenis | 10:00 | A - B WTA Bein Sports Max 1 Bein Sports Max 1', nf.diag.sample));
+  assert.equal(nf.via, 'se');
+  assert.match(nf.note, /Spor Ekranı: 1 bağlantı, 0 futbol/);
+});
+
+test('loadSchedDay: yedek kaynaklar sırayla denenir (Sahadan yalnız bugün için)', async () => {
+  const fx = (n) => readFileSync(new URL(`./fixtures/${n}`, import.meta.url), 'utf8');
+  const TODAY = new Date(2026, 10, 11, 0, 0, 0).getTime();
+  const calls = [];
+  const mk = (ok) => ({ text: async (u) => { calls.push(u); const k = ok.find(([re]) => re.test(u)); if (!k) throw new Error('HTTP 503'); return k[1]; } });
+  // Spor Ekranı çökük → Maç Rehberi
+  let r = await loadSchedDay({ net: mk([[/macrehberi/, fx('mr-rows.html')]]), dayMs: new Date(2026, 10, 13).getTime(), nowMs: TODAY });
+  assert.equal(r.via, 'mr');
+  assert.equal(calls[0], 'https://www.sporekrani.com/home/day/2026-11-13');
+  assert.equal(calls[1], 'https://www.macrehberi.com/gun/2026-11-13');
+  assert.ok(r.rows.length >= 5);
+  assert.match(r.note, /Spor Ekranı: HTTP 503/);
+  // ikisi de çökük, ileri gün: Sahadan atlanır (yalnız bugünü gösterir) → LiveSoccerTV
+  calls.length = 0;
+  r = await loadSchedDay({ net: mk([[/livesoccertv/, fx('lst-rows.html')]]), dayMs: new Date(2026, 10, 13).getTime(), nowMs: TODAY });
+  assert.equal(r.via, 'lst');
+  assert.ok(!calls.some((u) => /sahadan/.test(u)), 'ileri gün için Sahadan istenmez');
+  assert.equal(calls.at(-1), 'https://www.livesoccertv.com/tr/schedules/2026-11-13/');
+  // bugün: Sahadan LiveSoccerTV'den önce
+  calls.length = 0;
+  r = await loadSchedDay({ net: mk([[/sahadan/, fx('sd-rows.html')], [/livesoccertv/, fx('lst-rows.html')]]), dayMs: TODAY, nowMs: TODAY });
+  assert.equal(r.via, 'sd');
+  assert.ok(!calls.some((u) => /livesoccertv/.test(u)));
+  // ilk kaynak tanınan ama boş sayfa verirse yedeğe geçilir; yedek de boşsa boş sonuç (hata değil)
+  const tenis = '<a href="/home/match/9/2026/11/13/t">Tenis 10:00 A - B WTA Bein Sports Max 1 Bein Sports Max 1</a>';
+  r = await loadSchedDay({ net: mk([[/sporekrani/, tenis], [/macrehberi/, fx('mr-rows.html')]]), dayMs: new Date(2026, 10, 13).getTime(), nowMs: TODAY });
+  assert.equal(r.via, 'mr');
+  r = await loadSchedDay({ net: mk([[/sporekrani/, tenis]]), dayMs: new Date(2026, 10, 13).getTime(), nowMs: TODAY });
+  assert.deepEqual(r.rows, []);
+});
+
+// ---- gerçek sayfalardan alınmış satırlar (tests/fixtures) ----
+const fx = (n) => readFileSync(new URL(`./fixtures/${n}`, import.meta.url), 'utf8');
+const hhmm = (t) => new Date(t + 3 * 3600e3).toISOString().slice(11, 16); // Türkiye saati
+
+test('gerçek Spor Ekranı satırları: futbol, yarışma, kanallar (görsellerden), “Yayın Yok”', () => {
+  const { rows, diag } = parseSporEkrani(fx('se-rows.html'), 'https://www.sporekrani.com');
+  assert.equal(diag.anchors, 7);
+  assert.deepEqual(rows.map((r) => r.teams.join(' - ')), ['Türkiye - Çekya', 'Moldova - Kazakistan', 'Andorra - Cebelitarık', 'Slovenya - İsviçre', 'Sırbistan - Almanya']);
+  const tr = rows[0];
+  assert.equal(tr.comp, 'UEFA U21 Avrupa Şampiyonasi Elemeleri');
+  assert.deepEqual(tr.channels, ['Tivibu Spor']);
+  assert.equal(hhmm(tr.t), '19:00');
+  assert.match(tr.logos['tivibu spor'], /^https:\/\/img\.sporekrani\.com\/.*channels\//);
+  assert.deepEqual(rows[1].channels, [], '“Yayın Yok” kanal sayılmaz');
+  assert.deepEqual(rows[3].channels, ['A Para']);
+  assert.ok(rows.every((r) => !/Futbol|\d{2}:\d{2}/.test(r.comp)));
+});
+
+test('gerçek Maç Rehberi satırları: aynı veri, saat sporun önünde, simge yazısı karışmaz', () => {
+  const { rows } = parseSporEkrani(fx('mr-rows.html'), 'https://www.macrehberi.com');
+  assert.deepEqual(rows.map((r) => r.teams.join(' - ')), ['Türkiye - Çekya', 'Moldova - Kazakistan', 'Andorra - Cebelitarık', 'Slovenya - İsviçre', 'Sırbistan - Almanya']);
+  assert.equal(rows[0].comp, 'UEFA U21 Avrupa Şampiyonasi Elemeleri', 'chevron_right gibi simge adı yarışmaya karışmaz');
+  assert.deepEqual(rows[0].channels, ['Tivibu Spor']);
+  assert.equal(hhmm(rows[0].t), '19:00');
+  assert.deepEqual(rows[1].channels, []);
+  assert.equal(rows[0].id, '496986');
+});
+
+test('gerçek Sahadan satırları: yalnız bugün, yarışma yok, kanallar metinden', () => {
+  const html = fx('sd-rows.html');
+  const day = new Date(2026, 10, 11).getTime();
+  const { rows } = parseSahadan(html, 'https://www.sahadan.com', day);
+  assert.ok(rows.length >= 4);
+  assert.equal(rows[0].teams.join(' - '), 'Eskişehir Anadolu SF - Eskişehirspor');
+  assert.deepEqual(rows[0].channels, ['Tivibu Spor']);
+  assert.equal(hhmm(rows[0].t), '10:00');
+  assert.equal(rows[0].comp, '');
+  // sayfa başka günü gösteriyorsa (istenen gün bugün değil) satır alınmaz
+  assert.deepEqual(parseSahadan(html, 'https://www.sahadan.com', new Date(2026, 10, 13).getTime()).rows, []);
+});
+
+test('gerçek LiveSoccerTV satırları: UTC kickoff, yarışma başlığı, Türkçe takım adı, kanallar', () => {
+  const { rows } = parseLiveSoccerTv(fx('lst-rows.html'));
+  assert.ok(rows.length >= 4);
+  const md = rows[0];
+  assert.equal(md.teams.join(' - '), 'Moldovya - Kazakistan');
+  assert.equal(md.comp, 'UEFA Uluslar Ligi', 'kıta adı (Avrupa - …) yarışmadan ayrılır');
+  assert.equal(md.t, 1794589200000, 'saat tarayıcının dilimine değil UTC milisaniyesine bağlı');
+  assert.ok(md.channels.includes('fuboTV'));
+  const none = rows.find((r) => /Czechia U18/.test(r.teams[0]));
+  assert.deepEqual(none.channels, []);
+});
+
+test('imgsOf: srcset (boyutlu) önce, sonra data-src, sonra src', () => {
+  const html = '<img src="/a.png" srcset="/a-256.png 1x" alt="A"><img data-src="/b-30.png" src="/b-prev.png" alt="B"><img src="/c.png" alt="C"><img src="data:x" alt="D">';
+  assert.deepEqual(imgsOf(html, 'https://x.test').map((i) => [i.alt, i.url]), [['A', 'https://x.test/a-256.png'], ['B', 'https://x.test/b-30.png'], ['C', 'https://x.test/c.png']]);
 });
 
 const M = (home, away, t) => ({ home: { name: home }, away: { name: away }, t });

@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 57,
+    title: 'Spor: bayraklar, takım logoları ve yedek yayın kaynakları',
+    items: [
+      'Milli takım maçlarında iki ülkenin bayrağı, kulüp maçlarında takım logosu görünür (maç satırında ve maç ekranının başlığında); logosu bulunamayan takımda baş harf yazar',
+      'Yayın akışı bir siteden alınamazsa sırayla başka sitelere geçilir; maç takvimi ve kanal bilgisi yine gelir'
+    ],
+  },
+  {
     id: 56,
     title: 'Spor: kısa adlı kanallar bulunuyor',
     items: ['Yayın bilgisindeki ATV, A2, TV8 gibi kısa adlı kanallar artık listenizdeki karşılığıyla eşleşir; maç ekranında “Bu kanallar listenizde bulunamadı” yerine kanal listelenir ve dokununca açılır'],
