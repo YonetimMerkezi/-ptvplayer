@@ -1,0 +1,7 @@
+se-2026-11-13.html | https://www.sporekrani.com/home/day/2026-11-13 | 200 633602 text/html; charset=utf-8
+mr-2026-11-13.html | https://www.macrehberi.com/gun/2026-11-13 | 200 525380 text/html; charset=utf-8
+mr-2026-11-11.html | https://www.macrehberi.com/gun/2026-11-11 | 200 932811 text/html; charset=utf-8
+sd-today.html | https://www.sahadan.com/tv-programi | 200 429004 text/html;charset=utf-8
+lst-2026-11-13.html | https://www.livesoccertv.com/tr/schedules/2026-11-13/ | 200 318511 text/html; charset=UTF-8
+tsdb-team.json | https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=Galatasaray | 403 153 text/plain
+flag-tr.png | https://flagcdn.com/w80/tr.png | 200 377 image/png
