@@ -211,57 +211,103 @@ const minuteText = (v) => {
   return s ? `${s}'` : '';
 };
 
-// "Incs-s" (yalnız goller) içindeki olayları dolaşır: Min ve Pn/IT alanı olan her nesne bir gol sayılır. Takım, en yakın "1"/"2" anahtarından gelir
-// (1 ev sahibi, 2 deplasman). Belgesiz API: biçim değişirse hiçbir şey bulunmaz, hata atılmaz.
-function collectGoals(node, side, out, depth = 0) {
+// "Incs-s" (yalnız goller) içindeki olayları dolaşır: Min ve Pn/IT alanı olan her nesne bir gol sayılır. "1"/"2" anahtarı takım mı devre mi belli
+// değildir (gerçek cihazda devre gibi davrandı); bu yüzden takım sırayla şunlardan çıkarılır: gol sonrası skor (Sc), olaydaki takım numarası,
+// maç skoru (bir takım hiç gol atmadıysa), skorla tam tutan "1"/"2" anahtarı. Hiçbiri tutmazsa takım boş kalır (ekran ortada gösterir).
+function collectGoals(node, key, out, depth = 0) {
   if (node == null || typeof node !== 'object' || depth > 6) return;
   if (Array.isArray(node)) {
-    for (const x of node) collectGoals(x, side, out, depth + 1);
+    for (const x of node) collectGoals(x, key, out, depth + 1);
     return;
   }
   if ('Min' in node && ('Pn' in node || 'IT' in node)) {
-    out.push({ ev: node, side });
+    out.push({ ev: node, key });
     return;
   }
-  for (const [k, v] of Object.entries(node)) collectGoals(v, k === '1' ? 'home' : k === '2' ? 'away' : side, out, depth + 1);
+  for (const [k, v] of Object.entries(node)) collectGoals(v, k === '1' || k === '2' ? k : key, out, depth + 1);
 }
 
-// Tek maç özeti yanıtı → { events (ekrandaki olay biçimi), note }. Yalnız goller gelir; dakika ve oyuncu adı.
+const TEAM_FIELDS = ['Nm', 'Tn', 'Tm', 'T', 'Team', 'TeamNo', 'Tid'];
+const sideNo = (v) => (v === 1 || v === '1' ? 'home' : v === 2 || v === '2' ? 'away' : '');
+const minVal = (e) => {
+  const x = /(\d+)(?:\D*?\+\s*(\d+))?/.exec(e.minute);
+  return x ? Number(x[1]) + (x[2] ? Number(x[2]) / 100 : 0) : 999;
+};
+
+// Tek maç özeti yanıtı → { events (ekrandaki olay biçimi), note, warn }. Yalnız goller gelir; dakika, oyuncu, takım tarafı ve (tutarlıysa) skor akışı.
 export function parseLsEvents(json, m) {
   const src = json && typeof json === 'object' ? json['Incs-s'] : null;
-  if (!src || typeof src !== 'object') return { events: [], note: json && typeof json === 'object' ? `Incs-s yok (alanlar: ${Object.keys(json).slice(0, 12).join(',')})` : 'Boş yanıt' };
+  if (!src || typeof src !== 'object') return { events: [], note: json && typeof json === 'object' ? `Incs-s yok (alanlar: ${Object.keys(json).slice(0, 12).join(',')})` : 'Boş yanıt', warn: '' };
   const found = [];
   collectGoals(src, '', found);
-  const events = found.map(({ ev, side }, idx) => ({
+  const events = found.map(({ ev, key }, idx) => ({
     kind: 'goal',
     mark: false,
     idx,
     minute: minuteText(ev.Min),
-    side,
+    side: '',
     player: str(ev.Pn).slice(0, 60),
     other: '',
     detail: '',
     score: '',
     text: '',
+    _ev: ev,
+    _key: key,
   }));
-  const val = (e) => {
-    const x = /(\d+)(?:\D*?\+\s*(\d+))?/.exec(e.minute);
-    return x ? Number(x[1]) + (x[2] ? Number(x[2]) / 100 : 0) : 999;
+  events.sort((x, y) => minVal(x) - minVal(y) || x.idx - y.idx);
+  const hs = m && m.home ? intOrNull(m.home.score) : null;
+  const as = m && m.away ? intOrNull(m.away.score) : null;
+  const scored = hs != null && as != null;
+
+  // 1) gol sonrası skor (Sc: [ev sahibi, deplasman]): hangi sayı arttıysa o takım attı
+  const sc = (e) => {
+    const v = e._ev.Sc;
+    const a = Array.isArray(v) ? [intOrNull(v[0]), intOrNull(v[1])] : null;
+    return a && a[0] != null && a[1] != null ? a : null;
   };
-  events.sort((a, b) => val(a) - val(b) || a.idx - b.idx);
+  if (events.length && events.every((e) => sc(e))) {
+    let p0 = 0;
+    let p1 = 0;
+    for (const e of events) {
+      const [x, y] = sc(e);
+      e.side = x > p0 ? 'home' : y > p1 ? 'away' : '';
+      p0 = x;
+      p1 = y;
+    }
+  }
+  // 2) olaydaki takım numarası
+  for (const e of events) {
+    if (e.side) continue;
+    for (const f of TEAM_FIELDS) {
+      const sd = sideNo(e._ev[f]);
+      if (sd) {
+        e.side = sd;
+        break;
+      }
+    }
+  }
+  // 3) maç skoru: bir takım hiç gol atmadıysa tüm goller diğerinindir
+  if (scored && hs === 0 && as > 0) for (const e of events) e.side = e.side || 'away';
+  if (scored && as === 0 && hs > 0) for (const e of events) e.side = e.side || 'home';
+  // 4) "1"/"2" anahtarı, sayıları maç skoruyla tam uyuşuyorsa takım anahtarıdır
+  if (scored && events.some((e) => !e.side)) {
+    const c1 = events.filter((e) => e._key === '1').length;
+    const c2 = events.filter((e) => e._key === '2').length;
+    if (c1 === hs && c2 === as && c1 + c2 === events.length) for (const e of events) e.side = e.side || (e._key === '1' ? 'home' : 'away');
+  }
+  const unknown = events.some((e) => !e.side);
+  // Takım belirlenemediyse ilk olayın ham alanları da yazılır (sorun bildirirken ekran görüntüsü biçimi düzeltmeye yeter)
+  const sample = (events.find((e) => !e.side) || {})._ev;
+  const warn = unknown ? `Golü atan takım belirlenemedi (alanlar: ${Object.keys(sample || {}).slice(0, 10).join(',')}; örnek: ${JSON.stringify(sample || {}).slice(0, 140)})` : '';
+
+  // Skor akışı yalnız tüm takımlar belliyse ve gol sayıları maç skoruyla tam uyuşuyorsa yazılır
   let h = 0;
   let a = 0;
-  let known = true;
   for (const e of events) {
     if (e.side === 'home') h++;
     else if (e.side === 'away') a++;
-    else known = false;
-    delete e.idx;
   }
-  // Skor yalnız gol sayıları maç skoruyla tam uyuşuyorsa yazılır (uyuşmuyorsa liste eksik ya da takımlar karışık olabilir)
-  const hs = m && m.home ? m.home.score : null;
-  const as = m && m.away ? m.away.score : null;
-  if (known && hs != null && as != null && h === hs && a === as) {
+  if (!unknown && scored && h === hs && a === as) {
     let rh = 0;
     let ra = 0;
     for (const e of events) {
@@ -270,7 +316,12 @@ export function parseLsEvents(json, m) {
       e.score = `${rh}–${ra}`;
     }
   }
-  return { events, note: events.length ? '' : 'Incs-s boş' };
+  for (const e of events) {
+    delete e.idx;
+    delete e._ev;
+    delete e._key;
+  }
+  return { events, note: events.length ? '' : 'Incs-s boş', warn };
 }
 
 // Maçın gollerini indirir. Döner: { events, note }; adres çalışmazsa events boş, note nedeni söyler (ekranda küçük yazıyla görünür). Hata atmaz.

@@ -452,6 +452,8 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await e.waitForSelector('.sd-evs', { timeout: 6000 });
   const evTxt = await e.textContent('.sd-evs');
   ok(/23'/.test(evTxt) && /Deneme Golcü/.test(evTxt) && /1–0/.test(evTxt), 'LiveScore maçında gol dakikası ve oyuncu görünür: ' + evTxt);
+  // takım alanı olmayan özette (1-0): golü atan takımın tarafında (ev sahibi solda) durur
+  ok(!!(await e.$('.sd-e.home .sd-eh .sd-et')) && !(await e.$('.sd-e.away')) && !(await e.$('.sd-e.mid')), 'gol ev sahibi (sol) sütununda');
   ok(/yalnız gol bilgisi var/.test(await e.textContent('#sd-body')) && espn.st.lsDetail.length >= 1 && espn.st.summaryCalls.length === sumBefore, 'not: yalnız gol bilgisi; ESPN ayrıntısı yine istenmedi');
   await e.goBack();
   await e.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });

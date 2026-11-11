@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 64,
+    title: 'Spor: goller atan takımın tarafında',
+    items: [
+      'LiveScore maçlarında gol, atan takımın sütununda görünür (ev sahibi solda, deplasman sağda); takım gol sonrası skordan ve maç skorundan çıkarılır, belirlenemezse nedeni küçük yazıyla yazılır'
+    ],
+  },
+  {
     id: 63,
     title: 'Spor: LiveScore maçlarında gol dakikaları',
     items: [

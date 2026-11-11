@@ -215,7 +215,7 @@ export function openMatchDetail(env, m) {
     el.innerHTML =
       eventsHtml(data) + statsHtml(data) + lineupHtml(data) +
       (data.lsOnly
-        ? `<p class="sd-note">${data.events.length ? 'Bu maç için yalnız gol bilgisi var (istatistik ve kadro yok).' : 'Bu maç için olay, istatistik ve kadro bilgisi yok.'}</p>${!data.events.length && data.evNote && hasGoals() ? `<p class="hint sd-diag">Gol dakikaları alınamadı (LiveScore: ${esc(data.evNote)})</p>` : ''}`
+        ? `<p class="sd-note">${data.events.length ? 'Bu maç için yalnız gol bilgisi var (istatistik ve kadro yok).' : 'Bu maç için olay, istatistik ve kadro bilgisi yok.'}</p>${!data.events.length && data.evNote && hasGoals() ? `<p class="hint sd-diag">Gol dakikaları alınamadı (LiveScore: ${esc(data.evNote)})</p>` : ''}${data.evWarn ? `<p class="hint sd-diag">${esc(data.evWarn)}</p>` : ''}`
         : data.empty ? `<p class="sd-note">${pre ? 'Maç başlayınca olaylar, istatistikler ve kadro burada görünür.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
   }
 
@@ -240,6 +240,7 @@ export function openMatchDetail(env, m) {
           const r = await loadLsEvents({ net: env.net, match: m, hosts: env.lsHosts || LS_HOSTS });
           data.events = r.events;
           data.evNote = r.events.length ? '' : r.note;
+          data.evWarn = r.warn || '';
         }
       } else data = await loadSummary({ net: env.net, match: m, base });
       fetchedAt = now();

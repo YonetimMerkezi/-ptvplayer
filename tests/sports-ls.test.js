@@ -255,20 +255,47 @@ test('lsEidOf / lsDetailUrls: maç özeti adresi cdn önce, Eid kimlikten de oku
   assert.equal(u.length, 2);
 });
 
-test('parseLsEvents: "Incs-s" gollerinden dakika, oyuncu ve takım; skor yalnız sayılar tutarsa yazılır', () => {
-  const m = { home: { score: 2 }, away: { score: 1 } };
-  const json = { 'Incs-s': { 1: [{ Min: 54, Pn: 'A. Ev', IT: 36 }, { Min: '12', Pn: 'B. Ev', IT: 36 }], 2: [{ Min: 90, MinEx: 3, Pn: 'C. Dep', IT: 36 }] } };
-  const r = parseLsEvents(json, m);
-  assert.deepEqual(r.events.map((e) => [e.minute, e.side, e.player, e.score]), [["12'", 'home', 'B. Ev', '1–0'], ["54'", 'home', 'A. Ev', '2–0'], ["90'", 'away', 'C. Dep', '2–1']]);
-  assert.ok(r.events.every((e) => e.kind === 'goal' && !e.mark));
-  // sayılar uyuşmuyorsa liste yine gelir, skor yazılmaz
-  const r2 = parseLsEvents(json, { home: { score: 3 }, away: { score: 1 } });
-  assert.equal(r2.events.length, 3);
-  assert.ok(r2.events.every((e) => e.score === ''));
-  // iç içe (periyot / takım) yapı da dolaşılır; takım en yakın 1/2 anahtarından
-  const r3 = parseLsEvents({ 'Incs-s': { 1: { 2: [{ Min: 70, Pn: 'X' }] } } }, m);
-  assert.equal(r3.events.length, 1);
-  assert.equal(r3.events[0].side, 'away');
+test('parseLsEvents: gerçek cihaz örneği — "1" devre anahtarı, takım alanı yok: 0-1 skorunda gol deplasmanındır', () => {
+  const r = parseLsEvents({ 'Incs-s': { 1: [{ Min: 6, Pn: 'Missy Bo Kearns', IT: 36 }] } }, { home: { score: 0 }, away: { score: 1 } });
+  assert.deepEqual(r.events.map((e) => [e.minute, e.side, e.player, e.score]), [["6'", 'away', 'Missy Bo Kearns', '0–1']]);
+  assert.equal(r.warn, '');
+});
+
+test('parseLsEvents: gerçek cihaz örneği 7-0 — anahtarlar devre (1: ilk, 2: ikinci yarı); tüm goller ev sahibinindir', () => {
+  const json = { 'Incs-s': { 1: [{ Min: 24, Pn: 'Lucie Calba' }, { Min: 41, Pn: 'Cindy Caputo' }, { Min: 42, Pn: 'Lucie Calba' }], 2: [{ Min: 55, Pn: 'Emelyne Laurent' }, { Min: 68, Pn: 'Louna Ribadeira' }, { Min: 82, Pn: 'Batcheba Louis' }, { Min: 89, Pn: 'Louna Ribadeira' }] } };
+  const r = parseLsEvents(json, { home: { score: 7 }, away: { score: 0 } });
+  assert.equal(r.events.length, 7);
+  assert.ok(r.events.every((e) => e.side === 'home'), 'ikinci yarı golleri deplasmana yazılmaz');
+  assert.deepEqual(r.events.map((e) => e.score), ['1–0', '2–0', '3–0', '4–0', '5–0', '6–0', '7–0']);
+  assert.equal(r.warn, '');
+});
+
+test('parseLsEvents: takım sırayla gol sonrası skordan (Sc), olaydaki takım numarasından, maç skorundan, anahtardan çıkar', () => {
+  // Sc: hangi sayı arttıysa o takım; devre anahtarları (1/2) takım sanılmaz
+  const sc = { 'Incs-s': { 1: [{ Min: 10, Pn: 'A', Sc: [0, 1] }, { Min: 30, Pn: 'B', Sc: [1, 1] }], 2: [{ Min: 60, Pn: 'C', Sc: [1, 2] }, { Min: 80, Pn: 'D', Sc: [2, 2] }] } };
+  const r1 = parseLsEvents(sc, { home: { score: 2 }, away: { score: 2 } });
+  assert.deepEqual(r1.events.map((e) => [e.player, e.side, e.score]), [['A', 'away', '0–1'], ['B', 'home', '1–1'], ['C', 'away', '1–2'], ['D', 'home', '2–2']]);
+  // olaydaki takım numarası (Nm: 1 ev sahibi, 2 deplasman)
+  const tn = { 'Incs-s': { 1: [{ Min: 5, Pn: 'A', Nm: 2 }, { Min: 25, Pn: 'B', Nm: 1 }], 2: [{ Min: 70, Pn: 'C', Nm: 1 }] } };
+  const r2 = parseLsEvents(tn, { home: { score: 2 }, away: { score: 1 } });
+  assert.deepEqual(r2.events.map((e) => [e.player, e.side, e.score]), [['A', 'away', '0–1'], ['B', 'home', '1–1'], ['C', 'home', '2–1']]);
+  // maç skoru: bir takım hiç atmadıysa hepsi diğerinin
+  const r3 = parseLsEvents({ 'Incs-s': { 1: [{ Min: 12, Pn: 'A' }], 2: [{ Min: 50, Pn: 'B' }, { Min: 88, Pn: 'C' }] } }, { home: { score: 3 }, away: { score: 0 } });
+  assert.deepEqual(r3.events.map((e) => e.side), ['home', 'home', 'home']);
+  // anahtar yalnız sayıları skorla tam tutuyorsa takımdır (1 ev sahibi, 2 deplasman)
+  const key = { 'Incs-s': { 1: [{ Min: 12, Pn: 'A' }], 2: [{ Min: 50, Pn: 'B' }] } };
+  assert.deepEqual(parseLsEvents(key, { home: { score: 1 }, away: { score: 1 } }).events.map((e) => e.side), ['home', 'away']);
+  // tutmuyorsa (devre anahtarı olabilir) takım belirlenmez, skor yazılmaz ve neden notu verilir
+  const amb = parseLsEvents({ 'Incs-s': { 1: [{ Min: 12, Pn: 'A' }, { Min: 30, Pn: 'B' }], 2: [{ Min: 50, Pn: 'C' }] } }, { home: { score: 1 }, away: { score: 2 } });
+  assert.deepEqual(amb.events.map((e) => [e.side, e.score]), [['', ''], ['', ''], ['', '']]);
+  assert.match(amb.warn, /takım belirlenemedi \(alanlar: Min,Pn; örnek: \{\"Min\":12,\"Pn\":\"A\"\}\)/);
+  // sayılar skorla uyuşmuyorsa liste gelir, skor yazılmaz
+  const r4 = parseLsEvents({ 'Incs-s': { 1: [{ Min: 6, Pn: 'A', Nm: 1 }] } }, { home: { score: 3 }, away: { score: 0 } });
+  assert.equal(r4.events.length, 1);
+  assert.equal(r4.events[0].score, '');
+  // dakikalar sıralanır (uzatma dakikası 45+2 sonra gelir)
+  const o = parseLsEvents({ 'Incs-s': [{ Min: '45+2', Pn: 'B', Nm: 1 }, { Min: 44, Pn: 'A', Nm: 2 }] }, {});
+  assert.deepEqual(o.events.map((e) => e.player), ['A', 'B']);
 });
 
 test('parseLsEvents: biçim beklenmedikse boş liste ve neden notu (hata atmaz)', () => {
