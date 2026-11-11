@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 63,
+    title: 'Spor: LiveScore maçlarında gol dakikaları',
+    items: [
+      'ESPN’de olmayan liglerin (alt ligler, kupalar) canlı ve biten maçlarında gol dakikası ve gol atan oyuncu artık maç ayrıntısında görünür; skor akışı da yazılır',
+      'Gol bilgisi alınamazsa ayrıntıda nedeni küçük yazıyla görünür (sorun bildirirken ekran görüntüsü için)'
+    ],
+  },
+  {
     id: 62,
     title: 'Spor: skoru olan maç iki kez görünmüyor, skor yoksa “Skor yok” yazar',
     items: [

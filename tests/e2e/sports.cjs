@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
+  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], lsDetail: [], lsDetailMode: 'data', tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -168,6 +168,14 @@ function fakeEspn() {
     });
     await ctx.route(/https:\/\/prod-(cdn-)?public-api\.livescore\.com\/.*/, async (route) => {
       const url = route.request().url();
+      const sb = /scoreboard\/soccer\/([^?/]+)/.exec(url);
+      if (sb) {
+        // tek maç özeti (gol dakikaları): 'data' (Incs-s), 'nogoal' (alan yok), 'fail' (HTTP 500)
+        st.lsDetail.push(sb[1]);
+        if (st.lsDetailMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
+        const body = st.lsDetailMode === 'nogoal' ? { Eid: sb[1], Venue: 'x' } : { Eid: sb[1], 'Incs-s': { 1: [{ Min: 23, Pn: 'Deneme Golcü', IT: 36 }] } };
+        return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      }
       const key = (/soccer\/(\d{8})\//.exec(url) || [])[1] || '';
       st.lsCalls.push({ key, url });
       if (st.lsMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
@@ -434,8 +442,27 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await sleep(300);
   ok(/olay, istatistik ve kadro bilgisi yok/.test(await e.textContent('#sd-body')) && !/LiveScore/.test(await e.textContent('.sd-pg')) && /Bandirmaspor/.test(await e.textContent('.sd-head')) && /Türkiye · TFF 1. Lig/.test(await e.textContent('.sd-head')), 'LiveScore maçı ayrıntısı: lig adı ve açıklama');
   ok(espn.st.summaryCalls.length === sumBefore, 'LiveScore maçı için ESPN ayrıntısı istenmedi');
+  ok(espn.st.lsDetail.length === 0, 'başlamamış LiveScore maçı için gol özeti istenmedi');
   await e.goBack();
   await e.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  // canlı, yalnız LiveScore'da olan maç (Flamengo 1-0, "Diğer ülkeler"): gol dakikası ve oyuncu LiveScore maç özetinden gelir
+  await e.click('#sp-lgs [data-lg="g:oth"]');
+  await sleep(300);
+  await openRow(e, /Flamengo/);
+  await e.waitForSelector('.sd-evs', { timeout: 6000 });
+  const evTxt = await e.textContent('.sd-evs');
+  ok(/23'/.test(evTxt) && /Deneme Golcü/.test(evTxt) && /1–0/.test(evTxt), 'LiveScore maçında gol dakikası ve oyuncu görünür: ' + evTxt);
+  ok(/yalnız gol bilgisi var/.test(await e.textContent('#sd-body')) && espn.st.lsDetail.length >= 1 && espn.st.summaryCalls.length === sumBefore, 'not: yalnız gol bilgisi; ESPN ayrıntısı yine istenmedi');
+  await e.goBack();
+  await e.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  // özet alınamazsa (HTTP 500) golü olan maçta neden küçük yazıyla görünür; ekran bozulmaz
+  espn.st.lsDetailMode = 'fail';
+  await openRow(e, /Flamengo/);
+  await e.waitForSelector('.sd-diag', { timeout: 6000 });
+  ok(/Gol dakikaları alınamadı \(LiveScore: /.test(await e.textContent('.sd-diag')) && !(await e.$('.sd-evs')), 'özet alınamayınca neden gösterilir: ' + (await e.textContent('.sd-diag')));
+  await e.goBack();
+  await e.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  espn.st.lsDetailMode = 'data';
   await e.screenshot({ path: path.join(SHOTS, '83-spor-livescore.png') });
   ok(E.errs.length === 0, 'sayfa hatası yok (ikinci kaynak): ' + E.errs.join(' | '));
   await E.ctx.close();

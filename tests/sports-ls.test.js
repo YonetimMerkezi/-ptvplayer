@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources } from '../www/js/sports-ls.js';
+import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources, lsDetailUrls, lsEidOf, parseLsEvents, loadLsEvents } from '../www/js/sports-ls.js';
 import { sections, chipsFor, capSections, teamKeys } from '../www/js/sports.js';
 
 const esd = (y, mo, d, h, mi) => `${y}${String(mo).padStart(2, '0')}${String(d).padStart(2, '0')}${String(h).padStart(2, '0')}${String(mi).padStart(2, '0')}00`;
@@ -243,4 +243,56 @@ test('parseLiveScore: yarışma + aşama → lig adı yarışma, tur bilgisi aş
   assert.notEqual(by.x1.id, by.x2.id);
   assert.equal(by.x3.round, 'Çeyrek final');
   assert.match(by.x3.lgName, /UEFA Nations League/);
+});
+
+test('lsEidOf / lsDetailUrls: maç özeti adresi cdn önce, Eid kimlikten de okunur', () => {
+  assert.equal(lsEidOf({ eid: '1234567' }), '1234567');
+  assert.equal(lsEidOf({ id: 'ls:5:1234567' }), '1234567', 'eski kayıt: kimliğin sonu');
+  assert.equal(lsEidOf({ id: 'ls:5:1700000000000-a-b' }), '', 'uydurma kimlik Eid sayılmaz');
+  assert.equal(lsEidOf(null), '');
+  const u = lsDetailUrls('77777');
+  assert.equal(u[0], 'https://prod-cdn-public-api.livescore.com/v1/api/app/scoreboard/soccer/77777?locale=en');
+  assert.equal(u.length, 2);
+});
+
+test('parseLsEvents: "Incs-s" gollerinden dakika, oyuncu ve takım; skor yalnız sayılar tutarsa yazılır', () => {
+  const m = { home: { score: 2 }, away: { score: 1 } };
+  const json = { 'Incs-s': { 1: [{ Min: 54, Pn: 'A. Ev', IT: 36 }, { Min: '12', Pn: 'B. Ev', IT: 36 }], 2: [{ Min: 90, MinEx: 3, Pn: 'C. Dep', IT: 36 }] } };
+  const r = parseLsEvents(json, m);
+  assert.deepEqual(r.events.map((e) => [e.minute, e.side, e.player, e.score]), [["12'", 'home', 'B. Ev', '1–0'], ["54'", 'home', 'A. Ev', '2–0'], ["90'", 'away', 'C. Dep', '2–1']]);
+  assert.ok(r.events.every((e) => e.kind === 'goal' && !e.mark));
+  // sayılar uyuşmuyorsa liste yine gelir, skor yazılmaz
+  const r2 = parseLsEvents(json, { home: { score: 3 }, away: { score: 1 } });
+  assert.equal(r2.events.length, 3);
+  assert.ok(r2.events.every((e) => e.score === ''));
+  // iç içe (periyot / takım) yapı da dolaşılır; takım en yakın 1/2 anahtarından
+  const r3 = parseLsEvents({ 'Incs-s': { 1: { 2: [{ Min: 70, Pn: 'X' }] } } }, m);
+  assert.equal(r3.events.length, 1);
+  assert.equal(r3.events[0].side, 'away');
+});
+
+test('parseLsEvents: biçim beklenmedikse boş liste ve neden notu (hata atmaz)', () => {
+  assert.deepEqual(parseLsEvents(null, {}).events, []);
+  assert.match(parseLsEvents({ Eid: '1', Venue: 'x' }, {}).note, /Incs-s yok \(alanlar: Eid,Venue\)/);
+  assert.match(parseLsEvents({ 'Incs-s': {} }, {}).note, /boş/);
+  assert.deepEqual(parseLsEvents({ 'Incs-s': [{ foo: 1 }, 5, null] }, {}).events, []);
+});
+
+test('loadLsEvents: ilk adres çalışmazsa yedeğe geçer; hepsi başarısızsa events boş ve neden notu', async () => {
+  const calls = [];
+  const net = { json: async (url) => { calls.push(url); if (url.includes('prod-cdn')) throw new Error('HTTP 403'); return { 'Incs-s': { 1: [{ Min: 5, Pn: 'Y' }] } }; } };
+  const m = { eid: '999999', home: { score: 1 }, away: { score: 0 } };
+  const r = await loadLsEvents({ net, match: m });
+  assert.equal(calls.length, 2);
+  assert.equal(r.events.length, 1);
+  assert.equal(r.events[0].score, '1–0');
+  const bad = await loadLsEvents({ net: { json: async () => { throw new Error('HTTP 500'); } }, match: m });
+  assert.deepEqual(bad, { events: [], note: 'HTTP 500' });
+  assert.deepEqual(await loadLsEvents({ net, match: { home: {}, away: {} } }), { events: [], note: 'Maç kimliği yok' });
+});
+
+test('parseLiveScore: maç nesnesi Eid taşır (maç özeti için)', () => {
+  const j = { Stages: [{ Sid: 's', Cnm: 'Spain', Snm: 'Segunda RFEF', Events: [ev('4321000', 'Castellonense', 'La Nucia', esd(2026, 11, 11, 21, 0), { Eps: "54'", Tr1: '1', Tr2: '1' })] }] };
+  const r = parseLiveScore(j, { now: Date.UTC(2026, 10, 11, 19, 0) });
+  assert.equal(r[0].eid, '4321000');
 });

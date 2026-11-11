@@ -4,6 +4,7 @@
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel, noScore } from './sports.js';
+import { LS_HOSTS, loadLsEvents } from './sports-ls.js';
 import { loadSummary, KIND_LABEL, broadcastGroups } from './sports-detail.js';
 import { sideLogo, logoHtml } from './sports-logos.js';
 
@@ -197,6 +198,9 @@ export function openMatchDetail(env, m) {
     return h || a ? `<section class="sd-sec"><h4>Kadro</h4><div class="sd-lus">${h}${a}</div></section>` : '';
   }
 
+  // Maçta gol atılmış mı (skordan): olay alınamadıysa nedeni yalnız o zaman gösterilir
+  const hasGoals = () => (Number(m.home.score) || 0) + (Number(m.away.score) || 0) > 0;
+
   function drawBody() {
     const el = q('#sd-body');
     if (!data) {
@@ -211,7 +215,7 @@ export function openMatchDetail(env, m) {
     el.innerHTML =
       eventsHtml(data) + statsHtml(data) + lineupHtml(data) +
       (data.lsOnly
-        ? '<p class="sd-note">Bu maç için olay, istatistik ve kadro bilgisi yok.</p>'
+        ? `<p class="sd-note">${data.events.length ? 'Bu maç için yalnız gol bilgisi var (istatistik ve kadro yok).' : 'Bu maç için olay, istatistik ve kadro bilgisi yok.'}</p>${!data.events.length && data.evNote && hasGoals() ? `<p class="hint sd-diag">Gol dakikaları alınamadı (LiveScore: ${esc(data.evNote)})</p>` : ''}`
         : data.empty ? `<p class="sd-note">${pre ? 'Maç başlayınca olaylar, istatistikler ve kadro burada görünür.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
   }
 
@@ -230,7 +234,13 @@ export function openMatchDetail(env, m) {
     drawStatus();
     try {
       if (lite) {
-        data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], stats: [], lineups: {}, intl: [], empty: true, lsOnly: true };
+        data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], stats: [], lineups: {}, intl: [], empty: true, lsOnly: true, evNote: '' };
+        // LiveScore maçı: yalnız goller (dakika, oyuncu) tek maç özetinden gelir; başlamamış maç için sorulmaz
+        if (m.src === 'ls' && m.state !== 'pre' && !m.off) {
+          const r = await loadLsEvents({ net: env.net, match: m, hosts: env.lsHosts || LS_HOSTS });
+          data.events = r.events;
+          data.evNote = r.events.length ? '' : r.note;
+        }
       } else data = await loadSummary({ net: env.net, match: m, base });
       fetchedAt = now();
     } catch (e) {

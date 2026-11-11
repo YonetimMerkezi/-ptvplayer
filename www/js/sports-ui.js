@@ -675,7 +675,7 @@ export function openSports(env) {
       const mod = await import('./sports-detail-ui.js');
       mod.openMatchDetail(
         {
-          net, toast, liveItems, epgBetween, play, base, now,
+          net, toast, liveItems, epgBetween, play, base, now, lsHosts,
           badgeOf: (name) => badgeOf(name, 'small'),
           tvOf: (x) => tvFor.get(x.id) || [],
           ensureTv: (x) => ensureTv(dayStart(x.t)),

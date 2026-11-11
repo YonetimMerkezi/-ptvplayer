@@ -147,6 +147,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
             grp,
             ord,
             src: 'ls',
+            eid: str(ev.Eid),
             t,
             state: status.state,
             text: status.text,
@@ -185,6 +186,108 @@ export async function loadLiveScoreDay({ net, dayMs, now = Date.now(), hosts = L
   const err = new Error('LiveScore verisi alınamadı.');
   err.detail = errs[0] ? `${errs[0]}${errs.length > 1 ? ` (${errs.length} adres denendi)` : ''}` : 'hata';
   throw err;
+}
+
+// ---- maç olayları (gol dakikaları) ----
+
+const DETAIL_PATH = '/v1/api/app/scoreboard/soccer/';
+
+// Bir LiveScore maçının tek maç özeti adresleri (ana ve yedek adres). Eid: gün listesindeki olay kimliği.
+export function lsDetailUrls(eid, hosts = LS_HOSTS) {
+  const hs = Array.isArray(hosts) ? hosts : [hosts];
+  return [...hs].reverse().map((h) => `${h}${DETAIL_PATH}${encodeURIComponent(eid)}?locale=en`); // belgedeki sıra: cdn adresi önce
+}
+
+// Maç kimliği: gün listesinden gelen Eid (eski kayıtlarda yok: kimliğin sonundaki sayı).
+export function lsEidOf(m) {
+  const e = str(m && m.eid);
+  if (e) return e;
+  const last = String((m && m.id) || '').split(':').pop();
+  return /^\d{5,}$/.test(last) ? last : '';
+}
+
+const minuteText = (v) => {
+  const s = str(v).replace(/'/g, '');
+  return s ? `${s}'` : '';
+};
+
+// "Incs-s" (yalnız goller) içindeki olayları dolaşır: Min ve Pn/IT alanı olan her nesne bir gol sayılır. Takım, en yakın "1"/"2" anahtarından gelir
+// (1 ev sahibi, 2 deplasman). Belgesiz API: biçim değişirse hiçbir şey bulunmaz, hata atılmaz.
+function collectGoals(node, side, out, depth = 0) {
+  if (node == null || typeof node !== 'object' || depth > 6) return;
+  if (Array.isArray(node)) {
+    for (const x of node) collectGoals(x, side, out, depth + 1);
+    return;
+  }
+  if ('Min' in node && ('Pn' in node || 'IT' in node)) {
+    out.push({ ev: node, side });
+    return;
+  }
+  for (const [k, v] of Object.entries(node)) collectGoals(v, k === '1' ? 'home' : k === '2' ? 'away' : side, out, depth + 1);
+}
+
+// Tek maç özeti yanıtı → { events (ekrandaki olay biçimi), note }. Yalnız goller gelir; dakika ve oyuncu adı.
+export function parseLsEvents(json, m) {
+  const src = json && typeof json === 'object' ? json['Incs-s'] : null;
+  if (!src || typeof src !== 'object') return { events: [], note: json && typeof json === 'object' ? `Incs-s yok (alanlar: ${Object.keys(json).slice(0, 12).join(',')})` : 'Boş yanıt' };
+  const found = [];
+  collectGoals(src, '', found);
+  const events = found.map(({ ev, side }, idx) => ({
+    kind: 'goal',
+    mark: false,
+    idx,
+    minute: minuteText(ev.Min),
+    side,
+    player: str(ev.Pn).slice(0, 60),
+    other: '',
+    detail: '',
+    score: '',
+    text: '',
+  }));
+  const val = (e) => {
+    const x = /(\d+)(?:\D*?\+\s*(\d+))?/.exec(e.minute);
+    return x ? Number(x[1]) + (x[2] ? Number(x[2]) / 100 : 0) : 999;
+  };
+  events.sort((a, b) => val(a) - val(b) || a.idx - b.idx);
+  let h = 0;
+  let a = 0;
+  let known = true;
+  for (const e of events) {
+    if (e.side === 'home') h++;
+    else if (e.side === 'away') a++;
+    else known = false;
+    delete e.idx;
+  }
+  // Skor yalnız gol sayıları maç skoruyla tam uyuşuyorsa yazılır (uyuşmuyorsa liste eksik ya da takımlar karışık olabilir)
+  const hs = m && m.home ? m.home.score : null;
+  const as = m && m.away ? m.away.score : null;
+  if (known && hs != null && as != null && h === hs && a === as) {
+    let rh = 0;
+    let ra = 0;
+    for (const e of events) {
+      if (e.side === 'home') rh++;
+      else ra++;
+      e.score = `${rh}–${ra}`;
+    }
+  }
+  return { events, note: events.length ? '' : 'Incs-s boş' };
+}
+
+// Maçın gollerini indirir. Döner: { events, note }; adres çalışmazsa events boş, note nedeni söyler (ekranda küçük yazıyla görünür). Hata atmaz.
+export async function loadLsEvents({ net, match, hosts = LS_HOSTS, timeoutMs = 15000 } = {}) {
+  const eid = lsEidOf(match);
+  if (!eid) return { events: [], note: 'Maç kimliği yok' };
+  const errs = [];
+  for (const url of lsDetailUrls(eid, hosts)) {
+    try {
+      const json = await withTimeout(net.json(url, { fast: true }), timeoutMs);
+      if (!json || typeof json !== 'object') throw new Error('Boş yanıt');
+      return parseLsEvents(json, match);
+    } catch (e) {
+      errs.push(String((e && e.message) || e || 'hata').slice(0, 80));
+    }
+  }
+  return { events: [], note: errs[0] || 'hata' };
 }
 
 // ---- iki kaynağı birleştirme ----
