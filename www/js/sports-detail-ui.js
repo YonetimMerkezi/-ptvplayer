@@ -3,7 +3,7 @@
 // sayfayı yarım ekran adımlarla kaydırır (alttaki bir düğmeye sıçramaz).
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
-import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel } from './sports.js';
+import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel, noScore } from './sports.js';
 import { loadSummary, KIND_LABEL, broadcastGroups } from './sports-detail.js';
 import { sideLogo, logoHtml } from './sports-logos.js';
 
@@ -97,10 +97,11 @@ export function openMatchDetail(env, m) {
     };
     const hs = sc('home');
     const as = sc('away');
-    const mid = hs !== '' && as !== '' ? `<b class="sd-score">${esc(hs)} – ${esc(as)}</b>` : `<b class="sd-score sd-vs">${fmtClock(m.t)}</b>`;
+    const none = noScore(m, now()); // yalnız takvimden gelen, saati çoktan geçmiş maç: skor bilinmiyor
+    const mid = hs !== '' && as !== '' ? `<b class="sd-score">${esc(hs)} – ${esc(as)}</b>` : `<b class="sd-score sd-vs">${none ? '– –' : fmtClock(m.t)}</b>`;
     const pen = m.home.pen != null && m.away.pen != null && st.state === 'post' ? `<small class="sd-pen">Penaltılar ${m.home.pen}–${m.away.pen}</small>` : '';
     const stClass = st.state === 'in' ? 'sd-st live' : 'sd-st';
-    const stText = st.state === 'pre' && !st.off ? `${esc(dayLabel(dayStart(m.t), now()))} · ${fmtClock(m.t)}` : esc(st.text || '');
+    const stText = none && st.state === 'pre' ? `Skor alınamadı · ${esc(dayLabel(dayStart(m.t), now()))} ${fmtClock(m.t)}` : st.state === 'pre' && !st.off ? `${esc(dayLabel(dayStart(m.t), now()))} · ${fmtClock(m.t)}` : esc(st.text || '');
     const where = [(data && data.venue) || m.venue, data && data.city].filter(Boolean).join(', ');
     const meta = [where, data && data.referee ? `Hakem: ${data.referee}` : '', data && data.attendance ? `Seyirci: ${data.attendance.toLocaleString('tr-TR')}` : ''].filter(Boolean);
     q('#sd-top').innerHTML = `<div class="sd-lg">${esc(lgName)}${m.round ? ` <small>· ${esc(m.round)}</small>` : ''}</div>

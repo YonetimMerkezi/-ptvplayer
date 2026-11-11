@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 62,
+    title: 'Spor: skoru olan maç iki kez görünmüyor, skor yoksa “Skor yok” yazar',
+    items: [
+      'Yayın takvimindeki maç adı kısaltılmış yazıldığında (örneğin “Kepez Bld.”) skor veren kaynaktaki aynı maçla eşleşmiyor, maç skorsuz ayrı bir satır olarak kalıyordu. Aynı saatte bir takım eşleşiyorsa artık aynı maç sayılır: skor ve yayın kanalı tek satırda görünür',
+      'Yalnız takvimden bilinen ve başlayalı çok geçen maç, saatiyle “oynanmamış” gibi kalmaz; satırda ve ayrıntıda “Skor yok” yazar'
+    ],
+  },
+  {
     id: 61,
     title: 'Düğme geri bildirimi, oynatıcı simge adları, liste konumu',
     items: [

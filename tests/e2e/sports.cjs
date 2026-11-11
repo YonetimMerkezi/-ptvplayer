@@ -502,7 +502,9 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   // takvimde olmayan maçlar yayın akışından gelir: lig/turnuva, saat, kanal logosu
   const rowTxt = async (re) => (await text(h, '.sp-m')).find((t) => re.test(t));
   const kepez = await rowTxt(/Kepez/);
-  ok(/13:00/.test(kepez) && /Kepez Bld\. - Balıkesirspor/.test(kepez) && /TFF 3\. Lig/.test(kepez), 'ESPN/ikinci kaynakta olmayan maç yayın akışından listede, lig adıyla: ' + kepez);
+  // Saati çoktan geçmiş, skor veren kaynakta karşılığı olmayan takvim maçı "oynanmamış" gibi saatiyle değil "Skor yok" ile görünür
+  const kepezWhen = Date.now() - new Date().setHours(13, 0, 0, 0) > 150 * 60000 ? /Skor yok/ : /13:00/;
+  ok(kepezWhen.test(kepez) && /Kepez Bld\. - Balıkesirspor/.test(kepez) && /TFF 3\. Lig/.test(kepez), 'ESPN/ikinci kaynakta olmayan maç yayın akışından listede, lig adıyla ve doğru durumla: ' + kepez);
   const kb = await boxOf(h, /Kepez/);
   ok(kb.title === 'Tivibu Spor 1' && kb.img, 'kanal logosu görüntü olarak gösterilir: ' + JSON.stringify(kb));
   const erm = await rowTxt(/Ermenistan/);

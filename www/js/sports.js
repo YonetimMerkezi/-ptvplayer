@@ -425,6 +425,11 @@ export function dayStrip(now = Date.now(), back = 1, ahead = 7) {
 
 export const matchesOnDay = (matches, dayMs) => matches.filter((m) => startOfDay(m.t) === dayMs);
 
+// Yalnız yayın takviminden gelen (skor veren kaynakta karşılığı olmayan) maç, başlamasının üzerinden uzun süre geçtiyse: skor bilinmiyor.
+// Saatiyle "oynanmamış" gibi göstermek yanıltır; ekran "Skor yok" der.
+export const NO_SCORE_AFTER_MS = 150 * 60000;
+export const noScore = (m, now = Date.now()) => !!m && m.src === 'se' && m.state === 'pre' && !m.off && m.home.score == null && now - m.t > NO_SCORE_AFTER_MS;
+
 // İkinci kaynaktan (LiveScore) gelen, ESPN tablosunda olmayan yarışmaların grupları. Sıra ekrandaki sıradır.
 // "oth" yalnız kendi düğmesinden görünür ("Tümü" listesini binlerce alt lig maçıyla doldurmaz).
 export const GROUPS = [

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LEAGUES, DAY, scoreboardUrl, scoreboardLadder, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram,
-  trRound, matchRank, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
+  trRound, matchRank, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive, noScore,
 } from '../www/js/sports.js';
 
 const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
@@ -347,4 +347,16 @@ test('matchRank: ESPN ligleri LEAGUES sırasıyla, diğerleri sonra kendi sıras
   const rows = [{ id: 'b', t: 1, lg: 'ls:y', ord: 3 }, { id: 'a', t: 1, lg: first }, { id: 'c', t: 1, lg: 'se:x', ord: 1 }];
   rows.sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
   assert.deepEqual(rows.map((r) => r.id), ['a', 'c', 'b']);
+});
+
+test('noScore: yalnız takvimden gelen, başlayalı 2,5 saatten uzun süren ve skoru olmayan maç', () => {
+  const t0 = Date.UTC(2026, 10, 11, 10, 0);
+  const se = { src: 'se', state: 'pre', off: false, t: t0, home: { score: null }, away: { score: null } };
+  assert.equal(noScore(se, t0 - 3600e3), false, 'henüz başlamadı');
+  assert.equal(noScore(se, t0 + 100 * 60000), false, 'oynanıyor olabilir');
+  assert.equal(noScore(se, t0 + 151 * 60000), true);
+  assert.equal(noScore({ ...se, off: true }, t0 + 5 * 3600e3), false, 'ertelenen maç');
+  assert.equal(noScore({ ...se, src: 'ls' }, t0 + 5 * 3600e3), false, 'skor veren kaynağın maçı');
+  assert.equal(noScore({ ...se, home: { score: 1 }, away: { score: 0 } }, t0 + 5 * 3600e3), false);
+  assert.equal(noScore(null), false);
 });

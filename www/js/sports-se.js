@@ -390,6 +390,19 @@ function rowIsMatch(match, r, ph) {
 }
 const phrasesOf = (match) => ({ own: norm(`${match.home.name} ${match.away.name}`), hp: teamPhrases(match.home.name), ap: teamPhrases(match.away.name) });
 
+// Aynı başlama saati (bir takım aynı anda iki maç oynayamaz): bir takımın adı satırda tam geçiyor, diğerinin de en az bir ayırt edici sözcüğü
+// geçiyorsa (kısaltma: "Kepez Bld." ↔ "Kepez Belediyespor") satır bu maçındır. Yoksa maç iki kez görünür ve skoru yalnız birinde olur.
+const SLOT_MS = 20 * 60000;
+const shareWord = (padded, name) => norm(name).split(' ').some((w) => w.length >= 4 && padded.includes(` ${w} `));
+function rowFits(match, r, ph) {
+  if (rowIsMatch(match, r, ph)) return true;
+  if (Math.abs(r.t - match.t) > SLOT_MS) return false;
+  const text = norm(r.title);
+  if (women(text) !== women(ph.own) || youth(text) !== youth(ph.own)) return false;
+  const padded = ` ${text} `;
+  return (hasAny(padded, ph.hp) && shareWord(padded, match.away.name)) || (hasAny(padded, ph.ap) && shareWord(padded, match.home.name));
+}
+
 // Maçın yayın bilgisi: saat ±tolerance içinde, satır başlığında iki takımın da adı geçen satırların kanalları (tekrarsız) ve logoları.
 export function seInfoFor(match, rows, { tolerance = 35 * 60000 } = {}) {
   const channels = [];
@@ -398,7 +411,7 @@ export function seInfoFor(match, rows, { tolerance = 35 * 60000 } = {}) {
   for (const r of rows || []) {
     if (Math.abs(r.t - match.t) > tolerance || !r.channels.length) continue;
     ph = ph || phrasesOf(match);
-    if (!rowIsMatch(match, r, ph)) continue;
+    if (!rowFits(match, r, ph)) continue;
     for (const c of r.channels) if (!channels.includes(c)) channels.push(c);
     Object.assign(logos, r.logos || {});
   }
@@ -470,7 +483,7 @@ export function mergeSe(base, rows, { tolerance = 90 * 60000 } = {}) {
       if (Math.abs(m.t - r.t) > tolerance) return false;
       let ph = phs.get(m.id);
       if (!ph) phs.set(m.id, (ph = phrasesOf(m)));
-      return rowIsMatch(m, r, ph);
+      return rowFits(m, r, ph);
     });
     if (!covered) extra.push(r);
   }

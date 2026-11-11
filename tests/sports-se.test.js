@@ -293,3 +293,19 @@ test('fixTr / compGroup', () => {
   assert.equal(compGroup('Brezilya Serie A'), 'oth');
   assert.equal(compGroup(''), 'oth');
 });
+
+test('mergeSe / seInfoFor: aynı saatte tek takım eşleşirse (kısaltılmış ad) satır aynı maçtır; skorlu maç çoğaltılmaz, kanalı yine gelir', () => {
+  const t0 = Date.UTC(2026, 10, 11, 10, 0);
+  const rows = [
+    { id: '9', t: t0, title: 'Kepez Bld. - Balıkesirspor TFF 3. Lig', teams: ['Kepez Bld.', 'Balıkesirspor'], comp: 'TFF 3. Lig', channels: ['Tivibu Spor 1'], logos: {} },
+    { id: '10', t: t0 + 3 * 3600e3, title: 'Kepez Bld. - Balıkesirspor TFF 3. Lig', teams: ['Kepez Bld.', 'Balıkesirspor'], comp: 'TFF 3. Lig', channels: [], logos: {} },
+  ];
+  const ls = [{ id: 'ls:1', lg: 'tr:3', t: t0, state: 'post', text: 'MS', home: { name: 'Kepez Belediyespor', score: 2 }, away: { name: 'Balıkesirspor', score: 1 } }];
+  const all = mergeSe(ls, [rows[0]]);
+  assert.equal(all, ls, 'satır skorlu maçla aynı: eklenmez');
+  assert.deepEqual(seInfoFor(ls[0], rows).channels, ['Tivibu Spor 1'], 'kanal, skorlu maçın üzerinde görünür (3 saat sonraki satır sayılmaz)');
+  assert.equal(mergeSe(ls, [rows[1]]).length, 2, 'başka saatteki satır aynı maç değildir');
+  // kadın/genç işareti ayrı maçtır
+  const w = [{ id: '11', t: t0, title: 'Balıkesirspor Kadın - Ankara FK Kadın', teams: ['Balıkesirspor Kadın', 'Ankara FK Kadın'], comp: 'Kadınlar Ligi', channels: [], logos: {} }];
+  assert.equal(mergeSe(ls, w).length, 2, 'erkek maçı kadın satırıyla birleşmez');
+});

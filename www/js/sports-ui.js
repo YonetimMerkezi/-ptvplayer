@@ -5,7 +5,7 @@ import { $, icon, openPage } from './ui.js';
 import { MATCH_LEADS, MATCH_LEAD_DEFAULT, leadLabel, matchPlanId, canRemind, makeMatchPlan } from './plan.js';
 import {
   ESPN_BASE, leagueOf, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
-  matchesOnDay, sections, chipsFor, capSections, hasLive,
+  matchesOnDay, sections, chipsFor, capSections, hasLive, noScore,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
@@ -290,7 +290,7 @@ export function openSports(env) {
   }
 
   function rowHtml(m) {
-    const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : `<time>${fmtClock(m.t)}</time>${bellHtml(m)}`;
+    const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : noScore(m, now()) ? `<span class="sp-ft">Skor yok</span>` : `<time>${fmtClock(m.t)}</time>${bellHtml(m)}`;
     const sc = score(m);
     const title = `${teamHtml(m.home, m.away)}<span class="sp-vs">${sc ? ` ${sc} ` : ' - '}</span>${teamHtml(m.away, m.home)}`;
     const lgl = lgLine(m);
