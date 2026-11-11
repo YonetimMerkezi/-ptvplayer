@@ -1,0 +1,18 @@
+Galatasaray | Galatasaray | 200 5137
+Fenerbahce-tr | Fenerbah%C3%A7e | 200 3396
+Fenerbahce-ascii | Fenerbahce | 200 3396
+Besiktas-tr | Be%C5%9Fikta%C5%9F | 200 4023
+Besiktas-ascii | Besiktas | 200 4023
+Kepez | Kepez%20Bld. | 200 14
+Flamengo | Flamengo | 200 10488
+Hamburger | Hamburger%20SV | 200 1430
+Arsenal | Arsenal | 200 24341
+Bandirmaspor | Bandirmaspor | 200 14
+Manisa | Manisa%20FK | 429 17
+Karsiyaka | Kar%C5%9F%C4%B1yaka | 429 17
+Karsiyaka-ascii | Karsiyaka | 429 17
+badge=https://r2.thesportsdb.com/images/media/team/badge/uyhbfe1612467038.png
+badge | 200 127571 image/png
+badge/small | 200 46217 image/png
+badge/tiny | 200 13606 image/png
+flag wls | 200 1482
