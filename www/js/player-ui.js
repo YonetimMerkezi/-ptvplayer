@@ -223,6 +223,7 @@ export function createPlayerUI({ engine, player, env }) {
     ui.classList.add('show');
     clearTimeout(hideTimer);
     if (!stick && player.state().status === 'playing') scheduleHide();
+    refreshTip();
   }
 
   function title(st) {
@@ -258,7 +259,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   let lastStatus = '';
   let altShown = '';
-  // Alt düğmeler tek satırda ve ortada; yalnız Ayarlar'da seçilenlerin adı yazar, diğerleri simge (adı title/aria-label'de kalır).
+  // Alt düğmeler tek satırda ve ortada; yalnız Ayarlar'da seçilenlerin adı yazar, diğerleri simge (adı aria-label'de kalır; üzerine gelince/odaklanınca etiket çıkar).
   let labelSig = '';
   function scheduleFit() {
     const bar = q('.pl-tools');
@@ -272,10 +273,7 @@ export function createPlayerUI({ engine, player, env }) {
       b.classList.toggle('lbl', on.has(b.id.replace(/^pl-/, '')));
       const t = b.querySelector('span');
       const name = t ? t.textContent.trim() : '';
-      if (name) {
-        b.title = name;
-        b.setAttribute('aria-label', name);
-      }
+      if (name) b.setAttribute('aria-label', name); // ad etiketini #pl-tip gösterir (yerel title ikinci bir balon açardı)
     }
   }
 
@@ -290,8 +288,11 @@ export function createPlayerUI({ engine, player, env }) {
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
     q('#pl-prog').classList.toggle('live', live);
-    q('#pl-play').innerHTML = icon(st.status === 'playing' || st.status === 'buffering' || st.status === 'loading' ? 'pause' : 'play');
+    const pausing = st.status === 'playing' || st.status === 'buffering' || st.status === 'loading';
+    q('#pl-play').innerHTML = icon(pausing ? 'pause' : 'play');
+    q('#pl-play').setAttribute('aria-label', pausing ? 'Duraklat' : 'Oynat');
     q('#pl-fav').innerHTML = icon(env.isFav(st.item) ? 'star-on' : 'star');
+    q('#pl-fav').setAttribute('aria-label', env.isFav(st.item) ? 'Favoriden çıkar' : 'Favoriye ekle');
     q('#pl-fav').style.color = env.isFav(st.item) ? 'var(--gold)' : '';
     q('#pl-epg').hidden = st.item.kind !== 'live' || !!st.item.cast;
     if (!live && !seeking) {
@@ -817,6 +818,7 @@ export function createPlayerUI({ engine, player, env }) {
     if (!open) return;
     open = false;
     layerOpen = false;
+    hideTip();
     setStats(false);
     clearTimeout(hideTimer);
     num.cancel();
@@ -1073,6 +1075,85 @@ export function createPlayerUI({ engine, player, env }) {
     if (open) showUi(false);
     if (k !== 'Enter') e.preventDefault();
   });
+
+  // ---- simge düğmelerinin üstünde küçük ad etiketi: fare üzerine gelince ve kumanda odağında ----
+  // Tek bir yüzen öğe kullanılır (kaydırmalı araç satırı etiketi kırpmasın); düğmenin üstüne, sığmazsa altına konur.
+  const tipEl = document.createElement('div');
+  tipEl.className = 'pl-tip';
+  tipEl.hidden = true;
+  tipEl.setAttribute('aria-hidden', 'true');
+  root.appendChild(tipEl);
+  let tipFor = null;
+  function tipOf(b) {
+    switch (b.id) {
+      case 'pl-aspect':
+        return 'En-boy: ' + RESIZE[resizeIdx][1];
+      case 'pl-sleep':
+        return sleep.active() ? 'Uyku zamanlayıcısı: ' + fmtRemaining(sleep.remaining()) : 'Uyku zamanlayıcısı';
+      case 'pl-night': {
+        const n = nightNow();
+        return n === 'off' ? 'Gece modu' : 'Gece modu: ' + nightLabel(n);
+      }
+      case 'pl-stats':
+        return 'Yayın bilgisi';
+      default: {
+        const l = b.getAttribute('aria-label');
+        if (l) return l;
+        const sp = b.querySelector('span');
+        return sp ? sp.textContent.trim() : '';
+      }
+    }
+  }
+  function hideTip() {
+    tipFor = null;
+    tipEl.hidden = true;
+  }
+  function showTip(b) {
+    const text = b && !b.hidden ? tipOf(b) : '';
+    if (!text) return hideTip();
+    tipFor = b;
+    tipEl.textContent = text;
+    tipEl.hidden = false;
+    const r = b.getBoundingClientRect();
+    const o = root.getBoundingClientRect();
+    const w = tipEl.offsetWidth;
+    const h = tipEl.offsetHeight;
+    const x = Math.max(8, Math.min(o.width - w - 8, r.left - o.left + r.width / 2 - w / 2));
+    let y = r.top - o.top - h - 10;
+    if (y < 8) y = r.bottom - o.top + 10; // üst çubuktaki düğmelerin etiketi altına
+    tipEl.style.left = x + 'px';
+    tipEl.style.top = y + 'px';
+  }
+  const tipBtn = (t) => (t && t.closest ? t.closest('#pl-ui button') : null);
+  function refreshTip() {
+    const a = document.activeElement;
+    if (open && kbdMode() && tipBtn(a)) showTip(a);
+  }
+  ui.addEventListener('pointerover', (e) => {
+    const b = e.pointerType === 'mouse' ? tipBtn(e.target) : null;
+    if (b) showTip(b);
+  });
+  ui.addEventListener('pointerout', (e) => {
+    if (e.pointerType === 'mouse' && tipBtn(e.target) !== tipBtn(e.relatedTarget)) hideTip();
+  });
+  ui.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse') hideTip(); // dokunmada etiket gerekmez; fare tıklamasında kalır ve yeni adla güncellenir
+  });
+  ui.addEventListener('focusin', (e) => {
+    const b = kbdMode() ? tipBtn(e.target) : null;
+    if (b) showTip(b);
+    else hideTip();
+  });
+  ui.addEventListener('focusout', hideTip);
+  // düğme adı tıklamayla değişir (Oynat ↔ Duraklat, en-boy kipi…): etiket yeni adla yenilenir
+  ui.addEventListener('click', (e) => {
+    const b = tipBtn(e.target);
+    if (b && tipFor === b) setTimeout(() => tipFor === b && showTip(b), 60);
+  });
+  // denetimler gizlenince etiket de gider
+  new MutationObserver(() => {
+    if (!ui.classList.contains('show')) hideTip();
+  }).observe(ui, { attributes: true, attributeFilter: ['class'] });
 
   // ---- telefondan uzaktan kumanda: TV'deki oynatıcının durumu ve denetimleri ----
 

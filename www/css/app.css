@@ -117,17 +117,17 @@ input, select, textarea { font: inherit; color: var(--text); }
 :focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
 /* kumanda kipi (html.kbd: yön tuşlarına basılınca ya da Android TV'de): odaktaki öğe uzaktan da seçilir.
    Halka tüm temalarda beyaz + koyu kenar (vurgu rengi zeminle karışabildiği için tek başına yetmez); seçili (.on) durumdan da ayrışır. */
-html.kbd :focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ring-edge); }
+html.kbd :focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ring-edge); scroll-margin: 16px; }
 html.kbd input:focus, html.kbd select:focus { outline-offset: 0; box-shadow: none; }
 html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
 html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus, html.kbd .sp-m:focus { outline: none; background: var(--ring-bg); box-shadow: inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); }
 html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus, html.kbd .act:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
 /* Odaktaki düğme uzaktan da seçilir: halkaya ek olarak dolgu tersine döner (beyaz dolgu, koyu simge) ve biraz büyür. Seçili (.on) düğme kendi dolgusunu korur, yalnız halka + büyüme alır */
-html.kbd .icon-btn:not(.on):focus, html.kbd .big-btn:focus, html.kbd .tool:not(.on):not(.rec-on):focus, html.kbd .chip:not(.on):focus, html.kbd .btn.ghost:not(.on):focus,
-html.kbd .sp-act:not(.on):focus, html.kbd .mp-chip:focus, html.kbd .act:not(.on):focus { background: #fff; color: #0b1020; }
-html.kbd .icon-btn:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .chip:focus, html.kbd .btn:focus, html.kbd .sp-act:focus, html.kbd .mp-chip:focus, html.kbd .act:focus { position: relative; z-index: 3; transform: scale(1.08); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
+html.kbd .icon-btn:not(.on):focus, html.kbd .big-btn:focus, html.kbd .tool:not(.on):not(.rec-on):focus, html.kbd .chip:not(.on):focus, html.kbd .btn:not(.on):focus,
+html.kbd .sp-act:not(.on):focus, html.kbd .mp-chip:focus, html.kbd .act:not(.on):focus, html.kbd .swatch:not(.on):focus { background: #fff; color: #0b1020; }
+html.kbd .icon-btn:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .chip:focus, html.kbd .btn:focus, html.kbd .sp-act:focus, html.kbd .mp-chip:focus, html.kbd .act:focus, html.kbd .swatch:focus { position: relative; z-index: 3; transform: scale(1.08); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
 html.kbd .big-btn.lg:focus { transform: scale(1.12); }
-html.kbd .chip:focus, html.kbd .btn:focus { border-color: var(--ring); }
+html.kbd .chip:focus, html.kbd .btn:focus, html.kbd .swatch:focus { border-color: var(--ring); }
 html.kbd .sp-act:not(.on):focus .ic, html.kbd .tool:not(.on):focus .ic { color: #0b1020; }
 html.kbd .pl-prog input:focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 5px var(--ring-edge); border-radius: 14px; }
 /* Android TV: ekran kenarındaki taşma payı (overscan) ve uzaktan okunur büyük yazı */
@@ -1004,3 +1004,18 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sd-subs b { color: var(--text); font-weight: 600; }
 .sd-upd { display: block; margin-top: 14px; text-align: center; color: var(--muted); }
 @media (max-width: 480px) { .sd-lus { grid-template-columns: 1fr; } }
+
+/* ---- fareyle üzerine gelme (yalnız gerçek fare olan aygıtlarda; dokunmatikte takılı kalmasın) ----
+   Düğme vurgu rengine dolar ve beyaz kenarlık alır; zaten vurgu dolgulu (.on, .btn) düğmeler parlar ve kenarlık alır.
+   Kumanda odağı (html.kbd :focus) daha yüksek öncelikli olduğundan odaktaki düğmede o görünür. */
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn:not(.on):not(:disabled):hover, .big-btn:not(:disabled):hover, .tool:not(.on):not(.rec-on):not(:disabled):hover, .chip:not(.on):hover, .btn.ghost:not(:disabled):hover,
+  .sp-act:not(.on):hover, .mp-chip:hover, .act:not(.on):hover, .swatch:not(.on):hover { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--ring); }
+  .tool:not(.on):not(.rec-on):hover .ic, .sp-act:not(.on):hover .ic { color: var(--accent-ink); }
+  .btn:not(.ghost):not(:disabled):hover, .chip.on:hover, .tool.on:hover, .icon-btn.on:hover, .swatch.on:hover, .sp-act.on:hover { filter: brightness(1.18); box-shadow: 0 0 0 2px var(--ring); }
+  .swatch:hover { border-color: var(--ring); }
+}
+
+/* ---- oynatıcı: simge düğmesinin üstünde küçük ad etiketi ---- */
+.pl-tip { position: absolute; z-index: 30; pointer-events: none; padding: 5px 11px; border-radius: 8px; background: rgba(0, 0, 0, 0.88); color: #fff; border: 1px solid rgba(255, 255, 255, 0.4); font-size: 0.8125rem; font-weight: 600; line-height: 1.3; white-space: nowrap; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+.pl-tip[hidden] { display: none; }

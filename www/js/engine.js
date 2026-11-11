@@ -9,8 +9,18 @@ const ERR = [
   [/BEHIND_LIVE_WINDOW/, 'Canlı yayın geride kaldı'],
 ];
 
-export function describeError(name) {
+// Sunucunun HTTP durum koduna göre açıklama: 403/404/5xx farklı sorunlardır (abonelik ya da bağlantı sınırı / kanal yok / sunucu arızası).
+function describeHttp(code) {
+  if (code === 401 || code === 403 || code === 458 || code === 429) return `Sunucu erişimi reddetti (HTTP ${code}): abonelik süresi ya da eş zamanlı bağlantı sınırı olabilir`;
+  if (code === 404 || code === 410) return `Kanal sunucuda bulunamadı (HTTP ${code})`;
+  if (code >= 500) return `Sunucu hata verdi (HTTP ${code})`;
+  return `Sunucu yayını vermedi (HTTP ${code})`;
+}
+
+export function describeError(name, http = 0) {
   const s = String(name || '');
+  const code = Number(http) || 0;
+  if (code >= 400 && /BAD_HTTP_STATUS/.test(s)) return describeHttp(code);
   for (const [re, msg] of ERR) if (re.test(s)) return msg;
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
@@ -20,7 +30,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
   add('time', (e) => on({ type: 'time', pos: e.pos, dur: e.dur, buffered: e.buffered }));
-  add('error', (e) => on({ type: 'error', message: describeError(e.message) }));
+  add('error', (e) => on({ type: 'error', message: describeError(e.message, e.http) }));
   add('tracks', () => on({ type: 'tracks' }));
   add('recording', (e) => onRec(e));
   add('dlProgress', (e) => onDl(e));

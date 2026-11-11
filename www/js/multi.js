@@ -132,7 +132,7 @@ export function createSlotSupervisor({ restart, status, policy = () => retryPoli
 
 export function createMultiEngine({ native, Hls, on }) {
   if (native) {
-    native.addListener('multi', (e) => on({ slot: e.slot, state: e.state, message: e.state === 'error' ? describeError(e.message) : '', has: !!e.has, supported: e.supported, info: e.info || '' })).catch(() => {});
+    native.addListener('multi', (e) => on({ slot: e.slot, state: e.state, message: e.state === 'error' ? describeError(e.message, e.http) : '', has: !!e.has, supported: e.supported, info: e.info || '' })).catch(() => {});
     return {
       kind: 'native',
       start: (slot, target, { rect, muted, fill }) =>

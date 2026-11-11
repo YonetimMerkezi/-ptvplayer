@@ -169,12 +169,16 @@ const pui = createPlayerUI({
     previewRect,
     onMiniPlayer: (active) => {
       S.miniplayer = !!active;
+      if (active) scheduleOrientation(900); // yatay kilit kalkınca dönüş bitsin, düzen farklıysa liste yeniden kurulur
       updateMiniPlayerOverlay();
       if (active) setTimeout(layoutPreview, 0);
     },
     onPreviewEnd: () => syncHole(), // önizleme/küçük oynatıcı kapandı: video deliği kapanır
     onPreviewStep: (d) => previewStep(d),
-    onClose: () => multiResume(), // tam ekrandan dönünce çoklu ekran kutuları yeniden başlar
+    onClose: () => {
+      multiResume(); // tam ekrandan dönünce çoklu ekran kutuları yeniden başlar
+      scheduleOrientation(900); // yön kilidi kalkınca dönüş bitsin, sonra düzen farklıysa liste yeniden kurulur
+    },
     onPreviewBack: (item) => {
       if (item && item.kind === 'live') setPv(item);
       layoutPreview();
@@ -373,6 +377,14 @@ async function activate(id, { force = false } = {}) {
   else maybeRefreshEpg();
 }
 
+// Katalog ya da eşitleme sonrası ekran tazelenir. Liste açıksa baştan kurulmaz: açık kategori ve kaydırma yeri korunur
+// (renderTab listeyi yıkıp en üste atardı; kanaldan dönünce kategoriden çıkma / başa dönme buradan geliyordu).
+function rerenderKeepingList() {
+  const listed = S.list && $('#list') && S.source && (TAB_KIND[S.tab] || S.tab === 'favs');
+  if (listed) return refreshList(true);
+  renderTab();
+}
+
 async function refreshCatalog({ quiet = false } = {}) {
   if (!S.source || S.loading) return;
   S.loading = true;
@@ -387,13 +399,13 @@ async function refreshCatalog({ quiet = false } = {}) {
     if (!S.source || S.source.id !== id) return;
     await store.cache.set('cat:' + id, catalogToStorable(cat));
     setCatalog(cat);
-    if (S.tab !== 'multi') renderTab(); // çoklu ekranda yayınlar kesilmesin
+    if (S.tab !== 'multi') rerenderKeepingList(); // çoklu ekranda yayınlar kesilmesin
     banner(cat.warnings.length ? cat.warnings[0] : null, { err: cat.warnings.length > 0 });
     if (!quiet) toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi`);
     maybeRefreshEpg(true);
   } catch (e) {
     banner(`Liste alınamadı: ${e.message}`, { err: true });
-    if (S.tab !== 'sources' && S.tab !== 'multi') renderTab();
+    if (S.tab !== 'sources' && S.tab !== 'multi') rerenderKeepingList();
   } finally {
     S.loading = false;
   }
@@ -801,7 +813,7 @@ function restoreCatCursor(kind) {
 }
 
 function refreshList(keepScroll = false) {
-  if (S.tab === 'favs') return S.list ? refreshFavs() : undefined;
+  if (S.tab === 'favs') return S.list ? refreshFavs(keepScroll) : undefined;
   if (S.tab === 'live' && S.split && $('#split')) return refreshSplit(keepScroll);
   const kind = TAB_KIND[S.tab];
   if (!kind || !$('#list')) return;
@@ -1520,12 +1532,12 @@ function mountFavList() {
   refreshFavs();
 }
 
-function refreshFavs() {
+function refreshFavs(keepScroll = false) {
   const kind = S.favKind;
   S.items = sortItems(store.favs(sid()).filter((f) => f.kind === kind).map((f) => resolve(f, kind)).filter(Boolean), S.sort[kind]);
   $('#crumb-sort').hidden = false; // favorilerde de üst çubuktaki sırala düğmesi çalışır
   $('#crumb-sort').classList.toggle('on', S.sort[kind] !== 'default');
-  S.list.setItems(S.items);
+  S.list.setItems(S.items, keepScroll);
   const none = !S.items.length;
   $('#list').hidden = none;
   $('#empty').hidden = !none;
@@ -4294,7 +4306,7 @@ function afterSync() {
     return;
   }
   if (S.source) S.prog = store.progressAll(S.source.id);
-  renderTab();
+  rerenderKeepingList();
 }
 
 function castItem(item, ep, { startMs = 0, ctx = null, closePlayer = false } = {}) {
@@ -4600,15 +4612,22 @@ $('#btn-home').addEventListener('click', () => {
 // Yatay geniş ekranda canlı TV üç bölmeli olur; yön değişince yeniden kurulur.
 const mqSplit = window.matchMedia('(orientation: landscape) and (min-width: 640px)');
 S.split = mqSplit.matches;
-mqSplit.addEventListener('change', () => {
-  const was = S.split;
-  S.split = mqSplit.matches;
-  if (was === S.split || !S.source) return;
-  if (S.tab === 'live') {
-    resetGroups();
-    renderTab();
-  }
-});
+// Oynatıcı telefonu yatay kilitler: kanal açınca ve kapatınca yön iki kez değişir. O sırada liste yeniden kurulursa
+// açık kategori kapanır ve liste en üste döner. Bu yüzden S.split, görünümün en son hangi düzenle kurulduğunu tutar;
+// düzen yalnız oynatıcı kapalıyken ve gerçekten farklıysa (kısa bir bekleme sonrası) yeniden kurulur, açık kategori korunur.
+let orientTimer = 0;
+function scheduleOrientation(ms = 350) {
+  clearTimeout(orientTimer);
+  orientTimer = setTimeout(applyOrientation, ms);
+}
+function applyOrientation() {
+  if (pui.isOpen()) return; // oynatıcı kapanınca (onClose) yeniden denenir
+  const now = mqSplit.matches;
+  if (S.split === now) return; // dönüp aynı düzene geri geldi: dokunma
+  S.split = now;
+  if (S.source && S.tab === 'live') renderTab();
+}
+mqSplit.addEventListener('change', () => scheduleOrientation());
 window.addEventListener('resize', layoutPreview);
 // Listeler yalnız görünen satırları çizer; her çizimden sonra sığmayan adlar kayan yazıya çevrilir.
 document.addEventListener('vl-draw', (e) => marquee(e.target));

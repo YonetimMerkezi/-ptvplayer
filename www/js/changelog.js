@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 61,
+    title: 'Düğme geri bildirimi, oynatıcı simge adları, liste konumu',
+    items: [
+      'Düğmenin üzerine gelince ya da kumandayla odaklanınca hem kenarlık hem dolgu rengi belirgin değişir; Ayarlar’daki tema yuvarlakları dahil',
+      'Oynatıcıdaki kontrol simgelerinin üzerine gelince (ya da kumandayla odaklanınca) ne işe yaradığı küçük bir yazıyla üstünde görünür',
+      'Kanaldan geri dönünce açık kategori kapanmıyor, liste en üste atmıyor: oynatıcı telefonu yatay kilitlediği için ekran düzeni iki kez değişip listeyi sıfırlıyordu. Liste yenilenince de yeri korunur',
+      'Kanal açılmazsa hata iletisi sunucunun cevabını söyler: erişim reddi (abonelik / bağlantı sınırı), kanal bulunamadı ya da sunucu hatası (HTTP kodu ile)'
+    ],
+  },
+  {
     id: 60,
     title: 'Telefondan TV’yi tam yönetme, daha belirgin odak, maç olayları',
     items: [

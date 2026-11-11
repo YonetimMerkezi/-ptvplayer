@@ -247,6 +247,14 @@ test('hata çevirisi ve yerel motor olay aktarımı', async () => {
   assert.match(describeError('ERROR_CODE_IO_NETWORK_CONNECTION_FAILED'), /bağlanılamadı/);
   assert.match(describeError('ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED'), /biçimi/);
   assert.match(describeError('ERROR_CODE_FOO'), /FOO/);
+  // HTTP durum kodu varsa nedeni ayırt eder (abonelik/bağlantı sınırı, kanal yok, sunucu arızası)
+  assert.match(describeError('ERROR_CODE_IO_BAD_HTTP_STATUS', 403), /reddetti \(HTTP 403\).*bağlantı sınırı/);
+  assert.match(describeError('ERROR_CODE_IO_BAD_HTTP_STATUS', 458), /HTTP 458/);
+  assert.match(describeError('ERROR_CODE_IO_BAD_HTTP_STATUS', 404), /bulunamadı \(HTTP 404\)/);
+  assert.match(describeError('ERROR_CODE_IO_BAD_HTTP_STATUS', 503), /hata verdi \(HTTP 503\)/);
+  assert.match(describeError('ERROR_CODE_IO_BAD_HTTP_STATUS', 418), /HTTP 418/);
+  assert.match(describeError('ERROR_CODE_IO_BAD_HTTP_STATUS'), /HTTP hatası/, 'kod yoksa eski genel ileti');
+  assert.match(describeError('ERROR_CODE_IO_NETWORK_CONNECTION_FAILED', 403), /bağlanılamadı/, 'HTTP kodu yalnız BAD_HTTP_STATUS için');
   const listeners = {};
   const sent = [];
   const plugin = {

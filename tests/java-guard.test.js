@@ -434,3 +434,9 @@ test('indirme: küçük API istekleri (fast) büyük indirmelerden ayrı havuzda
   assert.match(kaynak, /call\.getBoolean\("fast", false\)[\s\S]{0,120}\(fast \? apiIo : io\)\.execute/);
   assert.match(kaynak, /apiIo\.shutdownNow\(\)/);
 });
+
+test('oynatma hatası: sunucunun HTTP durum kodu hata zincirinden okunup hem tek oynatıcıya hem çoklu ekrana iletilir', () => {
+  assert.match(kaynak, /private static int httpStatusOf\(Throwable error\)[\s\S]{0,400}InvalidResponseCodeException\) t\)\.responseCode/);
+  const n = (kaynak.match(/int http = httpStatusOf\(error\);\s*if \(http > 0\) o\.put\("http", http\);/g) || []).length;
+  assert.equal(n, 2, 'tek oynatıcı ve çoklu ekran hata olayları HTTP kodunu taşımalı');
+});

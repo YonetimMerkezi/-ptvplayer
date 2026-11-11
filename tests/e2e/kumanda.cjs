@@ -105,6 +105,21 @@ async function kumandaSection({ browser, base, mock, ok, sleep }) {
     ok((await foc(page)) === 'pl-seek', `${tag}: yukarı ok: tekrar ilerleme çubuğu`);
     await press(page, 'ArrowUp');
     ok((await foc(page)) === 'pl-play', `${tag}: yukarı ok: oynat düğmesi`);
+    // odaktaki simge düğmesinin üstünde küçük ad etiketi çıkar (TV'de fare yok; kumanda odağında görünmeli)
+    const tip = () => page.evaluate(() => {
+      const t = document.querySelector('.pl-tip');
+      const a = document.activeElement;
+      if (!t || t.hidden || !a) return null;
+      const tr = t.getBoundingClientRect();
+      const ar = a.getBoundingClientRect();
+      return { text: t.textContent, above: tr.bottom <= ar.top + 1, inside: tr.left >= 0 && tr.right <= innerWidth };
+    });
+    const tp = await tip();
+    ok(tp && /^(Duraklat|Oynat)$/.test(tp.text) && tp.above && tp.inside, `${tag}: odaktaki oynat düğmesinin üstünde ad etiketi var (${JSON.stringify(tp)})`);
+    await press(page, 'ArrowLeft');
+    const tp2 = await tip();
+    ok((await foc(page)) === 'pl-rew' && tp2 && tp2.text === '10 sn geri', `${tag}: odak geri sarma düğmesine geçince etiket de değişti (${tp2 && tp2.text})`);
+    await press(page, 'ArrowRight');
     ok(errs.length === 0, `${tag}: sayfa hatası yok ${errs.join(' | ')}`);
     await ctx.close();
   }
@@ -246,6 +261,18 @@ async function kumandaSection({ browser, base, mock, ok, sleep }) {
     await sleep(300);
     await page.focus('.swatch.on');
     await press(page, 'ArrowRight');
+    // odaktaki tema kutusu belirgin: dolgu (beyaz), kenarlık (beyaz), büyüme ve halka kaydırma alanında kırpılmıyor
+    const sw = await page.evaluate(() => {
+      const a = document.activeElement;
+      const cs = getComputedStyle(a);
+      let sc = a.parentElement;
+      while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+      const r = a.getBoundingClientRect();
+      const o = sc ? sc.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+      return { sw: a.classList.contains('swatch'), bg: cs.backgroundColor, border: cs.borderTopColor, tr: cs.transform, ringTop: r.top - 7 - o.top, ringBottom: o.bottom - (r.bottom + 7) };
+    });
+    ok(sw.sw && sw.bg === 'rgb(255, 255, 255)' && sw.border === 'rgb(255, 255, 255)' && /matrix\(1\.0/.test(sw.tr), `tema kutusu odakta beyaz dolgu + beyaz kenarlık + büyüme (${sw.bg} ${sw.border} ${sw.tr})`);
+    ok(sw.ringTop >= -1 && sw.ringBottom >= -1, `odaktaki tema kutusunun halkası kaydırma alanında kırpılmıyor (üst ${Math.round(sw.ringTop)}px, alt ${Math.round(sw.ringBottom)}px)`);
     await page.keyboard.press('Enter');
     await sleep(300);
     ok(await page.evaluate(() => document.documentElement.dataset.theme !== 'green'), 'Tamam tuşuyla tema seçildi (kumanda)');

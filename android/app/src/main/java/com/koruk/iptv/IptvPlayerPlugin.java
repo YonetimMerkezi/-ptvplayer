@@ -314,6 +314,8 @@ public class IptvPlayerPlugin extends Plugin {
                 JSObject o = new JSObject();
                 o.put("message", error.getErrorCodeName());
                 o.put("code", error.errorCode);
+                int http = httpStatusOf(error);
+                if (http > 0) o.put("http", http);
                 notifyListeners("error", o);
             }
         });
@@ -604,6 +606,17 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // Sunucunun döndürdüğü HTTP durum kodu (hata zincirinde varsa); 0 = yok. Arayüz "403" ile "404" ayrımını gösterir.
+    private static int httpStatusOf(Throwable error) {
+        Throwable t = error;
+        for (int i = 0; t != null && i < 6; i++, t = t.getCause()) {
+            if (t instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                return ((androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) t).responseCode;
+            }
+        }
+        return 0;
+    }
+
     // Uygulama zaten tam ekran (MainActivity: çubuklar gizli, çentiğin altına çizim); burada yalnız yön değişir:
     // oynatıcı yatayı kilitler, çıkınca yön serbest kalır.
     @PluginMethod
@@ -794,6 +807,8 @@ public class IptvPlayerPlugin extends Plugin {
                 o.put("slot", id);
                 o.put("state", "error");
                 o.put("message", error.getErrorCodeName());
+                int http = httpStatusOf(error);
+                if (http > 0) o.put("http", http);
                 notifyListeners("multi", o);
             }
         });
