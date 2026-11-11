@@ -1,6 +1,6 @@
 name: Spor sayfa örnekleri
 
-# Geçici: yayın akışı sitelerinin gerçek HTML'ini indirip bu dala kaydeder (ayrıştırıcıları gerçek yapıya göre yazmak için).
+# Geçici: TheSportsDB rozet aramasını ve görsel adreslerini gerçek sunucuda dener.
 on:
   push:
     branches: [sports-fetch]
@@ -15,28 +15,45 @@ jobs:
       - uses: actions/checkout@v4
       - name: İndir
         run: |
-          mkdir -p samples
-          UA="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
-          D0=$(TZ=Europe/Istanbul date +%F)
-          D2=$(TZ=Europe/Istanbul date -d "+2 day" +%F)
-          : > samples/status.txt
-          get() {
-            name="$1"; url="$2"
-            code=$(curl -sS -L -m 40 -A "$UA" -H "Accept-Language: tr-TR,tr;q=0.9,en;q=0.5" -o "samples/$name" -w "%{http_code} %{size_download} %{content_type}" "$url" 2>&1) || code="curl-hata: $code"
-            echo "$name | $url | $code" >> samples/status.txt
+          mkdir -p samples2
+          : > samples2/status.txt
+          q() {
+            name="$1"
+            f="samples2/tsdb-$(echo "$name" | tr -c 'A-Za-z0-9\n' '_').json"
+            code=$(curl -sS -L -m 30 -o "$f" -w "%{http_code} %{size_download}" "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=$2" 2>&1) || code="hata $code"
+            echo "$name | $2 | $code" >> samples2/status.txt
           }
-          get se-$D2.html "https://www.sporekrani.com/home/day/$D2"
-          get mr-$D2.html "https://www.macrehberi.com/gun/$D2"
-          get mr-$D0.html "https://www.macrehberi.com/gun/$D0"
-          get sd-today.html "https://www.sahadan.com/tv-programi"
-          get lst-$D2.html "https://www.livesoccertv.com/tr/schedules/$D2/"
-          get tsdb-team.json "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=Galatasaray"
-          get flag-tr.png "https://flagcdn.com/w80/tr.png"
-          cat samples/status.txt
+          q Galatasaray Galatasaray
+          q Fenerbahce-tr "Fenerbah%C3%A7e"
+          q Fenerbahce-ascii Fenerbahce
+          q Besiktas-tr "Be%C5%9Fikta%C5%9F"
+          q Besiktas-ascii Besiktas
+          q Kepez "Kepez%20Bld."
+          q Flamengo Flamengo
+          q Hamburger "Hamburger%20SV"
+          q Arsenal Arsenal
+          q Bandirmaspor Bandirmaspor
+          q Manisa Manisa%20FK
+          q Karsiyaka Kar%C5%9F%C4%B1yaka
+          q Karsiyaka-ascii Karsiyaka
+          # rozet görseli: /small ve /tiny eki çalışıyor mu
+          B=$(python3 - <<'PY'
+          import json,glob
+          d=json.load(open('samples2/tsdb-Arsenal.json'))
+          print(d['teams'][0]['strBadge'])
+          PY
+          )
+          echo "badge=$B" >> samples2/status.txt
+          for suf in "" "/small" "/tiny"; do
+            c=$(curl -sS -L -m 30 -o /dev/null -w "%{http_code} %{size_download} %{content_type}" "$B$suf" 2>&1) || c="hata"
+            echo "badge$suf | $c" >> samples2/status.txt
+          done
+          c=$(curl -sS -L -m 30 -o /dev/null -w "%{http_code} %{size_download}" "https://flagcdn.com/w80/gb-wls.png" 2>&1); echo "flag wls | $c" >> samples2/status.txt
+          cat samples2/status.txt
       - name: Kaydet
         run: |
           git config user.name "sports-fetch"
           git config user.email "sports-fetch@users.noreply.github.com"
-          git add samples
-          git commit -m "Spor sayfa örnekleri" || true
+          git add samples2
+          git commit -m "TheSportsDB örnekleri" || true
           git push origin HEAD:sports-fetch
