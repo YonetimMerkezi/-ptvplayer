@@ -52,12 +52,12 @@ function eventText(e) {
   return `<small>${esc(e.text || lab)}</small>`;
 }
 
-// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), tvSrcOf(m), seNearOf(m), ensureTv(m), base?, now? }
+// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), ensureTv(m), base?, now? }
 export function openMatchDetail(env, m) {
   const base = env.base || ESPN_BASE;
   const now = env.now || (() => Date.now());
   const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || m.lgName || '';
-  const ls = m.src === 'ls'; // ikinci kaynak: olay/istatistik/kadro ayrıntısı yok, yalnız skor, durum ve yayın
+  const lite = m.src === 'ls' || m.src === 'se'; // ESPN dışı maç: olay/istatistik/kadro ayrıntısı yok, yalnız skor, durum ve yayın
   let data = null;
   let loading = false;
   let err = '';
@@ -66,7 +66,6 @@ export function openMatchDetail(env, m) {
   let timer = 0;
   let chans = [];
   let groups = [];
-  let showAll = false;
   let wasDone = m.state === 'post' || !!m.off;
 
   const page = openPage({
@@ -116,14 +115,6 @@ export function openMatchDetail(env, m) {
     return `<div class="sd-grp"><h5>${esc(g.title)}</h5>${g.note ? `<p class="sd-note">${esc(g.note)}</p>` : ''}${rows ? `<div class="sd-chans">${rows}</div>` : ''}</div>`;
   }
 
-  function nearHtml() {
-    const near = (env.seNearOf && env.seNearOf(m)) || [];
-    if (!near.length || groups.some((g) => (g.id === 'epg' || g.id === 'tv') && g.channels.length) || ((env.tvOf && env.tvOf(m)) || []).length) return '';
-    return `<div class="sd-grp"><h5>Aynı saatteki yayınlar (Spor Ekranı)</h5><p class="sd-note">Bu maç listede bulunamadı; yakın saatteki futbol yayınları:</p><ul class="sd-near">${near
-      .map((n) => `<li><b>${esc(n.title)}</b> <small>${esc(n.channels.join(', '))}</small></li>`)
-      .join('')}</ul></div>`;
-  }
-
   function drawBroadcast() {
     const el = q('#sd-bc');
     const done = (data && data.status ? data.status.state : m.state) === 'post' || m.off;
@@ -133,26 +124,10 @@ export function openMatchDetail(env, m) {
       groups = [];
     } else {
       drawnTv = tvKey();
-      groups = broadcastGroups({ match: m, epgChans: chans, tvNames: (env.tvOf && env.tvOf(m)) || [], tvSrc: (env.tvSrcOf && env.tvSrcOf(m)) || '', items: (env.liveItems && env.liveItems()) || [] });
-      groups.forEach((g, gi) => {
-        if (g.id === 'all' && g.collapsed && !showAll) {
-          if (g.channels.length) html += `<button class="btn ghost" id="sd-all">${icon('list')}Diğer spor kanallarını göster (${g.channels.length})</button>`;
-        } else html += groupHtml(g, gi);
-      });
-      html += nearHtml();
+      groups = broadcastGroups({ epgChans: chans, tvNames: (env.tvOf && env.tvOf(m)) || [], items: (env.liveItems && env.liveItems()) || [] });
+      html += groups.length ? groups.map(groupHtml).join('') : '<p class="sd-note">Bu maç için yayın bilgisi bulunamadı.</p>';
     }
-    html += '<div id="sd-intl"></div>';
     el.innerHTML = html;
-    drawIntl();
-  }
-
-  function drawIntl() {
-    const el = q('#sd-intl');
-    if (!el) return;
-    const list = (data && data.intl && data.intl.length ? data.intl : m.intl) || [];
-    el.innerHTML = list.length
-      ? `<p class="sd-note sd-intl">Diğer yayıncılar (ESPN): ${list.map((b) => `${esc(b.name)}${b.region ? ` <small>(${esc(b.region)})</small>` : ''}`).join(', ')}</p>`
-      : '';
   }
 
   function eventsHtml(d) {
@@ -204,7 +179,7 @@ export function openMatchDetail(env, m) {
     el.innerHTML =
       eventsHtml(data) + statsHtml(data) + lineupHtml(data) +
       (data.lsOnly
-        ? '<p class="sd-note">Bu maç LiveScore kaynağından geliyor; olay, istatistik ve kadro ayrıntısı bu maç için sunulmuyor.</p>'
+        ? '<p class="sd-note">Bu maç için olay, istatistik ve kadro bilgisi yok.</p>'
         : data.empty ? `<p class="sd-note">${pre ? 'Maç başlayınca olaylar, istatistikler ve kadro burada görünür.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
   }
 
@@ -222,7 +197,7 @@ export function openMatchDetail(env, m) {
     if (!data) drawBody();
     drawStatus();
     try {
-      if (ls) {
+      if (lite) {
         data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], stats: [], lineups: {}, intl: [], empty: true, lsOnly: true };
       } else data = await loadSummary({ net: env.net, match: m, base });
       fetchedAt = now();
@@ -240,20 +215,12 @@ export function openMatchDetail(env, m) {
       wasDone = done;
       drawBroadcast(); // maç bitti: kanal satırları yerine "sona erdi" notu
     }
-    drawIntl();
     drawBody();
     drawStatus();
   }
 
   root.addEventListener('click', (e) => {
     if (e.target.closest('#sd-ref') || e.target.closest('#sd-retry')) return refresh();
-    if (e.target.closest('#sd-all')) {
-      showAll = true;
-      drawBroadcast();
-      const first = q('#sd-bc .sd-grp:last-of-type .sd-ch');
-      if (first && first.focus) first.focus({ preventScroll: false });
-      return;
-    }
     const r = e.target.closest('[data-ch]');
     if (r) {
       const g = groups[Number(r.dataset.g)];

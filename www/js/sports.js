@@ -5,31 +5,20 @@ import { fold } from './util.js';
 export const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
 export const DAY = 86400000;
 
-// Yayıncılar (Türkiye, 2026-27 sezonu; basında çıkan dağılım, değişebilir). keys: kanal adında aranan sözcük öbekleri.
-export const BROADCASTERS = {
-  bein: { name: 'beIN SPORTS', keys: ['bein sports', 'bein sport', 'beinsports', 'bein spor'] },
-  ssport: { name: 'S Sport', keys: ['s sport', 'ssport'] },
-  trt: { name: 'TRT / Tabii', keys: ['trt spor', 'trt 1', 'trt1', 'tabii spor', 'tabii'] },
-  aspor: { name: 'A Spor / ATV', keys: ['a spor', 'atv'] },
-  ahaber: { name: 'A Haber', keys: ['a haber', 'ahaber'] },
-  a2: { name: 'A2', keys: ['a2', 'a2 tv'] },
-  tivibu: { name: 'Tivibu Spor', keys: ['tivibu spor', 'tivibuspor', 'tivibu'] },
-};
-
-// Sıra, ekrandaki bölüm sırasıdır. bc: yayıncı(lar); tr: Türkiye oynuyorsa yayıncı(lar).
+// Sıra, ekrandaki sıralamadır (aynı saatteki maçlar bu sırayla dizilir).
 export const LEAGUES = [
-  { id: 'tur.1', name: 'Süper Lig', bc: ['bein'] },
-  { id: 'uefa.champions', name: 'Şampiyonlar Ligi', bc: ['trt'] },
-  { id: 'uefa.europa', name: 'UEFA Avrupa Ligi', bc: ['trt'] },
-  { id: 'uefa.europa.conf', name: 'UEFA Konferans Ligi', bc: ['trt'] },
-  { id: 'eng.1', name: 'Premier Lig', bc: ['bein'] },
-  { id: 'esp.1', name: 'La Liga', bc: ['ssport'] },
-  { id: 'ita.1', name: 'Serie A', bc: ['ssport'] },
-  { id: 'ger.1', name: 'Bundesliga', bc: ['ssport'] },
-  { id: 'fra.1', name: 'Ligue 1', bc: ['bein'] },
-  { id: 'uefa.nations', name: 'UEFA Uluslar Ligi', bc: ['aspor', 'ahaber', 'a2', 'ssport'], tr: ['aspor'] }, // Türkiye dışı maçlar haftaya göre bu kanallara dağılır
-  { id: 'fifa.friendly', name: 'Hazırlık maçları (milli)', bc: [], tr: ['aspor'] },
-  { id: 'uefa.euroq', name: 'EURO Elemeleri', bc: [], tr: ['aspor'] },
+  { id: 'tur.1', name: 'Süper Lig' },
+  { id: 'uefa.champions', name: 'Şampiyonlar Ligi' },
+  { id: 'uefa.europa', name: 'UEFA Avrupa Ligi' },
+  { id: 'uefa.europa.conf', name: 'UEFA Konferans Ligi' },
+  { id: 'eng.1', name: 'Premier Lig' },
+  { id: 'esp.1', name: 'La Liga' },
+  { id: 'ita.1', name: 'Serie A' },
+  { id: 'ger.1', name: 'Bundesliga' },
+  { id: 'fra.1', name: 'Ligue 1' },
+  { id: 'uefa.nations', name: 'UEFA Uluslar Ligi' },
+  { id: 'fifa.friendly', name: 'Hazırlık maçları (milli)' },
+  { id: 'uefa.euroq', name: 'EURO Elemeleri' },
 ];
 export const leagueOf = (id) => LEAGUES.find((l) => l.id === id) || null;
 
@@ -117,7 +106,6 @@ for (const [en, tr, ...extra] of NATIONS) {
 
 // Ekranda gösterilecek ad: milli takımlar Türkçe, kulüpler ESPN'deki gibi.
 export const teamLabel = (name) => TR_NAME.get(norm(name)) || String(name || '?');
-export const isTurkey = (name) => norm(name) === 'turkey' || norm(name) === 'turkiye';
 
 const phraseCache = new Map();
 // Takımın rehber başlığında geçebileceği sözcük öbekleri.
@@ -188,31 +176,6 @@ export function slicePrograms(sorted, from, to) {
   }
   const out = [];
   for (let i = lo; i < sorted.length && sorted[i].p.s <= to; i++) out.push(sorted[i]);
-  return out;
-}
-
-// Rehberde karşılığı yoksa gösterilecek yayıncı (tahmini): { names: 'beIN SPORTS', keys: ['bein'] } ya da null.
-export function broadcasterFor(match) {
-  const lg = leagueOf(match.lg);
-  const turkey = isTurkey(match.home.name) || isTurkey(match.away.name);
-  // ESPN tablosunda olmayan (LiveScore) yarışmalar: yayıncı, yarışmanın adından çıkarılmış (match.bc); Türkiye'nin milli maçı A Spor / ATV
-  let keys = lg ? lg.bc || [] : match.bc || [];
-  if (!lg && !keys.length && turkey && match.grp === 'int') keys = ['aspor'];
-  if (lg && lg.tr && turkey) keys = lg.tr;
-  if (!keys.length) return null;
-  return { names: keys.map((k) => BROADCASTERS[k].name).join(' / '), keys: [...keys] };
-}
-
-// Yayıncının kanalları: kanal adında yayıncının sözcüklerinden biri geçenler (en çok max kanal).
-export function channelsOfBroadcaster(items, keys, max = 14) {
-  const phrases = (keys || []).flatMap((k) => (BROADCASTERS[k] ? BROADCASTERS[k].keys : []));
-  const out = [];
-  for (const it of items || []) {
-    if (hasAny(' ' + norm(it.name) + ' ', phrases)) {
-      out.push(it);
-      if (out.length >= max) break;
-    }
-  }
   return out;
 }
 
@@ -470,7 +433,7 @@ const groupIndex = (id) => {
 };
 
 // Liglere göre bölümler: önce LEAGUES sırasıyla ESPN ligleri, sonra ikinci kaynağın yarışmaları (grup, sıra, ad).
-// leagueId: '' (tümü: "oth" grubu hariç), bir lig/yarışma kimliği ya da 'g:<grup>' (grubun tümü).
+// leagueId: '' (tümü: LiveScore'un "oth" grubu hariç), bir lig/yarışma kimliği ya da 'g:<grup>' (grubun tümü).
 export function sections(matches, leagueId = '') {
   const out = [];
   const byGroup = leagueId.startsWith('g:') ? leagueId.slice(2) : '';
@@ -485,7 +448,7 @@ export function sections(matches, leagueId = '') {
     const g = m.grp || 'oth';
     if (leagueId) {
       if (byGroup ? g !== byGroup : m.lg !== leagueId) continue;
-    } else if (g === 'oth') continue;
+    } else if (g === 'oth' && m.src === 'ls') continue; // LiveScore'un dünya geneli yığını “Tümü”ne girmez; yayın akışındaki maçlar girer
     let sec = extra.get(m.lg);
     if (!sec) extra.set(m.lg, (sec = { lg: { id: m.lg, name: m.lgName || 'Diğer', grp: g, ord: Number(m.ord) || 0 }, matches: [] }));
     sec.matches.push(m);
@@ -509,7 +472,7 @@ export function chipsFor(dayMatches) {
     }
     const g = m.grp || 'oth';
     groups.set(g, (groups.get(g) || 0) + 1);
-    if (g !== 'oth') all++;
+    if (!(g === 'oth' && m.src === 'ls')) all++;
   }
   const chips = LEAGUES.filter((l) => counts.has(l.id)).map((l) => ({ id: l.id, name: l.name, count: counts.get(l.id) }));
   for (const g of GROUPS) if (groups.has(g.id)) chips.push({ id: 'g:' + g.id, name: g.name, count: groups.get(g.id) });

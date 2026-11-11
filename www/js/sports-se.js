@@ -1,9 +1,9 @@
-// Dördüncü veri kaynağı: Spor Ekranı (sporekrani.com) günlük TV yayın akışı sayfası — maçın Türkiye'de hangi kanalda olduğu.
+// Spor Ekranı (sporekrani.com) günlük yayın akışı sayfası: maç takvimi (saat, takımlar, yarışma) ve maçın Türkiye'de hangi kanalda olduğu.
 // Resmî bir API değil, herkese açık HTML sayfasıdır; sayfa yapısı değişebilir. Bu yüzden ayrıştırıcı esnektir (satırın yapılandırılmış
 // parçaları ya da düz metni ile çalışır) ve ne okuduğunu gösteren bir teşhis (diag) döndürür. Hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
 import { fold } from './util.js';
-import { norm, hasAny, teamPhrases, withTimeout } from './sports.js';
+import { norm, hasAny, teamPhrases, teamLabel, withTimeout } from './sports.js';
 
 export const SE_BASE = 'https://www.sporekrani.com';
 
@@ -38,6 +38,58 @@ export function tokensOf(inner) {
 }
 
 const eqTok = (a, b) => fold(a) === fold(b);
+
+// <img> etiketlerinden kanal adı → logo adresi (alt metni kanal adıdır; tembel yüklemede data-src olabilir)
+export function logosOf(inner, base = SE_BASE) {
+  const out = {};
+  for (const m of String(inner).matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    const alt = (/\balt\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag) || []);
+    const name = decodeEntities(alt[1] ?? alt[2] ?? '').trim();
+    const srcM = /\bdata-(?:src|lazy-src|original)\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag) || /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag) || [];
+    const raw = decodeEntities(srcM[1] ?? srcM[2] ?? '').trim();
+    if (!name || !raw || raw.startsWith('data:')) continue;
+    try {
+      const u = new URL(raw, base);
+      if (u.protocol === 'https:' || u.protocol === 'http:') out[fold(name)] = u.href;
+    } catch {
+      /* geçersiz adres atlanır */
+    }
+  }
+  return out;
+}
+
+// "Yayın Yok" kanal değildir
+const noChannel = (c) => /^yayin yok$/.test(norm(c));
+
+// Yarışma adının başladığı yerler (başlık tek parça gelirse "A - B UEFA Uluslar Ligi" ayrıştırılır)
+const COMP_START = /(?:^|\s)(UEFA|TFF|S[üu]per Lig|[123]\. Lig|Premier Lig|La Liga|Serie [AB]|Bundesliga|Ligue [12]|Eredivisie|Haz[ıi]rl[ıi]k|D[üu]nya Kupas[ıi]|Avrupa|[ŞS]ampiyonlar|Konferans|T[üu]rkiye Kupas[ıi]|[İI]spanya|[İI]ngiltere|Almanya|[İI]talya|Fransa|Hollanda|Portekiz|Brezilya|Arjantin|Suudi|Kad[ıi]nlar|MLS|CONMEBOL|AFC|CAF|Kupa)/i;
+
+// Başlık parçaları ("A - B", yarışma…) → { teams: [A, B] | null, comp }
+export function splitTitle(rest) {
+  const toks = rest.map((t) => String(t).trim()).filter(Boolean);
+  const ti = toks.findIndex((t) => / [-–] /.test(t));
+  if (ti < 0) return { teams: null, comp: '' };
+  let head = toks[ti];
+  let comp = toks.slice(ti + 1).join(' ');
+  if (!comp) {
+    const i0 = head.search(/ [-–] /);
+    const tail = head.slice(i0 + 3);
+    let cut = -1;
+    for (let k = 1; k < tail.length && cut < 0; k++) {
+      if (tail[k - 1] !== ' ') continue;
+      const m = COMP_START.exec(tail.slice(k - 1));
+      if (m && m.index === 0) cut = k;
+    }
+    if (cut > 1) {
+      comp = tail.slice(cut).trim();
+      head = head.slice(0, i0 + 3) + tail.slice(0, cut).trim();
+    }
+  }
+  const parts = head.split(/ [-–] /);
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) return { teams: null, comp };
+  return { teams: [parts[0].trim(), parts[1].trim()], comp: comp.trim() };
+}
 
 // Kanal adı sözcüklerinin başladığı yerler (düz metinde bitişik yazılmış kanallar bölünürken)
 const BRANDS = new Set(['bein', 'trt', 'atv', 'a2', 'tivibu', 'tabii', 'exxen', 'disney', 'prime', 'youtube', 'tod', 'eurosport', 'dazn', 'nba', 'digiturk', 'tv8', 'nesine']);
@@ -110,13 +162,13 @@ const ANCHOR = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*\/home\/match\/(\d+)\/(\d{4})\/
 // Saat (Türkiye saati, UTC+3 sabit) + tarih (bağlantıdan) → ms
 export const seTime = (y, mo, d, hh, mm) => Date.parse(`${y}-${pad(mo)}-${pad(d)}T${pad(hh)}:${pad(mm)}:00+03:00`);
 
-// Günlük sayfa HTML'i → { rows: [{ id, t, title, channels }], diag }. rows yalnız futbol ve kanalı bilinen satırlar.
-// diag: { bytes, anchors, football, withChannel, sample } — hiç satır çıkmazsa ekranda gösterilir (sayfa yapısı değiştiyse neden anlaşılsın).
-export function parseSporEkrani(html) {
+// Günlük sayfa HTML'i → { rows: [{ id, t, title, teams, comp, channels, logos }], diag }. rows: takımları okunan futbol satırları
+// (kanalı olmayanlar da; channels boş). diag: { bytes, anchors, football, withChannel, sample } — sayfa yapısı değiştiyse neden anlaşılsın.
+export function parseSporEkrani(html, base = SE_BASE) {
   const src = typeof html === 'string' ? html : '';
   const rows = [];
   const seen = new Set();
-  const diag = { bytes: src.length, anchors: 0, football: 0, withChannel: 0, sample: '' };
+  const diag = { bytes: src.length, anchors: 0, football: 0, withChannel: 0, sample: '', fsample: '' };
   ANCHOR.lastIndex = 0;
   for (let m = ANCHOR.exec(src); m; m = ANCHOR.exec(src)) {
     try {
@@ -147,12 +199,16 @@ export function parseSporEkrani(html) {
       }
       const t = seTime(y, mo, d, hh, mm);
       if (!Number.isFinite(t) || hh > 23 || mm > 59) continue;
-      const { channels, rest } = extractChannels(after);
-      if (!channels.length) continue;
-      diag.withChannel++;
+      const ex = extractChannels(after);
+      const channels = ex.channels.filter((c) => !noChannel(c));
+      const rest = ex.rest.filter((c) => !noChannel(c));
+      diag.fsample = diag.fsample || tokens.join(' | ').slice(0, 160);
+      const { teams, comp } = splitTitle(rest);
+      if (!teams) continue;
+      if (channels.length) diag.withChannel++;
       if (seen.has(id)) continue;
       seen.add(id);
-      rows.push({ id, t, title: rest.join(' ').slice(0, 160), channels });
+      rows.push({ id, t, title: rest.join(' ').slice(0, 160), teams, comp: comp.slice(0, 80), channels, logos: logosOf(m[11], base) });
     } catch {
       /* bozuk satır atlanır */
     }
@@ -171,7 +227,7 @@ export async function loadSeDay({ net, dayMs, base = SE_BASE, timeoutMs = 20000 
     err.detail = String((e && e.message) || e || 'hata').slice(0, 100);
     throw err;
   }
-  const r = parseSporEkrani(html);
+  const r = parseSporEkrani(html, base);
   if (!r.diag.anchors) {
     const err = new Error('Spor Ekranı sayfa biçimi tanınmadı.');
     err.detail = `${r.diag.bytes} bayt, maç bağlantısı yok`;
@@ -181,43 +237,106 @@ export async function loadSeDay({ net, dayMs, base = SE_BASE, timeoutMs = 20000 
 }
 
 // Teşhis özeti (hiç futbol satırı çıkmadıysa): "412 bağlantı, 0 futbol, 0 kanallı; örnek: Tenis | 00:30 | …"
-export const seDiagText = (d) => `${d.anchors} bağlantı, ${d.football} futbol, ${d.withChannel} kanallı${d.withChannel ? '' : `; örnek: ${d.sample}`}`;
+export const seDiagText = (d, rows = null) => `${d.anchors} bağlantı, ${d.football} futbol${rows ? `, ${rows} maç` : ''}, ${d.withChannel} kanallı; örnek: ${d.fsample || d.sample}`;
 
 const women = (s) => /(^| )(kadin|kadinlar|women|womens|bayan|ladies|w)( |$)/.test(s);
 const youth = (s) => /(^| )u ?\d{2}( |$)/.test(s);
 
-// Maçın kanalları (tekrarsız): saat ±tolerance içinde, satır başlığında iki takımın da adı geçen satırlar.
-export function seChannelsFor(match, rows, { tolerance = 35 * 60000 } = {}) {
-  const out = [];
-  const own = norm(`${match.home.name} ${match.away.name}`);
-  let hp = null;
-  let ap = null;
+// Satır bu maçın satırı mı: iki takımın adı da satır başlığında geçer; kadın/genç işaretleri aynıdır.
+function rowIsMatch(match, r, ph) {
+  const text = norm(r.title);
+  const own = ph.own;
+  if (women(text) !== women(own) || youth(text) !== youth(own)) return false;
+  const padded = ` ${text} `;
+  return hasAny(padded, ph.hp) && hasAny(padded, ph.ap);
+}
+const phrasesOf = (match) => ({ own: norm(`${match.home.name} ${match.away.name}`), hp: teamPhrases(match.home.name), ap: teamPhrases(match.away.name) });
+
+// Maçın yayın bilgisi: saat ±tolerance içinde, satır başlığında iki takımın da adı geçen satırların kanalları (tekrarsız) ve logoları.
+export function seInfoFor(match, rows, { tolerance = 35 * 60000 } = {}) {
+  const channels = [];
+  const logos = {};
+  let ph = null;
   for (const r of rows || []) {
-    if (Math.abs(r.t - match.t) > tolerance) continue;
-    const text = norm(r.title);
-    if (women(text) !== women(own) || youth(text) !== youth(own)) continue;
-    hp = hp || teamPhrases(match.home.name);
-    ap = ap || teamPhrases(match.away.name);
-    const padded = ` ${text} `;
-    if (!hasAny(padded, hp) || !hasAny(padded, ap)) continue;
-    for (const c of r.channels) if (!out.includes(c)) out.push(c);
+    if (Math.abs(r.t - match.t) > tolerance || !r.channels.length) continue;
+    ph = ph || phrasesOf(match);
+    if (!rowIsMatch(match, r, ph)) continue;
+    for (const c of r.channels) if (!channels.includes(c)) channels.push(c);
+    Object.assign(logos, r.logos || {});
+  }
+  return { channels, logos };
+}
+export const seChannelsFor = (match, rows, opts) => seInfoFor(match, rows, opts).channels;
+
+// ---- takvim: ESPN/ikinci kaynakta karşılığı olmayan satırlar maç olarak eklenir ----
+
+const TR_FIX = [[/Hazirlik/g, 'Hazırlık'], [/Maçi\b/g, 'Maçı'], [/Kupasi/g, 'Kupası'], [/Kadinlar/g, 'Kadınlar'], [/Turkiye/g, 'Türkiye'], [/Ispanya/g, 'İspanya'], [/Italya/g, 'İtalya'], [/Ingiltere/g, 'İngiltere'], [/Sampiyon/g, 'Şampiyon']];
+export const fixTr = (s) => TR_FIX.reduce((x, [re, to]) => x.replace(re, to), String(s || '').trim());
+
+// Yarışma adından grup: 'tr' (Türkiye), 'int' (milli takım), 'eu' (UEFA ve büyük ligler), 'oth'
+export function compGroup(comp) {
+  const n = norm(comp);
+  if (!n) return 'oth';
+  if (/(^| )(tff|super lig|turkiye kupasi|super kupa|ziraat)( |$)|^[123] lig/.test(n)) return 'tr';
+  if (/^(brezilya|arjantin|meksika|abd|japonya|cin|guney kore|avustralya|suudi|katar|misir|rusya|ukrayna|polonya|romanya|bulgaristan|sirbistan|hirvatistan|yunanistan|isvec|norvec|danimarka|finlandiya|isvicre|avusturya|cekya|macaristan|kolombiya|sili|peru|uruguay|ekvador|azerbaycan|gurcistan)( |$)/.test(n)) return 'oth';
+  if (/uluslar|hazirlik|dunya kupasi|eleme|avrupa sampiyonasi|milli|olimpiyat|afrika uluslar|asya kupasi|copa america|altin kupa/.test(n)) return 'int';
+  if (/uefa|sampiyonlar ligi|avrupa ligi|konferans|premier|la liga|serie a|bundesliga|ligue 1|eredivisie|primeira|ingiltere|ispanya|italya|almanya|fransa|hollanda|portekiz|belcika|iskocya|fa cup|kral kupasi|dfb|coppa|league cup/.test(n)) return 'eu';
+  return 'oth';
+}
+const compOrd = (comp, grp) => {
+  if (grp !== 'tr') return 5;
+  const n = norm(comp);
+  return /super lig/.test(n) ? 0 : /kupa/.test(n) ? 1 : /(^| )1 lig/.test(n) ? 2 : 3;
+};
+const slug = (s) => norm(s).replace(/ /g, '-');
+const side = (name) => ({ name, label: teamLabel(name), abbr: '', logo: '', score: null, pen: null });
+
+// Spor Ekranı satırları → maç nesneleri (skor/dakika yok; kanallar ve logolar satırdan gelir)
+export function seMatches(rows) {
+  const out = [];
+  for (const r of rows || []) {
+    if (!r || !r.teams) continue;
+    const comp = fixTr(r.comp);
+    const grp = compGroup(comp);
+    out.push({
+      id: `se:${r.id}`,
+      lg: `se:${slug(comp) || 'futbol'}`,
+      lgName: comp || 'Futbol',
+      grp,
+      ord: compOrd(comp, grp),
+      src: 'se',
+      t: r.t,
+      state: 'pre',
+      text: '',
+      off: false,
+      home: side(r.teams[0]),
+      away: side(r.teams[1]),
+      venue: '',
+      intl: [],
+      round: '',
+      channels: r.channels || [],
+      logos: r.logos || {},
+    });
   }
   return out;
 }
 
-// Eşleşme bulunamadığında gösterilecek "aynı saatteki yayınlar": saat ±tolerance içindeki satırlar; takımlardan en az biri geçenler önce.
-// Döner: [{ title, channels }] (en çok max)
-export function seNear(match, rows, { tolerance = 45 * 60000, max = 6 } = {}) {
-  const hp = teamPhrases(match.home.name);
-  const ap = teamPhrases(match.away.name);
-  const out = [];
+// Birleşik liste: mevcut maçlar (ESPN + ikinci kaynak) + karşılığı olmayan Spor Ekranı satırları.
+export function mergeSe(base, rows, { tolerance = 90 * 60000 } = {}) {
+  const have = new Set(base.map((m) => m.id));
+  const extra = [];
+  const phs = new Map();
   for (const r of rows || []) {
-    const dt = Math.abs(r.t - match.t);
-    if (dt > tolerance) continue;
-    const padded = ` ${norm(r.title)} `;
-    const score = (hasAny(padded, hp) ? 1 : 0) + (hasAny(padded, ap) ? 1 : 0);
-    out.push({ title: r.title, channels: r.channels, score, dt });
+    if (!r || !r.teams || have.has(`se:${r.id}`)) continue;
+    const covered = base.some((m) => {
+      if (Math.abs(m.t - r.t) > tolerance) return false;
+      let ph = phs.get(m.id);
+      if (!ph) phs.set(m.id, (ph = phrasesOf(m)));
+      return rowIsMatch(m, r, ph);
+    });
+    if (!covered) extra.push(r);
   }
-  out.sort((a, b) => b.score - a.score || a.dt - b.dt);
-  return out.slice(0, max).map(({ title, channels }) => ({ title, channels }));
+  const added = seMatches(extra);
+  if (!added.length) return base;
+  return [...base, ...added].sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
 }

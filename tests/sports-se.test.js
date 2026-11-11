@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, loadSeDay, seChannelsFor, seDiagText, seTime, seNear } from '../www/js/sports-se.js';
+import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, loadSeDay, seChannelsFor, seInfoFor, seDiagText, seTime, logosOf, splitTitle, seMatches, mergeSe, fixTr, compGroup } from '../www/js/sports-se.js';
 
 const DAYMS = new Date(2026, 10, 12, 0, 0, 0).getTime();
 const href = (id, y, m, d, slug) => `https://www.sporekrani.com/home/match/${id}/${y}/${m}/${d}/${slug}-hangi-kanalda`;
@@ -11,6 +11,7 @@ const STRUCT = `<div class="list">
   <a class="row" href="${href(497249, 2026, 11, 11, 'c.gauff-l.noskova-wta-indian-wells')}"><span>Tenis</span><span>00:30</span><span>C.Gauff - L.Noskova</span><span>WTA Indian Wells</span><img alt="Bein Sports Max 1"><b>Bein Sports Max 1</b></a>
   <a href="${href(5, 2026, 11, 12, 'gs-fb')}"><span>Futbol</span><span>20:00</span><span>Galatasaray - Fenerbahçe</span><span>Süper Lig</span><img alt="beIN Sports 1"><img alt="beIN Sports Max 2"><b>beIN Sports 1</b><b>beIN Sports Max 2</b></a>
   <a href="${href(6, 2026, 11, 12, 'turkiye-belcika')}"><span>Futbol</span><span>20:00</span><span>Türkiye - Belçika</span><span>UEFA Uluslar Ligi</span><img alt="A Spor"><b>A Spor</b></a>
+  <a href="${href(7, 2026, 11, 12, 'san-marino-belarus')}"><span>Futbol</span><span>22:45</span><span>San Marino - Belarus</span><span>UEFA Uluslar Ligi</span><b>Yayın Yok</b><b>Yayın Yok</b></a>
   <a href="/home/team/galatasaray">Galatasaray</a>
 </div>`;
 const FLAT = [
@@ -54,13 +55,19 @@ test('kanal çıkarma: tekrarlı yazım, çiftler, düz metin, tekrarsız marka 
 
 test('parseSporEkrani: yapılı sayfa — yalnız futbol, saat Türkiye saatiyle, kanallar', () => {
   const { rows, diag } = parseSporEkrani(STRUCT);
-  assert.equal(diag.anchors, 4);
-  assert.equal(diag.football, 3);
+  assert.equal(diag.anchors, 5);
+  assert.equal(diag.football, 4);
   assert.equal(diag.withChannel, 3);
-  assert.deepEqual(rows.map((r) => r.id), ['497036', '5', '6']);
+  assert.deepEqual(rows.map((r) => r.id), ['497036', '5', '6', '7'], 'kanalı olmayan maç da satır olarak gelir');
   assert.equal(rows[0].t, Date.UTC(2026, 10, 11, 10, 0)); // 13:00 TSİ
   assert.equal(rows[0].title, 'Kepez Bld. - Balıkesirspor TFF 3. Lig');
+  assert.deepEqual(rows[0].teams, ['Kepez Bld.', 'Balıkesirspor']);
+  assert.equal(rows[0].comp, 'TFF 3. Lig');
   assert.deepEqual(rows[0].channels, ['Tivibu Spor 1']);
+  assert.deepEqual(rows[0].logos, { 'tivibu spor 1': 'https://www.sporekrani.com/x.png' }, 'logo adresi kanal adına göre, göreli adres tam adrese çevrilir');
+  assert.deepEqual(rows[3].channels, [], '"Yayın Yok" kanal sayılmaz');
+  assert.equal(rows[3].comp, 'UEFA Uluslar Ligi');
+  assert.deepEqual(rows[3].teams, ['San Marino', 'Belarus']);
   assert.deepEqual(rows[1].channels, ['beIN Sports 1', 'beIN Sports Max 2']);
   assert.equal(rows[1].t, Date.UTC(2026, 10, 12, 17, 0));
 });
@@ -71,6 +78,9 @@ test('parseSporEkrani: düz metin sayfa', () => {
   assert.deepEqual(rows.map((r) => r.id), ['1', '2', '3']);
   assert.deepEqual(rows[2].channels, ['S Sport Plus', 'S Sport 2']);
   assert.equal(rows[2].title, 'Arnavutluk - Finlandiya UEFA Uluslar Ligi');
+  assert.deepEqual(rows[2].teams, ['Arnavutluk', 'Finlandiya']);
+  assert.equal(rows[2].comp, 'UEFA Uluslar Ligi', 'tek parça gelen başlıkta yarışma bilinen adlardan ayrılır');
+  assert.equal(rows[1].comp, 'UEFA Kadinlar Şampiyonlar Ligi');
   assert.match(diag.sample, /^Futbol/);
 });
 
@@ -86,7 +96,7 @@ test('loadSeDay: sayfa, ağ hatası, tanınmayan sayfa', async () => {
   const r = await loadSeDay({ net, dayMs: DAYMS });
   assert.equal(urls[0][0], 'https://www.sporekrani.com/home/day/2026-11-12');
   assert.deepEqual(urls[0][1], { fast: true });
-  assert.equal(r.rows.length, 3);
+  assert.equal(r.rows.length, 4);
   await assert.rejects(loadSeDay({ net: { text: async () => Promise.reject(new Error('HTTP 403')) }, dayMs: DAYMS }), (e) => /alınamadı/.test(e.message) && /HTTP 403/.test(e.detail));
   await assert.rejects(loadSeDay({ net: { text: async () => '<html>Just a moment...</html>' }, dayMs: DAYMS }), (e) => /tanınmadı/.test(e.message) && /bayt, maç bağlantısı yok/.test(e.detail));
   await assert.rejects(loadSeDay({ net: { text: () => new Promise(() => {}) }, dayMs: DAYMS, timeoutMs: 20 }), (e) => /zamanında/.test(e.detail));
@@ -122,21 +132,68 @@ test('seChannelsFor: kadın/genç maçı erkek maçıyla karışmaz', () => {
   assert.deepEqual(seChannelsFor(M('Turkiye U21', 'Belcika U21', 1000), rows), ['TRT Spor']);
 });
 
-test('seNear: aynı saatteki yayınlar, takım eşleşmesi öne, uzak saatler dışarıda', () => {
+test('seInfoFor: kanallar ve logolar birlikte gelir; "Yayın Yok" satırı kanal vermez', () => {
   const t0 = Date.UTC(2026, 10, 12, 17, 0);
   const rows = [
-    { title: 'Kepez - Balıkesirspor', t: t0 - 20 * 60000, channels: ['Tivibu Spor 1'] },
-    { title: 'Galatasaray - Fenerbahçe', t: t0, channels: ['beIN Sports 1'] },
-    { title: 'Türkiye - Belçika', t: t0 + 30 * 60000, channels: ['A Spor'] },
-    { title: 'Uzak Maç', t: t0 + 3 * 3600e3, channels: ['X'] },
+    { id: '1', t: t0, title: 'Galatasaray - Fenerbahçe Süper Lig', teams: ['Galatasaray', 'Fenerbahçe'], comp: 'Süper Lig', channels: ['beIN Sports 1'], logos: { 'bein sports 1': 'https://x/b.png' } },
+    { id: '2', t: t0, title: 'Beşiktaş - Trabzonspor Süper Lig', teams: ['Beşiktaş', 'Trabzonspor'], comp: 'Süper Lig', channels: [], logos: {} },
   ];
-  const m = { t: t0, home: { name: 'Galatasaray' }, away: { name: 'Fenerbahce' } };
-  const r = seNear(m, rows);
-  assert.equal(r[0].title, 'Galatasaray - Fenerbahçe');
-  assert.deepEqual(r[0].channels, ['beIN Sports 1']);
-  assert.equal(r.length, 3);
-  assert.ok(!r.some((x) => x.title === 'Uzak Maç'));
-  assert.deepEqual(seNear(m, []), []);
-  assert.deepEqual(seNear(m, null), []);
-  assert.equal(seNear(m, rows, { max: 1 }).length, 1);
+  assert.deepEqual(seInfoFor(M('Galatasaray', 'Fenerbahce', t0), rows), { channels: ['beIN Sports 1'], logos: { 'bein sports 1': 'https://x/b.png' } });
+  assert.deepEqual(seInfoFor(M('Beşiktaş', 'Trabzonspor', t0), rows).channels, []);
+  assert.deepEqual(seInfoFor(M('A', 'B', t0), null), { channels: [], logos: {} });
+});
+
+test('splitTitle: parçalı ve tek parça başlık', () => {
+  assert.deepEqual(splitTitle(['Türkiye - Belçika', 'UEFA Uluslar Ligi']), { teams: ['Türkiye', 'Belçika'], comp: 'UEFA Uluslar Ligi' });
+  assert.deepEqual(splitTitle(['Türkiye - Belçika UEFA Uluslar Ligi']), { teams: ['Türkiye', 'Belçika'], comp: 'UEFA Uluslar Ligi' });
+  assert.deepEqual(splitTitle(['Navalcarnero - Real Betis İspanya Kral Kupasi Copa Del Rey']), { teams: ['Navalcarnero', 'Real Betis'], comp: 'İspanya Kral Kupasi Copa Del Rey' });
+  assert.deepEqual(splitTitle(['Litvanya - Surinam Hazirlik Maçi']), { teams: ['Litvanya', 'Surinam'], comp: 'Hazirlik Maçi' });
+  assert.deepEqual(splitTitle(['Bilinmeyen A - Bilinmeyen B']), { teams: ['Bilinmeyen A', 'Bilinmeyen B'], comp: '' }, 'tanınmayan yarışma uydurulmaz');
+  assert.deepEqual(splitTitle(['Milli Takım Antrenman']), { teams: null, comp: '' });
+  assert.deepEqual(splitTitle([]), { teams: null, comp: '' });
+});
+
+test('logosOf: alt metni kanal adı; data-src öncelikli; geçersiz ve data: adresler atlanır', () => {
+  const html = '<img alt="ATV" src="/c/atv.png"><img alt="A Spor" data-src="https://cdn.x/a.png" src="data:image/gif;base64,AAA"><img alt="X" src="javascript:alert(1)"><img src="/n.png"><img alt="Y" src="data:image/png;base64,AAA">';
+  assert.deepEqual(logosOf(html, 'https://www.sporekrani.com'), { atv: 'https://www.sporekrani.com/c/atv.png', 'a spor': 'https://cdn.x/a.png' });
+  assert.deepEqual(logosOf('', 'https://x'), {});
+});
+
+test('seMatches / mergeSe: takvimde karşılığı olmayan satırlar maç olur, olanlar çoğaltılmaz', () => {
+  const t0 = Date.UTC(2026, 10, 12, 17, 0);
+  const rows = [
+    { id: '1', t: t0, title: 'Türkiye - Belçika UEFA Uluslar Ligi', teams: ['Türkiye', 'Belçika'], comp: 'UEFA Uluslar Ligi', channels: ['ATV'], logos: { atv: 'https://x/a.png' } },
+    { id: '2', t: t0, title: 'Ermenistan - Güney Kıbrıs UEFA Uluslar Ligi', teams: ['Ermenistan', 'Güney Kıbrıs'], comp: 'UEFA Uluslar Ligi', channels: [], logos: {} },
+    { id: '3', t: t0 + 3600e3, title: 'Litvanya - Surinam Hazirlik Maçi', teams: ['Litvanya', 'Surinam'], comp: 'Hazirlik Maçi', channels: ['S Sport Plus'], logos: {} },
+    { id: '4', t: t0, title: 'Milli Takım Antrenman', teams: null, comp: '', channels: ['TRT Spor'], logos: {} },
+  ];
+  const espn = [{ id: 'uefa.nations:9', lg: 'uefa.nations', t: t0, state: 'pre', home: { name: 'Turkey' }, away: { name: 'Belgium' } }];
+  const all = mergeSe(espn, rows);
+  assert.deepEqual(all.map((m) => m.id), ['se:2', 'uefa.nations:9', 'se:3'], 'Türkiye–Belçika ESPN maçıyla aynı: eklenmez; takımsız satır maç olmaz');
+  const se2 = all.find((m) => m.id === 'se:2');
+  assert.equal(se2.src, 'se');
+  assert.equal(se2.lgName, 'UEFA Uluslar Ligi');
+  assert.equal(se2.grp, 'int');
+  assert.deepEqual([se2.home.label, se2.away.label], ['Ermenistan', 'Güney Kıbrıs']);
+  assert.deepEqual(se2.channels, []);
+  const se3 = all.find((m) => m.id === 'se:3');
+  assert.equal(se3.lgName, 'Hazırlık Maçı', 'yazım düzeltilir');
+  assert.deepEqual(se3.channels, ['S Sport Plus']);
+  assert.equal(mergeSe(espn, [rows[0]]), espn, 'eklenecek yoksa aynı liste');
+  assert.deepEqual(mergeSe([], null), []);
+  assert.equal(seMatches(rows).length, 3);
+});
+
+test('fixTr / compGroup', () => {
+  assert.equal(fixTr('Hazirlik Maçi'), 'Hazırlık Maçı');
+  assert.equal(fixTr('UEFA Kadinlar Sampiyonlar Ligi'), 'UEFA Kadınlar Şampiyonlar Ligi');
+  assert.equal(fixTr('Ispanya Kral Kupasi'), 'İspanya Kral Kupası');
+  assert.equal(compGroup('TFF 1. Lig'), 'tr');
+  assert.equal(compGroup('Süper Lig'), 'tr');
+  assert.equal(compGroup('UEFA Uluslar Ligi'), 'int');
+  assert.equal(compGroup('Hazırlık Maçı'), 'int');
+  assert.equal(compGroup('UEFA Kadınlar Şampiyonlar Ligi'), 'eu');
+  assert.equal(compGroup('Bundesliga'), 'eu');
+  assert.equal(compGroup('Brezilya Serie A'), 'oth');
+  assert.equal(compGroup(''), 'oth');
 });

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LEAGUES, DAY, scoreboardUrl, scoreboardLadder, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram, broadcasterFor,
-  channelsOfBroadcaster, trRound, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
+  LEAGUES, DAY, scoreboardUrl, scoreboardLadder, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram,
+  trRound, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
 } from '../www/js/sports.js';
 
 const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
@@ -175,36 +175,6 @@ test('findProgram: Manchester City, Manchester United ile karışmaz', () => {
   assert.ok(findProgram(m, [P('b', KICK, KICK + 7200000, 'Premier Lig: Man City - Arsenal')]));
 });
 
-test('broadcasterFor: lige göre yayıncı; milli maçta yalnız Türkiye oynuyorsa', () => {
-  assert.deepEqual(broadcasterFor({ lg: 'tur.1', home: { name: 'A' }, away: { name: 'B' } }), { names: 'beIN SPORTS', keys: ['bein'] });
-  assert.equal(broadcasterFor({ lg: 'esp.1', home: { name: 'A' }, away: { name: 'B' } }).names, 'S Sport');
-  assert.equal(broadcasterFor({ lg: 'uefa.champions', home: { name: 'A' }, away: { name: 'B' } }).names, 'TRT / Tabii');
-  assert.equal(broadcasterFor({ lg: 'uefa.nations', home: { name: 'Turkey' }, away: { name: 'Wales' } }).names, 'A Spor / ATV');
-  // Uluslar Ligi'nde Türkiye dışı maçlar haftaya göre A Spor, A Haber, A2 ve S Sport Plus arasında dağılıyor: aday listesi
-  assert.deepEqual(broadcasterFor({ lg: 'uefa.nations', home: { name: 'France' }, away: { name: 'Italy' } }).keys, ['aspor', 'ahaber', 'a2', 'ssport']);
-  assert.equal(broadcasterFor({ lg: 'fifa.friendly', home: { name: 'France' }, away: { name: 'Italy' } }), null, 'bilinmiyorsa yayıncı uydurulmaz');
-  // ESPN tablosunda olmayan (LiveScore) yarışmalar: adı tanınıyorsa o yayıncı; Türkiye'nin uluslararası maçı A Spor
-  assert.equal(broadcasterFor({ lg: 'ls:1', src: 'ls', grp: 'tr', bc: ['bein'], home: { name: 'A' }, away: { name: 'B' } }).names, 'beIN SPORTS');
-  assert.equal(broadcasterFor({ lg: 'ls:2', src: 'ls', grp: 'int', bc: [], home: { name: 'Turkey' }, away: { name: 'Italy' } }).names, 'A Spor / ATV');
-  assert.equal(broadcasterFor({ lg: 'ls:3', src: 'ls', grp: 'oth', bc: [], home: { name: 'A' }, away: { name: 'B' } }), null);
-  assert.equal(broadcasterFor({ lg: 'ls:4', src: 'ls', grp: 'tr', home: { name: 'A' }, away: { name: 'B' } }), null, 'bc alanı yoksa hata atmaz');
-  assert.equal(broadcasterFor({ lg: 'yok.1', home: { name: 'A' }, away: { name: 'B' } }), null);
-});
-
-test('channelsOfBroadcaster: kanal adından yayıncı kanalları', () => {
-  const items = [
-    { id: '1', name: 'TR: BEIN SPORTS 1 HD' }, { id: '2', name: 'beIN Movies 1' }, { id: '3', name: 'S Sport 2' },
-    { id: '4', name: 'NTV Spor' }, { id: '5', name: 'TR| beINSPORTS 3' }, { id: '6', name: 'A SPOR' }, { id: '7', name: 'Habertürk' },
-    { id: '8', name: 'TRT Spor Yıldız' }, { id: '9', name: 'ATV HD' },
-  ];
-  assert.deepEqual(channelsOfBroadcaster(items, ['bein']).map((x) => x.id), ['1', '5']);
-  assert.deepEqual(channelsOfBroadcaster(items, ['ssport']).map((x) => x.id), ['3']);
-  assert.deepEqual(channelsOfBroadcaster(items, ['aspor']).map((x) => x.id), ['6', '9']);
-  assert.deepEqual(channelsOfBroadcaster(items, ['trt']).map((x) => x.id), ['8']);
-  assert.deepEqual(channelsOfBroadcaster(items, []), []);
-  assert.equal(channelsOfBroadcaster(Array.from({ length: 40 }, (_, i) => ({ id: String(i), name: 'beIN SPORTS ' + i })), ['bein'], 5).length, 5);
-});
-
 test('slicePrograms: sıralı listeden aralık (uçlar dahil)', () => {
   const l = [1, 3, 5, 7, 9].map((s) => P('c', s, s + 1, 'x'));
   assert.deepEqual(slicePrograms(l, 3, 7).map((h) => h.p.s), [3, 5, 7]);
@@ -332,10 +302,10 @@ test('sections: lig sırası, saat sırası, lig süzgeci; matchesOnDay', () => 
   assert.equal(DAY, 86400000);
 });
 
-test('lig listesi: kimlikler tekil, her ligin adı var, bilinen yayıncı anahtarları', () => {
+test('lig listesi: kimlikler tekil, her ligin adı var', () => {
   const ids = LEAGUES.map((l) => l.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.ok(LEAGUES.every((l) => l.name && Array.isArray(l.bc)));
+  assert.ok(LEAGUES.every((l) => l.name));
   for (const id of ['tur.1', 'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1', 'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'uefa.nations']) assert.ok(ids.includes(id), id);
 });
 

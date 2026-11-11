@@ -2,11 +2,21 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 54,
+    title: 'Spor: örnekteki gibi maç kartları',
+    items: [
+      'Maçlar saat sırasıyla tek listede: saat, “Takım - Takım”, altında lig · tur/hafta; sağda yayın kanalının logosu, yayın bilgisi yoksa gri “Yayın yok”',
+      'Yayın bilgisi yoksa maç ekranında kanal listesi ya da tahmin gösterilmez',
+      'Günlük yayın akışı aynı zamanda maç takvimi olarak da kullanılır; Türkiye alt ligleri ve diğer ligler artık lig adıyla görünür',
+      'Kaynak adları uygulamada gösterilmez',
+    ],
+  },
+  {
     id: 53,
     title: 'Spor: maça dokununca maç bilgi ekranı ve kanal listesi',
     items: [
       'Maç satırına dokununca artık her zaman maç bilgi ekranı açılır; yayın kanalları bu ekrandaki “Yayın” bölümünde listelenir ve dokununca oynar (ⓘ düğmesi kalktı)',
-      'Kanallar kaynağına göre gruplanır: Rehberinizde, Yayın listesine göre (Spor Ekranı), Tahmini yayıncı ve Diğer spor kanalları. Bilgi bulunamazsa listenizdeki tüm spor kanalları seçilebilir; maç listede yoksa aynı saatteki yayınlar gösterilir',
+      'Kanallar gruplanır: Rehberinizde ve Yayın kanalları',
       'Maçın ligi/turnuvası ve aşaması (Grup A, Çeyrek final, 12. hafta…) hem satırda hem bilgi ekranının başlığında yazar',
     ],
   },
@@ -14,18 +24,18 @@ export const CHANGELOG = [
     id: 52,
     title: 'Spor: maç bazında güncel yayın kanalı',
     items: [
-      'Maç satırlarında “Yayın: kanal adı” artık Spor Ekranı’nın (sporekrani.com) günlük TV yayın akışından gelir: TFF alt ligleri dahil Türkiye’deki gerçek kanal yazılır; dokununca listenizdeki karşılığı önerilir. Spor Ekranı alınamazsa yedek olarak TheSportsDB kullanılır',
-      'Yayın hakları tablosu yalnızca en son çare: kayıt bulunamazsa yarışma adına göre “tahmini” yayıncı yazılır (1. Lig, Türkiye Kupası, 2.-3. Lig ve büyük Avrupa ligleri LiveScore maçlarında da). Uluslar Ligi’nde Türkiye dışı maçlar için A Spor, A Haber, A2 ve S Sport Plus aday olarak önerilir',
-      'Durum satırında yayın listesinin kaç maça eşleştiği yazar; kaynak alınamazsa ya da sayfa yapısı değişmişse neden listenin üstünde görünür',
+      'Maç satırlarında “Yayın: kanal adı” günlük TV yayın akışından gelir: TFF alt ligleri dahil Türkiye’deki gerçek kanal yazılır; dokununca listenizdeki karşılığı önerilir',
+      'Yayın bilgisi bulunamayan maçlarda tahmin yürütülmez; “Yayın yok” yazar',
+      'Veriler alınamazsa durum satırında kısa bir not görünür',
     ],
   },
   {
     id: 51,
     title: 'Spor: ikinci kaynakla daha eksiksiz maç takvimi',
     items: [
-      'Maç takvimi artık iki kaynaktan birleştirilir: ESPN’de olmayan Türkiye alt ligleri ve kupa, uluslararası maçlar, büyük Avrupa ligleri ve diğer ülkelerin maçları LiveScore’dan tamamlanır; iki kaynakta da olan maç tek satır görünür',
+      'Maç takvimi artık iki kaynaktan birleştirilir: Türkiye alt ligleri ve kupa, uluslararası maçlar, büyük Avrupa ligleri ve diğer ülkelerin maçları tamamlanır; iki kaynakta da olan maç tek satır görünür',
       'Lig düğmelerinde yeni gruplar: Türkiye · diğer, Uluslararası, Avrupa ligleri ve Diğer ülkeler (Diğer ülkeler yalnız kendi düğmesinde görünür). Canlı maçlarda dakika ve skor gelir',
-      'Kaynaklardan biri alınamazsa diğeriyle devam edilir; neden listenin üstünde yazar. LiveScore’dan gelen maçların ayrıntısında olay/istatistik/kadro yoktur (yalnız skor, durum ve yayın)',
+      'Kaynaklardan biri alınamazsa diğeriyle devam edilir. Bazı maçların ayrıntısında olay/istatistik/kadro yoktur (yalnız skor, durum ve yayın)',
     ],
   },
   {
@@ -33,7 +43,7 @@ export const CHANGELOG = [
     title: 'Spor: maç ayrıntıları ve yayın bilgisi',
     items: [
       'Maç satırının sağındaki ⓘ düğmesi (biten maçta satıra dokunmak) maç ayrıntısını açar: skor ve dakika, goller/kartlar/oyuncu değişiklikleri, istatistik (topla oynama, şut…), kadro ve diziliş, stat, hakem, seyirci',
-      'Yayın bölümü: TV rehberinizde bu maçı gösteren tüm kanallar program adıyla listelenir ve dokununca açılır; yoksa tahmini yayıncının kanalları gösterilir; ESPN’in bildirdiği yabancı yayıncılar da ülke adıyla yazılır',
+      'Yayın bölümü: TV rehberinizde bu maçı gösteren tüm kanallar program adıyla listelenir ve dokununca açılır; yabancı yayıncılar ülke adıyla yazılır',
       'Canlı maçta ayrıntı sayfası 45 saniyede bir kendiliğinden yenilenir (anlık değildir)',
     ],
   },
@@ -45,7 +55,7 @@ export const CHANGELOG = [
       'Kategori düzenlerken göster/gizle düğmesinden sağa basınca kilit düğmesine de gelinir',
       'Film ayrıntısında uzun konu kumandayla aşağı okunur, yukarı basınca en üste dönülür',
       'Bir kategoriden geri çıkınca imleç en üstteki Düzenle düğmesine değil, son girdiğiniz kategoride kalır; kategoriye girince imleç listenin ilk öğesinde başlar',
-      'Spor: maç bilgisi alınamazsa nedeni ekranda yazar; ESPN bazı parametreleri reddederse daha yalın adreslere düşülür; skor istekleri büyük liste/rehber indirmelerinin arkasında beklemez',
+      'Spor: maç bilgisi alınamazsa nedeni ekranda yazar; bir adres reddedilirse daha yalın adrese düşülür; skor istekleri büyük liste/rehber indirmelerinin arkasında beklemez',
     ],
   },
   {

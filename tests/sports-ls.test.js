@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources, rightsOf } from '../www/js/sports-ls.js';
+import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources } from '../www/js/sports-ls.js';
 import { sections, chipsFor, capSections, teamKeys } from '../www/js/sports.js';
 
 const esd = (y, mo, d, h, mi) => `${y}${String(mo).padStart(2, '0')}${String(d).padStart(2, '0')}${String(h).padStart(2, '0')}${String(mi).padStart(2, '0')}00`;
@@ -225,24 +225,6 @@ test('uzun liste kesilir', () => {
   assert.deepEqual(r.secs.map((s) => s.matches.length), [400, 100]);
   assert.equal(r.hidden, 250);
   assert.equal(capSections(secs, 5000).hidden, 0);
-});
-
-test('yayın hakları: yarışma adından Türkiye yayıncısı; tanınmayan yarışmaya yayıncı uydurulmaz', () => {
-  const r = (c, n) => rightsOf(c, n).join(',');
-  assert.equal(r('Turkey', 'Super Lig'), 'bein');
-  assert.equal(r('Turkey', 'Trendyol Super Lig'), 'bein');
-  assert.equal(r('Turkey', 'TFF 1. Lig'), 'bein');
-  assert.equal(r('Turkey', 'Ziraat Turkiye Kupasi'), 'aspor');
-  assert.equal(r('Turkey', 'Nesine 2. Lig'), 'tivibu');
-  assert.equal(r('England', 'Premier League'), 'bein');
-  assert.equal(r('England', 'FA Cup'), 'trt');
-  assert.equal(r('Germany', 'Bundesliga'), 'ssport');
-  assert.equal(r('Europe', 'UEFA Champions League'), 'trt');
-  assert.equal(r('Europe', 'UEFA Nations League'), 'aspor,ahaber,a2,ssport');
-  for (const [c, n] of [['England', 'Premier League 2'], ['England', 'Championship'], ['Germany', '2. Bundesliga'], ['Brazil', 'Serie A'], ['World', 'Friendlies'], ['Turkey', 'Amateur Lig'], ['', '']]) assert.equal(r(c, n), '', `${c} ${n}`);
-  // maçlara işlenir
-  const ms = parseLiveScore({ Stages: [{ Sid: 'a', Cnm: 'Turkey', Snm: 'TFF 1. Lig', Events: [{ Eid: '1', Esd: '20261112150000', T1: [{ Nm: 'A' }], T2: [{ Nm: 'B' }] }] }] });
-  assert.deepEqual(ms[0].bc, ['bein']);
 });
 
 test('parseLiveScore: yarışma + aşama → lig adı yarışma, tur bilgisi aşama; aşamalar tek bölümde toplanır', () => {

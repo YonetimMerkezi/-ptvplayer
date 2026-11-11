@@ -179,46 +179,31 @@ const ITEMS = [
   { id: '1', name: 'TR: BEIN SPORTS 1 HD' }, { id: '2', name: 'TR| beINSPORTS 2' }, { id: '3', name: 'S Sport 2' },
   { id: '4', name: 'A SPOR' }, { id: '5', name: 'Tivibu Spor 1' }, { id: '6', name: 'Habertürk' },
 ];
-const MATCH = { id: 'tur.1:1', lg: 'tur.1', t: 0, home: { name: 'Galatasaray' }, away: { name: 'Fenerbahce' } };
 
-test('broadcastGroups: rehber → yayın listesi → tahmini yayıncı → tüm spor kanalları; kanallar tekrarlanmaz', () => {
-  const g = broadcastGroups({ match: MATCH, epgChans: [{ item: ITEMS[0], p: { title: 'GS - FB' } }], tvNames: ['beIN Sports 1', 'S Sport 2'], tvSrc: 'Spor Ekranı', items: ITEMS });
-  assert.deepEqual(g.map((x) => x.id), ['epg', 'tv', 'all'], 'kesin bilgi varken tahmini yayıncı gösterilmez');
+test('broadcastGroups: rehber ve yayın kanalları; kanallar tekrarlanmaz', () => {
+  const g = broadcastGroups({ epgChans: [{ item: ITEMS[0], p: { title: 'GS - FB' } }], tvNames: ['beIN Sports 1', 'S Sport 2'], items: ITEMS });
+  assert.deepEqual(g.map((x) => x.id), ['epg', 'tv']);
   assert.deepEqual(g[0].channels.map((c) => c.item.id), ['1']);
   const tv = g[1].channels.map((c) => c.item.id);
   assert.ok(!tv.includes('1'), 'rehberdeki kanal ikinci kez gelmez');
   assert.ok(tv.includes('3'));
-  assert.match(g[1].title, /beIN Sports 1/);
-  assert.equal(g[1].note, 'Kaynak: Spor Ekranı');
-  const seen = g.flatMap((x) => x.channels.map((c) => c.item.id));
-  assert.equal(new Set(seen).size, seen.length, 'hiçbir kanal iki grupta değil');
-  const all = g.find((x) => x.id === 'all');
-  assert.equal(all.collapsed, true, 'başka grupta kanal varsa tüm spor kanalları kapalı gelir');
+  assert.match(g[1].title, /^Yayın kanalları: beIN Sports 1, S Sport 2$/);
+  assert.equal(g[1].note, '');
 });
 
-test('broadcastGroups: hiçbir bilgi yoksa listedeki tüm spor kanalları açık gelir; kanal yoksa açıklayıcı not', () => {
-  const m = { ...MATCH, lg: 'yok.1' };
-  const g = broadcastGroups({ match: m, items: ITEMS });
-  assert.deepEqual(g.map((x) => x.id), ['all']);
-  assert.equal(g[0].collapsed, false);
-  assert.ok(g[0].channels.length >= 4);
-  assert.match(g[0].note, /kanal bilgisi bulunamadı/);
-  const none = broadcastGroups({ match: m, items: [{ id: '9', name: 'Haber' }] });
-  assert.equal(none[0].channels.length, 0);
-  assert.match(none[0].note, /tanınan bir spor kanalı yok/);
-  const lost = broadcastGroups({ match: m, tvNames: ['Olmayan Kanal XYZ'], items: ITEMS });
+test('broadcastGroups: bilgi yoksa grup yok (tahmin yürütülmez, ilgisiz kanal listelenmez)', () => {
+  assert.deepEqual(broadcastGroups({ items: ITEMS }), []);
+  assert.deepEqual(broadcastGroups({ epgChans: [], tvNames: [], items: [] }), []);
+});
+
+test('broadcastGroups: yayın kanalı listede yoksa açık not; rehber zaten buldu ve yayın listesi aynı kanalsa ikinci grup çıkmaz', () => {
+  const lost = broadcastGroups({ tvNames: ['Olmayan Kanal XYZ'], items: ITEMS });
+  assert.equal(lost.length, 1);
   assert.equal(lost[0].id, 'tv');
   assert.equal(lost[0].channels.length, 0);
   assert.match(lost[0].note, /listenizde bulunamadı/);
-});
-
-test('broadcastGroups: kesin kanal listede yoksa tahmini yayıncı gelir; adında "spor" geçen her kanal genel listede', () => {
-  const items = [...ITEMS, { id: '20', name: 'Çağrı Spor 2' }, { id: '21', name: 'Sporcu Market' }, { id: '22', name: 'Transport TV' }];
-  const g = broadcastGroups({ match: MATCH, tvNames: ['Olmayan Kanal XYZ'], items });
-  assert.deepEqual(g.map((x) => x.id), ['tv', 'bc', 'all']);
-  assert.ok(g[1].channels.length >= 2, 'tahmini yayıncı kanalları (beIN)');
-  const ids = g[2].channels.map((c) => c.item.id);
-  assert.ok(ids.includes('20'), 'adında spor geçen kanal genel listede');
-  assert.ok(!ids.includes('22'), '"transport" içindeki "sport" sayılmaz');
-  assert.equal(new Set(g.flatMap((x) => x.channels.map((c) => c.item.id))).size, g.flatMap((x) => x.channels).length);
+  const same = broadcastGroups({ epgChans: [{ item: ITEMS[2] }], tvNames: ['S Sport 2'], items: ITEMS });
+  assert.deepEqual(same.map((x) => x.id), ['epg'], 'aynı kanal yalnız rehber grubunda');
+  const mixed = broadcastGroups({ epgChans: [{ item: ITEMS[2] }], tvNames: ['Olmayan Kanal XYZ'], items: ITEMS });
+  assert.deepEqual(mixed.map((x) => x.id), ['epg'], 'rehber kanalı varken listede olmayan kanal notu gösterilmez');
 });

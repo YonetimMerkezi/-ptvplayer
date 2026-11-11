@@ -872,29 +872,27 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sp-top small { color: var(--muted); font-size: 0.8125rem; min-width: 0; }
 .sp-pg .chips { padding-left: 0; padding-right: 0; padding-bottom: 6px; }
 .sp-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 28px; -webkit-overflow-scrolling: touch; }
-.sp-lg-h { margin: 14px 0 4px; font-size: 0.8125rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
-.sp-m { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
-.sp-m.on { background: rgba(255, 255, 255, 0.05); }
+.sp-m { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 10px; background: rgba(255, 255, 255, 0.05); border-radius: 14px; cursor: pointer; }
+.sp-m.on { background: rgba(255, 255, 255, 0.09); }
 .sp-detail { overflow-wrap: anywhere; max-width: 92%; margin: 6px auto 12px; }
-.sp-when { width: 56px; flex: none; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9375rem; padding-top: 2px; }
-.sp-when time { color: var(--text); font-weight: 600; }
-.sp-live { color: var(--danger); font-weight: 700; }
-.sp-ft { font-size: 0.8125rem; }
-.sp-teams { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.sp-t { display: flex; align-items: center; gap: 8px; min-height: 26px; }
-.sp-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sp-t.win .sp-n, .sp-t.win .sp-sc { font-weight: 700; }
-.sp-sc { font-variant-numeric: tabular-nums; text-align: right; min-width: 1.2em; }
+.sp-main { flex: 1; min-width: 0; }
+.sp-l1 { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-weight: 700; font-size: 1.0625rem; }
+.sp-when { flex: none; min-width: 44px; font-variant-numeric: tabular-nums; }
+.sp-when time { color: var(--text); }
+.sp-live { color: var(--danger); }
+.sp-ft { font-size: 0.8125rem; color: var(--muted); font-weight: 600; }
+.sp-tt { min-width: 0; overflow-wrap: anywhere; }
+.sp-sc { font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
 .sp-sc small { font-weight: 400; color: var(--muted); }
+.sp-l2 { margin-top: 3px; padding-left: 54px; color: var(--muted); font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-cb { flex: none; width: 76px; height: 56px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px; border-radius: 10px; background: rgba(255, 255, 255, 0.14); overflow: hidden; text-align: center; font-size: 0.75rem; font-weight: 700; line-height: 1.15; padding: 4px; }
+.sp-cb img { max-width: 100%; max-height: 38px; object-fit: contain; }
+.sp-cb span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.sp-cb small { color: var(--muted); font-weight: 600; }
+.sp-cb.none { background: rgba(255, 255, 255, 0.07); color: var(--muted); }
 .sp-flag { width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
 .sp-flag img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.sp-ch { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--accent); font-weight: 600; font-size: 0.875rem; }
-.sp-ch .ic { width: 16px; height: 16px; }
-.sp-ch span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sp-bc { color: var(--muted); font-size: 0.8125rem; }
 .sp-hint { margin: 0 0 10px; color: var(--muted); font-size: 0.875rem; }
-.sp-m > .ic { flex: none; align-self: center; width: 18px; height: 18px; color: var(--muted); }
-.sp-rd { color: var(--muted); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* maç ayrıntısı */
 .sd-pg .pg-body { padding-bottom: 28px; }
