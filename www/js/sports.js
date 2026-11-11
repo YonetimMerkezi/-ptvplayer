@@ -256,6 +256,36 @@ export function statusOf(st) {
   return { state, text: '' };
 }
 
+// Tur/aşama bilgisini (ESPN notu, LiveScore aşaması) Türkçeleştirir: "Group Stage - Matchday 3" → "Grup aşaması · 3. hafta".
+// Tanınmayan parçalar olduğu gibi kalır; boşsa ''.
+const ROUND_RULES = [
+  [/quarter[- ]?finals?/i, 'Çeyrek final'],
+  [/semi[- ]?finals?/i, 'Yarı final'],
+  [/round of (\d+)/i, 'Son $1'],
+  [/group stage/i, 'Grup aşaması'],
+  [/league phase/i, 'Lig aşaması'],
+  [/play-?offs?/i, 'Play-off'],
+  [/(third|3rd)[- ]place/i, '3.lük maçı'],
+  [/^group ([a-z0-9]+)$/i, 'Grup $1'],
+  [/matchday\s*(\d+)/i, '$1. hafta'],
+  [/^(?:round|week|md)\s*(\d+)$/i, '$1. hafta'],
+  [/^leg (\d)$/i, '$1. maç'],
+  [/^final$/i, 'Final'],
+];
+export function trRound(text) {
+  const s = String(text == null ? '' : text).trim();
+  if (!s) return '';
+  const parts = [];
+  for (const seg of s.split(/\s+[-–]\s+|\s*[,;|]\s*/)) {
+    const t = seg.trim();
+    if (!t) continue;
+    const rule = ROUND_RULES.find(([re]) => re.test(t));
+    const out = rule ? t.replace(rule[0], rule[1]) : t;
+    if (!parts.includes(out)) parts.push(out);
+  }
+  return parts.join(' · ').slice(0, 48);
+}
+
 const intOrNull = (v) => {
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : null;
@@ -328,6 +358,7 @@ export function parseScoreboard(json, leagueId) {
         away: side(away, played),
         venue: String((comp.venue && comp.venue.fullName) || '').slice(0, 80),
         intl: parseBroadcasts(comp),
+        round: trRound([...(Array.isArray(comp.notes) ? comp.notes : []), ...(Array.isArray(ev.notes) ? ev.notes : [])].map((n) => (typeof n === 'string' ? n : n && (n.headline || n.text))).find((x) => x && String(x).trim())),
       });
     } catch {
       /* bozuk kayıt atlanır */

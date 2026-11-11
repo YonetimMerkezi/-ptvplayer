@@ -1,6 +1,7 @@
 // Maç ayrıntısı: ESPN "summary" yanıtını ekran verisine çevirir (olaylar, istatistik, kadro, stat/hakem, yayıncılar).
 // ESPN'in resmî olmayan API'si alanları her maçta vermez; her şey eksik olabilir kabul edilir, hiçbir okuma hata atmaz.
-import { ESPN_BASE, statusOf, parseBroadcasts } from './sports.js';
+import { ESPN_BASE, statusOf, parseBroadcasts, broadcasterFor, channelsOfBroadcaster, BROADCASTERS, norm } from './sports.js';
+import { channelsByName } from './sports-tv.js';
 
 export const summaryUrl = (slug, eventId, base = ESPN_BASE) => `${base}${slug}/summary?event=${encodeURIComponent(eventId)}`;
 
@@ -185,4 +186,47 @@ export async function loadSummary({ net, match, base = ESPN_BASE, timeoutMs = 12
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Yayın bölümü için kullanıcının kanallarından, bu maçı açabilecekleri kaynağa göre gruplar (aynı kanal tek grupta görünür):
+//   epg  — TV rehberinde bu maçı gösterenler (kesin)
+//   tv   — yayın listesindeki (Spor Ekranı / TheSportsDB) kanal adlarının listenizdeki karşılıkları
+//   bc   — yarışmanın yayın haklarına göre tahmini yayıncının kanalları
+//   all  — listenizdeki tüm tanınan spor kanalları (hiçbiri yoksa açık gelir, varsa kapalı durur: bilgi eksik kalsa da seçilebilsin)
+// epgChans: [{ item, p }]; tvNames: kanal adları; items: kullanıcının canlı kanalları. Döner: [{ id, title, note, channels: [{ item, p? }], collapsed? }]
+export function broadcastGroups({ match, epgChans = [], tvNames = [], tvSrc = '', items = [], max = 14 }) {
+  const used = new Set();
+  const take = (list) => list.filter((c) => !used.has(c.item.id) && used.add(c.item.id));
+  const groups = [];
+  const epg = take(epgChans.map((c) => ({ item: c.item, p: c.p })));
+  if (epg.length) groups.push({ id: 'epg', title: 'Rehberinizde', note: '', channels: epg });
+  if (tvNames.length) {
+    const ch = take(channelsByName(items, tvNames, max).map((item) => ({ item })));
+    groups.push({
+      id: 'tv',
+      title: `Yayın listesine göre: ${tvNames.join(', ')}`,
+      note: ch.length ? (tvSrc ? `Kaynak: ${tvSrc}` : '') : 'Bu kanal listenizde bulunamadı.',
+      channels: ch,
+    });
+  }
+  // Kesin bilgi (rehber / yayın listesi) kullanıcının listesinde kanal bulduysa tahmini yayıncı gösterilmez; yoksa tahmin ve genel liste yardımcı olur.
+  const sure = groups.reduce((n, g) => n + g.channels.length, 0);
+  const bc = broadcasterFor(match);
+  if (bc && !sure) {
+    const ch = take(channelsOfBroadcaster(items, bc.keys, max).map((item) => ({ item })));
+    groups.push({ id: 'bc', title: `Tahmini yayıncı: ${bc.names}`, note: ch.length ? 'Yayın hakları tablosuna göre, kesin değildir.' : `Listenizde ${bc.names} kanalı bulunamadı.`, channels: ch });
+  }
+  const found = groups.reduce((n, g) => n + g.channels.length, 0);
+  // Diğer spor kanalları: bilinen yayıncı markaları, ardından adında "spor/sport" geçen herhangi bir kanal (kullanıcı listesindeki adlandırma ne olursa olsun seçenek kalsın)
+  const brand = channelsOfBroadcaster(items, Object.keys(BROADCASTERS), 40);
+  const generic = (items || []).filter((it) => /(^| )spor/.test(` ${norm(it.name)}`) && !brand.includes(it)).slice(0, 40);
+  const all = take([...brand, ...generic].map((item) => ({ item })));
+  groups.push({
+    id: 'all',
+    title: 'Diğer spor kanalları',
+    note: found ? '' : all.length ? 'Bu maç için kanal bilgisi bulunamadı; listenizdeki spor kanallarından birini açabilirsiniz.' : 'Listenizde tanınan bir spor kanalı yok.',
+    channels: all,
+    collapsed: found > 0,
+  });
+  return groups;
 }

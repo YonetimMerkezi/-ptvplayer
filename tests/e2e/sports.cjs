@@ -17,6 +17,7 @@ function fakeEspn() {
     id: String(id),
     date: when.toISOString(),
     competitions: [{
+      ...(o.round ? { notes: [{ headline: o.round }] } : {}),
       status: { displayClock: o.clock || '', type: { state: o.state || 'pre', name: o.name || 'STATUS_SCHEDULED' } },
       competitors: [
         { homeAway: 'home', score: o.hs, team: { displayName: home, abbreviation: home.slice(0, 3).toUpperCase(), logo: '' } },
@@ -26,11 +27,11 @@ function fakeEspn() {
   });
   const data = () => ({
     'tur.1': [
-      ev(1, at(0, 20, 0), 'Galatasaray', 'Fenerbahçe'),
+      ev(1, at(0, 20, 0), 'Galatasaray', 'Fenerbahçe', { round: 'Round 12' }),
       ev(2, at(0, 17, 0), 'Beşiktaş', 'Trabzonspor', { hs: '1', as: '0', state: 'in', name: 'STATUS_SECOND_HALF', clock: "67'" }),
       ev(3, at(0, 14, 0), 'Konyaspor', 'Rizespor', { hs: '2', as: '2', state: 'post', name: 'STATUS_FULL_TIME' }),
     ],
-    'uefa.champions': [ev(4, at(1, 21, 45), 'Bayern Munich', 'Paris Saint-Germain')],
+    'uefa.champions': [ev(4, at(1, 21, 45), 'Bayern Munich', 'Paris Saint-Germain', { round: 'Group Stage - Matchday 3' })],
     'uefa.nations': [ev(5, at(3, 20, 45), 'Turkey', 'Wales')],
     'eng.1': [ev(6, at(0, 19, 0), 'Arsenal', 'Chelsea')],
   });
@@ -72,7 +73,7 @@ function fakeEspn() {
         { Sid: 'tff1', Cnm: 'Turkey', Snm: 'TFF 1. Lig', Events: [e('t1', 'Bandirmaspor', 'Manisa FK', 15, 0)] },
         { Sid: 'sl', Cnm: 'Turkey', Snm: 'Super Lig', Events: [e('t2', 'Galatasaray', 'Fenerbahce', 20, 0), e('t3', 'Besiktas', 'Trabzonspor', 17, 0, { Eps: "67'", Tr1: '1', Tr2: '0' })] },
         { Sid: 'br', Cnm: 'Brazil', Snm: 'Serie A', Events: [e('b1', 'Flamengo', 'Palmeiras', 22, 0, { Eps: "34'", Tr1: '1', Tr2: '0' })] },
-        { Sid: 'ch', Cnm: 'England', Snm: 'Championship', Events: [e('c1', 'Leeds', 'Burnley', 20, 45)] },
+        { Sid: 'ch', Cnm: 'England', Snm: 'Championship', Events: [e('c1', 'Leeds', 'Burnley', 20, 45, { ErnInf: 'Round 18' })] },
       ],
     };
   };
@@ -174,6 +175,8 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
     return { ctx, page, errs };
   };
   const text = (page, sel) => page.$$eval(sel, (e) => e.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+  const openRow = (page, re) => page.$$eval('.sp-m', (rows, src) => rows.find((r) => new RegExp(src).test(r.textContent)).click(), re.source);
+  const playerOpen = (page) => page.evaluate(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'));
 
   // ---- telefon: dikey
   const A = await mk({ width: 390, height: 844 });
@@ -221,16 +224,18 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(/Yayıncı: beIN SPORTS \(tahmini\)/.test(arsenalBc), 'yayıncı adı yedeği (tahmini): ' + arsenalBc);
   await a.screenshot({ path: path.join(SHOTS, '80-spor-dikey.png') });
 
-  // eşleşen kanala dokununca oynatıcı açılır
-  await a.$$eval('.sp-m', (rows) => rows.find((r) => /Galatasaray/.test(r.textContent)).click());
-  await a.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
-  ok(true, 'maça dokununca eşleşen kanal oynatıldı');
+  // tur bilgisi satırda; satıra dokununca oynatıcı değil maç bilgi ekranı açılır (kanal listesi orada)
+  ok(/12\. hafta/.test((await text(a, '.sp-m')).find((t) => /Galatasaray/.test(t))), 'satırda tur bilgisi (12. hafta)');
+  await openRow(a, /Galatasaray/);
+  await a.waitForSelector('.sd-pg .sd-ch', { timeout: 8000 });
+  ok(!(await playerOpen(a)), 'maça dokununca oynatıcı değil, maç bilgi ekranı açılır');
+  ok(/Süper Lig/.test(await a.textContent('.sd-lg')) && /12\. hafta/.test(await a.textContent('.sd-lg')), 'ayrıntı başlığında lig ve tur: ' + (await a.textContent('.sd-lg')));
   await a.goBack();
-  await a.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
-  ok(await a.isVisible('.sp-pg .sp-m'), 'oynatıcıdan dönünce spor sayfası yerinde');
+  await a.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  ok(await a.isVisible('.sp-pg .sp-m'), 'ayrıntıdan dönünce spor sayfası yerinde');
 
   // ---- maç ayrıntısı: canlı maç (olaylar, istatistik, kadro, stat/hakem, yayıncı yedeği)
-  const openInfo = (re) => a.$$eval('.sp-m', (rows, src) => rows.find((r) => new RegExp(src).test(r.textContent)).querySelector('[data-info]').click(), re.source);
+  const openInfo = (re) => openRow(a, re);
   await openInfo(/Beşiktaş/);
   await a.waitForSelector('.sd-pg .sd-e', { timeout: 8000 });
   const head = (await a.textContent('.sd-head')).replace(/\s+/g, ' ');
@@ -243,14 +248,10 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   const stats = await text(a, '.sd-s');
   ok(stats.length === 2 && /58%.*Topla oynama.*42%/.test(stats[0]) && /11.*Şut.*5/.test(stats[1]), 'ayrıntı: istatistik satırları (' + stats.join(' | ') + ')');
   ok((await a.$$('.sd-lu')).length === 2 && /4-2-3-1/.test(await a.textContent('.sd-lu')) && /Mert Günok/.test(await a.textContent('.sd-lu')) && /Yedekler:.*Rafa Silva/.test(await a.textContent('.sd-lu')), 'ayrıntı: kadro, diziliş ve yedekler');
-  ok(/Tahmini yayıncı: beIN SPORTS/.test(await a.textContent('#sd-bc')) && (await a.isVisible('#sd-bcs')), 'ayrıntı: rehberde yoksa tahmini yayıncı ve kanal listesi düğmesi');
+  ok(/Tahmini yayıncı: beIN SPORTS/.test(await a.textContent('#sd-bc')) && /BEIN SPORTS 1/i.test((await text(a, '#sd-bc .sd-ch .nm')).join('|')), 'ayrıntı: rehberde yoksa tahmini yayıncı ve kanalları doğrudan listede: ' + (await text(a, '#sd-bc .sd-ch .nm')).join('|'));
+  ok(/Süper Lig/.test(await a.textContent('.sd-lg')), 'ayrıntı başlığında lig adı');
   await sleep(700); // sayfa açılış geçişi bitsin
   await a.screenshot({ path: path.join(SHOTS, '82-spor-ayrinti.png') });
-  await a.click('#sd-bcs');
-  await a.waitForSelector('.sheet .sp-cands [data-i]', { timeout: 5000 });
-  ok(/BEIN SPORTS 1/i.test(await a.textContent('.sheet .sp-cands')), 'ayrıntı: yayıncı kanalları listesi açıldı');
-  await a.goBack();
-  await a.waitForFunction(() => !document.querySelector('.sheet .sp-cands'), null, { timeout: 4000 });
   const callsBefore2 = espn.st.summaryCalls.length;
   await a.click('#sd-ref');
   await a.waitForFunction((n) => /Son güncelleme/.test(document.querySelector('#sd-upd').textContent), 0, { timeout: 5000 });
@@ -288,15 +289,16 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await a.goBack();
   await a.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
 
-  // eşleşmesi olmayan maç: yayıncının kanalları listelenir
-  await a.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).click());
-  await a.waitForSelector('.sheet .sp-cands [data-i]', { timeout: 5000 });
-  const cands = await text(a, '.sheet .sp-cands .nm');
+  // eşleşmesi olmayan maç: maç bilgi ekranında yayıncının kanalları listelenir, seçilen kanal oynar
+  await openRow(a, /Arsenal/);
+  await a.waitForSelector('.sd-pg #sd-bc .sd-ch', { timeout: 8000 });
+  const cands = await text(a, '#sd-bc .sd-ch .nm');
   ok(cands.length === 1 && /BEIN SPORTS 1/i.test(cands[0]), 'beIN kanalı listede: ' + cands.join(', '));
-  ok(/beIN SPORTS kanalları/.test(await a.textContent('.sheet h3')), 'sayfa başlığı yayıncı adı');
-  await a.click('.sheet .sp-cands [data-i="0"]');
+  ok(/Tahmini yayıncı: beIN SPORTS/.test(await a.textContent('#sd-bc .sd-grp h5')), 'grup başlığı yayıncı adı');
+  ok(await a.isVisible('#sd-all'), 'diğer spor kanalları düğmesi (kapalı grup) var');
+  await a.click('#sd-bc .sd-ch');
   await a.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
-  ok(true, 'yayıncı kanalı listesinden seçilen kanal oynatıldı');
+  ok(true, 'ayrıntıdaki yayıncı kanalı seçilince oynatıldı');
   ok(A.errs.length === 0, 'sayfa hatası yok: ' + A.errs.join(' | '));
   await A.ctx.close();
 
@@ -310,9 +312,14 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   let rowsT = await text(b, '.sp-m');
   ok(rowsT.length === 1 && /Bayern Munich/.test(rowsT[0]) && /Paris Saint-Germain/.test(rowsT[0]) && /21:45/.test(rowsT[0]), 'yarının maçı: ' + rowsT.join(' | '));
   ok(/TRT \/ Tabii \(tahmini\)/.test(rowsT[0]), 'Şampiyonlar Ligi yayıncısı TRT / Tabii (tahmini)');
+  ok(/Grup aşaması · 3\. hafta/.test(rowsT[0]), 'satırda tur bilgisi: ' + rowsT[0]);
   await b.click('.sp-m');
-  await b.waitForFunction(() => /Listenizde TRT \/ Tabii kanalı bulunamadı/.test(document.querySelector('#toast').textContent), null, { timeout: 4000 });
-  ok(true, 'listede yayıncı kanalı yoksa açık bildirim');
+  await b.waitForSelector('.sd-pg #sd-bc', { timeout: 6000 });
+  ok(/Listenizde TRT \/ Tabii kanalı bulunamadı/.test(await b.textContent('#sd-bc')), 'listede yayıncı kanalı yoksa ayrıntıda açık not');
+  ok(/Şampiyonlar Ligi/.test(await b.textContent('.sd-lg')) && /Grup aşaması · 3\. hafta/.test(await b.textContent('.sd-lg')), 'ayrıntı başlığında turnuva ve aşama: ' + (await b.textContent('.sd-lg')));
+  ok(/kanal bilgisi bulunamadı|spor kanallarından/.test(await b.textContent('#sd-bc')) && (await b.$$('#sd-bc .sd-ch')).length >= 1, 'bilgi yoksa listedeki spor kanalları seçilebilir');
+  await b.goBack();
+  await b.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
   await b.click('#sp-days .chip:nth-child(5)'); // +3 gün: milli maç
   await b.waitForFunction(() => /Türkiye/.test(document.querySelector('.sp-list').textContent));
   rowsT = await text(b, '.sp-m');
@@ -371,7 +378,8 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(espn.st.lsCalls.length === 2, 'taze günde yeniden indirme yok');
   // LiveScore maçının ayrıntısı: olay/istatistik yok, açık not; ESPN ayrıntısı çağrılmaz
   const sumBefore = espn.st.summaryCalls.length;
-  await e.$$eval('.sp-m', (rows) => rows.find((r) => /Bandirmaspor/.test(r.textContent)).querySelector('[data-info]').click());
+  ok(/18\. hafta/.test(eRows.find((t) => /Leeds/.test(t)) || ''), 'LiveScore maçında tur bilgisi satırda: ' + eRows.find((t) => /Leeds/.test(t)));
+  await openRow(e, /Bandirmaspor/);
   await e.waitForSelector('.sd-pg .sd-note', { timeout: 6000 });
   await sleep(300);
   ok(/LiveScore kaynağından/.test(await e.textContent('#sd-body')) && /Bandirmaspor/.test(await e.textContent('.sd-head')) && /Türkiye · TFF 1. Lig/.test(await e.textContent('.sd-head')), 'LiveScore maçı ayrıntısı: lig adı ve açıklama');
@@ -437,22 +445,28 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok(/Yayın: TRT Spor \(Spor Ekranı\)/.test(await foot(/Arsenal/)), 'ESPN maçında yayın listesindeki kanal yazıyor: ' + (await foot(/Arsenal/)));
   ok(/Yayın: Tabii \(Spor Ekranı\)/.test(await foot(/Bandirmaspor/)), 'LiveScore maçında da (Bandırmaspor ı/i farkına rağmen) kanal yazıyor');
   ok(/Yayın: beIN Sports 1, beIN Sports Max 2 \(Spor Ekranı\)/.test(await foot(/Galatasaray/)), 'birden çok kanal virgülle: ' + (await foot(/Galatasaray/)));
-  await h.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).click());
-  await h.waitForSelector('.sheet .sp-cands [data-i]', { timeout: 5000 });
-  const hc = await text(h, '.sheet .sp-cands .nm');
-  ok(hc.length === 1 && /TRT SPOR HD/.test(hc[0]), 'yayın listesindeki kanalın kullanıcı listesindeki karşılığı öneriliyor: ' + hc.join(', '));
-  ok(/Yayın kanalları/.test(await h.textContent('.sheet h3')) && /Spor Ekranı/.test(await h.textContent('.sheet .sp-hint')) && /TRT Spor/.test(await h.textContent('.sheet .sp-hint')), 'sayfa başlığı ve açıklama yayın listesine göre');
-  await h.click('.sheet .sp-cands [data-i="0"]');
+  await openRow(h, /Arsenal/);
+  await h.waitForSelector('.sd-pg #sd-bc .sd-ch', { timeout: 8000 });
+  const hc = await text(h, '#sd-bc .sd-ch .nm');
+  ok(hc.length >= 1 && /TRT SPOR HD/.test(hc[0]), 'yayın listesindeki kanalın kullanıcı listesindeki karşılığı ilk grupta: ' + hc.join(', '));
+  ok(/Yayın listesine göre: TRT Spor/.test(await h.textContent('#sd-bc .sd-grp h5')) && /Kaynak: Spor Ekranı/.test(await h.textContent('#sd-bc')), 'grup başlığı ve kaynak yayın listesine göre: ' + (await h.textContent('#sd-bc .sd-grp h5')));
+  await h.click('#sd-bc .sd-ch');
   await h.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
-  ok(true, 'önerilen kanala dokununca oynatıldı');
+  ok(true, 'ayrıntıdaki önerilen kanala dokununca oynatıldı');
   await h.goBack();
   await h.waitForFunction(() => !document.body.classList.contains('player-open'), null, { timeout: 5000 });
-  await h.$$eval('.sp-m', (rows) => rows.find((r) => /Bandirmaspor/.test(r.textContent)).click());
-  await h.waitForFunction(() => /Listenizde Tabii kanalı bulunamadı/.test(document.querySelector('#toast').textContent), null, { timeout: 4000 });
-  ok(true, 'karşılığı olmayan kanal için açık bildirim');
-  await h.$$eval('.sp-m', (rows) => rows.find((r) => /Arsenal/.test(r.textContent)).querySelector('[data-info]').click());
-  await h.waitForSelector('.sd-pg #sd-bc', { timeout: 6000 });
-  ok(/Yayın listesine göre \(Spor Ekranı\): TRT Spor/.test(await h.textContent('#sd-bc')) && (await h.isVisible('#sd-bcs')), 'ayrıntı: yayın listesindeki kanal ve kanalları göster düğmesi');
+  await h.goBack();
+  await h.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  await openRow(h, /Bandirmaspor/);
+  await h.waitForSelector('.sd-pg #sd-bc', { timeout: 8000 });
+  ok(/Yayın listesine göre: Tabii/.test(await h.textContent('#sd-bc')) && /listenizde bulunamadı/.test(await h.textContent('#sd-bc')), 'karşılığı olmayan kanal için ayrıntıda açık not: ' + (await h.textContent('#sd-bc')).slice(0, 120));
+  await h.goBack();
+  await h.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  // yayın listesinde hiç bulunamayan maç: Spor Ekranı'ndaki aynı saatli yayınlar gösterilir (LiveScore maçı Leeds–Burnley 20:45 → 20:00 Galatasaray satırı ±45 dk dışında; Besiktas 17:00 yok)
+  await openRow(h, /Leeds/);
+  await h.waitForSelector('.sd-pg #sd-bc', { timeout: 8000 });
+  const near = await h.textContent('#sd-bc');
+  ok(/kanal bilgisi bulunamadı|spor kanallarından/.test(near) && (await h.$$('#sd-bc .sd-ch')).length >= 1, 'yayın bilgisi bulunamayan maçta listedeki tüm spor kanalları seçilebilir: ' + near.slice(0, 140));
   await h.goBack();
   await h.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
   await h.click('#sp-days .chip:nth-child(3)'); // yarın: LiveScore 1. Lig maçı, yayın kaydı yok → yarışma adından yayıncı
@@ -547,12 +561,12 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await sleep(700); // sayfa açılış animasyonu bitsin
   await d.screenshot({ path: path.join(SHOTS, '82-spor-yatay.png') });
   // kumanda: ayrıntı sayfasında alttaki içerik aşağı okla okunur (alt düğmeye sıçramaz), yukarı okla başa dönülür
-  await d.$$eval('.sp-m', (rows) => rows.find((r) => /Beşiktaş/.test(r.textContent)).querySelector('[data-info]').click());
+  await openRow(d, /Beşiktaş/);
   await d.waitForSelector('.sd-pg .sd-e', { timeout: 8000 });
   await sleep(500);
   const bodyTop = () => d.evaluate(() => document.querySelector('.sd-pg .pg-body').scrollTop);
   ok((await d.evaluate(() => { const b = document.querySelector('.sd-pg .pg-body'); return b.scrollHeight - b.clientHeight; })) > 150, 'yatay ekranda ayrıntı sayfası ekrandan uzun');
-  await d.focus('#sd-bcs');
+  await d.focus('.sd-pg .sd-ch');
   for (let i = 0; i < 30; i++) {
     await d.keyboard.press('ArrowDown');
     await sleep(40);

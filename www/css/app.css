@@ -893,9 +893,8 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sp-ch span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-bc { color: var(--muted); font-size: 0.8125rem; }
 .sp-hint { margin: 0 0 10px; color: var(--muted); font-size: 0.875rem; }
-.sp-i { flex: none; align-self: center; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--muted); }
-.sp-i .ic { width: 20px; height: 20px; }
-.sp-i:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+.sp-m > .ic { flex: none; align-self: center; width: 18px; height: 18px; color: var(--muted); }
+.sp-rd { color: var(--muted); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* maç ayrıntısı */
 .sd-pg .pg-body { padding-bottom: 28px; }
@@ -918,6 +917,12 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sd-note { margin: 0 0 10px; color: var(--muted); font-size: 0.9375rem; }
 .sd-note b { color: var(--text); }
 .sd-intl { font-size: 0.8125rem; }
+.sd-grp { margin-bottom: 12px; }
+.sd-grp h5 { margin: 0 0 6px; font-size: 0.875rem; }
+.sd-lg small { text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 0.8125rem; }
+.sd-near { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; }
+.sd-near li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.sd-near small { display: block; color: var(--muted); }
 .sd-chans { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .sd-ch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .sd-ch .meta { flex: 1; min-width: 0; }

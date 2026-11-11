@@ -204,3 +204,20 @@ export function seChannelsFor(match, rows, { tolerance = 35 * 60000 } = {}) {
   }
   return out;
 }
+
+// Eşleşme bulunamadığında gösterilecek "aynı saatteki yayınlar": saat ±tolerance içindeki satırlar; takımlardan en az biri geçenler önce.
+// Döner: [{ title, channels }] (en çok max)
+export function seNear(match, rows, { tolerance = 45 * 60000, max = 6 } = {}) {
+  const hp = teamPhrases(match.home.name);
+  const ap = teamPhrases(match.away.name);
+  const out = [];
+  for (const r of rows || []) {
+    const dt = Math.abs(r.t - match.t);
+    if (dt > tolerance) continue;
+    const padded = ` ${norm(r.title)} `;
+    const score = (hasAny(padded, hp) ? 1 : 0) + (hasAny(padded, ap) ? 1 : 0);
+    out.push({ title: r.title, channels: r.channels, score, dt });
+  }
+  out.sort((a, b) => b.score - a.score || a.dt - b.dt);
+  return out.slice(0, max).map(({ title, channels }) => ({ title, channels }));
+}

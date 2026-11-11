@@ -1,7 +1,7 @@
 // İkinci veri kaynağı: LiveScore gün listesi. ESPN'de olmayan lig, kupa, alt lig ve milli maçları tamamlar.
 // Resmî olmayan, belgesiz bir API'dir: her alan eksik/değişmiş olabilir kabul edilir, bozuk kayıt atlanır, hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
-import { teamLabel, teamKeys, norm, withTimeout } from './sports.js';
+import { teamLabel, teamKeys, norm, withTimeout, trRound } from './sports.js';
 
 export const LS_HOSTS = ['https://prod-public-api.livescore.com', 'https://prod-cdn-public-api.livescore.com'];
 const PATH = '/v1/api/app/date/soccer/';
@@ -135,9 +135,15 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
     try {
       const sid = str(st && st.Sid) || norm(`${st && st.Cnm} ${st && st.Snm}`).replace(/ /g, '-');
       const cnm = str(st && st.Cnm);
-      const snm = str((st && (st.Snm || st.CompN)) || '');
+      // Yarışma adı (CompN) aşama adından (Snm: "Group A", "Quarter-finals"…) farklıysa yarışma adı gösterilir, aşama tur bilgisi olur.
+      const comp = str(st && st.CompN);
+      const stage = str(st && st.Snm);
+      const sub = !!comp && !!stage && norm(comp) !== norm(stage);
+      const snm = sub ? comp : stage || comp;
+      const stageRound = sub ? trRound(stage) : '';
       const grp = groupOf(cnm);
       const name = [cnm && trCountry(cnm), snm].filter(Boolean).join(' · ') || 'Diğer';
+      const lgId = `ls:${norm(`${cnm} ${snm}`).replace(/ /g, '-') || sid}`; // aynı yarışmanın aşamaları tek bölümde toplanır
       const ord = orderOf(grp, snm);
       const bc = rightsOf(cnm, snm);
       for (const ev of arr(st && st.Events)) {
@@ -165,7 +171,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
           });
           out.push({
             id,
-            lg: `ls:${sid}`,
+            lg: lgId,
             lgName: name,
             grp,
             ord,
@@ -179,6 +185,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
             away: side(n2, ev.Tr2, ev.Trp2),
             venue: '',
             intl: [],
+            round: [stageRound, trRound(ev.ErnInf)].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(' · ').slice(0, 48),
           });
         } catch {
           /* bozuk maç atlanır */

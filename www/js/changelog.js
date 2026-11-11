@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 53,
+    title: 'Spor: maça dokununca maç bilgi ekranı ve kanal listesi',
+    items: [
+      'Maç satırına dokununca artık her zaman maç bilgi ekranı açılır; yayın kanalları bu ekrandaki “Yayın” bölümünde listelenir ve dokununca oynar (ⓘ düğmesi kalktı)',
+      'Kanallar kaynağına göre gruplanır: Rehberinizde, Yayın listesine göre (Spor Ekranı), Tahmini yayıncı ve Diğer spor kanalları. Bilgi bulunamazsa listenizdeki tüm spor kanalları seçilebilir; maç listede yoksa aynı saatteki yayınlar gösterilir',
+      'Maçın ligi/turnuvası ve aşaması (Grup A, Çeyrek final, 12. hafta…) hem satırda hem bilgi ekranının başlığında yazar',
+    ],
+  },
+  {
     id: 52,
     title: 'Spor: maç bazında güncel yayın kanalı',
     items: [

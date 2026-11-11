@@ -3,8 +3,8 @@
 // sayfayı yarım ekran adımlarla kaydırır (alttaki bir düğmeye sıçramaz).
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
-import { ESPN_BASE, LEAGUES, findPrograms, broadcasterFor, dayStart, dayLabel } from './sports.js';
-import { loadSummary, KIND_LABEL } from './sports-detail.js';
+import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel } from './sports.js';
+import { loadSummary, KIND_LABEL, broadcastGroups } from './sports-detail.js';
 
 const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
@@ -52,7 +52,7 @@ function eventText(e) {
   return `<small>${esc(e.text || lab)}</small>`;
 }
 
-// env: { net, toast, liveItems, epgBetween, play(items, index), openCandidates(m), base?, now? }
+// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), tvSrcOf(m), seNearOf(m), ensureTv(m), base?, now? }
 export function openMatchDetail(env, m) {
   const base = env.base || ESPN_BASE;
   const now = env.now || (() => Date.now());
@@ -65,6 +65,8 @@ export function openMatchDetail(env, m) {
   let fetchedAt = 0;
   let timer = 0;
   let chans = [];
+  let groups = [];
+  let showAll = false;
   let wasDone = m.state === 'post' || !!m.off;
 
   const page = openPage({
@@ -96,29 +98,48 @@ export function openMatchDetail(env, m) {
     const stText = st.state === 'pre' && !st.off ? `${esc(dayLabel(dayStart(m.t), now()))} · ${fmtClock(m.t)}` : esc(st.text || '');
     const where = [(data && data.venue) || m.venue, data && data.city].filter(Boolean).join(', ');
     const meta = [where, data && data.referee ? `Hakem: ${data.referee}` : '', data && data.attendance ? `Seyirci: ${data.attendance.toLocaleString('tr-TR')}` : ''].filter(Boolean);
-    q('#sd-top').innerHTML = `<div class="sd-lg">${esc(lgName)}</div>
+    q('#sd-top').innerHTML = `<div class="sd-lg">${esc(lgName)}${m.round ? ` <small>· ${esc(m.round)}</small>` : ''}</div>
       <div class="sd-teams"><div class="sd-team">${flag(m.home)}<span>${esc(m.home.label)}</span></div>
         <div class="sd-mid">${mid}<span class="${stClass}">${stText}</span>${pen}</div>
         <div class="sd-team">${flag(m.away)}<span>${esc(m.away.label)}</span></div></div>
       ${meta.length ? `<div class="sd-meta">${meta.map(esc).join(' · ')}</div>` : ''}`;
   }
 
-  // Yayın bölümü: açılışta bir kez (odaklanabilir satırlar yenilemede kaybolmasın); yabancı yayıncı satırı sonra güncellenir.
+  // Yayın bölümü: kaynağa göre gruplanmış kanal satırları (rehber, yayın listesi, tahmini yayıncı, diğer spor kanalları). Satırlar odaklanabilir;
+  // yenilemede yeniden çizilmez (kumanda odağı kaybolmasın), yalnız maç bitince ya da yayın listesi sonradan gelince tazelenir.
+  const tvKey = () => JSON.stringify((env.tvOf && env.tvOf(m)) || []);
+  let drawnTv = '';
+  function groupHtml(g, gi) {
+    const rows = g.channels
+      .map((c, i) => `<div class="row sd-ch" role="button" tabindex="0" data-g="${gi}" data-ch="${i}"><div class="meta"><div class="nm"><span>${esc(c.item.name)}</span></div>${c.p ? `<div class="sub">${fmtClock(c.p.s)} · ${esc(c.p.t || '')}</div>` : ''}</div>${icon('play')}</div>`)
+      .join('');
+    return `<div class="sd-grp"><h5>${esc(g.title)}</h5>${g.note ? `<p class="sd-note">${esc(g.note)}</p>` : ''}${rows ? `<div class="sd-chans">${rows}</div>` : ''}</div>`;
+  }
+
+  function nearHtml() {
+    const near = (env.seNearOf && env.seNearOf(m)) || [];
+    if (!near.length || groups.some((g) => (g.id === 'epg' || g.id === 'tv') && g.channels.length) || ((env.tvOf && env.tvOf(m)) || []).length) return '';
+    return `<div class="sd-grp"><h5>Aynı saatteki yayınlar (Spor Ekranı)</h5><p class="sd-note">Bu maç listede bulunamadı; yakın saatteki futbol yayınları:</p><ul class="sd-near">${near
+      .map((n) => `<li><b>${esc(n.title)}</b> <small>${esc(n.channels.join(', '))}</small></li>`)
+      .join('')}</ul></div>`;
+  }
+
   function drawBroadcast() {
     const el = q('#sd-bc');
     const done = (data && data.status ? data.status.state : m.state) === 'post' || m.off;
     let html = '<h4>Yayın</h4>';
     if (done) {
       html += `<p class="sd-note">${m.off ? esc(m.text) : 'Maç sona erdi.'}</p>`;
-    } else if (chans.length) {
-      html += `<div class="sd-chans">${chans
-        .map((c, i) => `<div class="row sd-ch" role="button" tabindex="0" data-ch="${i}"><div class="meta"><div class="nm"><span>${esc(c.item.name)}</span></div><div class="sub">${fmtClock(c.p.s)} · ${esc(c.p.t || '')}</div></div>${icon('play')}</div>`)
-        .join('')}</div>`;
+      groups = [];
     } else {
-      const bc = broadcasterFor(m);
-      const tv = (env.tvOf && env.tvOf(m)) || [];
-      html += `<p class="sd-note">Rehberinizde bu maç bulunamadı.${tv.length ? ` Yayın listesine göre (${esc((env.tvSrcOf && env.tvSrcOf(m)) || '')}): <b>${esc(tv.join(', '))}</b>` : bc ? ` Tahmini yayıncı: <b>${esc(bc.names)}</b>` : ''}</p>`;
-      if (bc || tv.length) html += `<button class="btn ghost" id="sd-bcs">${icon('list')}${esc(tv.length ? 'Yayın kanallarını' : bc.names + ' kanallarını')} göster</button>`;
+      drawnTv = tvKey();
+      groups = broadcastGroups({ match: m, epgChans: chans, tvNames: (env.tvOf && env.tvOf(m)) || [], tvSrc: (env.tvSrcOf && env.tvSrcOf(m)) || '', items: (env.liveItems && env.liveItems()) || [] });
+      groups.forEach((g, gi) => {
+        if (g.id === 'all' && g.collapsed && !showAll) {
+          if (g.channels.length) html += `<button class="btn ghost" id="sd-all">${icon('list')}Diğer spor kanallarını göster (${g.channels.length})</button>`;
+        } else html += groupHtml(g, gi);
+      });
+      html += nearHtml();
     }
     html += '<div id="sd-intl"></div>';
     el.innerHTML = html;
@@ -226,9 +247,18 @@ export function openMatchDetail(env, m) {
 
   root.addEventListener('click', (e) => {
     if (e.target.closest('#sd-ref') || e.target.closest('#sd-retry')) return refresh();
-    if (e.target.closest('#sd-bcs')) return env.openCandidates && env.openCandidates(m);
+    if (e.target.closest('#sd-all')) {
+      showAll = true;
+      drawBroadcast();
+      const first = q('#sd-bc .sd-grp:last-of-type .sd-ch');
+      if (first && first.focus) first.focus({ preventScroll: false });
+      return;
+    }
     const r = e.target.closest('[data-ch]');
-    if (r) env.play(chans.map((c) => c.item), Number(r.dataset.ch));
+    if (r) {
+      const g = groups[Number(r.dataset.g)];
+      if (g) env.play(g.channels.map((c) => c.item), Number(r.dataset.ch));
+    }
   });
   root.addEventListener('keydown', (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-ch]')) {
@@ -242,6 +272,14 @@ export function openMatchDetail(env, m) {
   drawBroadcast();
   drawBody();
   refresh();
+  // yayın listesi sonradan gelirse (ya da tazelenirse) yayın bölümü yenilenir
+  if (env.ensureTv) {
+    Promise.resolve(env.ensureTv(m))
+      .then(() => {
+        if (root.isConnected && tvKey() !== drawnTv) drawBroadcast();
+      })
+      .catch(() => {});
+  }
   timer = setInterval(() => {
     if (!root.isConnected) return clearInterval(timer);
     if (live() === 'in' || (live() === 'pre' && m.t - now() < 10 * 60e3)) refresh();

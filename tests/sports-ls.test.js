@@ -84,7 +84,8 @@ test('parseLiveScore: maçlar, durumlar, gruplar; bozuk kayıtlar atlanır', () 
   assert.equal(by.e1.state, 'post');
   assert.deepEqual([by.e1.home.score, by.e1.away.score], [2, 1]);
   assert.equal(by.e1.src, 'ls');
-  assert.equal(by.e1.lg, 'ls:s1');
+  assert.equal(by.e1.lg, 'ls:turkey-tff-1-lig');
+  assert.equal(by.e1.round, '');
   assert.equal(by.e1.lgName, 'Türkiye · TFF 1. Lig');
   assert.equal(by.e1.grp, 'tr');
   assert.equal(by.e2.state, 'pre');
@@ -242,4 +243,22 @@ test('yayın hakları: yarışma adından Türkiye yayıncısı; tanınmayan yar
   // maçlara işlenir
   const ms = parseLiveScore({ Stages: [{ Sid: 'a', Cnm: 'Turkey', Snm: 'TFF 1. Lig', Events: [{ Eid: '1', Esd: '20261112150000', T1: [{ Nm: 'A' }], T2: [{ Nm: 'B' }] }] }] });
   assert.deepEqual(ms[0].bc, ['bein']);
+});
+
+test('parseLiveScore: yarışma + aşama → lig adı yarışma, tur bilgisi aşama; aşamalar tek bölümde toplanır', () => {
+  const j = {
+    Stages: [
+      { Sid: 'a', Cnm: 'World', Snm: 'Group A', CompN: 'World Cup Qualification Europe', Events: [ev('x1', 'Turkey', 'Spain', esd(2026, 11, 12, 21, 45), { ErnInf: 'Matchday 3' })] },
+      { Sid: 'b', Cnm: 'World', Snm: 'Group B', CompN: 'World Cup Qualification Europe', Events: [ev('x2', 'Italy', 'Norway', esd(2026, 11, 12, 21, 45))] },
+      { Sid: 'c', Cnm: 'Europe', Snm: 'Quarter-finals', CompN: 'UEFA Nations League', Events: [ev('x3', 'France', 'Portugal', esd(2026, 11, 12, 21, 45))] },
+    ],
+  };
+  const by = Object.fromEntries(parseLiveScore(j, { now: 0 }).map((m) => [m.id.split(':')[2], m]));
+  assert.equal(by.x1.lgName, 'Dünya · World Cup Qualification Europe');
+  assert.equal(by.x1.round, 'Grup A · 3. hafta');
+  assert.equal(by.x2.round, 'Grup B');
+  assert.equal(by.x1.lg, by.x2.lg, 'aynı yarışmanın grupları tek bölüm');
+  assert.notEqual(by.x1.id, by.x2.id);
+  assert.equal(by.x3.round, 'Çeyrek final');
+  assert.match(by.x3.lgName, /UEFA Nations League/);
 });

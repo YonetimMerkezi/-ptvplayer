@@ -1,14 +1,14 @@
 // Spor (futbol) ekranı: gün/lig seçimi, maç listesi, canlı skor (dakikada bir tazelenir), maçın kanalına tek dokunuşla geçiş.
 // Mantık sports.js'te; burada yalnız ekran var. Uygulama ilk açıldığında yüklenmez (ana ekrandan "Spor"a basınca yüklenir).
 import { esc, fmtClock } from './util.js';
-import { $, icon, openPage, openSheet } from './ui.js';
+import { $, icon, openPage } from './ui.js';
 import {
-  ESPN_BASE, loadMatches, findProgram, slicePrograms, broadcasterFor, channelsOfBroadcaster, dayStrip, dayStart, dayLabel,
+  ESPN_BASE, loadMatches, findProgram, slicePrograms, broadcasterFor, dayStrip, dayStart, dayLabel,
   matchesOnDay, sections, chipsFor, capSections, hasLive,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
-import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
-import { SE_BASE, loadSeDay, seChannelsFor, seDiagText } from './sports-se.js';
+import { TV_HOSTS, loadTvDay, tvChannelsFor } from './sports-tv.js';
+import { SE_BASE, loadSeDay, seChannelsFor, seDiagText, seNear } from './sports-se.js';
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v1'; // LiveScore gün listeleri
@@ -120,8 +120,8 @@ export function openSports(env) {
       <div class="sp-teams">
         <div class="sp-t${win === 'h' ? ' win' : ''}">${flag(m.home)}<span class="sp-n">${esc(m.home.label)}</span>${score(m.home, m)}</div>
         <div class="sp-t${win === 'a' ? ' win' : ''}">${flag(m.away)}<span class="sp-n">${esc(m.away.label)}</span>${score(m.away, m)}</div>
-        ${foot}
-      </div><button class="sp-i" data-info aria-label="Maç ayrıntıları: ${esc(m.home.label)} – ${esc(m.away.label)}">${icon('info')}</button></div>`;
+        ${m.round ? `<div class="sp-rd">${esc(m.round)}</div>` : ''}${foot}
+      </div>${icon('chev-r')}</div>`;
   }
 
   function drawChips() {
@@ -453,52 +453,24 @@ export function openSports(env) {
   }
 
   // ---- dokunmalar ----
-  function openMatch(m) {
-    const ch = chan.get(m.id);
-    if (ch) return play([ch.item], 0);
-    if (m.state === 'post') return openDetail(m); // biten maçta açılacak kanal yok: olaylar/istatistik
-    if (m.off) return toast(m.text, 1600);
-    if (!broadcasterFor(m) && !(tvFor.get(m.id) || []).length) return openDetail(m);
-    openCandidates(m);
-  }
-
-  // Rehberde eşleşme yokken: TV listesindeki kanalların ve yayıncının (tahmini) kanallarının listenizdeki karşılıklarından birini seçtirir.
-  function openCandidates(m) {
-    const bc = broadcasterFor(m);
-    const names = tvFor.get(m.id) || [];
-    if (!bc && !names.length) return toast('Bu maçın yayıncısı belli değil', 2600);
-    const items = liveItems() || [];
-    const cands = channelsByName(items, names);
-    if (bc) for (const c of channelsOfBroadcaster(items, bc.keys)) if (!cands.some((x) => x.id === c.id)) cands.push(c);
-    const label = names.length ? names.join(', ') : bc.names;
-    if (!cands.length) return toast(`Listenizde ${label} kanalı bulunamadı`, 3200);
-    openSheet({
-      title: names.length ? 'Yayın kanalları' : `${bc.names} kanalları`,
-      html: `<p class="sp-hint">${esc(m.home.label)} – ${esc(m.away.label)} maçı için rehberde eşleşme bulunamadı. ${names.length ? `Yayın listesine (${esc(tvSrc.get(m.id) || '')}) göre maç <b>${esc(names.join(', '))}</b> kanalında; listenizdeki karşılıkları:` : 'Yayıncının kanallarından birini açabilirsiniz.'}</p><div class="sp-cands">${cands
-        .map((c, i) => `<div class="row" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span>${esc(c.name)}</span></div></div></div>`)
-        .join('')}</div>`,
-      mount: (body, api) => {
-        body.addEventListener('click', (e) => {
-          const r = e.target.closest('[data-i]');
-          if (!r) return;
-          api.close();
-          play(cands, Number(r.dataset.i));
-        });
-        body.addEventListener('keydown', (e) => {
-          if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-i]')) {
-            e.preventDefault();
-            e.target.click();
-          }
-        });
-      },
-    });
-  }
-
+  // Maça dokununca ayrıntı ekranı açılır; yayın kanalları (rehber, yayın listesi, tahmini yayıncı, tüm spor kanalları) o ekrandadır.
   // Maç ayrıntısı (olaylar, istatistik, kadro, tüm yayın kanalları): ayrı modül, ilk dokunuşta yüklenir.
   async function openDetail(m) {
     try {
       const mod = await import('./sports-detail-ui.js');
-      mod.openMatchDetail({ net, toast, liveItems, epgBetween, play, base, now, openCandidates, tvOf: (x) => tvFor.get(x.id) || [], tvSrcOf: (x) => tvSrc.get(x.id) || '' }, m);
+      mod.openMatchDetail(
+        {
+          net, toast, liveItems, epgBetween, play, base, now,
+          tvOf: (x) => tvFor.get(x.id) || [],
+          tvSrcOf: (x) => tvSrc.get(x.id) || '',
+          seNearOf: (x) => {
+            const v = tvDays.get(dayStart(x.t));
+            return v && v.src === 'se' ? seNear(x, v.rows) : [];
+          },
+          ensureTv: (x) => ensureTv(dayStart(x.t)),
+        },
+        m,
+      );
     } catch (e) {
       toast('Ayrıntı açılamadı: ' + ((e && e.message) || e), 3000);
     }
@@ -524,16 +496,10 @@ export function openSports(env) {
       return;
     }
     if (e.target.closest('#sp-ref') || e.target.closest('#sp-retry')) return refresh();
-    const info = e.target.closest('[data-info]');
-    if (info) {
-      const m = matches.find((x) => x.id === (info.closest('.sp-m') || {}).dataset.id);
-      if (m) openDetail(m);
-      return;
-    }
     const row = e.target.closest('.sp-m');
     if (row) {
       const m = matches.find((x) => x.id === row.dataset.id);
-      if (m) openMatch(m);
+      if (m) openDetail(m);
     }
   });
   root.addEventListener('keydown', (e) => {

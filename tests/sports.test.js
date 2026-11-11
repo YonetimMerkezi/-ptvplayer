@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LEAGUES, DAY, scoreboardUrl, scoreboardLadder, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram, broadcasterFor,
-  channelsOfBroadcaster, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
+  channelsOfBroadcaster, trRound, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
 } from '../www/js/sports.js';
 
 const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
@@ -337,4 +337,31 @@ test('lig listesi: kimlikler tekil, her ligin adı var, bilinen yayıncı anahta
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(LEAGUES.every((l) => l.name && Array.isArray(l.bc)));
   for (const id of ['tur.1', 'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1', 'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'uefa.nations']) assert.ok(ids.includes(id), id);
+});
+
+test('trRound: tur/aşama metni Türkçeleşir, uzunluk sınırlı, boş değer boş', () => {
+  assert.equal(trRound('Group Stage - Matchday 3'), 'Grup aşaması · 3. hafta');
+  assert.equal(trRound('Quarter-finals'), 'Çeyrek final');
+  assert.equal(trRound('Semi-Finals'), 'Yarı final');
+  assert.equal(trRound('Round of 16'), 'Son 16');
+  assert.equal(trRound('Group C'), 'Grup C');
+  assert.equal(trRound('Round 12'), '12. hafta');
+  assert.equal(trRound('Final'), 'Final');
+  assert.equal(trRound('Leg 2'), '2. maç');
+  assert.equal(trRound('Özel Tur'), 'Özel Tur');
+  assert.equal(trRound(''), '');
+  assert.equal(trRound(null), '');
+  assert.ok(trRound('x'.repeat(200)).length <= 48);
+});
+
+test('parseScoreboard: tur bilgisi notlardan okunur, yoksa boş', () => {
+  const withNote = ev(1, '2026-11-10T17:00Z', 'A', 'B');
+  withNote.competitions[0].notes = [{ headline: 'Quarter-finals' }];
+  const evNote = ev(2, '2026-11-10T17:00Z', 'C', 'D');
+  evNote.notes = ['Group Stage - Matchday 2'];
+  const plain = ev(3, '2026-11-10T17:00Z', 'E', 'F');
+  const [a, b, c] = parseScoreboard({ events: [withNote, evNote, plain] }, 'x.1');
+  assert.equal(a.round, 'Çeyrek final');
+  assert.equal(b.round, 'Grup aşaması · 2. hafta');
+  assert.equal(c.round, '');
 });

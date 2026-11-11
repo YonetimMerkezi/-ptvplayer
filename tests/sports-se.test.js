@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, loadSeDay, seChannelsFor, seDiagText, seTime } from '../www/js/sports-se.js';
+import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, loadSeDay, seChannelsFor, seDiagText, seTime, seNear } from '../www/js/sports-se.js';
 
 const DAYMS = new Date(2026, 10, 12, 0, 0, 0).getTime();
 const href = (id, y, m, d, slug) => `https://www.sporekrani.com/home/match/${id}/${y}/${m}/${d}/${slug}-hangi-kanalda`;
@@ -120,4 +120,23 @@ test('seChannelsFor: kadın/genç maçı erkek maçıyla karışmaz', () => {
   assert.deepEqual(seChannelsFor(M('Arsenal W', 'Chelsea W', 1000), rows), ['Disney Plus']);
   assert.deepEqual(seChannelsFor(M('Turkey', 'Belgium', 1000), rows), []);
   assert.deepEqual(seChannelsFor(M('Turkiye U21', 'Belcika U21', 1000), rows), ['TRT Spor']);
+});
+
+test('seNear: aynı saatteki yayınlar, takım eşleşmesi öne, uzak saatler dışarıda', () => {
+  const t0 = Date.UTC(2026, 10, 12, 17, 0);
+  const rows = [
+    { title: 'Kepez - Balıkesirspor', t: t0 - 20 * 60000, channels: ['Tivibu Spor 1'] },
+    { title: 'Galatasaray - Fenerbahçe', t: t0, channels: ['beIN Sports 1'] },
+    { title: 'Türkiye - Belçika', t: t0 + 30 * 60000, channels: ['A Spor'] },
+    { title: 'Uzak Maç', t: t0 + 3 * 3600e3, channels: ['X'] },
+  ];
+  const m = { t: t0, home: { name: 'Galatasaray' }, away: { name: 'Fenerbahce' } };
+  const r = seNear(m, rows);
+  assert.equal(r[0].title, 'Galatasaray - Fenerbahçe');
+  assert.deepEqual(r[0].channels, ['beIN Sports 1']);
+  assert.equal(r.length, 3);
+  assert.ok(!r.some((x) => x.title === 'Uzak Maç'));
+  assert.deepEqual(seNear(m, []), []);
+  assert.deepEqual(seNear(m, null), []);
+  assert.equal(seNear(m, rows, { max: 1 }).length, 1);
 });
