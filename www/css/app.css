@@ -532,6 +532,16 @@ html.native-playing #sheets .pg:not(.over-player) { visibility: hidden; }
 .dt-m { display: flex; flex-wrap: wrap; gap: 6px; }
 .dt-m span { background: rgba(255, 255, 255, 0.1); padding: 3px 10px; border-radius: 12px; font-size: 0.8125rem; color: #dbe3f2; }
 .dt-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+/* dikey telefon: afişin yanında yalnız ad ve etiketler; düğmeler afişin altında tam genişlikte, kompakt (ana düğme tek satır, ötekiler yan yana) */
+@media not all and (orientation: landscape) and (min-width: 640px) {
+  .dt { grid-template-areas: "pos title" "pos meta" "btns btns" "body body"; grid-template-rows: auto 1fr auto auto; gap: 10px 18px; }
+  .dt-head { display: contents; }
+  .dt-t { grid-area: title; }
+  .dt-m { grid-area: meta; align-self: start; }
+  .dt-btns { grid-area: btns; gap: 8px; margin-top: 2px; }
+  .dt-btns .btn { flex: 1 1 auto; min-height: 40px; padding: 0 10px; gap: 6px; font-size: 0.875rem; }
+  .dt-btns .btn.lg { flex: 1 1 100%; min-height: 50px; padding: 0 18px; gap: 8px; font-size: 1.0625rem; }
+}
 .dt-body { grid-area: body; min-width: 0; }
 .dt-body h2 { margin: 4px 0 8px; font-size: 1.0625rem; color: var(--accent); }
 .dt-plot { margin: 0 0 16px; max-width: 72ch; font-size: 1.0625rem; line-height: 1.65; color: #e6ecf8; white-space: pre-line; overflow-wrap: anywhere; }

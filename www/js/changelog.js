@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 65,
+    title: 'Film ve dizi ayrıntısında kompakt düğmeler',
+    items: [
+      'Dikey telefonda film/dizi ayrıntısındaki düğmeler artık alt alta dizilmez: ana düğme tam genişlikte tek satırda, ötekiler (Baştan başlat, Favori, İndir, TV’de oynat, Klasör) yan yana iki satıra sığar; ad ve etiketler afişin yanında kalır'
+    ],
+  },
+  {
     id: 64,
     title: 'Spor: goller atan takımın tarafında',
     items: [
