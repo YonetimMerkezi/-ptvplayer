@@ -119,7 +119,7 @@ input, select, textarea { font: inherit; color: var(--text); }
    Halka tüm temalarda beyaz + koyu kenar (vurgu rengi zeminle karışabildiği için tek başına yetmez); seçili (.on) durumdan da ayrışır. */
 html.kbd :focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ring-edge); scroll-margin: 16px; }
 html.kbd input:focus, html.kbd select:focus { outline-offset: 0; box-shadow: none; }
-html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
+html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus, html.kbd .sh-more:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
 html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus, html.kbd .sp-m:focus { outline: none; background: var(--ring-bg); box-shadow: inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); }
 html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus, html.kbd .act:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
 /* Odaktaki düğme uzaktan da seçilir: halkaya ek olarak dolgu tersine döner (beyaz dolgu, koyu simge) ve biraz büyür. Seçili (.on) düğme kendi dolgusunu korur, yalnız halka + büyüme alır */
@@ -227,8 +227,8 @@ html.hero-on #hero-bg.has { display: block; opacity: 1; }
 html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !important; }
 #hero-bg i { position: absolute; inset: 0; background: center 22% / cover no-repeat; opacity: 0; transition: opacity 0.4s ease; }
 #hero-bg i.on { opacity: 1; }
-#hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.6) 40%, rgba(0, 0, 0, 0.1) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 28%, rgba(0, 0, 0, 0.72) 60%, rgba(0, 0, 0, 0.94) 100%); }
-#hero { flex: none; height: 38vh; max-width: 64%; padding: 4px 6px 0; overflow: hidden; font-size: clamp(14px, 2.3vh, 24px); } /* yazılar ekran yüksekliğine göre ölçülür: 960×540 ile 1920×1080 aynı oranda */
+#hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.62) 38%, rgba(0, 0, 0, 0.12) 78%, rgba(0, 0, 0, 0.5) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.95) 100%); } /* kenarları gölgeli: sol-sağ ve üst-alt */
+#hero { flex: none; height: 38vh; max-width: 64%; padding: 4px 14px 0; overflow: hidden; font-size: clamp(14px, 2.3vh, 24px); } /* yazılar ekran yüksekliğine göre ölçülür: 960×540 ile 1920×1080 aynı oranda */
 .hero-t { margin: 0 0 0.4em; font-size: 2.1em; line-height: 1.1; font-weight: 800; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
 .hero-m { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.9em; min-height: 1.8em; margin-bottom: 0.6em; font-size: 1.05em; color: #e3ebee; }
 .hero-m span + span::before { content: "•"; margin-right: 0.9em; color: var(--muted); }
@@ -237,6 +237,26 @@ html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !impo
 .hero-c b { margin-right: 0.5em; color: var(--muted); font-weight: 600; }
 .hero-p { margin: 0.5em 0 0; font-size: 1.02em; line-height: 1.4; color: #e3ebee; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 @media (max-height: 640px) { .hero-d { display: none; } } /* 960×540 gibi alçak ekranda yönetmen satırı yer açar */
+/* Telefonda vitrin yalnız yatayken ve kumanda/klavye kullanılırken görünür; dokunmatikte yer açılır */
+html:not(.tv):not(.kbd) #hero, html:not(.tv):not(.kbd) #hero-bg { display: none !important; }
+@media not all and (orientation: landscape) { html:not(.tv) #hero, html:not(.tv) #hero-bg { display: none !important; } }
+
+/* Netflix gibi satırlar (shelves.js): her kategori yatayda kayan tek şerit, satırlar dikeyde pencereli */
+.sh { position: relative; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; contain: strict; }
+.sh-sizer { width: 1px; position: absolute; top: 0; left: 0; }
+.sh-win { position: absolute; top: 0; left: 0; right: 0; }
+.sh-row { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; }
+.sh-t { flex: none; margin: 0; height: var(--sh-title, 34px); padding: 0 14px; display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 700; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); white-space: nowrap; overflow: hidden; }
+.sh-t span { overflow: hidden; text-overflow: ellipsis; }
+.sh-t small { color: var(--muted); font-weight: 500; font-size: 0.8em; }
+.sh-t .ic { flex: none; width: 1em; height: 1em; color: var(--muted); }
+.sh-strip { flex: none; position: relative; display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: calc(var(--sh-pad, 28px) / 2) 14px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.sh-strip::-webkit-scrollbar { display: none; }
+.sh .card { flex: none; width: var(--sh-w); height: var(--sh-h); }
+.sh-more { flex: none; width: var(--sh-w); height: var(--sh-h); box-sizing: border-box; border-radius: var(--r); background: var(--surface); border: 2px dashed var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; text-align: center; color: var(--muted); cursor: pointer; }
+.sh-more b { color: var(--text); font-size: 0.95rem; line-height: 1.2; }
+.sh-more small { font-size: 0.8rem; }
+.sh-more-i .ic { width: 2rem; height: 2rem; }
 
 .empty { margin: auto; max-width: 320px; padding: 24px; text-align: center; color: var(--muted); }
 .empty h3 { margin: 0 0 8px; color: var(--text); font-size: 1.0625rem; }

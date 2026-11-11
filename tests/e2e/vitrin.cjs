@@ -1,11 +1,11 @@
-// TV vitrini denemesi: kategoride kumandayla gezerken odaktaki film/dizinin arka planı ve bilgisi üstte görünür; Tamam ayrıntıyı açar.
+// TV vitrini denemesi (Ayarlar > Film ve dizi ekranı = "Klasik + TV vitrini"): kategoride kumandayla gezerken odaktaki film/dizinin arka planı ve bilgisi üstte görünür; Tamam ayrıntıyı açar.
 // Telefonda hiçbir şey değişmez. Tek başına: node tests/e2e/vitrin.cjs; run.cjs sonunda da çağrılır.
 const path = require('node:path');
 
 async function vitrinSection({ browser, base, mock, ok, sleep }) {
   console.log('vitrin: TV’de odaktaki film/dizi arka planı ve bilgisi');
   const tvUrl = new URL('?tv=1', base).href;
-  const open = async (vp, tv) => {
+  const open = async (vp, tv, mv) => {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     const errs = [];
@@ -19,6 +19,8 @@ async function vitrinSection({ browser, base, mock, ok, sleep }) {
     await page.click('#f-go');
     await page.waitForSelector('.tile.t-live', { timeout: 15000 });
     if (tv) {
+      // TV'nin varsayılanı satır görünümüdür (satirlar.cjs); burada klasik liste + vitrin ya da yalnız klasik sınanır
+      await page.evaluate((v) => localStorage.setItem('iptv.pref.set.mvView', JSON.stringify(v)), mv || 'hero');
       await page.goto(tvUrl);
       await page.waitForSelector('.tile.t-live', { timeout: 15000 });
     }
@@ -161,15 +163,15 @@ async function vitrinSection({ browser, base, mock, ok, sleep }) {
     await ctx.close();
   }
 
-  // ---- 3) ayar kapatılınca vitrin yok, kutular eski boyutta
+  // ---- 3) ayar "Klasik" olunca vitrin yok, kutular eski boyutta
   {
     const { ctx, page, errs } = await open({ width: 1920, height: 1080 }, true);
-    await page.evaluate(() => window.__iptv.store.setPref('set.tvHero', false));
+    await page.evaluate(() => window.__iptv.store.setPref('set.mvView', 'classic'));
     await enterCat(page, 'movie');
-    ok(await page.evaluate(() => document.querySelector('#hero').hidden && !document.documentElement.classList.contains('hero-on')), 'ayar kapalı: vitrin gizli');
+    ok(await page.evaluate(() => document.querySelector('#hero').hidden && !document.documentElement.classList.contains('hero-on')), 'Klasik ayar: vitrin gizli');
     const cols = await page.evaluate(() => new Set([...document.querySelectorAll('#list .card')].map((c) => Math.round(c.getBoundingClientRect().left))).size);
-    ok(cols >= 14, `ayar kapalı: kutular eski küçük boyutta (${cols} sütun)`);
-    ok(errs.length === 0, 'ayar kapalı: sayfa hatası yok');
+    ok(cols >= 14, `Klasik ayar: kutular eski küçük boyutta (${cols} sütun)`);
+    ok(errs.length === 0, 'Klasik ayar: sayfa hatası yok');
     await ctx.close();
   }
 

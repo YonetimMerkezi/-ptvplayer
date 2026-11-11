@@ -2847,6 +2847,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate((u) => {
     localStorage.setItem('iptv.sources', JSON.stringify([{ id: 'a', name: 'Deneme', type: 'm3u', url: u }]));
     localStorage.setItem('__isTv', '1');
+    localStorage.setItem('iptv.pref.set.mvView', JSON.stringify('classic')); // bu bölüm "Devam et" satırını sınar; satır görünümü satirlar.cjs'te
   }, mock.url + '/list.m3u');
   await page.reload();
   await page.waitForSelector('.tile.t-live', { timeout: 15000 });
@@ -4005,6 +4006,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./kumanda.cjs').kumandaSection({ browser, base, mock, ok, sleep });
   await require('./liste.cjs').listeSection({ browser, base, mock, ok, sleep });
   await require('./vitrin.cjs').vitrinSection({ browser, base, mock, ok, sleep });
+  await require('./satirlar.cjs').satirlarSection({ browser, base, mock, ok, sleep });
   await require('./sports.cjs').sportsSection({ browser, base, mock, ok, sleep, SHOTS });
 
   await browser.close();

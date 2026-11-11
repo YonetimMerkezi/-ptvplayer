@@ -18,6 +18,8 @@ async function kumandaSection({ browser, base, mock, ok, sleep }) {
     await page.fill('input[name=pass]', 'p');
     await page.click('#f-go');
     await page.waitForSelector('.tile.t-live', { timeout: 15000 });
+    // bu bölüm klasik kategori listesini dener; TV'nin varsayılanı olan satır görünümü satirlar.cjs'te sınanır
+    await page.evaluate(() => localStorage.setItem('iptv.pref.set.mvView', JSON.stringify('classic')));
     await page.goto(tvUrl); // TV kipi: salt okunur alanlar, odak halkası, kumanda gezinmesi
     await page.waitForSelector('.tile.t-live', { timeout: 15000 });
     await sleep(500);

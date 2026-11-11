@@ -30,6 +30,7 @@ import { holeClip } from './hole.js';
 import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { createHero, heroModel, heroCellW } from './hero.js';
+import { Shelves, shelfSizes } from './shelves.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
@@ -597,7 +598,32 @@ function groupTitle(kind, g) {
 }
 
 function browseMode(kind) {
-  return !S.query && S.group[kind] == null ? 'cats' : 'items';
+  if (S.query || S.group[kind] != null) return 'items';
+  // Netflix gibi görünüm: kategoriler satırdır; düzenleme ve kategori süzgeci klasik listeyi açar
+  return isMv(kind) && !S.catEdit && !S.catFilter && mvView() === 'rows' ? 'rows' : 'cats';
+}
+
+// Satırlar: kilidi bu oturumda açılmış kategori normal satır olur; boş kategori görünmez; en altta düzenleme kutusu.
+function rowsOf(kind, cats) {
+  const out = [];
+  for (const c of cats) {
+    const row = c.locked && S.unlocked.has(catKey(kind, c.id)) ? { ...c, locked: false } : c;
+    if (row.locked || row.count > 0) out.push(row);
+  }
+  out.push({ id: '__edit', name: 'Düzenle', edit: true });
+  return out;
+}
+
+function rowItems(kind, row) {
+  const base = itemsOfGroup(kind, row.id);
+  return row.id === '__cont' ? base : sortItems(base, S.sort[kind]);
+}
+
+function shelfTile(kind, row, r, c) {
+  const at = `role="button" tabindex="0" data-r="${r}" data-c="${c}"`;
+  if (kind === 'lock') return `<div class="sh-more sh-lock" ${at} data-lock><span class="sh-more-i">${icon('lock')}</span><b>Kilitli</b><small>Tamam ile şifre gir</small></div>`;
+  if (kind === 'edit') return `<div class="sh-more sh-edit" ${at} data-edit><span class="sh-more-i">${icon('sliders')}</span><b>Kategorileri düzenle</b><small>Sırala, gizle, klasör oluştur</small></div>`;
+  return `<div class="sh-more" ${at} data-more><span class="sh-more-i">${icon('chev-r')}</span><b>Tümünü gör</b><small>${row.count}</small></div>`;
 }
 
 // Varsayılan sıra: klasörler, sonra sağlayıcının grupları.
@@ -774,7 +800,22 @@ function renderBrowse(v, kind) {
 
 // ---- TV vitrini (hero.js): kategorinin içinde kumandayla gezilen film/dizi kutusunun geniş arka planı, adı, puanı, özeti.
 // Yalnız TV kipinde ve film/dizi kutuları görünürken açık; telefonda hiçbir şey değişmez. Ayar: Genel ayarlar > TV vitrini.
-const heroActive = (kind, mode) => isTvUi() && setting('tvHero') && mode === 'items' && (kind === 'movie' || kind === 'series');
+// Film ve dizi ekranı (Genel ayarlar): Netflix gibi satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: TV'de Netflix gibi, telefonda klasik.
+const MV_VIEWS = [['auto', 'Otomatik (TV: Netflix gibi, telefon: Klasik)'], ['rows', 'Netflix gibi (satırlar + vitrin)'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
+const isMv = (kind) => kind === 'movie' || kind === 'series';
+function mvView() {
+  const p = store.pref('set.mvView', 'auto');
+  if (MV_VIEWS.some(([k]) => k === p && k !== 'auto')) return p;
+  if (store.pref('set.tvHero', true) === false) return 'classic'; // eski "TV vitrini" anahtarı kapatılmışsa
+  return isTvUi() ? 'rows' : 'classic';
+}
+// Vitrin alanı: satırlarda ve satırlardan girilen ızgarada; klasik görünümde yalnız TV'de ızgarada. Telefonda dokunmatikken CSS gizler.
+const heroActive = (kind, mode) => {
+  if (!isMv(kind)) return false;
+  const v = mvView();
+  if (v === 'rows') return mode === 'rows' || mode === 'items';
+  return v === 'hero' && isTvUi() && mode === 'items';
+};
 const hero = createHero({
   peek: (it) => (S.source ? peekVodInfo(S.source, it) : null),
   canLoad: (it) => !!S.source && S.source.type === 'xtream' && it.kind === 'movie',
@@ -848,16 +889,18 @@ function heroSync(kind, mode) {
     box.innerHTML = '';
     return heroOff();
   }
-  if (!S.items.length) {
+  const rows = mode === 'rows';
+  const first = rows ? S.list.firstItem() : S.items[0];
+  if (!first) {
     box.innerHTML = '';
     hero.stop();
     return paintHeroBg([]);
   }
   const cur = hero.current;
   if (!cur) hero.reset(); // kategoriye yeni girildi: önceki hatalar yeni denemeyi engellemesin
-  if (!cur || !S.items.some((x) => x.id === cur.id)) {
+  if (!cur || !(rows ? S.list.hasItem(cur.id) : S.items.some((x) => x.id === cur.id))) {
     hero.stop();
-    hero.focus(S.items[0]);
+    hero.focus(first);
   }
 }
 
@@ -865,7 +908,26 @@ function mountList(kind, mode = 'items') {
   const el = $('#list');
   S.listMode = mode;
   const longPress = (i) => S.items[i] && folderSheet(kind, S.items[i]);
-  if (mode === 'cats') {
+  if (mode === 'rows') {
+    const lines = Math.min(2, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)));
+    el.style.setProperty('--cap-lines', String(lines)); // satırlarda ad en çok 2 satır: vitrin zaten tam adı gösterir
+    S.list = new Shelves(el, {
+      sizes: (w, h) => shelfSizes({ viewW: w, viewH: h, scale: Math.max(1, fontScale()), capPx: captionPx(lines, fontScale()) }),
+      itemsOf: (row) => rowItems(kind, row),
+      titleHtml: (row) => `${row.locked ? icon('lock') : ''}${row.folder ? icon('folder') : ''}<span>${esc(row.name)}</span>`,
+      renderCard: (it, r, c) => card(it, r, `data-r="${r}" data-c="${c}"`),
+      renderTile: shelfTile.bind(null),
+      onOpen: (it) => (kind === 'movie' ? openMovie(it) : openSeries(it)),
+      onMore: (row) => enterGroup(kind, row.id),
+      onLock: (row) => ensureUnlocked(kind, row.id).then((ok) => ok && refreshList(true)),
+      onEdit: () => {
+        S.catEdit = true;
+        refreshList();
+      },
+      onFocusItem: (it) => heroActive(kind, 'rows') && hero.focus(it),
+      onLongPress: (it) => folderSheet(kind, it),
+    });
+  } else if (mode === 'cats') {
     S.list = new VirtualList(el, {
       rowH: scaled(56),
       render: (c, i) => catRow(c, i),
@@ -887,7 +949,7 @@ function mountList(kind, mode = 'items') {
   } else {
     const gap = 10;
     S.list = new VirtualList(el, {
-      minCellW: heroActive(kind, mode) ? heroCellW(window.innerWidth) : 104, // TV vitrini açıkken kutular büyük, altta 1-2 satır görünür
+      minCellW: isTvUi() && heroActive(kind, mode) ? heroCellW(window.innerWidth) : 104, // TV vitrini açıkken kutular büyük, altta 1-2 satır görünür
       gap,
       cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(store.pref('set.caption', DEFAULT_CAPTION), fontScale()), // ad alanı: Ayarlar > Kutudaki ad (varsayılan 3 satır = 66 px)
       render: (it, i) => card(it, i),
@@ -901,11 +963,11 @@ function mountList(kind, mode = 'items') {
 function restoreCatCursor(kind) {
   const b = S.backCat;
   S.backCat = null;
-  if (!b || b.kind !== kind || !S.list || S.listMode !== 'cats') return;
+  if (!b || b.kind !== kind || !S.list || (S.listMode !== 'cats' && S.listMode !== 'rows')) return;
   const i = S.cats.findIndex((c) => c.id === b.id);
   if (i < 0) return;
   S.list.scrollToIndex(i);
-  if (dpad.isKbd()) S.list.focusIndex(i);
+  if (dpad.isKbd()) S.list.focusIndex(i, S.listMode === 'rows'); // satırlarda imleç "Tümünü gör" kutusuna döner
   else S.list.draw();
 }
 
@@ -922,15 +984,16 @@ function refreshList(keepScroll = false) {
     keepScroll = false;
   }
   const all = S.cat[CAT_KEY[kind]].length;
-  S.items = mode === 'cats' ? [] : currentItems(kind);
-  S.cats = mode === 'cats' ? categoryRows(kind) : [];
-  const rows = mode === 'cats' ? S.cats : S.items;
+  S.items = mode === 'items' ? currentItems(kind) : [];
+  S.cats = mode === 'items' ? [] : categoryRows(kind);
+  if (mode === 'rows') S.cats = rowsOf(kind, S.cats);
+  const rows = mode === 'items' ? S.items : S.cats;
   S.list.setItems(rows, keepScroll);
   heroSync(kind, mode);
   restoreCatCursor(kind);
   drawCrumb(kind);
   const empty = $('#empty');
-  const none = mode === 'cats' ? !all || !rows.length : !rows.length;
+  const none = mode === 'items' ? !rows.length : mode === 'rows' ? !all || rows.length < 2 : !all || !rows.length;
   drawCatbar(kind, mode, all);
   $('#list').hidden = none;
   empty.hidden = !none;
@@ -944,7 +1007,7 @@ function fillEmpty(empty, kind, mode, all) {
   if (S.query) empty.innerHTML = emptyHtml('Sonuç yok', `“${S.query}” için ${g != null ? 'bu kategoride ' : ''}${label} bulunamadı.`);
   else if (!all && S.loading) empty.innerHTML = emptyHtml('Yükleniyor…', 'Liste indiriliyor, birazdan hazır olur.');
   else if (!all) empty.innerHTML = emptyHtml(`Bu kaynakta ${label} yok`, 'Listeyi yenilemeyi ya da başka bir kaynak seçmeyi deneyin.', '<button class="btn" id="e-refresh">Listeyi yenile</button>');
-  else if (mode === 'cats') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
+  else if (mode !== 'items') empty.innerHTML = emptyHtml('Eşleşen kategori yok', '');
   else if (g === '__recent') empty.innerHTML = emptyHtml('Henüz izlemediniz', 'İzlediğiniz kanallar burada görünür.');
   else if (g === '__cont') empty.innerHTML = emptyHtml('Yarım kalan yok', 'Yarıda bıraktığınız içerikler burada görünür.');
   else if (g && g.startsWith('f:')) empty.innerHTML = emptyHtml('Klasör boş', `Bir ${label} satırına ya da kartına uzun basıp “Klasöre ekle”yi seçin.`);
@@ -1139,12 +1202,12 @@ function liveRow(it, i) {
   return `<div class="row${sel ? ' sel' : ''}${bad ? ' bad' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
 }
 
-function card(it, i) {
+function card(it, i, attrs = `data-i="${i}"`) {
   const p = progressOf(it);
   const pct = p && p.dur > 0 ? Math.round((p.pos / p.dur) * 100) : 0;
   const ph = esc(it.name.slice(0, 2).toUpperCase());
   const img = it.logo ? `<img src="${esc(it.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">` : '';
-  return `<div class="card" role="button" tabindex="0" data-i="${i}"><div class="poster"><div class="ph">${ph}</div>${img}${isFav(it) ? `<span class="fav">${icon('star-on')}</span>` : ''}${pct ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}</div><div class="cap">${esc(it.name)}</div></div>`;
+  return `<div class="card" role="button" tabindex="0" ${attrs}><div class="poster"><div class="ph">${ph}</div>${img}${isFav(it) ? `<span class="fav">${icon('star-on')}</span>` : ''}${pct ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}</div><div class="cap">${esc(it.name)}</div></div>`;
 }
 
 // arama
@@ -3191,7 +3254,7 @@ function generalSheet() {
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ile bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
-      (isTvUi() ? chkRow('tvHero', 'TV vitrini', 'Film ve dizi kutularında gezerken odaktaki yapımın arka planı, özeti ve oyuncuları üstte görünür') : '') +
+      `<div class="sel-row"><span>Film ve dizi ekranı<small>Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
@@ -3209,7 +3272,6 @@ function generalSheet() {
           store.setPref('set.' + c.dataset.k, on);
           c.classList.toggle('on', on);
           if (c.dataset.k === 'showProg' || c.dataset.k === 'epThumbs') applyViewPrefs();
-          if (c.dataset.k === 'tvHero') renderTab(); // kutu boyutu ve vitrin alanı değişti: liste yeniden kurulur
           S.list && S.list.refreshRows();
         } else if (e.target.id === 'g-clr') {
           store.clearRecents(sid());
@@ -3228,6 +3290,10 @@ function generalSheet() {
       $('#g-cap', body).addEventListener('change', (e) => {
         store.setPref('set.caption', applyCaption(e.target.value, document));
         renderTab(); // ızgara hücre yüksekliği değişti: liste yeniden kurulur
+      });
+      $('#g-mv', body).addEventListener('change', (e) => {
+        store.setPref('set.mvView', MV_VIEWS.some(([k]) => k === e.target.value) ? e.target.value : 'auto');
+        renderTab(); // satırlar ↔ ızgara: görünüm baştan kurulur
       });
       $('#g-lite', body).addEventListener('change', (e) => {
         store.setPref('set.lite', normalizeLite(e.target.value));

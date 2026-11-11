@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 67,
+    title: 'Netflix gibi film ve dizi ekranı',
+    items: [
+      'TV’de film ve dizi artık Netflix gibi: her kategori yatayda kayan tek bir satır, satırlar alt alta; odaktaki yapımın geniş afişi çevresi gölgeli olarak üstte, altında adı, puanı, süresi, türü ve konusu görünür',
+      'Her satırda ilk 24 yapım vardır; sondaki “Tümünü gör” kutusu kategoriyi açar, Geri ile aynı kutuya dönülür. En alttaki “Kategorileri düzenle” kutusu sıralama, gizleme, klasör ve kilit işlerini açar',
+      'Ayarlar > Genel ayarlar > Film ve dizi ekranı: Otomatik (TV: Netflix gibi, telefon: Klasik), Netflix gibi, Klasik + TV vitrini, Klasik. Eski “TV vitrini” anahtarı bu ayarın içine katıldı',
+      'Telefonda da seçilebilir: satırlar parmakla yana kayar; vitrin yalnız yatay ekranda kumanda ya da klavyeyle gezerken görünür'
+    ],
+  },
+  {
     id: 66,
     title: 'TV vitrini: gezerken filmin arka planı ve konusu',
     items: [
