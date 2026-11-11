@@ -22,6 +22,12 @@ export const LEAGUES = [
 ];
 export const leagueOf = (id) => LEAGUES.find((l) => l.id === id) || null;
 
+// Aynı saatteki maçların sırası: önce ESPN ligleri (LEAGUES sırasıyla), sonra diğerleri (kendi sıralarıyla)
+export function matchRank(m) {
+  const i = LEAGUES.findIndex((l) => l.id === m.lg);
+  return i >= 0 ? i : 100 + (Number(m.ord) || 0);
+}
+
 // ---- takım adları: eşleştirme sözcük öbekleri ve ekranda gösterilecek Türkçe ad ----
 
 // Rehberde bu adla yazılabilecek ek yazımlar (anahtar: ESPN adının sadeleşmiş hali).

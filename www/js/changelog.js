@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 55,
+    title: 'Spor: hata düzeltmesi',
+    items: ['Aynı saatte birden fazla maç olduğunda listenin yalnızca ilk maçı gösterip “LEAGUES is not defined” hatası vermesi düzeltildi'],
+  },
+  {
     id: 54,
     title: 'Spor: örnekteki gibi maç kartları',
     items: [

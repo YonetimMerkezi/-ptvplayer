@@ -3,7 +3,7 @@
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import {
-  ESPN_BASE, leagueOf, loadMatches, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
+  ESPN_BASE, leagueOf, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
   matchesOnDay, sections, chipsFor, capSections, hasLive,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
@@ -199,12 +199,6 @@ export function openSports(env) {
     return bits.length ? `<p class="hint sp-detail sp-src"${showDiag ? '' : ' hidden'}>${bits.map(esc).join(' · ')}</p>` : '';
   }
 
-  // Aynı saatteki maçlar önem sırasıyla (ESPN ligleri, sonra diğerleri)
-  const rank = (m) => {
-    const i = LEAGUES.findIndex((l) => l.id === m.lg);
-    return i >= 0 ? i : 100 + (Number(m.ord) || 0);
-  };
-
   function drawList() {
     const list = q('#sp-list');
     if (!list) return;
@@ -219,7 +213,7 @@ export function openSports(env) {
           : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`;
       return;
     }
-    const rows = secs.flatMap((x) => x.matches).sort((a, b) => a.t - b.t || rank(a) - rank(b) || a.id.localeCompare(b.id));
+    const rows = secs.flatMap((x) => x.matches).sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
     list.innerHTML =
       sourceNote() +
       rows.map(rowHtml).join('') +

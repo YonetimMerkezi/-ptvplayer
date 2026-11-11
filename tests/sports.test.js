@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LEAGUES, DAY, scoreboardUrl, scoreboardLadder, statusOf, parseScoreboard, loadMatches, teamPhrases, teamLabel, findProgram,
-  trRound, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
+  trRound, matchRank, slicePrograms, dayLabel, dayStrip, dayStart, matchesOnDay, sections, hasLive,
 } from '../www/js/sports.js';
 
 const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
@@ -334,4 +334,17 @@ test('parseScoreboard: tur bilgisi notlardan okunur, yoksa boş', () => {
   assert.equal(a.round, 'Çeyrek final');
   assert.equal(b.round, 'Grup aşaması · 2. hafta');
   assert.equal(c.round, '');
+});
+
+test('matchRank: ESPN ligleri LEAGUES sırasıyla, diğerleri sonra kendi sırasıyla', () => {
+  const first = LEAGUES[0].id;
+  const last = LEAGUES[LEAGUES.length - 1].id;
+  assert.ok(matchRank({ lg: first }) < matchRank({ lg: last }));
+  assert.ok(matchRank({ lg: last }) < matchRank({ lg: 'se:x', ord: 0 }));
+  assert.ok(matchRank({ lg: 'se:x', ord: 1 }) < matchRank({ lg: 'ls:y', ord: 5 }));
+  assert.equal(matchRank({ lg: 'ls:y' }), 100);
+  // aynı saatteki maçlarla sıralama çökmez
+  const rows = [{ id: 'b', t: 1, lg: 'ls:y', ord: 3 }, { id: 'a', t: 1, lg: first }, { id: 'c', t: 1, lg: 'se:x', ord: 1 }];
+  rows.sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
+  assert.deepEqual(rows.map((r) => r.id), ['a', 'c', 'b']);
 });

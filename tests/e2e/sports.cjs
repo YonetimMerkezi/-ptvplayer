@@ -33,7 +33,7 @@ function fakeEspn() {
     ],
     'uefa.champions': [ev(4, at(1, 21, 45), 'Bayern Munich', 'Paris Saint-Germain', { round: 'Group Stage - Matchday 3' })],
     'uefa.nations': [ev(5, at(3, 20, 45), 'Turkey', 'Wales')],
-    'eng.1': [ev(6, at(0, 19, 0), 'Arsenal', 'Chelsea')],
+    'eng.1': [ev(6, at(0, 19, 0), 'Arsenal', 'Chelsea'), ev(7, at(0, 20, 0), 'Liverpool', 'Everton')],
   });
   const comp = (state, name, hs, as, extra = {}) => ({
     header: { competitions: [{ status: { displayClock: extra.clock || '', type: { state, name } }, competitors: [{ id: '1', homeAway: 'home', score: hs, team: { id: '1' } }, { id: '2', homeAway: 'away', score: as, team: { id: '2' } }], ...(extra.comp || {}) }] },
@@ -208,8 +208,8 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   const lgs = await text(a, '#sp-lgs .chip');
   ok(lgs[0].startsWith('Tümü') && lgs.some((t) => t.startsWith('Süper Lig')) && lgs.some((t) => t.startsWith('Premier Lig')) && !lgs.some((t) => t.startsWith('Şampiyonlar')), 'lig çipleri yalnız o günün ligleri: ' + lgs.join(' | '));
   ok(!(await a.$('.sp-lg-h')), 'bölüm başlığı yok: düz, saat sıralı liste');
-  const order = (await text(a, '.sp-m')).map((t) => (/Konyaspor/.test(t) ? 'K' : /Beşiktaş/.test(t) ? 'B' : /Arsenal/.test(t) ? 'A' : /Galatasaray/.test(t) ? 'G' : '?')).join('');
-  ok(order === 'KBAG', 'maçlar saat sırasında (14:00, 17:00, 19:00, 20:00): ' + order);
+  const order = (await text(a, '.sp-m')).map((t) => (/Konyaspor/.test(t) ? 'K' : /Beşiktaş/.test(t) ? 'B' : /Arsenal/.test(t) ? 'A' : /Galatasaray/.test(t) ? 'G' : /Liverpool/.test(t) ? 'L' : '?')).join('');
+  ok(order === 'KBAGL', 'maçlar saat sırasında, aynı saatte (20:00) Süper Lig önce, sonra Premier Lig: ' + order);
   const lgl = await text(a, '.sp-m .sp-l2');
   ok(lgl[0] === 'Süper Lig' && lgl[2] === 'Premier Lig' && lgl[3] === 'Süper Lig · 12. hafta', 'her satırda lig/turnuva ve tur bilgisi: ' + lgl.join(' | '));
 
@@ -415,7 +415,7 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await g.click('.shortcuts .t-sport');
   await g.waitForFunction(() => /LiveScore: HTTP 500/.test((document.querySelector('.sp-src') || {}).textContent || ''), null, { timeout: 15000 });
   ok(!/LiveScore/.test(await g.textContent('#sp-upd')), 'LiveScore çalışmasa da durum satırında adı geçmez');
-  ok((await g.$$('.sp-m')).length === 4 && !(await g.$('.sp-list .empty h3')), 'LiveScore yokken ESPN listesi bozulmadı');
+  ok((await g.$$('.sp-m')).length === 5 && !(await g.$('.sp-list .empty h3')), 'LiveScore yokken ESPN listesi bozulmadı');
   ok(/LiveScore: HTTP 500/.test(await g.textContent('.sp-src')), 'LiveScore hata nedeni gösteriliyor: ' + (await g.textContent('.sp-src')));
   espn.st.lsMode = 'badshape';
   await g.click('#sp-ref');
