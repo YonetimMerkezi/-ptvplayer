@@ -1,6 +1,8 @@
 // Planlananlar: program hatırlatıcıları ve zamanlı kayıtlar. Saf mantık; saklama ve yerel zamanlayıcı app.js'te.
 // Plan: { id, kind: 'rem' | 'rec', chId, chName, title, s, e, at, url?, headers? }
 //   at: tetiklenme zamanı (ms). rem → program başlamadan LEAD dk önce; rec → başlamadan 1 dk önce kayıt açılır.
+import { fold } from './util.js';
+
 export const REMIND_LEAD_MIN = 5;
 export const REC_PRE_MS = 60000;
 export const REC_POST_MS = 2 * 60000;
@@ -12,6 +14,28 @@ export function makePlan(kind, item, p, { lead = REMIND_LEAD_MIN, url = '', head
   const base = { id: planId(kind, item.id, p.s, src), kind, src, chId: item.id, chName: item.name, title: p.t || 'Program', s: p.s, e: p.e };
   if (kind === 'rec') return { ...base, at: p.s - REC_PRE_MS, until: p.e + REC_POST_MS, url, headers };
   return { ...base, at: p.s - Math.max(0, lead) * 60000 };
+}
+
+// ---- maç hatırlatıcıları: kind 'rem' (yerel taraf aynı bildirimi gösterir), program yerine maç; kanal varsa dokununca açılır ----
+export const MATCH_LEADS = [0, 5, 15, 30, 60]; // dakika önce (0 = başlarken)
+export const MATCH_LEAD_DEFAULT = 15;
+export const MATCH_LEN_MS = 3 * 3600000;
+
+export const leadLabel = (min) => (min <= 0 ? 'Başlarken' : min >= 60 ? `${min / 60} saat önce` : `${min} dk önce`);
+
+// Maç kimliği kaynaklar arasında değişebilir (ESPN / yayın akışı): saat + takım adları anahtardır.
+export const matchPlanId = (m) => `mrem:${m.t}:${fold(m.home.label || m.home.name)}:${fold(m.away.label || m.away.name)}`;
+
+// Başlamamış maç mı? (başlamış ya da bitmiş maça hatırlatıcı kurulmaz)
+export const canRemind = (m, now = Date.now()) => !!m && m.state === 'pre' && !m.off && Number.isFinite(m.t) && m.t > now;
+
+export function makeMatchPlan(m, { lead = MATCH_LEAD_DEFAULT, chId = '', chName = '', src = '' } = {}) {
+  const min = MATCH_LEADS.includes(lead) ? lead : MATCH_LEAD_DEFAULT;
+  return {
+    id: matchPlanId(m), kind: 'rem', match: true, lead: min, src, chId, chName,
+    title: `${m.home.label || m.home.name} – ${m.away.label || m.away.name}`,
+    s: m.t, e: m.t + MATCH_LEN_MS, at: m.t - min * 60000,
+  };
 }
 
 // Süresi dolmamış planlar, zamana göre sıralı (rec bitişine, rem başlangıcına kadar geçerli)

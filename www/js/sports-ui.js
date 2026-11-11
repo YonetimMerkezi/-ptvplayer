@@ -2,6 +2,7 @@
 // Mantık sports.js'te; burada yalnız ekran var. Uygulama ilk açıldığında yüklenmez (ana ekrandan "Spor"a basınca yüklenir).
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, openPage } from './ui.js';
+import { MATCH_LEADS, MATCH_LEAD_DEFAULT, leadLabel, matchPlanId, canRemind, makeMatchPlan } from './plan.js';
 import {
   ESPN_BASE, leagueOf, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
   matchesOnDay, sections, chipsFor, capSections, hasLive,
@@ -30,9 +31,10 @@ const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
 const MAX_ROWS = 500;
 
-// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), base?, lsHosts?, tvHosts?, schedBases?, now? }
+// env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), reminders?: { list(), set(plan), remove(id) }, sourceId?(), base?, lsHosts?, tvHosts?, schedBases?, now? }
 export function openSports(env) {
   const { net, store, toast, liveItems, epgBetween, play } = env;
+  const rem = env.reminders || null; // maç hatırlatıcıları (plan listesi uygulamada tutulur)
   const base = env.base || ESPN_BASE;
   const lsHosts = env.lsHosts || LS_HOSTS;
   const tvHosts = env.tvHosts || TV_HOSTS;
@@ -222,8 +224,73 @@ export function openSports(env) {
   }
   const teamHtml = (side, other) => `<span class="sp-tm">${logoHtml(sideLogo(side, other, badgeOf), side.label, esc)}<span>${esc(side.label)}</span></span>`;
 
+  // ---- maç hatırlatıcısı: satırdaki zil (dokunmatik; kumandada ayrıntı sayfasındaki seçeneklerle kurulur) ----
+  const LEAD_KEY = 'sp.lead';
+  let remIds = new Set();
+  const bellAttrs = (on) => `aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Maç için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Maç için hatırlat'}"`;
+  const bellHtml = (m) => (rem && canRemind(m, now()) ? `<button class="sp-bell${remIds.has(matchPlanId(m)) ? ' on' : ''}" tabindex="-1" data-bell ${bellAttrs(remIds.has(matchPlanId(m)))}>${icon('bell')}</button>` : '');
+
+  function loadRem() {
+    try {
+      remIds = new Set(((rem && rem.list()) || []).map((x) => x.id));
+    } catch {
+      remIds = new Set();
+    }
+  }
+
+  // Listedeki zilleri kurulu hatırlatıcılara göre tazeler (yeniden çizmeden: kaydırma yeri bozulmaz)
+  function syncBells() {
+    loadRem();
+    for (const row of root.querySelectorAll('.sp-m')) {
+      const b = row.querySelector('.sp-bell');
+      const m = b && matches.find((x) => x.id === row.dataset.id);
+      if (!m) continue;
+      const on = remIds.has(matchPlanId(m));
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-label', on ? 'Hatırlatıcıyı kaldır' : 'Maç için hatırlat');
+      b.setAttribute('title', on ? 'Hatırlatıcıyı kaldır' : 'Maç için hatırlat');
+    }
+  }
+
+  // Hatırlatıcıda dokununca açılacak kanal ve bildirimde görünecek yayıncı: rehberdeki eşleşme, yoksa yayın listesindeki ad; yayın bilgisi yoksa lig adı
+  function remindInfo(m) {
+    const ch = chan.get(m.id);
+    const names = tvFor.get(m.id) || [];
+    let item = ch && ch.item;
+    if (!item && names.length) item = channelsByName(liveItems() || [], names, 1)[0];
+    return { chId: item ? item.id : '', chName: names[0] || (item && item.name) || lgLine(m), src: env.sourceId ? env.sourceId() : '' };
+  }
+
+  function setReminder(m, lead) {
+    if (!canRemind(m, now())) {
+      toast('Bu maç başladı ya da bitti; hatırlatıcı kurulamaz', 2600);
+      return null;
+    }
+    const plan = rem.set(makeMatchPlan(m, { lead, ...remindInfo(m) }));
+    try {
+      store.setPref(LEAD_KEY, lead);
+    } catch {
+      /* son seçim kaydedilemedi */
+    }
+    const when = m.t - lead * 60000;
+    toast(when - now() < 5000 ? 'Maç yakında başlıyor; hemen haber verilir' : `Hatırlatıcı kuruldu · ${fmtClock(when)} (${leadLabel(lead)})`, 2800);
+    syncBells();
+    return plan;
+  }
+
+  function clearReminder(m) {
+    rem.remove(matchPlanId(m));
+    toast('Hatırlatıcı kaldırıldı', 1800);
+    syncBells();
+  }
+
+  function toggleBell(m) {
+    if (remIds.has(matchPlanId(m))) clearReminder(m);
+    else setReminder(m, Number(store.pref(LEAD_KEY, MATCH_LEAD_DEFAULT)));
+  }
+
   function rowHtml(m) {
-    const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : `<time>${fmtClock(m.t)}</time>`;
+    const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : `<time>${fmtClock(m.t)}</time>${bellHtml(m)}`;
     const sc = score(m);
     const title = `${teamHtml(m.home, m.away)}<span class="sp-vs">${sc ? ` ${sc} ` : ' - '}</span>${teamHtml(m.away, m.home)}`;
     const lgl = lgLine(m);
@@ -290,6 +357,7 @@ export function openSports(env) {
           : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`;
       return;
     }
+    loadRem();
     const rows = secs.flatMap((x) => x.matches).sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
     list.innerHTML =
       sourceNote() +
@@ -596,6 +664,17 @@ export function openSports(env) {
           badgeOf: (name) => badgeOf(name, 'small'),
           tvOf: (x) => tvFor.get(x.id) || [],
           ensureTv: (x) => ensureTv(dayStart(x.t)),
+          remind: rem
+            ? {
+              leads: MATCH_LEADS,
+              label: leadLabel,
+              can: (x) => canRemind(x, now()),
+              get: (x) => (rem.list() || []).find((p) => p.id === matchPlanId(x)) || null,
+              set: (x, lead) => setReminder(x, lead),
+              clear: (x) => clearReminder(x),
+              last: () => Number(store.pref(LEAD_KEY, MATCH_LEAD_DEFAULT)),
+            }
+            : null,
         },
         m,
       );
@@ -633,7 +712,9 @@ export function openSports(env) {
     const row = e.target.closest('.sp-m');
     if (row) {
       const m = matches.find((x) => x.id === row.dataset.id);
-      if (m) openDetail(m);
+      if (!m) return;
+      if (e.target.closest('[data-bell]')) return rem && toggleBell(m);
+      openDetail(m);
     }
   });
   root.addEventListener('keydown', (e) => {

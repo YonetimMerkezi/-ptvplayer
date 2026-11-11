@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 59,
+    title: 'Spor: maç hatırlatıcısı',
+    items: [
+      'Başlamamış maçların satırındaki zile dokununca maçtan 15 dakika önce bildirim gelir; tekrar dokununca kalkar',
+      'Maç ayrıntısında hatırlatma süresi seçilir (başlarken, 5, 15, 30 dakika ya da 1 saat önce); son seçilen süre sonraki maçlarda kullanılır',
+      'Hatırlatıcılar Ayarlar > Planlananlar’da görünür; maçın kanalı listenizde varsa bildirime dokununca kanal açılır'
+    ],
+  },
+  {
     id: 58,
     title: 'Spor: boşluk farkı olan kanal adları eşleşiyor',
     items: ['Yayın bilgisindeki “Tivibu Spor 1” gibi adlar, listenizde “TIVIBUSPOR 1 HD” diye bitişik yazılmış kanalla eşleşir; maç ekranında kanal listelenir ve dokununca açılır'],

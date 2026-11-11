@@ -51,7 +51,7 @@ function eventText(e) {
   return `<small>${esc(e.text || lab)}</small>`;
 }
 
-// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), ensureTv(m), badgeOf?(takım adı), base?, now? }
+// env: { net, toast, liveItems, epgBetween, play(items, index), tvOf(m), ensureTv(m), badgeOf?(takım adı), remind?: { leads, label(dk), can(m), get(m), set(m, dk), clear(m), last() }, base?, now? }
 export function openMatchDetail(env, m) {
   const base = env.base || ESPN_BASE;
   const now = env.now || (() => Date.now());
@@ -72,7 +72,7 @@ export function openMatchDetail(env, m) {
     title: 'Maç ayrıntısı',
     cls: 'sd-pg',
     html: `<div class="sd">
-      <div class="sd-head"><button class="icon-btn" id="sd-ref" aria-label="Ayrıntıyı yenile">${icon('refresh')}</button><div id="sd-top"></div></div>
+      <div class="sd-head"><button class="icon-btn" id="sd-ref" aria-label="Ayrıntıyı yenile">${icon('refresh')}</button><div id="sd-top"></div><div class="sd-rem" id="sd-rem"></div></div>
       <section class="sd-sec" id="sd-bc"></section>
       <div id="sd-body"></div>
       <small class="sd-upd" id="sd-upd" aria-live="polite"></small>
@@ -102,6 +102,30 @@ export function openMatchDetail(env, m) {
         <div class="sd-mid">${mid}<span class="${stClass}">${stText}</span>${pen}</div>
         <div class="sd-team">${teamLogo(m.away, m.home)}<span>${esc(m.away.label)}</span></div></div>
       ${meta.length ? `<div class="sd-meta">${meta.map(esc).join(' · ')}</div>` : ''}`;
+  }
+
+  // Hatırlatıcı: maçtan ne kadar önce haber verileceği (seçili süreye dokunmak kaldırır). Yalnız başlamamış maçta görünür;
+  // yenilemede değişmediyse yeniden çizilmez (kumanda odağı kaybolmasın).
+  const rem = env.remind || null;
+  let drawnRem = '';
+  function drawRemind(focusLead) {
+    const el = q('#sd-rem');
+    if (!el) return;
+    const st = data && data.status ? data.status.state : m.state;
+    let html = '';
+    if (rem && st === 'pre' && !m.off && rem.can(m)) {
+      const cur = rem.get(m);
+      const chips = rem.leads.map((min) => `<button class="chip${cur && cur.lead === min ? ' on' : ''}" data-lead="${min}">${esc(rem.label(min))}</button>`).join('');
+      const note = cur ? `Hatırlatıcı kurulu · ${fmtClock(cur.s - cur.lead * 60000)}` : 'Maçtan ne kadar önce hatırlatılsın?';
+      html = `<div class="sd-rem-h">${icon('bell')}<span>${esc(note)}</span></div><div class="chips sd-rem-c">${chips}</div>`;
+    }
+    if (html === drawnRem) return;
+    drawnRem = html;
+    el.innerHTML = html;
+    if (focusLead != null) {
+      const f = el.querySelector(`[data-lead="${focusLead}"]`);
+      if (f && f.focus) f.focus({ preventScroll: true });
+    }
   }
 
   // Yayın bölümü: kaynağa göre gruplanmış kanal satırları (rehber, yayın listesi, tahmini yayıncı, diğer spor kanalları). Satırlar odaklanabilir;
@@ -210,6 +234,7 @@ export function openMatchDetail(env, m) {
     }
     if (!root.isConnected) return;
     drawTop();
+    drawRemind();
     const done = live() === 'post' || !!m.off;
     if (done !== wasDone) {
       wasDone = done;
@@ -221,6 +246,14 @@ export function openMatchDetail(env, m) {
 
   root.addEventListener('click', (e) => {
     if (e.target.closest('#sd-ref') || e.target.closest('#sd-retry')) return refresh();
+    const ld = rem && e.target.closest('[data-lead]');
+    if (ld) {
+      const min = Number(ld.dataset.lead);
+      const cur = rem.get(m);
+      if (cur && cur.lead === min) rem.clear(m);
+      else rem.set(m, min);
+      return drawRemind(min);
+    }
     const r = e.target.closest('[data-ch]');
     if (r) {
       const g = groups[Number(r.dataset.g)];
@@ -236,6 +269,7 @@ export function openMatchDetail(env, m) {
 
   chans = channelsFor(env, m);
   drawTop();
+  drawRemind();
   drawBroadcast();
   drawBody();
   refresh();

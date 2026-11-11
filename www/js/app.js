@@ -1588,6 +1588,18 @@ async function openSportsPage() {
       liveItems: () => visibleAll('live'),
       epgBetween: (from, to) => S.epg.between(from, to),
       play: (items, index) => playLive(items, index),
+      sourceId: () => sid(),
+      // Maç hatırlatıcıları, program hatırlatıcılarıyla aynı plan listesinde durur (Planlananlar ekranında görünür, alarm uygulama kapalıyken de çalışır)
+      reminders: {
+        list: () => readPlans(),
+        set: (plan) => {
+          const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) }; // başlamasına az kaldıysa hemen haber verir
+          setPlans(addPlan(readPlans(), p));
+          ensurePlanPermissions();
+          return p;
+        },
+        remove: (id) => setPlans(removePlan(readPlans(), id)),
+      },
     });
   } catch (e) {
     toast('Spor ekranı açılamadı: ' + ((e && e.message) || e));
@@ -4118,7 +4130,7 @@ function plansSheet() {
           return `<div class="rec-row pl-row${fired ? ' on' : ''}"><button class="rec-play" data-open="${esc(x.id)}"><span class="t">${icon(x.kind === 'rec' ? 'rec' : 'bell')}${esc(x.title)}</span><small>${esc(x.chName)} · ${esc(planWhen(x, now))} · ${what}</small></button><button class="icon-btn" data-del="${esc(x.id)}" aria-label="Kaldır">${icon('trash')}</button></div>`;
         }).join('');
         const note = nativePlugin ? '' : '<p class="hint">Tarayıcıda hatırlatıcılar yalnız sayfa açıkken çalışır; zamanlı kayıt Android uygulamasındadır.</p>';
-        box.innerHTML = `${warn}${rows || '<p class="hint">Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin.</p>'}${note}`;
+        box.innerHTML = `${warn}${rows || '<p class="hint">Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin; Spor’da maç satırındaki zile dokunarak maç hatırlatıcısı kurabilirsiniz.</p>'}${note}`;
       };
       body.addEventListener('click', async (e) => {
         const del = e.target.closest('[data-del]');

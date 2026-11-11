@@ -128,8 +128,14 @@ function fakeEspn() {
       const d = new Date();
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const mode = st.seMode;
-      if (key !== today && mode === 'data') st.seMode = 'data0';
-      const body = seBody();
+      let extra = '';
+      if (key !== today && mode === 'data') {
+        st.seMode = 'data0';
+        // başka günlerde yayıncısı belli bir maç daha (hatırlatıcı kanalı için)
+        const off = Math.round((Date.parse(key + 'T12:00:00') - Date.parse(today + 'T12:00:00')) / 86400000);
+        extra = `<div>${seRow('Futbol', at(off, 19, 30), 'Hatayspor - Rizespor', 'Süper Lig', ['TRT Spor'])}</div>`;
+      }
+      const body = seBody() + extra;
       st.seMode = mode;
       return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/html; charset=utf-8' }, body });
     });
@@ -532,6 +538,41 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await h.click('#sp-days .chip:nth-child(3)'); // yarın: ikinci kaynaktaki 1. Lig maçı, yayın kaydı yok
   await h.waitForFunction(() => /Ankaragucu/.test(document.querySelector('.sp-list').textContent), null, { timeout: 8000 });
   ok((await boxOf(h, /Ankaragucu/)).none, 'yayın kaydı olmayan maçta tahmin yok, “Yayın yok”');
+  // maç hatırlatıcısı: satırdaki zil, ayrıntıdaki süre seçenekleri; plan listesinde (Planlananlar) görünür, kanalı bilinen maçta dokununca kanal açılır
+  const plansOf = () => h.evaluate(() => window.__iptv.store.pref('plans', []).filter((x) => x.match));
+  const bellOf = (re) => h.locator('.sp-m', { hasText: re }).locator('.sp-bell');
+  ok((await plansOf()).length === 0, 'başlangıçta maç hatırlatıcısı yok');
+  ok((await bellOf(/Ankaragucu/).count()) === 1 && (await bellOf(/Ankaragucu/).getAttribute('tabindex')) === '-1', 'başlamamış maç satırında zil var (kumanda odağına girmez)');
+  await bellOf(/Hatayspor/).click();
+  let mp = await plansOf();
+  ok(mp.length === 1 && mp[0].kind === 'rem' && /Hatayspor – Rizespor/.test(mp[0].title) && mp[0].lead === 15 && mp[0].at === mp[0].s - 15 * 60000, 'zile dokununca 15 dk öncesine hatırlatıcı kuruldu: ' + JSON.stringify(mp[0]));
+  ok(mp[0].chName === 'TRT Spor' && mp[0].chId === (await h.evaluate(() => window.__iptv.S.cat.live[1].id)), 'bildirimde yayıncı adı, dokununca açılacak kanal listedeki karşılığı: ' + mp[0].chName + ' / ' + mp[0].chId);
+  ok(await bellOf(/Hatayspor/).evaluate((b) => b.classList.contains('on')), 'zil kurulu görünümde');
+  await bellOf(/Hatayspor/).click();
+  ok((await plansOf()).length === 0, 'tekrar dokununca hatırlatıcı kalktı');
+  await bellOf(/Ankaragucu/).click();
+  mp = await plansOf();
+  ok(mp.length === 1 && mp[0].chId === '' && /TFF 1\. Lig/.test(mp[0].chName), 'yayın bilgisi olmayan maçta bildirimde lig adı, kanal yok: ' + JSON.stringify(mp[0]));
+  await openRow(h, /Ankaragucu/);
+  await h.waitForSelector('.sd-pg #sd-rem [data-lead]', { timeout: 8000 });
+  ok(/Hatırlatıcı kurulu/.test(await h.textContent('#sd-rem')) && await h.$eval('#sd-rem [data-lead="15"]', (b) => b.classList.contains('on')), 'ayrıntı sayfasında kurulu süre seçili: ' + (await h.textContent('#sd-rem')));
+  await h.click('#sd-rem [data-lead="30"]');
+  mp = await plansOf();
+  ok(mp.length === 1 && mp[0].lead === 30 && mp[0].at === mp[0].s - 30 * 60000, 'süre değiştirilince aynı hatırlatıcı güncellendi (çift kayıt yok)');
+  ok(await h.evaluate(() => document.activeElement && document.activeElement.dataset.lead === '30'), 'seçimden sonra odak aynı seçenekte (kumanda)');
+  await h.click('#sd-rem [data-lead="30"]');
+  ok((await plansOf()).length === 0 && /ne kadar önce/.test(await h.textContent('#sd-rem')), 'seçili süreye tekrar dokununca kaldırılır');
+  await h.click('#sd-rem [data-lead="5"]');
+  await h.goBack();
+  await h.waitForFunction(() => !document.querySelector('.sd-pg'), null, { timeout: 4000 });
+  ok(await bellOf(/Ankaragucu/).evaluate((b) => b.classList.contains('on')), 'ayrıntıdan kurulan hatırlatıcı listedeki zile yansıdı');
+  ok((await plansOf())[0].lead === 5, 'seçilen süre kaydedildi');
+  await bellOf(/Ankaragucu/).click();
+  ok((await plansOf()).length === 0, 'zille kaldırıldı');
+  await bellOf(/Ankaragucu/).click();
+  ok((await plansOf())[0].lead === 5, 'zil, en son seçilen süreyi kullanır');
+  await bellOf(/Ankaragucu/).click();
+  ok((await plansOf()).length === 0, 'temizlendi');
   // takım simgeleri: kulüp rozeti aranır (bulunursa görsel, yoksa baş harf yer tutucu), milli takım maçında iki bayrak
   while (await h.$('.sd-pg')) await h.click('.sd-pg [data-close]'); // açık ayrıntı sayfaları kapanır
   await h.waitForSelector('.sp-pg .sp-m', { timeout: 8000 });
