@@ -160,6 +160,7 @@ test('loadSeriesWeek: 1001dizi boşsa ücretsiz EPG bugün ve yarın için yedek
   assert.equal(r.days[3][0].title, 'Mehmed: Fetihler Sultanı');
   assert.equal(r.days[3][0].time, '20:00');
   assert.equal(r.days[3][0].ep, '1. Sezon 5. Bölüm');
+  assert.equal(r.days[3][0].status, 'Yeni Bölüm', 'EPG n bayrağı kullanıcıya okunur durum olarak gösterilir');
   assert.equal(r.days[3][0].endAt, todayStart + 7200e3);
   assert.equal(r.days[4][0].time, '21:15');
   assert.match(r.note, /bugün ve yarın için 2 dizi kaydı/);
