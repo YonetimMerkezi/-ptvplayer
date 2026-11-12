@@ -1,15 +1,17 @@
 // Oynatma denetleyicisi: motor üstünde yedek adres denemesi, hızlı yeniden bağlanma, takılma bekçisi,
 // ilerleme bildirimi. Motordan bağımsızdır (sahte motorla test edilir).
 import { STEADY_MS, reconnectDelay, retryPolicy } from './retry.js';
+import { targetKind } from './stats.js';
 
 const STALL_MS = 25000; // ilk açılışta yayının gelmesi için
 const PROGRESS_EVERY_MS = 10000;
 const OPEN_CAP_MS = 90000; // film ilk açılışta veri geliyorsa (tampon büyüyorsa) en çok bu kadar beklenir
+const LOG_MAX = 16; // olay kaydının uzunluğu (Yayın bilgisi'nde son satırlar görünür)
 const GOOD_MS = 20000; // yedek adres bu kadar kesintisiz oynarsa "bu yayın bu adresle çalışıyor" diye bildirilir
 
 // onSteady(hedef, sıra): ilk adres dışındaki bir adres GOOD_MS boyunca kesintisiz oynadığında bir kez çağrılır (çalışan biçim hatırlansın diye).
 export function createPlayer({ engine, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now(), onSteady = null }) {
-  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0 };
+  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0, log: [] };
   const listeners = new Set();
   let progressCb = null;
   let stallTimer = null;
@@ -26,6 +28,15 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
   let goodSent = false;
 
   const emit = () => listeners.forEach((f) => f({ ...st }));
+  // Olay kaydı: sorun bildirilirken "ne oldu" sorusunun yanıtı. Aynı satır art arda yazılmaz (tamponlama gidip gelirken kayıt dolmasın).
+  const note = (text) => {
+    const last = st.log[st.log.length - 1];
+    if (last && last.text === text) return;
+    st.log.push({ t: now(), text });
+    if (st.log.length > LOG_MAX) st.log.shift();
+  };
+  const secs = (ms) => (Math.max(0, ms) / 1000).toFixed(1).replace('.', ',');
+  let playLogged = false; // bu açılışta "oynuyor" satırı yazıldı mı
   const clearStall = () => {
     if (stallTimer) timers.clear(stallTimer);
     stallTimer = null;
@@ -43,7 +54,10 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       : 'Yayın başlamadı (zaman aşımı)';
   const armStall = () => {
     clearStall();
-    stallTimer = timers.set(() => fail(stallMessage()), stallMs());
+    stallTimer = timers.set(() => {
+      note(`zaman aşımı: ${stallMessage()}`);
+      fail(stallMessage());
+    }, stallMs());
   };
   const setStatus = (s) => {
     st.status = s;
@@ -55,6 +69,8 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
   async function startTarget(resumeAt, keep = false) {
     const t = st.targets[st.idx];
     st.error = '';
+    playLogged = false;
+    note(`açılıyor · adres ${st.idx + 1}/${st.targets.length} · ${targetKind(t) || 'biçim ?'}${compatNext ? ' · uyumlu mod' : ''}${keep ? ' · yeniden bağlanma' : ''}`);
     setStatus('loading');
     emit();
     try {
@@ -72,7 +88,9 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     clearRetry();
     goodSent = false;
     const n = reconnects++;
+    const before = st.idx;
     if ((skipNow || n >= 2) && st.targets.length > 1) st.idx = (st.idx + 1) % st.targets.length;
+    note(`yeniden bağlanma ${reconnects}${st.idx !== before ? ` → adres ${st.idx + 1}` : ''}`);
     st.status = 'buffering';
     st.reconnect = reconnects;
     st.error = '';
@@ -103,12 +121,17 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     clearRetry();
     st.status = 'error';
     st.error = message || 'Yayın oynatılamadı';
+    note(`vazgeçildi: ${st.error}`);
     emit();
   }
 
   function handle(ev) {
     if (st.status === 'idle') return;
-    if (ev.type === 'error') return fail(ev.message, !!ev.frozen);
+    if (ev.type === 'error') {
+      const more = [ev.rendered != null ? `çizilen kare ${ev.rendered}` : '', ev.decoder ? `çözücü ${ev.decoder}` : '', ev.cause ? `neden ${ev.cause}` : ''].filter(Boolean).join(' · ');
+      note(`hata: ${ev.message}${more ? ` (${more})` : ''}`);
+      return fail(ev.message, !!ev.frozen);
+    }
     if (ev.type === 'tracks') {
       st.tracksVer++; // ses/altyazı parçaları değişti: arayüz düğmeleri yeniden okusun
       emit();
@@ -147,10 +170,15 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       if (retryTimer && ev.state !== 'playing') return; // bağlantı beklenirken gelen geçici durumlar sayacı bozmasın
       if (ev.state === 'playing') {
         if (st.status !== 'playing') playingSince = now();
+        if (!playLogged) {
+          playLogged = true;
+          note(`oynuyor (açılış ${secs(now() - openedAt)} sn)`);
+        }
         everPlayed = true;
         clearRetry();
         st.reconnect = 0;
       }
+      if (ev.state === 'buffering' && st.status === 'playing') note('tamponluyor (oynarken)');
       if (ev.state === 'ended' && progressCb && st.dur > 0) progressCb(st.dur, st.dur, st);
       setStatus(ev.state);
       emit();
@@ -168,7 +196,7 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     },
     handle, // motor olaylarını içeri almak için (uygulama bağlar)
     async open(item, targets, { ep = null, startAt = 0 } = {}) {
-      Object.assign(st, { item, ep, targets, idx: 0, pos: startAt, dur: -1, live: item.kind === 'live', error: '' });
+      Object.assign(st, { item, ep, targets, idx: 0, pos: startAt, dur: -1, live: item.kind === 'live', error: '', log: [] });
       everPlayed = false;
       reconnects = 0;
       frozen = 0;
@@ -202,6 +230,7 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     // Kullanıcı "görüntü bozuk/donuyor" dedi: açık yayın aynı adreste uyumlu modda (yazılım çözücü, geniş TS ayrıştırma) yeniden açılır.
     retryCompat() {
       if (!st.targets.length || st.status === 'idle') return;
+      note('görüntü bozuk dendi → uyumlu mod');
       compatNext = true;
       everPlayed = false;
       reconnects = 0;

@@ -31,7 +31,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
   add('time', (e) => on({ type: 'time', pos: e.pos, dur: e.dur, buffered: e.buffered }));
-  add('error', (e) => on({ type: 'error', message: describeError(e.message, e.http), frozen: /VIDEO_FROZEN/.test(String(e.message || '')) }));
+  add('error', (e) => on({ type: 'error', message: describeError(e.message, e.http), frozen: /VIDEO_FROZEN/.test(String(e.message || '')), cause: e.cause, decoder: e.decoder, rendered: e.rendered }));
   add('tracks', () => on({ type: 'tracks' }));
   add('recording', (e) => onRec(e));
   add('dlProgress', (e) => onDl(e));

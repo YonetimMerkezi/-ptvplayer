@@ -370,7 +370,8 @@ test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yal
   assert.match(sel[0], /startsWith\("video\/"\)\) return all/, 'ses ve diğer türlerin sırası değişmemeli');
   assert.ok(sel[0].indexOf('if (i.softwareOnly)') < sel[0].indexOf('if (!i.softwareOnly)'), 'yazılım çözücüler donanımın önüne alınmalı');
   assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\)/, 'seçici hem ses işlemcili hem sade kurulumda uygulanmalı');
-  assert.match(kaynak, /\("software"\.equals\(decoderMode\) \|\| compatMode\) \? SOFTWARE_FIRST : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı (uyumlu mod yazılım çözücüyü başa alır)');
+  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST : compatMode \? SOFTWARE_FIRST_SD : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı; uyumlu mod yazılım çözücüyü yalnız H.264/MPEG-2 için başa alır, kullanıcının "yazılım" ayarı hepsini');
+  assert.match(kaynak, /SOFTWARE_FIRST_SD[\s\S]*?"video\/avc"\.equals\(mimeType\)[\s\S]*?"video\/mpeg2"\.equals\(mimeType\)[\s\S]*?SOFTWARE_FIRST\.getDecoderInfos[\s\S]*?MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'HEVC (UHD) uyumlu modda donanım çözücüde kalmalı: yazılım çözücü yetişemez');
   assert.match(kaynak, /changed && player != null && !curUrl\.isEmpty\(\)\) \{[\s\S]*?startPlayback\(curUrl/, 'kip değişince açık yayın yeniden kurulmalı');
   assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /setDecoder: call\('setDecoder'\)/);
 });
@@ -494,7 +495,7 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   assert.match(kaynak, /!p\.isPlaying\(\)/);
   assert.match(kaynak, /getWindowVisibility\(\) != View\.VISIBLE/);
   // uyumlu mod: yazılım çözücü başta + TS erişim birimi/anahtar kare ayrıştırması geniş; varsayılan modda ayar yok
-  assert.match(kaynak, /"software"\.equals\(decoderMode\) \|\| compatMode\) \? SOFTWARE_FIRST/);
+  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST : compatMode \? SOFTWARE_FIRST_SD/);
   assert.match(kaynak, /if \(compatMode\) extractors\.setTsExtractorFlags\(DefaultTsPayloadReaderFactory\.FLAG_DETECT_ACCESS_UNITS \| DefaultTsPayloadReaderFactory\.FLAG_ALLOW_NON_IDR_KEYFRAMES\)/);
   assert.match(kaynak, /new DefaultMediaSourceFactory\(base, extractors\)/);
   // aynı yayına yeniden bağlanmada (keepRec) uyumlu mod sürer; başka yayına geçince kapanır
@@ -505,4 +506,15 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   // JS'ten gelen bayraklar okunuyor
   assert.match(kaynak, /optBoolean\("live", false\)/);
   assert.match(kaynak, /optBoolean\("compat", false\)/);
+});
+
+test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yayın bilgisine ve hata olaylarına konur', () => {
+  // çözücü adı Media3'ten (ana oynatıcıya da çoklu ekrandaki gibi dinleyici takılır) ve her oynatıcı kurulumunda sıfırlanır
+  assert.match(kaynak, /private volatile String videoDecoder = "";/);
+  assert.match(kaynak, /videoDecoder = "";\s*player = buildExo\(headers, true, loadControlFor\(buffer, live\), true, true, compat\);\s*player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
+  // hata olayı: HTTP kodu + neden zinciri + çözücü; donma olayı: çizilen kare sayısı + çözücü; getStats: çözücü
+  assert.match(kaynak, /o\.put\("cause", causeOf\(error\)\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
+  assert.match(kaynak, /o\.put\("message", "VIDEO_FROZEN"\);[\s\S]*?o\.put\("rendered", r\);[\s\S]*?o\.put\("decoder", videoDecoder\);/);
+  assert.match(kaynak, /o\.put\("compat", compat\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
+  assert.match(kaynak, /private static String causeOf\(Throwable error\) \{[\s\S]*?getClass\(\)\.getSimpleName\(\)/);
 });

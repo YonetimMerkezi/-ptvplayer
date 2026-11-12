@@ -142,6 +142,7 @@ public class IptvPlayerPlugin extends Plugin {
     // Uyumlu mod (bu yayın için): görüntü donunca ya da kullanıcı isteyince açılır; yazılım çözücü başta, TS'de erişim birimi/anahtar kare ayrıştırması
     // geniş tutulur. Aynı yayına yeniden bağlanmada sürer, başka yayına geçilince kapanır.
     private volatile boolean compat = false;
+    private volatile String videoDecoder = ""; // açık yayının video çözücüsü (Yayın bilgisi ve donma raporu için)
     // Görüntü donma bekçisi: oynuyor görünürken çizilen kare sayısı ilerlemiyorsa (karar vermesi için ticker'da bakılır)
     private long vwAt = -1;
     private long vwRendered = -1;
@@ -323,7 +324,14 @@ public class IptvPlayerPlugin extends Plugin {
         castActive = true;
         castState = "buffering";
 
+        videoDecoder = "";
         player = buildExo(headers, true, loadControlFor(buffer, live), true, true, compat);
+        player.addAnalyticsListener(new AnalyticsListener() {
+            @Override
+            public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
+                videoDecoder = decoderName == null ? "" : decoderName;
+            }
+        });
         player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
         player.addListener(new Player.Listener() {
             @Override
@@ -354,6 +362,8 @@ public class IptvPlayerPlugin extends Plugin {
                 o.put("code", error.errorCode);
                 int http = httpStatusOf(error);
                 if (http > 0) o.put("http", http);
+                o.put("cause", causeOf(error));
+                if (!videoDecoder.isEmpty()) o.put("decoder", videoDecoder);
                 notifyListeners("error", o);
             }
         });
@@ -401,7 +411,7 @@ public class IptvPlayerPlugin extends Plugin {
         // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
         if (tap) base = new TapDataSource.Factory(base);
-        final MediaCodecSelector selector = ("software".equals(decoderMode) || compatMode) ? SOFTWARE_FIRST : MediaCodecSelector.DEFAULT;
+        final MediaCodecSelector selector = "software".equals(decoderMode) ? SOFTWARE_FIRST : compatMode ? SOFTWARE_FIRST_SD : MediaCodecSelector.DEFAULT;
         // Uyumlu modda TS ayrıştırması geniş tutulur: erişim birimi sınırları AUD olmadan da bulunur, IDR olmayan anahtar kareler de başlangıç sayılır
         // (aksi halde bazı yayıncı kodlayıcılarında görüntü hiç çizilmez ya da donar). Varsayılanda hiçbir şey değişmez.
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
@@ -599,6 +609,11 @@ public class IptvPlayerPlugin extends Plugin {
         return sorted;
     };
 
+    // Otomatik uyumlu mod: yazılım çözücü yalnız H.264 / MPEG-2'de öne alınır. HEVC (UHD kanallar) yazılımda yetişemez, donanım çözücüde kalınır.
+    private static final MediaCodecSelector SOFTWARE_FIRST_SD = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) ->
+            ("video/avc".equals(mimeType) || "video/mpeg2".equals(mimeType)) ? SOFTWARE_FIRST.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    : MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+
     // Çözücü seçimi bir sonraki oynatıcı kurulumunda geçerlidir; oynatıcı açıksa hemen yeniden kurulur (canlıda yayın yeniden açılır, filmde konum korunur).
     @PluginMethod
     public void setDecoder(final PluginCall call) {
@@ -677,6 +692,17 @@ public class IptvPlayerPlugin extends Plugin {
             }
             call.resolve();
         });
+    }
+
+    // Hata zincirinin sınıf adları ("ParserException ← UnrecognizedInputFormatException"): bozuk yayın / çözücü / ağ ayrımı için Yayın bilgisinde gösterilir.
+    private static String causeOf(Throwable error) {
+        StringBuilder sb = new StringBuilder();
+        Throwable t = error == null ? null : error.getCause();
+        for (int i = 0; t != null && i < 3; i++, t = t.getCause()) {
+            if (sb.length() > 0) sb.append(" ← ");
+            sb.append(t.getClass().getSimpleName());
+        }
+        return sb.toString();
     }
 
     // Sunucunun döndürdüğü HTTP durum kodu (hata zincirinde varsa); 0 = yok. Arayüz "403" ile "404" ayrımını gösterir.
@@ -1018,6 +1044,7 @@ public class IptvPlayerPlugin extends Plugin {
                         o.put("rendered", dc.renderedOutputBufferCount);
                     }
                     o.put("compat", compat);
+                    if (!videoDecoder.isEmpty()) o.put("decoder", videoDecoder);
                     long bw = DefaultBandwidthMeter.getSingletonInstance(getContext()).getBitrateEstimate();
                     if (bw > 0) o.put("bandwidthBps", bw);
                 }
@@ -1451,6 +1478,8 @@ public class IptvPlayerPlugin extends Plugin {
         JSObject o = new JSObject();
         o.put("message", "VIDEO_FROZEN");
         o.put("code", -2);
+        o.put("rendered", r);
+        if (!videoDecoder.isEmpty()) o.put("decoder", videoDecoder);
         notifyListeners("error", o);
     }
 

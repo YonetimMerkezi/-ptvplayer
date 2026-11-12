@@ -54,6 +54,18 @@ function hostOf(url) {
   }
 }
 
+// Adresin biçimi: "HLS", "MPEG-TS", "yedek kanal (...)" ya da motorun bildirdiği tür; bilinmiyorsa boş
+export function targetKind(target) {
+  if (!target) return '';
+  return target.alt ? `yedek kanal (${target.alt})` : target.mime === 'hls' || /\.m3u8(\?|$)/i.test(target.url) ? 'HLS' : target.mime === 'ts' || /\.ts(\?|$)/i.test(target.url) ? 'MPEG-TS' : target.mime && target.mime !== 'auto' ? target.mime : '';
+}
+
+// Android çözücü adından: "OMX.google.h264.decoder", "c2.android.avc.decoder" yazılım; üreticinin ("OMX.MTK…", "c2.mtk…", "amlogic") çözücüleri donanım
+export const isSoftwareDecoder = (name) => /^(omx\.google\.|c2\.android\.|c2\.google\.)|(^|\.)sw(\.|$)|software/i.test(String(name || ''));
+
+// 3200 → "3,2 sn"
+const fmtSec = (ms) => (Math.max(0, ms) / 1000).toFixed(1).replace('.', ',') + ' sn';
+
 // st: player.state(); raw: motor ölçümü (null olabilir). Dönen: [{ k, v, level? }]
 export function statsRows(st, raw) {
   const rows = [];
@@ -61,7 +73,7 @@ export function statsRows(st, raw) {
   const target = st && st.targets && st.targets[st.idx];
   rows.push({ k: 'Durum', v: (STATUS[st && st.status] || '') + (st && st.reconnect ? ` · yeniden bağlanma ${st.reconnect}` : '') });
   if (target) {
-    const kind = target.alt ? `yedek kanal (${target.alt})` : target.mime === 'hls' || /\.m3u8(\?|$)/i.test(target.url) ? 'HLS' : target.mime === 'ts' || /\.ts(\?|$)/i.test(target.url) ? 'MPEG-TS' : target.mime && target.mime !== 'auto' ? target.mime : '';
+    const kind = targetKind(target);
     const adr = st.targets.length > 1 ? ` · adres ${st.idx + 1}/${st.targets.length}` : '';
     rows.push({ k: 'Yayın', v: [kind, hostOf(target.url)].filter(Boolean).join(' · ') + adr });
   }
@@ -81,5 +93,11 @@ export function statsRows(st, raw) {
     const total = (r.rendered || 0) + r.dropped;
     rows.push({ k: 'Düşen kare', v: r.dropped + (total > 0 ? ` (%${((r.dropped / total) * 100).toFixed(1).replace('.', ',')})` : ''), level: r.dropped > 30 ? 'low' : '' });
   }
+  if (r.decoder) rows.push({ k: 'Çözücü', v: `${r.decoder} · ${isSoftwareDecoder(r.decoder) ? 'yazılım' : 'donanım'}` });
+  if (r.compat) rows.push({ k: 'Mod', v: 'Uyumlu (geniş TS ayrıştırma, yazılım çözücü öncelikli)' });
+  // Olay kaydı: her adres denemesi, hata (HTTP kodu, çözücü, neden), yeniden bağlanma — sorun olunca neden buradan okunur
+  const log = (st && st.log) || [];
+  const t0 = log.length ? log[0].t : 0;
+  log.slice(-7).forEach((e, i) => rows.push({ k: i === 0 ? 'Olaylar' : '', v: `+${fmtSec(e.t - t0)} · ${e.text}` }));
   return rows;
 }

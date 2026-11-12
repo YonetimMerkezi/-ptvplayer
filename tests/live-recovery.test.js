@@ -104,6 +104,8 @@ test('yerel motor: VIDEO_FROZEN olayı frozen bayrağıyla gelir; load canlı ve
   handlers.error({ message: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' });
   assert.equal(events[0].frozen, true);
   assert.match(events[0].message, /Görüntü donuyor/);
+  handlers.error({ message: 'ERROR_CODE_PARSING_CONTAINER_MALFORMED', cause: 'ParserException', decoder: 'c2.mtk.avc.decoder', rendered: 12 });
+  assert.deepEqual([events[2].cause, events[2].decoder, events[2].rendered], ['ParserException', 'c2.mtk.avc.decoder', 12], 'teşhis alanları oynatıcıya iletilir');
   assert.equal(events[1].frozen, false);
   await eng.load({ url: 'x', mime: 'ts', live: true }, 0, true, { compat: true });
   await eng.load({ url: 'y', mime: 'auto' }, 0);

@@ -402,3 +402,32 @@ test('film ilk açılışta: tampon büyüyorsa bekçi yeniden kurulur, üst sı
   d.p.handle({ type: 'time', pos: 0, dur: -1, buffered: 9000 });
   assert.equal(d.timers.fns.length, m);
 });
+
+test('olay kaydı: açılış, hata ayrıntısı, yeniden bağlanma ve yedek adrese geçiş sırayla yazılır', async () => {
+  const { p, tick, timers } = setup();
+  await p.open(live, [T('http://h/1.m3u8', 'hls'), T('http://h/1.ts', 'ts')]);
+  tick(2400);
+  p.handle({ type: 'state', state: 'playing' });
+  tick(5000);
+  p.handle({ type: 'error', message: 'Görüntü donuyor', frozen: true, rendered: 0, decoder: 'OMX.MTK.VIDEO.DECODER.AVC', cause: 'MediaCodecDecoderException' });
+  const texts = () => p.state().log.map((e) => e.text);
+  assert.deepEqual(texts().slice(0, 3), ['açılıyor · adres 1/2 · HLS', 'oynuyor (açılış 2,4 sn)', 'hata: Görüntü donuyor (çizilen kare 0 · çözücü OMX.MTK.VIDEO.DECODER.AVC · neden MediaCodecDecoderException)']);
+  assert.equal(texts()[3], 'yeniden bağlanma 1');
+  timers.fire();
+  assert.equal(texts()[4], 'açılıyor · adres 1/2 · HLS · yeniden bağlanma');
+});
+
+test('olay kaydı: sınırlı uzunlukta, aynı satır art arda yazılmaz, yeni açılışta temizlenir', async () => {
+  const { p } = setup();
+  await p.open(live, [T('a', 'ts')]);
+  p.handle({ type: 'state', state: 'playing' });
+  for (let i = 0; i < 4; i++) {
+    p.handle({ type: 'state', state: 'buffering' });
+    p.handle({ type: 'state', state: 'playing' });
+  }
+  assert.equal(p.state().log.filter((e) => e.text === 'tamponluyor (oynarken)').length, 1, 'gidip gelen tamponlama tek satır');
+  for (let i = 0; i < 40; i++) p.handle({ type: 'error', message: 'hata ' + i });
+  assert.ok(p.state().log.length <= 16, 'en çok 16 satır');
+  await p.open(live, [T('b', 'ts')]);
+  assert.deepEqual(p.state().log.map((e) => e.text), ['açılıyor · adres 1/1 · MPEG-TS'], 'yeni açılışta kayıt sıfırlanır');
+});

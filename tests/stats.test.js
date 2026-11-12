@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtBps, fmtBuffer, codecName, bufferLevel, statsRows } from '../www/js/stats.js';
+import { fmtBps, fmtBuffer, codecName, bufferLevel, statsRows, targetKind, isSoftwareDecoder } from '../www/js/stats.js';
 
 test('bit hızı: Mb/sn ve kb/sn, geçersizde boş', () => {
   assert.equal(fmtBps(4_500_000), '4,5 Mb/sn');
@@ -55,4 +55,32 @@ test('ölçüm yoksa yalnız durum ve yayın satırı; yedek kanal belirtilir', 
   assert.deepEqual(rows.map((r) => r.k), ['Durum', 'Yayın']);
   assert.match(rows[1].v, /yedek kanal \(Kanal HD\)/);
   assert.deepEqual(statsRows(null, null).map((r) => r.k), ['Durum']);
+});
+
+test('adres biçimi: HLS, MPEG-TS, yedek kanal; bilinmeyen boş', () => {
+  assert.equal(targetKind({ url: 'http://h/live/1.m3u8', mime: 'hls' }), 'HLS');
+  assert.equal(targetKind({ url: 'http://h/live/1.ts?x=1', mime: 'auto' }), 'MPEG-TS');
+  assert.equal(targetKind({ url: 'http://h/x', alt: 'Yedek' }), 'yedek kanal (Yedek)');
+  assert.equal(targetKind({ url: 'http://h/x', mime: 'auto' }), '');
+  assert.equal(targetKind(undefined), '');
+});
+
+test('çözücü adı: google/android yazılım, üreticiler donanım', () => {
+  for (const n of ['OMX.google.h264.decoder', 'c2.android.avc.decoder', 'c2.google.hevc.decoder', 'OMX.ffmpeg.sw.decoder']) assert.equal(isSoftwareDecoder(n), true, n);
+  for (const n of ['OMX.MTK.VIDEO.DECODER.AVC', 'c2.mtk.hevc.decoder', 'OMX.amlogic.avc.decoder.awesome', 'c2.qti.avc.decoder', '']) assert.equal(isSoftwareDecoder(n), false, n);
+});
+
+test('satırlar: çözücü, uyumlu mod ve olay kaydı (ilk olaya göre saniye, son 7 satır)', () => {
+  const st = { status: 'buffering', reconnect: 2, live: true, idx: 0, targets: [{ url: 'http://h/1.ts', mime: 'ts' }], log: Array.from({ length: 9 }, (_, i) => ({ t: 1000 + i * 1500, text: `olay ${i}` })) };
+  const rows = statsRows(st, { decoder: 'OMX.google.h264.decoder', compat: true, dropped: 0, rendered: 0 });
+  const get = (k) => rows.filter((r) => r.k === k).map((r) => r.v);
+  assert.deepEqual(get('Çözücü'), ['OMX.google.h264.decoder · yazılım']);
+  assert.match(get('Mod')[0], /^Uyumlu/);
+  const ev = rows.slice(rows.findIndex((r) => r.k === 'Olaylar'));
+  assert.equal(ev.length, 7, 'son 7 olay');
+  assert.deepEqual([ev[0].k, ev[1].k], ['Olaylar', ''], 'başlık yalnız ilk satırda');
+  assert.equal(ev[0].v, '+3,0 sn · olay 2');
+  assert.equal(ev[6].v, '+12,0 sn · olay 8');
+  const none = statsRows({ status: 'playing', targets: [], idx: 0 }, {});
+  assert.ok(!none.some((r) => ['Çözücü', 'Mod', 'Olaylar'].includes(r.k)), 'veri yokken bu satırlar çıkmaz');
 });

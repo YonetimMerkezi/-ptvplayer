@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 82,
+    title: 'Yayın bilgisinde çözücü ve olay kaydı',
+    items: [
+      'Oynatıcıdaki “Yayın bilgisi” artık video çözücüsünün adını (donanım/yazılım), uyumlu modun açık olup olmadığını ve son olayları gösterir: her adres denemesi, hatanın nedeni (HTTP kodu, çözücü, hata türü), çizilen kare sayısı, yeniden bağlanmalar. Bir kanal TV’de açılmayınca nedeni bu panelden okunur',
+      'Uyumlu mod yazılım çözücüyü artık yalnız H.264 ve MPEG-2 yayınlarda öne alır; UHD (H.265) kanallarda yazılım çözücü yetişemediği için donanım çözücüde kalınır. Ayarlardaki “Görüntü çözücü: Yazılım” seçimi eskisi gibi her şey için geçerlidir'
+    ],
+  },
+  {
     id: 81,
     title: 'Film ve dizi kategorileri Netflix düzeninde, TV’de kumanda ve kenar düzeltmeleri',
     items: [
