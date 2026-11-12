@@ -1,13 +1,13 @@
 // Dizi akışı: TV dizilerinin haftalık yayın programı (gün, kanal, saat, bölüm). Kaynak: 1001dizi.net (haftalık program + 7 gün sayfası);
-// bu hiç sonuç vermezse m.sinemalar.com TV dizileri sayfası denenir. Resmî API değil, herkese açık HTML sayfalarıdır; yapı değişebilir.
 // Bu yüzden ayrıştırıcı sınıf adlarına değil sayfanın metin akışına bakar (dizi bağlantısı + görsel alt metni + "Kanal - SS:DD" + "N. Bölüm" + durum)
 // ve ne okuduğunu gösteren bir teşhis (diag) döndürür. Saf mantık (ağ dışarıdan verilir); ekran series-flow-ui.js'te.
 import { fold } from './util.js';
 import { decodeEntities } from './sports-se.js';
 import { withTimeout } from './sports.js';
+import { loadFreeData, istDayStart, IST_MS, chanKey } from './epg-free.js';
+import { kindOf } from './today.js';
 
 export const DIZI_BASE = 'https://1001dizi.net';
-export const SINEMALAR_URL = 'https://m.sinemalar.com/mobileweb/tv-dizileri';
 
 // Pazartesi tabanlı hafta (1001dizi sayfaları böyle)
 export const WEEKDAYS = [
@@ -24,7 +24,7 @@ export const dayPageUrl = (idx, base = DIZI_BASE) => `${base}/${WEEKDAYS[idx][0]
 export const weekPageUrl = (base = DIZI_BASE) => `${base}/haftalik-dizi-programi`;
 
 // Yerel gün → Pazartesi tabanlı sıra (0 = Pazartesi … 6 = Pazar)
-export const dayIndex = (ms) => (new Date(ms).getDay() + 6) % 7;
+export const dayIndex = (ms) => (new Date(ms + IST_MS).getUTCDay() + 6) % 7;
 
 // ---------------------------------------------------------------- HTML → olay akışı
 const clean = (s) => decodeEntities(String(s)).replace(/\s+/g, ' ').trim();
@@ -190,6 +190,57 @@ function rowOf(c, base) {
 
 const sortRows = (rows) => rows.slice().sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99') || fold(a.title).localeCompare(fold(b.title), 'tr'));
 
+const istDayIndex = dayIndex;
+const istClock = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+function freeDiziDays(free, nowMs) {
+  const days = WEEKDAYS.map(() => []);
+  const starts = [istDayStart(nowMs, 0), istDayStart(nowMs, 1)];
+  for (const channel of Object.values((free && free.ch) || {})) {
+    const channelName = String((channel && channel.n) || '').trim();
+    if (!channelName) continue;
+    for (const p of (channel && channel.p) || []) {
+      const startAt = p && p[0] != null ? Number(p[0]) : NaN;
+      if (!Number.isFinite(startAt)) continue;
+      const offset = starts.findIndex((from) => startAt >= from && startAt < from + 864e5);
+      if (offset < 0 || kindOf({ t: String(p[2] || ''), c: String(p[4] || '') }) !== 'dizi') continue;
+      const title = String(p[2] || '').trim();
+      if (!title) continue;
+      const status = String(p[6] || '').trim();
+      const slug = 'epg-' + fold(title).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 56) + '-' + chanKey(channelName);
+      days[istDayIndex(starts[offset])].push({
+        slug, title, channel: channelName, time: istClock.format(new Date(startAt)),
+        ep: String(p[5] || '').trim(), status,
+        off: /yayinlanmiyor|iptal/.test(fold(status)),
+        url: '', source: 'EPG', startAt,
+        endAt: p[1] != null && Number.isFinite(Number(p[1])) ? Number(p[1]) : null,
+      });
+    }
+  }
+  for (const day of days) {
+    const seen = new Set();
+    for (let i = day.length - 1; i >= 0; i--) {
+      const r = day[i];
+      const key = fold(r.title) + '|' + chanKey(r.channel) + '|' + r.startAt;
+      if (seen.has(key)) day.splice(i, 1);
+      else seen.add(key);
+    }
+  }
+  return days.map(sortRows);
+}
+
+function mergeDiziRows(primary, extra) {
+  const out = primary.slice();
+  for (const row of extra) {
+    const same = out.findIndex((x) => fold(x.title) === fold(row.title) && chanKey(x.channel) === chanKey(row.channel) && (!x.time || !row.time || x.time === row.time));
+    if (same >= 0) {
+      const current = out[same];
+      out[same] = { ...current, time: current.time || row.time, startAt: current.startAt || row.startAt, endAt: current.endAt || row.endAt, ep: current.ep || row.ep, status: current.status || row.status, off: current.off || row.off };
+    } else out.push(row);
+  }
+  return sortRows(out);
+}
+
 function parseCards(html, hrefRe, base) {
   const stream = streamOf(html);
   const { cards, anchors } = cardsOf(stream, hrefRe);
@@ -213,9 +264,6 @@ function parseCards(html, hrefRe, base) {
 const RE_1001 = /\/dizi-([a-z0-9][a-z0-9-]*)/i;
 export const parse1001 = (html, base = DIZI_BASE) => parseCards(html, RE_1001, base);
 
-// m.sinemalar.com: yapıyı bilmediğimiz için yalnız "dizi" yol parçası olan bağlantılar kart sayılır; aynı kart kuralları geçerlidir
-const RE_SINEMALAR = /\/(?:tv-)?dizi[a-z-]*\/([a-z0-9%][a-z0-9%_-]*)/i;
-export const parseSinemalar = (html, base = SINEMALAR_URL) => parseCards(html, RE_SINEMALAR, base);
 
 // ---------------------------------------------------------------- saat birleştirme
 // Gün sayfalarında saat olmayabilir; haftalık sayfadaki saat dizi (+kanal) anahtarıyla gün satırlarına eklenir.
@@ -251,47 +299,52 @@ async function pool(items, n, fn) {
 
 const msg = (e) => String((e && e.message) || e || 'hata').slice(0, 100);
 
-// Döner: { days: [7 dizi satırı listesi, Pazartesi…Pazar], via, note, failed: [alınamayan gün sıraları], today?: true }
-// 1001dizi'den hiç satır gelmezse sinemalar denenir (gün bilgisi olmadığından yalnız "bugün" listesi: today = satırlar). Hiçbiri olmazsa hata atar (detail: nedenler).
-export async function loadSeriesWeek({ net, base = DIZI_BASE, sinemalarUrl = SINEMALAR_URL, timeoutMs = 20000, parallel = 4, nowMs = Date.now() } = {}) {
+// Döner: 1001dizi haftalık takvimi + bugün/yarın ücretsiz EPG tamamlaması; birincil kaynak boşsa EPG iki günlük yedek olur.
+export async function loadSeriesWeek({ net, base = DIZI_BASE, timeoutMs = 20000, parallel = 4, nowMs = Date.now(), freeLoader = loadFreeData } = {}) {
   const get = (url) => withTimeout(net.text(url, { fast: true }), timeoutMs);
   const jobs = [{ key: 'week', url: weekPageUrl(base) }, ...WEEKDAYS.map((_, i) => ({ key: i, url: dayPageUrl(i, base) }))];
   const res = await pool(jobs, parallel, async (j) => {
-    try {
-      return { j, r: parse1001(await get(j.url), base) };
-    } catch (e) {
-      return { j, err: msg(e) };
-    }
+    try { return { j, r: parse1001(await get(j.url), base) }; }
+    catch (e) { return { j, err: msg(e) }; }
   });
   const notes = [];
   const week = res[0];
   const map = week.r ? timeMap(week.r.rows) : new Map();
-  if (week.err) notes.push(`haftalık: ${week.err}`);
+  if (week.err) notes.push('haftalık: ' + week.err);
   const days = WEEKDAYS.map(() => []);
   const failed = [];
   for (const x of res.slice(1)) {
-    if (x.err) {
-      failed.push(x.j.key);
-      notes.push(`${WEEKDAYS[x.j.key][1]}: ${x.err}`);
-    } else days[x.j.key] = fillTimes(x.r.rows, map);
+    if (x.err) { failed.push(x.j.key); notes.push(WEEKDAYS[x.j.key][1] + ': ' + x.err); }
+    else days[x.j.key] = fillTimes(x.r.rows, map);
   }
-  // Gün sayfaları boşsa ama haftalık sayfa satır verdiyse (gün ayrımı yok): bugünün listesi olarak göster
   const total = days.reduce((n, d) => n + d.length, 0);
-  if (total) return { days, via: '1001dizi', failed, note: `1001dizi: ${total} satır${failed.length ? `, ${failed.length} gün alınamadı` : ''}` };
-  const d1001 = week.r ? `${week.r.diag.cards} kart, ${week.r.diag.anchors} dizi bağlantısı; örnek: ${week.r.diag.sample || '—'}` : week.err || '';
-  notes.unshift(`1001dizi: satır yok (${d1001})`);
-  try {
-    const r = parseSinemalar(await get(sinemalarUrl), sinemalarUrl);
-    if (r.rows.length) {
-      const days2 = WEEKDAYS.map(() => []);
-      days2[dayIndex(nowMs)] = r.rows;
-      return { days: days2, via: 'sinemalar', failed: [], note: [...notes, `sinemalar: ${r.rows.length} satır, ${r.diag.cards} kart`].join(' · '), todayOnly: true, raw: r.diag.raw };
-    }
-    notes.push(`sinemalar: satır yok (${r.diag.cards} kart, ${r.diag.anchors} dizi bağlantısı; örnek: ${r.diag.sample || '—'})`);
-  } catch (e) {
-    notes.push(`sinemalar: ${msg(e)}`);
+  const d1001 = week.r ? (week.r.diag.cards + ' kart, ' + week.r.diag.anchors + ' dizi bağlantısı; örnek: ' + (week.r.diag.sample || '—')) : (week.err || '');
+  let freeDays = WEEKDAYS.map(() => []);
+  let freeError = '';
+  try { freeDays = freeDiziDays(await freeLoader(net, { now: nowMs }), nowMs); }
+  catch (e) { freeError = msg(e); notes.push('ücretsiz EPG: ' + freeError); }
+  const freeCount = freeDays.reduce((n, d) => n + d.length, 0);
+  const todayIdx = istDayIndex(nowMs);
+  const tomorrowIdx = (todayIdx + 1) % 7;
+  if (total) {
+    const before = days[todayIdx].length + days[tomorrowIdx].length;
+    days[todayIdx] = mergeDiziRows(days[todayIdx], freeDays[todayIdx]);
+    days[tomorrowIdx] = mergeDiziRows(days[tomorrowIdx], freeDays[tomorrowIdx]);
+    const added = days[todayIdx].length + days[tomorrowIdx].length - before;
+    return {
+      days, via: freeCount ? '1001dizi + ücretsiz EPG' : '1001dizi', failed, coverageDays: 7,
+      note: '1001dizi: ' + total + ' satır' + (failed.length ? ', ' + failed.length + ' gün alınamadı' : '') + (freeCount ? '; EPG: ' + freeCount + ' dizi kaydı' : freeError ? '; EPG yedeği: ' + freeError : ''),
+      epgCount: freeCount, epgAdded: Math.max(0, added),
+    };
   }
+  if (freeCount) {
+    const epgTotal = freeDays[todayIdx].length + freeDays[tomorrowIdx].length;
+    notes.unshift('1001dizi: satır yok (' + (d1001 || 'kaynak yanıt vermedi') + ')');
+    return { days: freeDays, via: 'ücretsiz EPG', failed, coverageDays: 2, note: '1001dizi: satır yok (' + (d1001 || 'kaynak yanıt vermedi') + '); ücretsiz EPG: bugün ve yarın için ' + epgTotal + ' dizi kaydı', epgCount: freeCount, limitedDays: true };
+  }
+  notes.unshift('1001dizi: satır yok (' + (d1001 || 'kaynak yanıt vermedi') + ')');
+  if (!freeError) notes.push('ücretsiz EPG: dizi kategorisinde güncel kayıt bulunamadı');
   const err = new Error('Dizi akışı alınamadı.');
-  err.detail = notes.join(' · ').slice(0, 400);
+  err.detail = notes.join(' · ').slice(0, 500);
   throw err;
 }

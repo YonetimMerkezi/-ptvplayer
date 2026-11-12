@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parse1001, parseSinemalar, streamOf, timeMap, fillTimes, loadSeriesWeek, dayPageUrl, weekPageUrl, dayIndex, WEEKDAYS } from '../www/js/series-flow.js';
+import { parse1001, streamOf, timeMap, fillTimes, loadSeriesWeek, dayPageUrl, weekPageUrl, dayIndex, WEEKDAYS } from '../www/js/series-flow.js';
 
 const B = 'https://1001dizi.net';
 
@@ -101,41 +101,78 @@ test('loadSeriesWeek: haftalık sayfa saat verir, gün sayfaları güne ayırır
     [dayPageUrl(4, B)]: new Error('HTTP 503'),
   };
   const net = fakeNet(pages);
-  const r = await loadSeriesWeek({ net, base: B, sinemalarUrl: 'https://s.test/x' });
+  const r = await loadSeriesWeek({ net, base: B, freeLoader: async () => ({ ch: {} }) });
   assert.equal(r.via, '1001dizi');
   assert.deepEqual(r.days.map((d) => d.length), [2, 0, 0, 1, 0, 0, 0]);
   assert.equal(r.days[3][0].time, '20:30');
   assert.deepEqual(r.days[0].map((x) => x.title), ['Altı Üstü İstanbul', 'Anne Yarısı']);
   assert.ok(r.failed.includes(4) && r.failed.includes(1), 'alınamayan günler bildirilir: ' + r.failed);
-  assert.ok(!net.calls.includes('https://s.test/x'), '1001dizi çalışırken sinemalar çağrılmaz');
+  assert.equal(net.calls.length, 8, 'başarılı 1001dizi akışında yalnız sekiz yayın sayfası istenir');
   assert.equal(net.calls.length, 8, '1 haftalık + 7 gün');
 });
 
-test('loadSeriesWeek: 1001dizi satır vermezse sinemalar denenir (yalnız bugün)', async () => {
-  const sin = `<a href="/mobileweb/tv-dizi/kizilcik-serbeti"><img alt="Kızılcık Şerbeti, Show TV"></a><a href="/mobileweb/tv-dizi/kizilcik-serbeti"><b>Kızılcık Şerbeti</b></a><span>Show TV - 20:00</span><span>146. Bölüm</span>`;
-  const net = fakeNet({ [weekPageUrl(B)]: '<html>boş</html>', 'https://s.test/x': sin });
-  const now = new Date(2026, 10, 12, 18).getTime();
-  const r = await loadSeriesWeek({ net, base: B, sinemalarUrl: 'https://s.test/x', nowMs: now });
-  assert.equal(r.via, 'sinemalar');
-  assert.equal(r.todayOnly, true);
+test('loadSeriesWeek: ücretsiz EPG bugünün ve yarının kayıtlarını tamamlar; aynı programı çoğaltmaz', async () => {
+  const now = new Date('2026-11-12T18:00:00+03:00').getTime();
+  const pages = Object.fromEntries([weekPageUrl(B), ...WEEKDAYS.map((_, i) => dayPageUrl(i, B))].map((url) => [url, '<html>boş</html>']));
+  pages[weekPageUrl(B)] = WEEK;
+  pages[dayPageUrl(3, B)] = cardA('haysiyet', 'Haysiyet', 'Kanal D', '', '9. Bölüm', 'Yeni Bölüm');
+  const same = new Date('2026-11-12T20:30:00+03:00').getTime();
+  const extra = new Date('2026-11-13T21:00:00+03:00').getTime();
+  const freeLoader = async () => ({
+    v: 1, at: now, from: now - 864e5, to: now + 2 * 864e5, tz: 'Europe/Istanbul',
+    ch: { kanald: { n: 'Kanal D', p: [
+      [same, same + 90 * 60000, 'Haysiyet', '', 'Dizi', '9. Bölüm', 'Yeni Bölüm'],
+      [extra, extra + 90 * 60000, 'EPG Ek Dizisi', '', 'Dizi', '1. Bölüm', 'Yeni Bölüm'],
+      [same + 60000, same + 90 * 60000, 'Canlı Futbol Maçı', '', 'Spor', '', ''],
+    ] } },
+  });
+  const r = await loadSeriesWeek({ net: fakeNet(pages), base: B, nowMs: now, freeLoader });
+  assert.equal(r.via, '1001dizi + ücretsiz EPG');
+  assert.equal(r.days[3].length, 1, 'Haysiyet EPG ile ikinci kez eklenmedi');
+  assert.equal(r.days[3][0].startAt, same, 'mevcut satır gerçek EPG başlangıç zamanıyla zenginleşti');
+  assert.equal(r.days[4].length, 1, 'yarınki eksik dizi EPG ile tamamlandı');
+  assert.equal(r.days[4][0].title, 'EPG Ek Dizisi');
+  assert.equal(r.epgAdded, 1);
+});
+
+test('loadSeriesWeek: 1001dizi boşsa ücretsiz EPG bugün ve yarın için yedek olur; spor kayıtları alınmaz', async () => {
+  const now = new Date('2026-11-12T18:00:00+03:00').getTime();
+  const pages = Object.fromEntries([weekPageUrl(B), ...WEEKDAYS.map((_, i) => dayPageUrl(i, B))].map((url) => [url, '<html>boş</html>']));
+  const net = fakeNet(pages);
+  const todayStart = new Date('2026-11-12T20:00:00+03:00').getTime();
+  const tomorrowStart = new Date('2026-11-13T21:15:00+03:00').getTime();
+  const freeLoader = async () => ({
+    v: 1, at: now, from: now - 864e5, to: now + 2 * 864e5, tz: 'Europe/Istanbul',
+    ch: {
+      trt1: { n: 'TRT 1', p: [
+        [todayStart, todayStart + 7200e3, 'Mehmed: Fetihler Sultanı', '', 'Dizi', '1. Sezon 5. Bölüm', 'Yeni Bölüm'],
+        [tomorrowStart, tomorrowStart + 5400e3, 'Seksenler', '', 'Dizi', '', 'Tekrar'],
+        [todayStart + 3600e3, todayStart + 7200e3, 'Canlı Futbol Maçı', '', 'Spor', '', ''],
+      ] },
+    },
+  });
+  const r = await loadSeriesWeek({ net, base: B, nowMs: now, freeLoader });
+  assert.equal(r.via, 'ücretsiz EPG');
+  assert.equal(r.coverageDays, 2);
+  assert.equal(r.limitedDays, true);
   assert.equal(r.days[3].length, 1);
-  assert.equal(r.days[3][0].channel, 'Show TV');
-  assert.match(r.note, /1001dizi: satır yok/);
+  assert.equal(r.days[4].length, 1);
+  assert.equal(r.days[3][0].title, 'Mehmed: Fetihler Sultanı');
+  assert.equal(r.days[3][0].time, '20:00');
+  assert.equal(r.days[3][0].ep, '1. Sezon 5. Bölüm');
+  assert.equal(r.days[3][0].endAt, todayStart + 7200e3);
+  assert.equal(r.days[4][0].time, '21:15');
+  assert.match(r.note, /bugün ve yarın için 2 dizi kaydı/);
+  assert.equal(net.calls.length, 8, 'yedek EPG, 1001dizi sayfalarının ardından kullanılır');
 });
 
-test('loadSeriesWeek: hiçbir kaynak satır vermezse nedenleri ayrıntıya yazılır', async () => {
-  const net = fakeNet({ [weekPageUrl(B)]: new Error('HTTP 403'), 'https://s.test/x': '<html></html>' });
+test('loadSeriesWeek: ücretsiz kaynaklar boşsa nedenleri ayrıntıya yazılır', async () => {
+  const pages = Object.fromEntries([weekPageUrl(B), ...WEEKDAYS.map((_, i) => dayPageUrl(i, B))].map((url) => [url, new Error('HTTP 403')]));
+  const net = fakeNet(pages);
   await assert.rejects(
-    () => loadSeriesWeek({ net, base: B, sinemalarUrl: 'https://s.test/x' }),
-    (e) => e.message === 'Dizi akışı alınamadı.' && /haftalık: HTTP 403/.test(e.detail) && /sinemalar: satır yok/.test(e.detail),
+    () => loadSeriesWeek({ net, base: B, freeLoader: async () => { throw new Error('EPG HTTP 503'); } }),
+    (e) => e.message === 'Dizi akışı alınamadı.' && /haftalık: HTTP 403/.test(e.detail) && /ücretsiz EPG: EPG HTTP 503/.test(e.detail),
   );
-});
-
-test('parseSinemalar: dizi yol parçalı bağlantılar kart sayılır', () => {
-  const html = `<a href="/mobileweb/tv-dizisi/halef"><b>Halef</b></a><p>NOW - 20:00</p><p>42. Bölüm</p>`;
-  const r = parseSinemalar(html, 'https://m.sinemalar.com/mobileweb/tv-dizileri');
-  assert.equal(r.rows.length, 1);
-  assert.deepEqual({ t: r.rows[0].title, c: r.rows[0].channel, s: r.rows[0].time }, { t: 'Halef', c: 'NOW', s: '20:00' });
 });
 
 test('parse1001: kartın kendi görselindeki kanal, metne kayan komşu kanaldan üstündür (Daha 17: Kanal D, TRT 1 değil)', () => {
