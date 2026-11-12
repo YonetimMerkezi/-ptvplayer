@@ -166,11 +166,12 @@ test('loadSeriesWeek: 1001dizi boşsa ücretsiz EPG bugün ve yarın için yedek
   assert.equal(net.calls.length, 8, 'yedek EPG, 1001dizi sayfalarının ardından kullanılır');
 });
 
-test('loadSeriesWeek: hiçbir kaynak satır vermezse nedenleri ayrıntıya yazılır', async () => {
-  const net = fakeNet({ [weekPageUrl(B)]: new Error('HTTP 403'), 'https://s.test/x': '<html></html>' });
+test('loadSeriesWeek: ücretsiz kaynaklar boşsa nedenleri ayrıntıya yazılır', async () => {
+  const pages = Object.fromEntries([weekPageUrl(B), ...WEEKDAYS.map((_, i) => dayPageUrl(i, B))].map((url) => [url, new Error('HTTP 403')]));
+  const net = fakeNet(pages);
   await assert.rejects(
-    () => loadSeriesWeek({ net, base: B, sinemalarUrl: 'https://s.test/x' }),
-    (e) => e.message === 'Dizi akışı alınamadı.' && /haftalık: HTTP 403/.test(e.detail) && /ücretsiz EPG: dizi kategorisinde güncel kayıt bulunamadı/.test(e.detail),
+    () => loadSeriesWeek({ net, base: B, freeLoader: async () => { throw new Error('EPG HTTP 503'); } }),
+    (e) => e.message === 'Dizi akışı alınamadı.' && /haftalık: HTTP 403/.test(e.detail) && /ücretsiz EPG: EPG HTTP 503/.test(e.detail),
   );
 });
 
