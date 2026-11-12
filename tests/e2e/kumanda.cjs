@@ -41,7 +41,7 @@ async function kumandaSection({ browser, base, mock, ok, sleep }) {
     await sleep(400);
     ok((await foc(page)) === 'set-tile', `${tag}: Ayarlar açılınca odak Genel ayarlar kutusunda`);
     await page.keyboard.press('Enter');
-    await page.waitForSelector('.sheet #g-cap');
+    await page.waitForSelector('.set-pg #g-cap');
     await sleep(400);
     const want = ['g-cap', 'g-lite', 'g-tv', 'g-lock', 'g-bk', 'g-dev', 'g-rep', 'g-fs', 'g-lim', 'g-clr'];
     const seen = new Set();

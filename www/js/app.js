@@ -33,6 +33,7 @@ import { createHero, heroModel, heroCellW } from './hero.js';
 import { Shelves, shelfSizes } from './shelves.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
+import { DECODER_MODES, DEFAULT_DECODER, normalizeDecoder } from './decoder.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
 import { CAPTION_LINES, DEFAULT_CAPTION, normalizeCaption, captionPx, applyCaption } from './caption.js';
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
@@ -823,7 +824,7 @@ const hero = createHero({
   paint: paintHero,
 });
 
-function paintHero(it, info) {
+function paintHero(it, info, final) {
   const box = $('#hero');
   if (!box || box.hidden) return;
   const m = heroModel(it, info);
@@ -833,13 +834,15 @@ function paintHero(it, info) {
     (m.cast ? `<p class="hero-c"><b>Oyuncular</b> ${esc(m.cast)}</p>` : '') +
     (m.director ? `<p class="hero-c hero-d"><b>Yönetmen</b> ${esc(m.director)}</p>` : '') +
     (m.plot ? `<p class="hero-p">${esc(m.plot)}</p>` : '');
-  paintHeroBg(m.bg);
+  // Ayrıntı yoldayken yalnız dikey afiş varsa çizilmez: geniş ekranda kırpık görünüp sonra geniş görsele dönüşüyordu.
+  // Geniş görsel gelene (ya da ayrıntı gelmeyeceği anlaşılana) dek önceki arka plan kalır.
+  if (final || m.wide) paintHeroBg(m.bg, m.backs);
 }
 
 // Arka plan: iki katman çapraz geçer; yeni görsel yüklenene dek eskisi durur (boş/yanıp sönme olmaz). Önce geniş görsel, olmazsa afiş.
 let heroBgSeq = 0;
 let heroBgUrl = '';
-function paintHeroBg(urls) {
+function paintHeroBg(urls, nWide = urls.length) {
   const el = $('#hero-bg');
   if (!el) return;
   const seq = ++heroBgSeq;
@@ -861,6 +864,7 @@ function paintHeroBg(urls) {
       const to = a.classList.contains('on') ? b : a;
       const from = to === a ? b : a;
       to.style.backgroundImage = `url(${JSON.stringify(url)})`;
+      to.classList.toggle('poster', n >= nWide); // dikey afiş sağda bütün gösterilir (kırpılıp büyütülmez)
       to.classList.add('on');
       from.classList.remove('on');
       el.classList.add('has');
@@ -1851,6 +1855,7 @@ function sourceForm(edit) {
   let type = edit ? (edit.local ? 'file' : edit.type) : 'xtream';
   const v = (k) => esc((edit && edit[k]) || '');
   const sh = openSheet({
+    full: true, // TV'de tam sayfa
     title: edit ? 'Kaynağı düzenle' : 'Kaynak ekle',
     html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button><button data-t="code">Kod</button></div>
 <form id="f" autocomplete="off">
@@ -3201,9 +3206,11 @@ function remoteSheet() {
 const plLabels = () => new Set(normalizeLabels(store.pref('pl.labels', [])));
 function playerSheet() {
   openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Oynatıcı ayarları',
     html:
       `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
+      (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Bazı kanallar bu cihazda bozuk, yeşil/beyaz ya da donuk görünüyorsa “Yazılım öncelikli”yi deneyin. Daha yavaştır, pili ve işlemciyi daha çok kullanır. Açık kanal hemen yeniden açılır</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
       `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
       chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
@@ -3235,6 +3242,11 @@ function playerSheet() {
       });
       $('#g-rm', body).addEventListener('click', () => remoteSheet());
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
+      const gdec = $('#g-dec', body);
+      if (gdec) gdec.addEventListener('change', (e) => {
+        store.setPref('set.decoder', normalizeDecoder(e.target.value));
+        applyDecoder();
+      });
       $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
       $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
       $('#g-intro', body).addEventListener('change', (e) => store.setPref('set.intro', normalizeIntro(e.target.value)));
@@ -3247,6 +3259,7 @@ function playerSheet() {
 function generalSheet() {
   const lim = Number(store.pref('set.recentLimit', 40));
   openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Genel ayarlar',
     html:
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
@@ -3437,6 +3450,7 @@ function mgNotice(removed) {
 
 function autoSheet() {
   openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Otomasyon',
     html: `<div class="sel-row"><span>Canlı, film ve dizi listesini yenile</span><select id="a-cat">${optionsHtml([[0, 'Kapalı'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir'], [48, '2 günde bir'], [168, 'Haftada bir']], store.pref('auto.cat', 12))}</select></div><div class="sel-row"><span>TV rehberini (EPG) yenile</span><select id="a-epg">${optionsHtml([[0, 'Kapalı'], [3, '3 saatte bir'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir']], store.pref('auto.epg', 6))}</select></div><p class="hint" style="margin-top:12px">Uygulama açılırken ya da öne geldiğinde, son yenilemeden bu kadar süre geçmişse liste kendiliğinden güncellenir. İstediğiniz an ana ekrandaki yenile düğmesine de dokunabilirsiniz.</p>`,
     mount: (body) => {
@@ -3461,7 +3475,7 @@ function epgSettingsSheet() {
     });
     $('#e-edit', body).addEventListener('click', () => sourceForm(s));
   };
-  openSheet({ title: 'TV rehberi (EPG)', mount: (body) => draw(body) });
+  openSheet({ full: true, title: 'TV rehberi (EPG)', mount: (body) => draw(body) });
 }
 
 // ------------------------------------------------------------------ yayın kalitesi tanılama
@@ -3830,6 +3844,7 @@ function updateSheet(info) {
   let path = null;
   let busy = false;
   openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Yeni sürüm hazır',
     html: `<p>Sürüm <b>${esc(info.name)}</b> yayında (şu an ${esc(VERSION)}).${info.size ? ` Boyut: ${fmtMB(info.size)}.` : ''}</p>${info.notes ? `<p class="hint" style="white-space:pre-line">${esc(info.notes)}</p>` : ''}<div id="up-bar" hidden style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:10px 0"><i style="display:block;height:100%;width:0;background:var(--accent)"></i></div><p id="up-msg" class="hint"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="up-go">${icon('refresh')}Şimdi güncelle</button><button class="btn ghost" id="up-later">Sonra</button></div><p class="hint" style="margin-top:12px">Güncelleme mevcut uygulamanın üstüne kurulur; kaynaklarınız ve favorileriniz korunur.</p>`,
     mount: (body, api) => {
@@ -3900,6 +3915,7 @@ function recEvent(e) {
 function recordingsSheet() {
   if (!engine.rec) return toast('Kayıt yalnız Android uygulamasında çalışır');
   const sh = openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Kayıtlar',
     html: '<div id="rec-body"><p class="hint">Yükleniyor…</p></div>',
     mount: (body, api) => {
@@ -4181,6 +4197,7 @@ async function playDownload(job) {
 function downloadsSheet() {
   if (!engine.dl) return toast('İndirme yalnız Android uygulamasında çalışır');
   const sh = openSheet({
+    full: true, // TV'de tam sayfa
     title: 'İndirilenler',
     html: '<div id="dl-body"><p class="hint">Yükleniyor…</p></div>',
     mount: (body) => {
@@ -4282,6 +4299,7 @@ function deleteDownloadSheet(j) {
 // Planlananlar: bekleyen hatırlatıcılar ve zamanlı kayıtlar; izin durumu ve kaldırma burada.
 function plansSheet() {
   const sh = openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Planlananlar',
     html: '<div id="pl-body"><p class="hint">Yükleniyor…</p></div>',
     mount: (body) => {
@@ -4340,6 +4358,7 @@ function whatsNewSheet(all = false) {
   store.setPref('seen.changelog', LATEST_ID);
   if (!list.length) return all ? toast('Gösterilecek yenilik yok') : undefined;
   openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Yenilikler',
     html: list.map((e) => `<div class="wn"><b>${esc(e.title)}</b><ul>${e.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join(''),
   });
@@ -4643,6 +4662,7 @@ function kidGroups(kind, title, done) {
 function kidSheet() {
   if (!S.source) return toast('Önce bir kaynak ekleyin');
   const sh = openSheet({
+    full: true, // TV'de tam sayfa
     title: 'Çocuk profili',
     html: '<div id="kd-body"></div>',
     mount: (body) => {
@@ -4847,6 +4867,11 @@ function applyTvMode() {
   layoutPreview();
 }
 applyTvMode();
+// Görüntü çözücü tercihi yerel oynatıcıya bildirilir (açılışta ve ayar değişince); açık yayın varsa yeniden kurulur.
+function applyDecoder() {
+  if (nativePlugin) nativePlugin.setDecoder({ mode: normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)) }).catch(() => toast('Görüntü çözücü uygulanamadı', 2500));
+}
+applyDecoder();
 if (nativePlugin) {
   nativePlugin.isTv().then((r) => {
     tvDetected = tvDetected || !!(r && r.tv);

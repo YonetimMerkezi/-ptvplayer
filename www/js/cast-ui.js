@@ -552,6 +552,7 @@ export function createCastUI(deps) {
       return;
     }
     openSheet({
+      full: true, // TV'de tam sayfa
       title: 'Telefondan oynat',
       html: '<div id="rc-body"><p class="hint">Yükleniyor…</p></div>',
       mount: (body, api) => {

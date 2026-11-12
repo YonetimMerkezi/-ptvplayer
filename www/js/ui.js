@@ -25,7 +25,9 @@ export function logo(url, name) {
 
 let seq = 0;
 // html: gövde; mount(bodyEl, api): içerik bağlama. Döndürür { el, body, close, setTitle }.
-export function openSheet({ title, html = '', mount }) {
+export function openSheet({ title, html = '', mount, full = false }) {
+  // full: Ayarlar alt sayfaları. TV'de küçük (alttan kesilen) pencere yerine tam sayfa açılır; telefon ve bilgisayarda alt pencere kalır.
+  if (full && document.documentElement.classList.contains('tv')) return openPage({ title, html, mount, cls: 'set-pg' });
   const id = 'sheet' + ++seq;
   const back = document.createElement('div');
   back.className = 'sheet-back' + (document.body.classList.contains('player-open') ? ' over-player' : '');

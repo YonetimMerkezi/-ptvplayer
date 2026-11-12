@@ -54,6 +54,8 @@ import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
@@ -77,6 +79,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.json.JSONException;
@@ -124,6 +127,8 @@ public class IptvPlayerPlugin extends Plugin {
     private AudioDelayProcessor delayProc = null;
     // Gece modu (off | light | medium | strong): açıkken (ya da ses gecikmesi varken) PCM ses işlemcileri takılır.
     private volatile String nightLevel = "off";
+    // Görüntü çözücü (auto | software): "software" yazılım çözücüyü başa alır; donanım çözücüsü bozuk kare veren TV kutuları için.
+    private volatile String decoderMode = "auto";
     // Altyazı görünümü (Genel ayarlar / oynatıcıdaki altyazı penceresi): {size, color, bgAlpha, bottom, outline}
     private JSObject subStyle = null;
     private NightAudioProcessor nightProc = null;
@@ -363,6 +368,7 @@ public class IptvPlayerPlugin extends Plugin {
         // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
         if (tap) base = new TapDataSource.Factory(base);
+        final MediaCodecSelector selector = "software".equals(decoderMode) ? SOFTWARE_FIRST : MediaCodecSelector.DEFAULT;
         ExoPlayer.Builder eb;
         if (delay && (audioDelayMs != 0 || NightCompressor.isActive(nightLevel))) {
             // Gecikme ve gece modu PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
@@ -380,9 +386,9 @@ public class IptvPlayerPlugin extends Plugin {
                             .setAudioProcessors(new AudioProcessor[] {proc, night})
                             .build();
                 }
-            }.setEnableDecoderFallback(true));
+            }.setEnableDecoderFallback(true).setMediaCodecSelector(selector));
         } else {
-            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true));
+            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector));
         }
         return eb
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(base))
@@ -537,6 +543,36 @@ public class IptvPlayerPlugin extends Plugin {
         subStyle = call.getData();
         main.post(() -> {
             applySubStyle();
+            call.resolve();
+        });
+    }
+
+    private static String cleanDecoder(String v) {
+        return "software".equals(v) ? v : "auto";
+    }
+
+    // Video için yazılım çözücüleri donanım çözücülerinin önüne alır (sıralama kendi içinde korunur); ses ve diğer türler değişmez.
+    // Yazılım çözücü yoksa ya da açılamazsa setEnableDecoderFallback sayesinde donanım çözücüye düşülür.
+    private static final MediaCodecSelector SOFTWARE_FIRST = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
+        List<MediaCodecInfo> all = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+        if (mimeType == null || !mimeType.startsWith("video/")) return all;
+        List<MediaCodecInfo> sorted = new ArrayList<>(all.size());
+        for (MediaCodecInfo i : all) if (i.softwareOnly) sorted.add(i);
+        for (MediaCodecInfo i : all) if (!i.softwareOnly) sorted.add(i);
+        return sorted;
+    };
+
+    // Çözücü seçimi bir sonraki oynatıcı kurulumunda geçerlidir; oynatıcı açıksa hemen yeniden kurulur (canlıda yayın yeniden açılır, filmde konum korunur).
+    @PluginMethod
+    public void setDecoder(final PluginCall call) {
+        final String mode = cleanDecoder(call.getData().optString("mode", "auto"));
+        final boolean changed = !mode.equals(decoderMode);
+        decoderMode = mode;
+        main.post(() -> {
+            if (changed && player != null && !curUrl.isEmpty()) {
+                long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
+                startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
+            }
             call.resolve();
         });
     }

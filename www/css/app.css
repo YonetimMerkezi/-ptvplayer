@@ -227,6 +227,7 @@ html.hero-on #hero-bg.has { display: block; opacity: 1; }
 html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !important; }
 #hero-bg i { position: absolute; inset: 0; background: center 22% / cover no-repeat; opacity: 0; transition: opacity 0.4s ease; }
 #hero-bg i.on { opacity: 1; }
+#hero-bg i.poster { background-size: contain; background-position: 94% center; }
 #hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.62) 38%, rgba(0, 0, 0, 0.12) 78%, rgba(0, 0, 0, 0.5) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.95) 100%); } /* kenarları gölgeli: sol-sağ ve üst-alt */
 #hero { flex: none; height: 38vh; max-width: 64%; padding: 4px 14px 0; overflow: hidden; font-size: clamp(14px, 2.3vh, 24px); } /* yazılar ekran yüksekliğine göre ölçülür: 960×540 ile 1920×1080 aynı oranda */
 .hero-t { margin: 0 0 0.4em; font-size: 2.1em; line-height: 1.1; font-weight: 800; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
@@ -558,6 +559,7 @@ html.native-playing #sheets .pg:not(.over-player) { visibility: hidden; }
 .pg-bar { display: flex; align-items: center; gap: 6px; min-height: var(--bar-h); padding: 0 8px; flex: none; }
 .pg-bar h3 { flex: 1; min-width: 0; margin: 0; font-size: 1.125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pg-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 28px; -webkit-overflow-scrolling: touch; }
+.set-pg .pg-body { width: 100%; max-width: 1000px; margin: 0 auto; } /* TV'de ayarlar sayfası: satırlar ekran boyunca uzamasın */
 .btn.lg { min-height: 52px; padding: 0 28px; font-size: 1.0625rem; border-radius: 26px; }
 
 /* film / dizi ayrıntısı */
@@ -930,14 +932,30 @@ html[data-noprog] .card .prog, html[data-noprog] .epi .bar { display: none; }
 html[data-nothumb] .epi-th { display: none !important; }
 
 /* Hafif mod: animasyon, gölge ve bulanıklık kapalı (yükleme göstergesi ve kayıt noktası dönmeye devam eder) */
-html[data-lite] *:not(.spinner):not(.spin):not(.hs-dot), html[data-lite] *::before, html[data-lite] *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-lite] *:not(.spinner):not(.spin):not(.hs-dot), html[data-lite] *::before, html[data-lite] *::after { animation: none !important; transition: none !important; text-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* Gölge yalnız odaktaki öğede kalır: kumanda halkası gölgeyle çizildiği için hafif modda (TV kutularında otomatik açılır) imleç yoksa kaybolurdu */
+html[data-lite] *:not(:focus), html[data-lite] *::before, html[data-lite] *::after { box-shadow: none !important; }
+/* hafif modda tek tek odak halkası: ışıma (bulanık gölge) yok, yalnız düz halka */
+html[data-lite].kbd .tile:focus, html[data-lite].kbd .set-tile:focus, html[data-lite].kbd .card:focus, html[data-lite].kbd .sh-more:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); }
+html[data-lite].kbd .tl-prog:focus { box-shadow: inset 0 0 0 5px var(--ring-edge); }
+html[data-lite].kbd .lk-k:focus, html[data-lite].kbd .lk-x:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); }
 html[data-lite] .mq { text-overflow: ellipsis; }
 
 /* spor (futbol) ekranı */
 .sp-pg .pg-body { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
-.sp-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; min-height: 40px; }
-.sp-top small { color: var(--muted); font-size: 0.8125rem; min-width: 0; }
-.sp-pg .chips { padding: 9px 8px 6px; margin: -5px -8px 0; }
+.sp-top { display: flex; align-items: center; gap: 8px; flex: none; }
+.sp-top small { flex: none; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.75rem; cursor: pointer; }
+.sp-top .icon-btn { flex: none; width: 34px; height: 34px; }
+.sp-top #sp-days { flex: 1 1 0; min-width: 0; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); } /* sağ uçta kesilen çip yumuşakça solar, durum yazısına yapışmaz */
+.sp-pg .chips { padding: 8px 8px 7px; margin: -4px -8px 0; } /* üst/alt pay kumanda odak halkası kırpılmasın diye */
+.sp-pg .chip { min-height: 30px; padding: 0 11px; font-size: 0.8125rem; border-radius: 15px; }
+.sp-pg .chip small { margin-left: 5px; }
+@media (max-width: 560px) {
+  .sp-top { flex-wrap: wrap; row-gap: 0; }
+  .sp-top small { order: 1; flex: 1 1 0; max-width: none; }
+  .sp-top .icon-btn { order: 2; }
+  .sp-top #sp-days { order: 3; flex: 1 1 100%; -webkit-mask-image: none; mask-image: none; }
+}
 .sp-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 28px; -webkit-overflow-scrolling: touch; }
 .sp-m { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 10px; background: rgba(255, 255, 255, 0.05); border-radius: 14px; cursor: pointer; }
 .sp-m.on { background: rgba(255, 255, 255, 0.09); }

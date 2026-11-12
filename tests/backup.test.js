@@ -110,7 +110,7 @@ test('bozulmuş/elle değiştirilmiş yedek: geçersiz öğeler atılır, geri y
   assert.equal(store.progress('a', 'm2').pos, 20000);
 });
 
-test('yedek: cihaz kimliği, yönetici verisi, yönetilen denetim zamanı ve hata günlüğü yedeğe girmez', () => {
+test('yedek: cihaz kimliği, yönetici verisi, yönetilen denetim zamanı, hata günlüğü ve görüntü çözücü seçimi yedeğe girmez', () => {
   const { store } = mk();
   store.saveSource({ name: 'A', type: 'm3u', url: 'http://x/y' });
   store.setPref('dev.id', 'a1b2c3d4e5f6');
@@ -119,7 +119,8 @@ test('yedek: cihaz kimliği, yönetici verisi, yönetilen denetim zamanı ve hat
   store.setPref('mg.at', 123);
   store.setPref('errlog', [{ n: 'K', m: 'hata' }]);
   store.setPref('set.buffer', 'max');
+  store.setPref('set.decoder', 'software'); // cihaza özgü: bir TV kutusunun çözücü kaçamağı telefona taşınmamalı
   const keys = Object.keys(makeBackup(store).data);
-  for (const k of ['pref.dev.id', 'pref.adm.tok', 'pref.adm.on', 'pref.mg.at', 'pref.errlog']) assert.ok(!keys.includes(k), k + ' yedeğe girmemeli');
+  for (const k of ['pref.dev.id', 'pref.adm.tok', 'pref.adm.on', 'pref.mg.at', 'pref.errlog', 'pref.set.decoder']) assert.ok(!keys.includes(k), k + ' yedeğe girmemeli');
   assert.ok(keys.includes('pref.set.buffer'));
 });

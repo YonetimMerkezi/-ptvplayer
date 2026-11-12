@@ -30,7 +30,7 @@ const flush = () => new Promise((r) => setImmediate(r));
 
 function rig(over = {}) {
   const c = clock();
-  const calls = { load: [], paint: [] };
+  const calls = { load: [], paint: [], final: [] };
   const cache = new Map();
   const defer = new Map();
   const h = createHero({
@@ -40,7 +40,10 @@ function rig(over = {}) {
       calls.load.push(it.id);
       return new Promise((res, rej) => defer.set(it.id, { res: (v) => (cache.set(it.id, v), res(v)), rej }));
     },
-    paint: (it, info) => calls.paint.push([it.id, info && info.plot]),
+    paint: (it, info, final) => {
+      calls.paint.push([it.id, info && info.plot]);
+      calls.final.push(!!final);
+    },
     setTimer: c.setTimer,
     clearTimer: c.clearTimer,
     ...over,
@@ -162,12 +165,14 @@ test('heroModel: ayrıntı yoksa listedeki alanlar, varsa ayrıntı; görseller 
   assert.equal(m0.plot, 'Liste özeti');
   assert.deepEqual(m0.bg, ['p.jpg']);
   assert.equal(m0.wide, false);
+  assert.equal(m0.backs, 0, 'yalnız afiş: geniş görsel yok');
   const m1 = heroModel(it, { year: '2026-03-01', durationSec: 3120, genre: 'Belgesel', plot: 'Ayrıntı özeti', cast: 'A, B', director: 'C', backdrop: 'b.jpg', logo: 'p.jpg', rating: '4.8' });
   assert.deepEqual(m1.meta, ['2026', '52 dk', 'Belgesel']);
   assert.equal(m1.plot, 'Ayrıntı özeti');
   assert.equal(m1.rating, '4.8');
   assert.deepEqual(m1.bg, ['b.jpg', 'p.jpg']);
   assert.equal(m1.wide, true);
+  assert.equal(m1.backs, 1, 'bg’nin ilki geniş görsel, ikincisi afiş');
   assert.equal(heroModel({ name: 'X' }, null).rating, '');
 });
 
@@ -177,4 +182,39 @@ test('heroCellW: ekrana oranlı, alt ve üst sınırlı', () => {
   assert.equal(heroCellW(1920), 183);
   assert.equal(heroCellW(3840), 190);
   assert.equal(heroCellW(320), 96);
+});
+
+test('final: ayrıntı beklenen film önce kesinleşmemiş çizilir; ayrıntı gelince, gelmeyince ve beklenmiyorsa kesinleşir', async () => {
+  const { h, c, calls, defer, cache } = rig();
+  h.focus(A);
+  assert.deepEqual(calls.final, [false], 'ayrıntı yolda: geniş görsel henüz yok, yedek afiş çizilmemeli');
+  c.tick(HERO_DELAY_MS);
+  defer.get('a').res({ plot: 'A' });
+  await flush();
+  assert.equal(calls.final.at(-1), true, 'ayrıntı gelince kesinleşir');
+
+  h.focus(B);
+  c.tick(HERO_DELAY_MS);
+  defer.get('b').rej(new Error('ağ'));
+  await flush();
+  assert.deepEqual(calls.paint.at(-1), ['b', null]);
+  assert.equal(calls.final.at(-1), true, 'ayrıntı gelmedi: yedek görsel kullanılsın');
+
+  const n = calls.final.length;
+  h.focus(S1);
+  assert.deepEqual(calls.final.slice(n), [true], 'dizide ayrıntı beklenmez: hemen kesin');
+  cache.set('c', { plot: 'C' });
+  h.focus(C);
+  assert.equal(calls.final.at(-1), true, 'bellekteki ayrıntı: hemen kesin');
+});
+
+test('final: hata sınırı aşılınca (kapalı) yeni kutular hemen kesin çizilir', async () => {
+  const { h, c, calls, defer } = rig({ maxFails: 1 });
+  h.focus(A);
+  c.tick(HERO_DELAY_MS);
+  defer.get('a').rej(new Error('ağ'));
+  await flush();
+  assert.equal(h.disabled, true);
+  h.focus(B);
+  assert.equal(calls.final.at(-1), true);
 });

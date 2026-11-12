@@ -2230,7 +2230,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-un="abcd1234"]');
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castUnpair' && c[1] === 'abcd1234'), null, { timeout: 5000 });
   ok(true, 'eşleşmiş telefon listeden kaldırılabiliyor');
-  await page.click('.sheet [data-close]');
+  await page.click('.set-pg [data-close]');
   await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'castPairClose'), null, { timeout: 6000 });
   ok(true, 'ekran kapanınca eşleştirme kodu kapatıldı');
 
@@ -4007,6 +4007,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./liste.cjs').listeSection({ browser, base, mock, ok, sleep });
   await require('./vitrin.cjs').vitrinSection({ browser, base, mock, ok, sleep });
   await require('./satirlar.cjs').satirlarSection({ browser, base, mock, ok, sleep });
+  await require('./tvekran.cjs').tvekranSection({ browser, base, mock, ok, sleep });
   await require('./sports.cjs').sportsSection({ browser, base, mock, ok, sleep, SHOTS });
 
   await browser.close();

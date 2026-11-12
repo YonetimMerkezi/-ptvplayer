@@ -20,7 +20,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
   }));
 
   // vp: görünüm; tv: ?tv=1 ile aç; mv: set.mvView; big: büyük film listesi
-  const open = async (vp, { tv = true, mv = null, big = false } = {}) => {
+  const open = async (vp, { tv = true, mv = null, big = false, lite = null, setup = null } = {}) => {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, hasTouch: !tv });
     if (big) {
       await ctx.route(
@@ -28,6 +28,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
         (r) => r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify(bigMovies) })
       );
     }
+    if (setup) await setup(ctx);
     const page = await ctx.newPage();
     const errs = [];
     page.on('pageerror', (e) => errs.push(String(e)));
@@ -40,6 +41,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.click('#f-go');
     await page.waitForSelector('.tile.t-live', { timeout: 15000 });
     if (mv) await page.evaluate((v) => localStorage.setItem('iptv.pref.set.mvView', JSON.stringify(v)), mv);
+    if (lite) await page.evaluate((v) => localStorage.setItem('iptv.pref.set.lite', JSON.stringify(v)), lite);
     if (tv) {
       await page.goto(tvUrl); // TV kipi: salt okunur alanlar, odak halkası, kumanda gezinmesi
       await page.waitForSelector('.tile.t-live', { timeout: 15000 });
@@ -334,6 +336,84 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.waitForSelector('.row.cat', { timeout: 8000 });
     ok((await page.evaluate(() => document.querySelectorAll('.sh-row').length)) === 0, 'ayar Klasik: telefonda kategori listesi geri geldi');
     ok(errs.length === 0, 'telefon: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
+    await ctx.close();
+  }
+
+  // ---- 8) Hafif mod (TV kutularında otomatik açılır): gölgeler kapalı ama kumanda halkası (gölgeyle çizilir) görünür kalır
+  {
+    const { ctx, page, errs } = await open({ width: 1280, height: 720 }, { mv: 'rows', lite: 'on' });
+    ok(await page.evaluate(() => document.documentElement.hasAttribute('data-lite')), 'hafif mod açık');
+    const shadow = (sel) => page.evaluate((q) => getComputedStyle(document.querySelector(q)).boxShadow, sel);
+    // ana ekran: odaktaki kutu halkalı, ötekiler gölgesiz
+    await page.keyboard.press('ArrowRight');
+    await sleep(200);
+    const home = await page.evaluate(() => {
+      const f = document.activeElement;
+      const other = [...document.querySelectorAll('.tile')].find((t) => t !== f);
+      return { on: getComputedStyle(f).boxShadow, off: other ? getComputedStyle(other).boxShadow : 'yok', cls: f.className };
+    });
+    ok(home.on !== 'none' && /255, 255, 255/.test(home.on), 'hafif mod: ana ekranda odaktaki kutunun beyaz halkası var (' + home.cls + ')');
+    ok(home.off === 'none', 'hafif mod: odakta olmayan kutuda gölge yok');
+    // satırlarda odaktaki film kutusu
+    await page.click('.tile.t-movie');
+    await page.waitForSelector('.sh-row .card', { timeout: 8000 });
+    await sleep(500);
+    await press(page, 'ArrowRight', 1, 300);
+    ok((await page.evaluate(() => getComputedStyle(document.activeElement).boxShadow)) !== 'none', 'hafif mod: satırlarda odaktaki film kutusunun halkası var');
+    ok((await page.evaluate(() => getComputedStyle(document.querySelector('.sh-row .card:not(:focus)')).boxShadow)) === 'none', 'hafif mod: odakta olmayan film kutusunda gölge yok');
+    ok(errs.length === 0, 'hafif mod: sayfa hatası yok');
+    await ctx.close();
+  }
+
+  // ---- 9) Vitrin arka planı: ayrıntı yoldayken afiş kırpık çizilmez; geniş görsel gelince o görünür; ayrıntı gelmezse afiş yedek olur
+  {
+    const withPosters = async (ctx, vodInfo) => {
+      await ctx.route(
+        (u) => u.pathname.endsWith('/player_api.php') && u.searchParams.get('action') === 'get_vod_streams',
+        (r) =>
+          r.fulfill({
+            status: 200,
+            headers: CORS,
+            contentType: 'application/json',
+            body: JSON.stringify(bigMovies.slice(0, 8).map((m, i) => ({ ...m, stream_icon: `${mock.url}/logo/${i + 1}.svg`, category_id: '2' }))),
+          })
+      );
+      await ctx.route((u) => u.pathname.endsWith('/player_api.php') && u.searchParams.get('action') === 'get_vod_info', vodInfo);
+    };
+    const bgState = (page) =>
+      page.evaluate(() => {
+        const el = document.querySelector('#hero-bg');
+        const on = [...el.children].find((i) => i.classList.contains('on'));
+        return { has: el.classList.contains('has'), url: on ? on.style.backgroundImage : '', poster: !!on && on.classList.contains('poster') };
+      });
+
+    // a) ayrıntı geç gelir (1,8 sn): bu sürede arka plan afişle doldurulmaz
+    let { ctx, page, errs } = await open({ width: 1920, height: 1080 }, { setup: (c) => withPosters(c, (r) => setTimeout(() => r.continue().catch(() => {}), 1800)) });
+    await page.click('.tile.t-movie');
+    await page.waitForSelector('.sh-row .card', { timeout: 8000 });
+    await sleep(900);
+    let st = await bgState(page);
+    ok(!st.has && !st.url, 'ayrıntı yoldayken arka plan afişle doldurulmadı (kırpık afiş görünmüyor)');
+    await page.waitForFunction(() => /\/backdrop\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => i.style.backgroundImage).join()), null, { timeout: 8000 });
+    st = await bgState(page);
+    ok(st.has && !st.poster, 'ayrıntı gelince geniş görsel (kırpmasız, tam ekran) görünüyor');
+    // sonraki kutuya geçince geniş görsel gelene dek eskisi durur, afişe düşmez
+    await press(page, 'ArrowRight', 1, 100);
+    await sleep(500);
+    st = await bgState(page);
+    ok(st.has && /\/backdrop\//.test(st.url), 'yeni kutuda ayrıntı gelene dek önceki geniş görsel duruyor (afiş çizilmedi)');
+    ok(errs.length === 0, 'vitrin arka planı: sayfa hatası yok');
+    await ctx.close();
+
+    // b) ayrıntı hiç gelmez: afiş yedek olarak, sağda bütün gösterilir
+    ({ ctx, page, errs } = await open({ width: 1920, height: 1080 }, { setup: (c) => withPosters(c, (r) => r.abort()) }));
+    await page.click('.tile.t-movie');
+    await page.waitForSelector('.sh-row .card', { timeout: 8000 });
+    await page.waitForFunction(() => /\/logo\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => i.style.backgroundImage).join()), null, { timeout: 8000 });
+    st = await bgState(page);
+    ok(st.has && st.poster, 'ayrıntı gelmeyince afiş yedek olarak çizildi ve "poster" düzeninde (sağda, bütün)');
+    ok((await page.evaluate(() => getComputedStyle(document.querySelector('#hero-bg i.on')).backgroundSize)) === 'contain', 'afiş kırpılmadan (contain) gösteriliyor');
+    ok(errs.length === 0, 'afiş yedeği: sayfa hatası yok');
     await ctx.close();
   }
 }

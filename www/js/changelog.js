@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 68,
+    title: 'TV’de odak, ayarlar ve görüntü çözücü',
+    items: [
+      'TV’de odaktaki kutunun çerçevesi hafif modda da görünür; film ve dizi satırlarında hangi yapımda olduğunuz belli',
+      'Film vitrininin arka planı artık önce yanlış bir afiş kırpığı göstermez: ayrıntı gelene kadar bekler, sonra tek seferde geçer',
+      'Spor ekranında gün, lig ve yenile düğmeleri daha az yer kaplar',
+      'TV’de ayarlar pencereleri tam sayfa açılır',
+      'Oynatıcı ayarlarına “Görüntü çözücü” eklendi: bazı kanallar TV kutunuzda bozuk, yeşil/beyaz ya da donuk görünüyorsa “Yazılım öncelikli”yi deneyin (daha yavaştır, açık kanalı hemen yeniden açar)'
+    ],
+  },
+  {
     id: 67,
     title: 'Netflix gibi film ve dizi ekranı',
     items: [

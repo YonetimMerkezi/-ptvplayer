@@ -357,6 +357,24 @@ test('metin paylaşımı (rapor, davet): yöntem eklentide ve köprüde, paylaş
   assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /shareText: call\('shareText'\)/);
 });
 
+test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yalnız videoyu sıralar, iki kurulum dalına da uygulanır', async () => {
+  const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
+  assert.match(kaynak, /public void setDecoder\(/, 'setDecoder Java\'da yok');
+  assert.equal(typeof pl.setDecoder, 'function', 'setDecoder köprüde yok');
+  const { DECODER_MODES } = await import('../www/js/decoder.js');
+  assert.match(kaynak, /private static String cleanDecoder\(String v\) \{\s*return "software"\.equals\(v\) \? v : "auto";/, 'bilinmeyen kip otomatik sayılmalı');
+  for (const [id] of DECODER_MODES) assert.match(kaynak, new RegExp('"' + id + '"'), id + ' kipi yerelde işlenmeli');
+  const sel = kaynak.match(/SOFTWARE_FIRST = [\s\S]*?\n    \};/);
+  assert.ok(sel, 'SOFTWARE_FIRST seçici bulunmalı');
+  assert.match(sel[0], /MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'çözücü listesi varsayılan seçiciden alınmalı (donanım çözücü yedek kalır)');
+  assert.match(sel[0], /startsWith\("video\/"\)\) return all/, 'ses ve diğer türlerin sırası değişmemeli');
+  assert.ok(sel[0].indexOf('if (i.softwareOnly)') < sel[0].indexOf('if (!i.softwareOnly)'), 'yazılım çözücüler donanımın önüne alınmalı');
+  assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\)/, 'seçici hem ses işlemcili hem sade kurulumda uygulanmalı');
+  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı');
+  assert.match(kaynak, /changed && player != null && !curUrl\.isEmpty\(\)\) \{[\s\S]*?startPlayback\(curUrl/, 'kip değişince açık yayın yeniden kurulmalı');
+  assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /setDecoder: call\('setDecoder'\)/);
+});
+
 test('yayın önbelleği: JS’teki her düzeyin yerelde karşılığı var, "fast" küçük ve hızlı başlar', async () => {
   const { BUFFER_LEVELS } = await import('../www/js/buffer.js');
   const fn = kaynak.match(/private static DefaultLoadControl loadControlFor\(String level\) \{[\s\S]*?return b\.build\(\);/);

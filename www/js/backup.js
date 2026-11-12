@@ -3,7 +3,7 @@
 export const BACKUP_APP = 'iptv-oynatici';
 export const BACKUP_VERSION = 1;
 
-const SKIP = [/^pref\.lock\./, /^pref\.bad\./, /^pref\.hhist\./, /^pref\.cast\./, /^pref\.dev\./, /^pref\.adm\./, /^pref\.mg\./, /^pref\.errlog$/];
+const SKIP = [/^pref\.lock\./, /^pref\.bad\./, /^pref\.hhist\./, /^pref\.cast\./, /^pref\.dev\./, /^pref\.adm\./, /^pref\.mg\./, /^pref\.set\.decoder$/, /^pref\.errlog$/];
 const PER_SOURCE = /^(fav|favx|rec|prog|progx|cats)\.(.+)$/;
 const skipped = (k) => SKIP.some((re) => re.test(k));
 

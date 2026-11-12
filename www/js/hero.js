@@ -14,6 +14,8 @@ export function heroCellW(viewW) {
 // Vitrinde gösterilecek alanlar. info: get_vod_info sonucu (olmayabilir); it: listedeki öğe.
 export function heroModel(it, info) {
   const i = info || {};
+  const backs = uniq([i.backdrop, it.backdrop]);
+  const posters = uniq([i.logo, it.logo]);
   const rating = i.rating || it.rating || '';
   const year = i.year ? String(i.year).slice(0, 4) : '';
   const mins = i.durationSec > 0 ? Math.round(i.durationSec / 60) : 0;
@@ -25,14 +27,15 @@ export function heroModel(it, info) {
     director: i.director || '',
     plot: i.plot || it.plot || '',
     // geniş görsel önce, afiş yedek: biri yüklenmezse sıradaki denenir
-    bg: uniq([i.backdrop, it.backdrop, i.logo, it.logo]),
-    wide: !!(i.backdrop || it.backdrop),
+    bg: uniq([...backs, ...posters]),
+    wide: backs.length > 0,
+    backs: backs.length, // bg'nin ilk kaçı geniş görsel (gerisi dikey afiş)
   };
 }
 
 // Odak değişince çağrılan denetleyici.
 //   peek(it) → bellekteki ayrıntı ya da null     canLoad(it) → bu öğe için ayrıntı istenebilir mi
-//   load(it) → Promise<ayrıntı|null>             paint(it, info) → ekrana çiz (info olmayabilir)
+//   load(it) → Promise<ayrıntı|null>             paint(it, info, final) → ekrana çiz (info olmayabilir; final: ayrıntı artık beklenmiyor)
 export function createHero({ peek, canLoad, load, paint, delay = HERO_DELAY_MS, maxFails = HERO_MAX_FAILS, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let cur = null; // şu an odaktaki öğe
   let wanted = null; // bekleme dolmuş, ayrıntısı istenen öğe
@@ -50,10 +53,11 @@ export function createHero({ peek, canLoad, load, paint, delay = HERO_DELAY_MS, 
     load(it)
       .then((info) => {
         fails = 0;
-        if (cur === it) paint(it, info || peek(it) || null);
+        if (cur === it) paint(it, info || peek(it) || null, true);
       })
       .catch(() => {
         fails++;
+        if (cur === it) paint(it, peek(it) || null, true); // ayrıntı gelmeyecek: yedek görsel kullanılsın
       })
       .finally(() => {
         inflight = false;
@@ -69,8 +73,9 @@ export function createHero({ peek, canLoad, load, paint, delay = HERO_DELAY_MS, 
       wanted = null;
       clearTimer(timer);
       timer = 0;
-      paint(it, peek(it) || null); // listedeki bilgi ve bellekteki ayrıntı hemen
-      if (!needs(it) || fails >= maxFails) return;
+      const settled = !needs(it) || fails >= maxFails; // ayrıntı beklenmiyorsa görünüm kesinleşmiştir
+      paint(it, peek(it) || null, settled); // listedeki bilgi ve bellekteki ayrıntı hemen
+      if (settled) return;
       timer = setTimer(() => {
         timer = 0;
         wanted = it;
