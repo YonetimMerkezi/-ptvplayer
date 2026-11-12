@@ -1,9 +1,8 @@
-// Görüntü çözücü: "Otomatik" cihazın donanım çözücüsünü kullanır (hızlı, az pil). Bazı TV kutularının donanım çözücüsü
-// belirli yayınlarda (çoğunlukla yüksek bithızlı FHD) bozuk, yeşil/beyaz ya da donuk kare verir; "Yazılım öncelikli"
-// yazılım çözücüyü başa alır (daha yavaş, işlemciyi yorar ama bu yayınları genelde düzgün gösterir).
-// Değerler Android tarafındaki IptvPlayerPlugin.cleanDecoder ile aynı adlardadır.
+// Android Media3 görüntü çözücü tercihleri.
+// Otomatik cihazın kendi sıralamasını kullanır; diğer kipler donanım/yazılım çözücü sırasını değiştirir.
 export const DECODER_MODES = [
   ['auto', 'Otomatik'],
+  ['hardware', 'Donanım öncelikli'],
   ['software', 'Yazılım öncelikli'],
 ];
 export const DEFAULT_DECODER = 'auto';
