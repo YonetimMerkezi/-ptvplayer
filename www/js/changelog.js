@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 71,
+    title: 'Vitrin afişinin kenarı her ekranda yumuşak',
+    items: [
+      'Geniş görseli olmayan dizi ve filmlerde afişin sağ kenarındaki keskin çizgi, 16:9’dan geniş TV ekranlarında kalıyordu; afiş artık kendi oranında bir kutuda durur ve iki kenarı da ekran oranından bağımsız olarak arka plana karışır'
+    ],
+  },
+  {
     id: 70,
     title: 'Geniş görseli olmayan filmlerde de tam arka plan',
     items: [

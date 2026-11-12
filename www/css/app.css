@@ -227,7 +227,7 @@ html.hero-on #hero-bg.has { display: block; opacity: 1; }
 html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !important; }
 #hero-bg i { position: absolute; inset: 0; background: center 22% / cover no-repeat; opacity: 0; transition: opacity 0.4s ease; }
 #hero-bg i.on { opacity: 1; }
-#hero-bg i.poster { left: 56%; background-size: contain; background-position: left center; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%, #000 72%, transparent 85%); mask-image: linear-gradient(90deg, transparent 0, #000 30%, #000 72%, transparent 85%); } /* afiş sağda bütün; iki kenarı arkadaki yansımaya karışır */
+#hero-bg i.poster { left: auto; right: 5%; width: calc(100vh * var(--pr, 0.667)); background-size: 100% 100%; background-position: center; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28%, #000 72%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 28%, #000 72%, transparent 100%); } /* afiş sağda, kendi en-boy oranında bütün; iki kenarı (afişe göre) arkadaki yansımaya karışır */
 #hero-bg canvas.glow { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.4s ease; } /* afişin bulanık yansıması: sağdaki afişin arkasında ekranı doldurur */
 #hero-bg canvas.glow.show { opacity: 0.6; }
 #hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.62) 38%, rgba(0, 0, 0, 0.12) 78%, rgba(0, 0, 0, 0.5) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.95) 100%); } /* kenarları gölgeli: sol-sağ ve üst-alt */

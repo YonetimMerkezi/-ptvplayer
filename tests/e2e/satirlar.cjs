@@ -434,7 +434,17 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.waitForFunction(() => /\/logo\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => i.style.backgroundImage).join()), null, { timeout: 8000 });
     st = await bgState(page);
     ok(st.has && st.poster, 'ayrıntı gelmeyince afiş yedek olarak çizildi ve "poster" düzeninde (sağda, bütün)');
-    ok((await page.evaluate(() => getComputedStyle(document.querySelector('#hero-bg i.on')).backgroundSize)) === 'contain', 'afiş kırpılmadan (contain) gösteriliyor');
+    const box = await page.evaluate(async () => {
+      const i = document.querySelector('#hero-bg i.on');
+      const r = i.getBoundingClientRect();
+      const cs = getComputedStyle(i);
+      const im = new Image();
+      im.src = i.style.backgroundImage.replace(/^url\("?|"?\)$/g, '');
+      await im.decode().catch(() => {});
+      return { ratio: r.width / r.height, want: im.naturalWidth && im.naturalHeight ? Math.min(1.2, Math.max(0.5, im.naturalWidth / im.naturalHeight)) : 0.667, bs: cs.backgroundSize, mask: cs.maskImage || cs.webkitMaskImage || '', right: innerWidth - r.right };
+    });
+    ok(box.bs === '100% 100%' && Math.abs(box.ratio - box.want) < 0.03 && box.right > 0, `afiş kendi oranında bir kutuda bütün gösteriliyor, kırpılmıyor (kutu ${box.ratio.toFixed(2)}, afiş ${box.want.toFixed(2)})`);
+    ok(/linear-gradient/.test(box.mask), 'afişin iki kenarı maske ile yumuşatılıyor');
     // arkasında afişin bulanık yansıması ekranı doldurur: sağdaki afişten uzakta (sol-orta) arka plan siyah değil, afişin rengini taşır
     await sleep(700);
     ok(await page.evaluate(() => { const c = document.querySelector('#hero-bg canvas.glow'); return c.classList.contains('show') && c.width === 64 && getComputedStyle(c).opacity > 0.5; }), 'afiş yansıması açık ve görünür');

@@ -885,6 +885,7 @@ function paintHeroBg(urls, nWide = urls.length) {
       const poster = n >= nWide;
       to.style.backgroundImage = `url(${JSON.stringify(url)})`;
       to.classList.toggle('poster', poster); // dikey afiş sağda bütün gösterilir (kırpılıp büyütülmez), arkasında bulanık yansıması
+      if (poster) to.style.setProperty('--pr', String(im.naturalWidth && im.naturalHeight ? Math.min(1.2, Math.max(0.5, im.naturalWidth / im.naturalHeight)) : 0.667)); // kutu afişin oranında: kenar solması afişin kendi kenarına oturur
       glow.classList.toggle('show', poster);
       if (poster) paintGlow(glow, im);
       to.classList.add('on');
