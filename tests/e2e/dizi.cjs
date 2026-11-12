@@ -28,7 +28,7 @@ function fakeSites() {
       const start = new Date(now + 3 * 3600e3);
       start.setUTCHours(7, 0, 0, 0); // 10:00 Europe/Istanbul
       const s = start.getTime();
-      ch.trt1.p.push([s, s + 90 * 60000, 'EPG Dizisi', '', 'Dizi', '5. Bölüm', 'Yeni Bölüm']);
+      ch.trt1.p.push([s, s + 90 * 60000, 'EPG Dizisi', '', 'Dizi', '5. Bölüm', 'n']);
     }
     return { v: 1, at: now, from: now - 864e5, to: now + 2 * 864e5, tz: 'Europe/Istanbul', sources: [], ch };
   }
