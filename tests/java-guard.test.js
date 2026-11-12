@@ -362,7 +362,7 @@ test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yal
   assert.match(kaynak, /public void setDecoder\(/, 'setDecoder Java\'da yok');
   assert.equal(typeof pl.setDecoder, 'function', 'setDecoder köprüde yok');
   const { DECODER_MODES } = await import('../www/js/decoder.js');
-  assert.match(kaynak, /private static String cleanDecoder\(String v\) \{\s*return "software"\.equals\(v\) \? v : "auto";/, 'bilinmeyen kip otomatik sayılmalı');
+  assert.match(kaynak, /private static String cleanDecoder\(String v\) \{\s*return "software"\.equals\(v\) \|\| "hardware"\.equals\(v\) \? v : "auto";/, 'bilinmeyen kip otomatik sayılmalı');
   for (const [id] of DECODER_MODES) assert.match(kaynak, new RegExp('"' + id + '"'), id + ' kipi yerelde işlenmeli');
   const sel = kaynak.match(/SOFTWARE_FIRST = [\s\S]*?\n    \};/);
   assert.ok(sel, 'SOFTWARE_FIRST seçici bulunmalı');
@@ -370,7 +370,7 @@ test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yal
   assert.match(sel[0], /startsWith\("video\/"\)\) return all/, 'ses ve diğer türlerin sırası değişmemeli');
   assert.ok(sel[0].indexOf('if (i.softwareOnly)') < sel[0].indexOf('if (!i.softwareOnly)'), 'yazılım çözücüler donanımın önüne alınmalı');
   assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\)/, 'seçici hem ses işlemcili hem sade kurulumda uygulanmalı');
-  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST : compatMode \? SOFTWARE_FIRST_SD : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı; uyumlu mod yazılım çözücüyü yalnız H.264/MPEG-2 için başa alır, kullanıcının "yazılım" ayarı hepsini');
+  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST[\s\S]*?"hardware"\.equals\(decoderMode\) \? HARDWARE_FIRST[\s\S]*?compatMode \? SOFTWARE_FIRST_SD : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı; uyumlu mod yazılım çözücüyü yalnız H.264/MPEG-2 için başa alır, kullanıcının "yazılım" ayarı hepsini');
   assert.match(kaynak, /SOFTWARE_FIRST_SD[\s\S]*?"video\/avc"\.equals\(mimeType\)[\s\S]*?"video\/mpeg2"\.equals\(mimeType\)[\s\S]*?SOFTWARE_FIRST\.getDecoderInfos[\s\S]*?MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'HEVC (UHD) uyumlu modda donanım çözücüde kalmalı: yazılım çözücü yetişemez');
   assert.match(kaynak, /changed && player != null && !curUrl\.isEmpty\(\)\) \{[\s\S]*?startPlayback\(curUrl/, 'kip değişince açık yayın yeniden kurulmalı');
   assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /setDecoder: call\('setDecoder'\)/);
@@ -495,7 +495,7 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   assert.match(kaynak, /!p\.isPlaying\(\)/);
   assert.match(kaynak, /getWindowVisibility\(\) != View\.VISIBLE/);
   // uyumlu mod: yazılım çözücü başta + TS erişim birimi/anahtar kare ayrıştırması geniş; varsayılan modda ayar yok
-  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST : compatMode \? SOFTWARE_FIRST_SD/);
+  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST[\s\S]*?"hardware"\.equals\(decoderMode\) \? HARDWARE_FIRST[\s\S]*?compatMode \? SOFTWARE_FIRST_SD/);
   assert.match(kaynak, /if \(compatMode\) extractors\.setTsExtractorFlags\(DefaultTsPayloadReaderFactory\.FLAG_DETECT_ACCESS_UNITS \| DefaultTsPayloadReaderFactory\.FLAG_ALLOW_NON_IDR_KEYFRAMES\)/);
   assert.match(kaynak, /new DefaultMediaSourceFactory\(base, extractors\)/);
   // aynı yayına yeniden bağlanmada (keepRec) uyumlu mod sürer; başka yayına geçince kapanır
