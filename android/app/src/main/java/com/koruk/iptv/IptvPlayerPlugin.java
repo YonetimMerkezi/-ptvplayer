@@ -411,7 +411,9 @@ public class IptvPlayerPlugin extends Plugin {
         // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
         if (tap) base = new TapDataSource.Factory(base);
-        final MediaCodecSelector selector = "software".equals(decoderMode) ? SOFTWARE_FIRST : compatMode ? SOFTWARE_FIRST_SD : MediaCodecSelector.DEFAULT;
+        final MediaCodecSelector selector = "software".equals(decoderMode) ? SOFTWARE_FIRST
+                : "hardware".equals(decoderMode) ? HARDWARE_FIRST
+                : compatMode ? SOFTWARE_FIRST_SD : MediaCodecSelector.DEFAULT;
         // Uyumlu modda TS ayrıştırması geniş tutulur: erişim birimi sınırları AUD olmadan da bulunur, IDR olmayan anahtar kareler de başlangıç sayılır
         // (aksi halde bazı yayıncı kodlayıcılarında görüntü hiç çizilmez ya da donar). Varsayılanda hiçbir şey değişmez.
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
@@ -595,7 +597,7 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     private static String cleanDecoder(String v) {
-        return "software".equals(v) ? v : "auto";
+        return "software".equals(v) || "hardware".equals(v) ? v : "auto";
     }
 
     // Video için yazılım çözücüleri donanım çözücülerinin önüne alır (sıralama kendi içinde korunur); ses ve diğer türler değişmez.
@@ -606,6 +608,16 @@ public class IptvPlayerPlugin extends Plugin {
         List<MediaCodecInfo> sorted = new ArrayList<>(all.size());
         for (MediaCodecInfo i : all) if (i.softwareOnly) sorted.add(i);
         for (MediaCodecInfo i : all) if (!i.softwareOnly) sorted.add(i);
+        return sorted;
+    };
+
+    // Donanım öncelikli kip: video çözücülerinde donanım kodlayıcılarını öne alır; yoksa Media3'ün fallback mekanizması diğerlerini deneyebilir.
+    private static final MediaCodecSelector HARDWARE_FIRST = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
+        List<MediaCodecInfo> all = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+        if (mimeType == null || !mimeType.startsWith("video/")) return all;
+        List<MediaCodecInfo> sorted = new ArrayList<>(all.size());
+        for (MediaCodecInfo i : all) if (!i.softwareOnly) sorted.add(i);
+        for (MediaCodecInfo i : all) if (i.softwareOnly) sorted.add(i);
         return sorted;
     };
 
