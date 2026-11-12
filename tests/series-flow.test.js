@@ -101,7 +101,7 @@ test('loadSeriesWeek: haftalık sayfa saat verir, gün sayfaları güne ayırır
     [dayPageUrl(4, B)]: new Error('HTTP 503'),
   };
   const net = fakeNet(pages);
-  const r = await loadSeriesWeek({ net, base: B });
+  const r = await loadSeriesWeek({ net, base: B, freeLoader: async () => ({ ch: {} }) });
   assert.equal(r.via, '1001dizi');
   assert.deepEqual(r.days.map((d) => d.length), [2, 0, 0, 1, 0, 0, 0]);
   assert.equal(r.days[3][0].time, '20:30');
