@@ -206,7 +206,8 @@ function freeDiziDays(free, nowMs) {
       if (offset < 0 || kindOf({ t: String(p[2] || ''), c: String(p[4] || '') }) !== 'dizi') continue;
       const title = String(p[2] || '').trim();
       if (!title) continue;
-      const status = String(p[6] || '').trim();
+      const flag = String(p[6] || '').trim().toLowerCase();
+      const status = flag === 'n' ? 'Yeni Bölüm' : flag === 'r' ? 'Tekrar' : flag === 'l' ? 'Canlı' : flag;
       const slug = 'epg-' + fold(title).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 56) + '-' + chanKey(channelName);
       days[istDayIndex(starts[offset])].push({
         slug, title, channel: channelName, time: istClock.format(new Date(startAt)),
