@@ -21,13 +21,27 @@ const TODAY_EXTRA = [
 ];
 
 function fakeSites() {
-  const st = { mode: 'ok', sin: 'ok', calls: [], sinCalls: [] };
+  const st = { mode: 'ok', epg: 'empty', calls: [] };
   const todayIdx = () => (new Date().getDay() + 6) % 7;
   const dayPage = (idx) => `<html><body>${MENU}${[...COMMON, ...(idx === todayIdx() ? TODAY_EXTRA : [])].map((c) => card(c[0], c[1], c[2], '', c[4], c[5])).join('')}<footer><a href="/iletisim">İletişim</a></footer></body></html>`;
   const weekPage = () => `<html><body>${MENU}${[...COMMON, ...TODAY_EXTRA].map((c) => card(...c)).join('')}</body></html>`;
   const slugs = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
   const SIN = `<html><body><a href="/mobileweb/tv-dizisi/halef"><b>Halef</b></a><p>NOW - 20:00</p><p>42. Bölüm</p></body></html>`;
+  function freeEpg() {
+    const now = Date.now();
+    const ch = Object.fromEntries(['trt1', 'kanald', 'atv', 'show', 'star', 'tv8', 'now', 'kanal7'].map((id) => [id, { n: id.toUpperCase(), p: [] }]));
+    if (st.epg === 'dizi') {
+      const start = new Date(now);
+      start.setHours(10, 0, 0, 0);
+      const s = start.getTime();
+      ch.trt1.p.push([s, s + 90 * 60000, 'EPG Dizisi', '', 'Dizi', '5. Bölüm', 'Yeni Bölüm']);
+    }
+    return { v: 1, at: now, from: now - 864e5, to: now + 2 * 864e5, tz: 'Europe/Istanbul', sources: [], ch };
+  }
   async function install(ctx) {
+    const epgRoute = (route) => route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(freeEpg()) });
+    await ctx.route('https://raw.githubusercontent.com/YonetimMerkezi/-ptvplayer/epg-data/epg.json*', epgRoute);
+    await ctx.route('https://cdn.jsdelivr.net/gh/YonetimMerkezi/-ptvplayer@epg-data/epg.json*', epgRoute);
     await ctx.route('https://1001dizi.net/**', (route) => {
       const url = route.request().url();
       st.calls.push(url);
@@ -38,18 +52,13 @@ function fakeSites() {
       if (body == null) return route.fulfill({ status: 404, headers: CORS, body: 'yok' });
       return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/html; charset=utf-8' }, body });
     });
-    await ctx.route('https://m.sinemalar.com/**', (route) => {
-      st.sinCalls.push(route.request().url());
-      if (st.sin === 'fail') return route.fulfill({ status: 403, headers: CORS, body: 'yasak' });
-      return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/html; charset=utf-8' }, body: SIN });
-    });
     await ctx.route('https://1001dizi.net/i/**', (route) => route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'image/png' }, body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }));
   }
   return { st, install };
 }
 
 async function diziSection({ browser, base, mock, ok, sleep }) {
-  console.log('dizi akışı: 1001dizi / sinemalar');
+  console.log('dizi akışı: 1001dizi / ücretsiz EPG');
   const sites = fakeSites();
   const mk = async () => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true });
@@ -178,8 +187,9 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
 
-  // ---------------------------------------------------------------- 2) 1001dizi bozuk → sinemalar yedeği (yalnız bugün)
+  // ---------------------------------------------------------------- 2) 1001dizi bozuk → ücretsiz EPG yedeği (bugün + yarın)
   sites.st.mode = 'empty';
+  sites.st.epg = 'dizi';
   sites.st.calls.length = 0;
   const B2 = await mk();
   await openFlow(B2.page);
@@ -194,19 +204,19 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await B2.page.click('#sf-note [data-diag]');
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'Ayrıntıyı gizle düğmesi kapatır');
   await B2.page.click('#sf-days [data-pos="2"]');
-  ok(/yalnız bugünün listesini verdi/.test(await B2.page.textContent('#sf-list')), 'başka gün seçilince açıklayıcı boş durum');
+  ok(/yalnızca bugün ve yarın/.test(await B2.page.textContent('#sf-list')), 'başka gün seçilince açıklayıcı boş durum');
   await B2.ctx.close();
 
-  // ---------------------------------------------------------------- 3) hiçbir kaynak yok → teşhisli hata ve yeniden dene
+  // ---------------------------------------------------------------- 3) hiçbir kaynakta dizi kaydı yok → teşhisli hata ve yeniden dene
   sites.st.mode = 'fail';
-  sites.st.sin = 'fail';
+  sites.st.epg = 'empty';
   const C = await mk();
   await openFlow(C.page);
   await C.page.waitForSelector('#sf-retry', { timeout: 20000 });
   const det = await C.page.textContent('#sf-list');
   ok(/Dizi akışı alınamadı/.test(det) && /haftalık/.test(det) && /sinemalar/.test(det), 'iki kaynak da yokken nedenler yazılı: ' + det.replace(/\s+/g, ' ').slice(0, 160));
   sites.st.mode = 'ok';
-  sites.st.sin = 'ok';
+  sites.st.epg = 'empty';
   await C.page.click('#sf-retry');
   await C.page.waitForSelector('#sf-list .sf-r', { timeout: 15000 });
   ok((await rowsOf(C.page)).length === 5, '“Yeniden dene” ile liste geldi');
