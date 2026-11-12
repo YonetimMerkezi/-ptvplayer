@@ -346,7 +346,7 @@ export async function loadSeriesWeek({ net, base = DIZI_BASE, timeoutMs = 20000,
   if (freeCount) {
     const epgTotal = freeDays[todayIdx].length + freeDays[tomorrowIdx].length;
     notes.unshift('1001dizi: satır yok (' + (d1001 || 'kaynak yanıt vermedi') + ')');
-    return { days: freeDays, via: 'ücretsiz EPG', failed, coverageDays: 2, note: 'Ücretsiz EPG: bugün ve yarın için ' + epgTotal + ' dizi kaydı', epgCount: freeCount, limitedDays: true };
+    return { days: freeDays, via: 'ücretsiz EPG', failed, coverageDays: 2, note: '1001dizi: satır yok (' + (d1001 || 'kaynak yanıt vermedi') + '); ücretsiz EPG: bugün ve yarın için ' + epgTotal + ' dizi kaydı', epgCount: freeCount, limitedDays: true };
   }
   notes.unshift('1001dizi: satır yok (' + (d1001 || 'kaynak yanıt vermedi') + ')');
   if (!freeError) notes.push('ücretsiz EPG: dizi kategorisinde güncel kayıt bulunamadı');
