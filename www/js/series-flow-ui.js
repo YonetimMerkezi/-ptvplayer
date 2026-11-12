@@ -3,6 +3,7 @@
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { WEEKDAYS, dayIndex, loadSeriesWeek } from './series-flow.js';
+import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 import { MATCH_LEAD_DEFAULT, leadLabel } from './plan.js';
 
@@ -43,19 +44,17 @@ export function openSeriesFlow(env) {
   const root = page.el;
   const q = (s) => $(s, root);
 
-  const dayStart0 = () => {
-    const d = new Date(now());
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+  const dayStart0 = () => istDayStart(now(), 0);
+  // Pozisyon p için: İstanbul takviminde Pazartesi tabanlı gün sırası ve gün başlangıcı.
+  const dayOf = (p) => {
+    const from = istDayStart(now(), p);
+    return { idx: dayIndex(from), from };
   };
-  // Pozisyon p için: Pazartesi tabanlı gün sırası ve o günün başlangıcı
-  const dayOf = (p) => ({ idx: (dayIndex(now()) + p) % 7, from: (() => { const d = new Date(dayStart0()); d.setDate(d.getDate() + p); return d.getTime(); })() });
   const startOf = (from, time) => {
     const m = /^(\d{1,2}):(\d{2})$/.exec(time || '');
     if (!m) return null;
-    const d = new Date(from);
-    d.setHours(Number(m[1]), Number(m[2]), 0, 0);
-    return d.getTime();
+    const d = new Date(from + IST_MS);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), Number(m[1]), Number(m[2])) - IST_MS;
   };
 
   const remIds = () => {
@@ -89,7 +88,7 @@ export function openSeriesFlow(env) {
     if (chan && !chs.includes(chan)) chan = '';
     q('#sf-chs').innerHTML = chs.length > 1 ? `<button class="chip${chan ? '' : ' on'}" data-chan="">Tümü</button>` + chs.map((c) => `<button class="chip${c === chan ? ' on' : ''}" data-chan="${esc(c)}">${esc(c)}</button>`).join('') : '';
 
-    const when = new Date(from).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const when = new Date(from).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', weekday: 'long', day: 'numeric', month: 'long' });
     page.setTitle(`Dizi akışı · ${when}`);
     const note = q('#sf-note');
     const diag = q('#sf-diag');
