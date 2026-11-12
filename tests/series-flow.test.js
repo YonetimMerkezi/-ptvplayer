@@ -137,3 +137,25 @@ test('parseSinemalar: dizi yol parçalı bağlantılar kart sayılır', () => {
   assert.equal(r.rows.length, 1);
   assert.deepEqual({ t: r.rows[0].title, c: r.rows[0].channel, s: r.rows[0].time }, { t: 'Halef', c: 'NOW', s: '20:00' });
 });
+
+test('parse1001: kartın kendi görselindeki kanal, metne kayan komşu kanaldan üstündür (Daha 17: Kanal D, TRT 1 değil)', () => {
+  // Kart başlığından sonra gelen "TRT 1 - 20:00" komşu karta aittir ama bu kartın metin akışına düşmüş; görsel alt metni "Daha 17, Kanal D"
+  const html =
+    `<a href="${B}/dizi-daha-17"><img alt="Daha 17, Kanal D"></a><a href="${B}/dizi-daha-17"><b>Daha 17</b></a><span>TRT 1 - 20:00</span><span>8. Bölüm</span>` +
+    `<a href="${B}/dizi-tuzlu-kahve"><img alt="Tuzlu Kahve, TRT 1"></a><a href="${B}/dizi-tuzlu-kahve"><b>Tuzlu Kahve</b></a><span>TRT 1 - 20:00</span><span>5. Bölüm</span>`;
+  const r = parse1001(html, B);
+  assert.deepEqual(r.rows.map((x) => [x.title, x.channel]), [['Daha 17', 'Kanal D'], ['Tuzlu Kahve', 'TRT 1']]);
+});
+
+test('parse1001: alt metin kanalı metindekini içeriyorsa metin korunur; afiş açıklaması kanal sayılmaz', () => {
+  const a = parse1001(`<a href="${B}/dizi-x"><img alt="X, Kanal D HD"></a><a href="${B}/dizi-x"><b>X</b></a><span>Kanal D - 21:00</span><span>3. Bölüm</span>`, B);
+  assert.equal(a.rows[0].channel, 'Kanal D', 'Kanal D, “Kanal D HD” içinde geçtiği için metin korunur');
+  const b = parse1001(`<a href="${B}/dizi-y"><img alt="Y, dizi afişi"></a><a href="${B}/dizi-y"><b>Y</b></a><span>ATV - 20:00</span><span>3. Bölüm</span>`, B);
+  assert.equal(b.rows[0].channel, 'ATV');
+});
+
+test('parse1001: teşhis ham kartları içerir (metin ve görsel alt metni)', () => {
+  const r = parse1001(cardA('s', 'S Dizisi', 'Star TV', '20:00', '1. Bölüm', ''), B);
+  assert.equal(r.diag.raw.length, 1);
+  assert.match(r.diag.raw[0], /^s: .*Star TV - 20:00.*\[alt: S Dizisi, Star TV\]$/);
+});

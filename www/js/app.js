@@ -21,6 +21,7 @@ import { sortItems, SORTS, isSortMode } from './sort.js';
 import {
   arrange, toggleHidden, move, resetOrderAndHidden, hiddenGroupNames, addFolder, renameFolder, deleteFolder,
   toggleInFolder, moveInFolder, folderOf, groupKey, folderKey, isLocked, toggleLocked, lockedGroupNames,
+  smartSort, newestItems, topRatedItems, CAT_ORDERS, DEFAULT_CAT_ORDER, normalizeCatOrder,
 } from './cats.js';
 import { initNav, pushLayer, popLayer, topLayer } from './nav.js';
 import { nativePlugin as getNativePlugin } from './bridge.js';
@@ -549,6 +550,8 @@ function groupItems(kind) {
 function itemsOfGroup(kind, g) {
   if (g === '__recent') return recentItems(kind);
   if (g === '__cont') return continueItems(kind);
+  if (g === '__new') return newestItems(visibleAll(kind));
+  if (g === '__top') return topRatedItems(visibleAll(kind));
   if (g && g.startsWith('f:')) return folderItems(kind, folderOf(prefsOf(kind), g.slice(2)));
   if (g && g.startsWith('g:')) return inGroup(S.cat[CAT_KEY[kind]], g.slice(2));
   return visibleAll(kind);
@@ -559,7 +562,12 @@ function currentItems(kind) {
   const base = groupItems(kind);
   if (S.query) return search(base, S.query);
   const g = S.group[kind];
-  return g === '__recent' || g === '__cont' ? base : sortItems(base, S.sort[kind]);
+  return isFixedList(g) ? base : sortItems(base, S.sort[kind]);
+}
+
+// Kendi sırası olan özel listeler (son izlenen, devam et, yeni eklenenler, en çok puan alanlar): kullanıcı sıralaması uygulanmaz
+function isFixedList(g) {
+  return g === '__recent' || g === '__cont' || g === '__new' || g === '__top';
 }
 
 function recentItems(kind) {
@@ -611,7 +619,7 @@ function groupTitle(kind, g) {
     return f ? f.name : 'Klasör';
   }
   if (g.startsWith('g:')) return g.slice(2);
-  return { __all: 'Tümü', __recent: 'Son izlenen', __cont: 'Devam et' }[g] || g;
+  return { __all: 'Tümü', __recent: 'Son izlenen', __cont: 'Devam et', __new: 'Yeni eklenenler', __top: 'En çok puan alanlar' }[g] || g;
 }
 
 function browseMode(kind) {
@@ -635,7 +643,7 @@ function rowsOf(kind, cats) {
 
 function rowItems(kind, row) {
   const base = itemsOfGroup(kind, row.id);
-  return row.id === '__cont' ? base : sortItems(base, S.sort[kind]);
+  return isFixedList(row.id) ? base : sortItems(base, S.sort[kind]);
 }
 
 function shelfTile(kind, row, r, c) {
@@ -645,12 +653,16 @@ function shelfTile(kind, row, r, c) {
   return `<div class="sh-more" ${at} data-more><span class="sh-more-i">${icon('chev-r')}</span><b>Tümünü gör</b><small>${row.count}</small></div>`;
 }
 
-// Varsayılan sıra: klasörler, sonra sağlayıcının grupları.
+// Film ve dizi kategorileri: ayar "Netflix düzeni"yse öne çıkanlardan başlayan sıra, değilse sağlayıcının sırası. Canlı TV her zaman sağlayıcının sırasıdır.
+const catOrderMode = () => normalizeCatOrder(store.pref('set.catOrder', DEFAULT_CAT_ORDER));
+const providerGroups = (kind) => (isMv(kind) && catOrderMode() === 'smart' ? smartSort(S.groups[kind]) : S.groups[kind]);
+
+// Varsayılan sıra: klasörler, sonra grupların (Netflix düzeni ya da sağlayıcı) sırası.
 function categoryBase(kind) {
   const prefs = prefsOf(kind);
   return [
     ...prefs.folders.map((f) => ({ id: folderKey(f.id), name: f.name, count: folderItems(kind, f).length, folder: true })),
-    ...S.groups[kind].map((g) => ({ id: groupKey(g.name), name: g.name, count: g.count })),
+    ...providerGroups(kind).map((g) => ({ id: groupKey(g.name), name: g.name, count: g.count })),
   ];
 }
 
@@ -661,6 +673,12 @@ function categoryRows(kind) {
   else {
     const n = continueItems(kind).length;
     if (n) specials.push({ id: '__cont', name: 'Devam et', count: n, special: true });
+    if (catOrderMode() === 'smart') {
+      const nw = newestItems(visibleAll(kind)).length;
+      if (nw) specials.push({ id: '__new', name: 'Yeni eklenenler', count: nw, special: true });
+      const tp = topRatedItems(visibleAll(kind)).length;
+      if (tp) specials.push({ id: '__top', name: 'En çok puan alanlar', count: tp, special: true });
+    }
   }
   let rows = arrange(categoryBase(kind), prefs).map((r) => ({ ...r, hidden: prefs.hidden.includes(r.id), lockSet: isLocked(prefs, r.id), locked: lockEnabled() && isLocked(prefs, r.id) }));
   if (!S.catEdit) rows = rows.filter((r) => !r.hidden);
@@ -770,7 +788,7 @@ function drawCrumb(kind) {
   if (g != null) {
     $('#crumb-t').textContent = groupTitle(kind, g);
     $('#crumb-n').textContent = S.items.length;
-    const sortable = !S.query && g !== '__recent' && g !== '__cont';
+    const sortable = !S.query && !isFixedList(g);
     $('#crumb-sort').hidden = !sortable;
     $('#crumb-sort').classList.toggle('on', S.sort[kind] !== 'default');
   }
@@ -3364,6 +3382,7 @@ function generalSheet() {
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
       `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
+      `<div class="sel-row"><span>Film ve dizi kategori sırası<small>Netflix düzeni: yeni eklenenler, platformlar, Türkçe içerik ve en çok izlenen türler önce; yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir</small></span><select id="g-cord">${optionsHtml(CAT_ORDERS, catOrderMode())}</select></div>` +
       `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Netflix gibi görünümde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
@@ -3404,6 +3423,10 @@ function generalSheet() {
       $('#g-rcap', body).addEventListener('change', (e) => {
         store.setPref('set.rowCap', normalizeRowCap(e.target.value));
         renderTab(); // satırlar yeniden kurulur
+      });
+      $('#g-cord', body).addEventListener('change', (e) => {
+        store.setPref('set.catOrder', normalizeCatOrder(e.target.value));
+        renderTab(); // kategoriler yeni sırayla yeniden kurulur
       });
       $('#g-mv', body).addEventListener('change', (e) => {
         store.setPref('set.mvView', MV_VIEWS.some(([k]) => k === e.target.value) ? e.target.value : 'auto');

@@ -59,13 +59,13 @@ export function pickNext(cur, rects, dir) {
       prim = Math.max(0, r.t - cur.b);
       far = Math.max(0, r.b - cur.b);
       gap = Math.max(0, Math.max(cur.l, r.l) - Math.min(cur.r, r.r));
-      off = Math.abs(rx - cx);
+      off = Math.max(0, Math.abs(rx - cx) - (r.r - r.l) / 2); // kaynağın merkezine yatay uzaklık; hedefin kapladığı aralığın içindeyse 0
     } else {
       if (!(ry < cy && (inside || r.t < cur.t))) continue;
       prim = Math.max(0, cur.t - r.b);
       far = Math.max(0, cur.t - r.t);
       gap = Math.max(0, Math.max(cur.l, r.l) - Math.min(cur.r, r.r));
-      off = Math.abs(rx - cx);
+      off = Math.max(0, Math.abs(rx - cx) - (r.r - r.l) / 2);
     }
     if (vertical) {
       // Android'in odak bulucusu gibi: kaynağın altındaki/üstündeki "ışında" (yatayda örtüşen) aday, ışın dışındakine ancak ondan belirgin

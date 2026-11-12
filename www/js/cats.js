@@ -3,6 +3,7 @@
 //
 // prefs = { order: [kimlik], hidden: [kimlik], locked: [kimlik], folders: [{ id, name, items: [öğe kimliği] }] }
 // Kimlikler: grup "g:<ad>", klasör "f:<id>".
+import { fold } from './util.js';
 
 export const emptyPrefs = () => ({ order: [], hidden: [], locked: [], folders: [] });
 
@@ -122,4 +123,67 @@ export function toggleInFolder(prefs, id, itemId) {
   const on = !f.items.includes(itemId);
   const items = on ? [...f.items, itemId] : f.items.filter((x) => x !== itemId);
   return { prefs: { ...prefs, folders: prefs.folders.map((x) => (x.id === id ? { ...x, items } : x)) }, on };
+}
+
+// ---- Netflix düzeni: sağlayıcının kategori sırası yerine öne çıkanlardan başlayan sıra (film ve diziler). Kullanıcının elle verdiği sıra bunun üstüne uygulanır.
+export const CAT_ORDERS = [
+  ['smart', 'Netflix düzeni (öne çıkanlar önce)'],
+  ['provider', 'Sağlayıcının sırası'],
+];
+export const DEFAULT_CAT_ORDER = 'smart';
+export const normalizeCatOrder = (v) => (CAT_ORDERS.some(([k]) => k === v) ? v : DEFAULT_CAT_ORDER);
+
+const words = (name) => ` ${fold(name).replace(/[^a-z0-9+]+/g, ' ').trim()} `;
+const RE_ADULT = / (xxx|adult|adults|yetiskin|yetiskinler|erotik|porn|porno|18\+|\+18|18 plus) /;
+const RE_FRESH = / (yeni|yeniler|new|vizyon|vizyonda|guncel|son eklenen|son eklenenler|latest|recent|trend|trending|populer|popular|top|en iyi|cok izlenen|en cok izlenen) /;
+const RE_PLATFORM = / (netflix|disney|amazon|prime|hbo|max|blutv|exxen|gain|tabii|tod|apple|paramount|mubi|puhutv|hulu|starz|showmax) /;
+const RE_FOREIGN = /^ (en|us|uk|de|ger|fr|es|it|ar|ru|nl|pl|pt|br|gr|hin|in|kr|jp|cn|az|ro|bg|sr|al|ex|ku|yabanci|yabanci film|yabanci dizi|arapca|hint|hindi|kore|korece|rusca|almanca|ingilizce|fransizca|ispanyolca|italyanca|japonca|cince) /;
+// En çok izlenen türden aza doğru; eşleşmeyen tür sona kalır
+const GENRES = [
+  /aksiyon|action/, /komedi|comedy/, /dram|drama/, /gerilim|thriller/, /macera|adventure/, /bilim kurgu|sci fi|scifi|science fiction/, /korku|horror/, /romant|romance|ask /,
+  /animasyon|animation|anime|cocuk|kids|family|aile/, /polisiye|suc |crime|gizem|mystery/, /fantastik|fantasy/, /belgesel|documentary/, /savas|war/, /tarih|history|biyografi|biography/, /muzikal|musical|music/, /western|vahsi bati/, /spor|sport/,
+];
+const genreIndex = (w) => {
+  const i = GENRES.findIndex((re) => re.test(w));
+  return i < 0 ? GENRES.length : i;
+};
+
+// groups: [{ name, ... }] sağlayıcı sırasında. Sıra anahtarı: yetişkin en sonda; sonra yeni/trend, platformlar (Netflix, Disney…), öteki;
+// her birinde Türkçe/belirsiz içerik yabancı dillerden önce; sonra tür popülerliği; eşitlikte sağlayıcı sırası korunur. Yeni bir dizi döndürür.
+export function smartSort(groups, now = Date.now()) {
+  const year = new Date(now).getFullYear();
+  const key = (g, i) => {
+    const w = words(g.name);
+    const adult = RE_ADULT.test(w) ? 1 : 0;
+    const years = [...w.matchAll(/ (20\d\d) /g)].map((m) => Number(m[1]));
+    const fresh = RE_FRESH.test(w) || years.some((y) => y >= year - 1 && y <= year + 1);
+    const tier = fresh ? 0 : RE_PLATFORM.test(w) ? 1 : 2;
+    const foreign = RE_FOREIGN.test(w) ? 1 : 0;
+    return [adult, tier, foreign, genreIndex(w), i];
+  };
+  return groups
+    .map((g, i) => ({ g, k: key(g, i) }))
+    .sort((a, b) => {
+      for (let j = 0; j < a.k.length; j++) if (a.k[j] !== b.k[j]) return a.k[j] - b.k[j];
+      return 0;
+    })
+    .map((x) => x.g);
+}
+
+export const SPECIAL_MAX = 40;
+export const SPECIAL_MIN = 6; // bundan az yapımla "Yeni eklenenler" / "En çok puan alanlar" satırı anlamsız
+export const TOP_RATING = 4; // 5 üzerinden
+
+// "Yeni eklenenler": eklenme zamanı bilinenlerin en yenileri (M3U listelerinde zaman yoktur → satır çıkmaz)
+export function newestItems(items, max = SPECIAL_MAX) {
+  const dated = items.filter((it) => it.added > 0);
+  if (dated.length < SPECIAL_MIN) return [];
+  return dated.map((it, i) => ({ it, i })).sort((a, b) => b.it.added - a.it.added || a.i - b.i).slice(0, max).map((x) => x.it);
+}
+
+// "En çok puan alanlar": 5 üzerinden en az TOP_RATING puanlılar, puana göre
+export function topRatedItems(items, max = SPECIAL_MAX) {
+  const rated = items.filter((it) => Number(it.rating) >= TOP_RATING);
+  if (rated.length < SPECIAL_MIN) return [];
+  return rated.map((it, i) => ({ it, i })).sort((a, b) => Number(b.it.rating) - Number(a.it.rating) || a.i - b.i).slice(0, max).map((x) => x.it);
 }

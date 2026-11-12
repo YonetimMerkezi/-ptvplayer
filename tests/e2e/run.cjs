@@ -2268,9 +2268,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const hlay = await page.evaluate(() => {
     const b = document.querySelector('.health-pg .pg-body');
     const l = document.querySelector('#health-list');
-    return { bodyScrolls: b.scrollHeight > b.clientHeight + 1, listScrolls: l.scrollHeight >= l.clientHeight, listH: l.clientHeight };
+    const bb = b.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(b).paddingBottom) || 0;
+    return { bodyScrolls: b.scrollHeight > b.clientHeight + 1, listScrolls: l.scrollHeight >= l.clientHeight, listH: l.clientHeight, gap: Math.round(bb.bottom - pad - l.getBoundingClientRect().bottom) };
   });
-  ok(!hlay.bodyScrolls && hlay.listH > 150, 'sayfa gövdesi kaymıyor, liste ekranı dolduruyor (tek kaydırma alanı)');
+  // 915×412 yatay ekran + TV kenar payı: liste en az 1,5 satır görünür, gövdenin kalan boşluğunu doldurur (altında boşluk kalmaz)
+  ok(!hlay.bodyScrolls && hlay.listH > 100 && Math.abs(hlay.gap) <= 2, 'sayfa gövdesi kaymıyor, liste ekranı dolduruyor (tek kaydırma alanı): ' + JSON.stringify(hlay));
   const cat = await page.$$eval('#health-cat option', (o) => o.map((x) => [x.value, x.textContent]).find(([v]) => v.startsWith('g:')));
   await page.selectOption('#health-cat', cat[0]);
   const catN = Number(/\((\d+)\)\s*$/.exec(cat[1])[1]);
@@ -4071,6 +4074,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./uyari.cjs').uyariSection({ browser, base, mock, ok, sleep });
   await require('./takim.cjs').takimSection({ browser, base, mock, ok, sleep });
   await require('./dizi.cjs').diziSection({ browser, base, mock, ok, sleep });
+  await require('./kategori.cjs').kategoriSection({ browser, base, mock, ok, sleep });
 
   await browser.close();
   www.close();

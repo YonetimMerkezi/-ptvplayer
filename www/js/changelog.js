@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 81,
+    title: 'Film ve dizi kategorileri Netflix düzeninde, TV’de kumanda ve kenar düzeltmeleri',
+    items: [
+      'Film ve dizi kategorileri artık Netflix gibi sıralanır: önce “Devam et”, “Yeni eklenenler” ve “En çok puan alanlar” satırları, sonra yeni çıkanlar, platformlar (Netflix, Disney+…), Türkçe içerik ve en çok izlenen türler (Aksiyon, Komedi, Dram…); yabancı dil ve yetişkin kategoriler sonda. Kendi verdiğiniz sıra her zaman öncelikli',
+      'Genel ayarlar › “Film ve dizi kategori sırası” ile eski “Sağlayıcının sırası”na dönülebilir. “Yeni eklenenler” yalnız eklenme zamanı bilinen listelerde (Xtream) çıkar',
+      'TV’de sayfaların sol üstündeki geri düğmesi ve TV Rehberi’ndeki “Program ara” / “EPG yenile” düğmeleri artık üstten kesilmiyor: sayfalara kenar payı eklendi, odak halkası tam görünür',
+      'TV’de Ara sayfasında kumandayla arama kutusuna geçilemiyordu (yukarı tuşu geri okuna gidiyordu); artık sekme düğmelerinden yukarı basınca kutuya gelinir, Tamam’a basınca yazılır',
+      'Dizi akışı: bir dizi komşu kartın kanalıyla gösterilebiliyordu (ör. Daha 17 TRT 1 yerine Kanal D); artık görselin kendi kanal adı öncelikli. Yedek kaynak kullanılırsa “Ayrıntı” düğmesi nedenini ve okunan ham kartları gösterir'
+    ],
+  },
+  {
     id: 80,
     title: 'Dizi akışı',
     items: [

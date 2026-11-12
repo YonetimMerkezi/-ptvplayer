@@ -21,11 +21,12 @@ export function openSeriesFlow(env) {
   let err = null;
   let pos = 0; // 0 = bugün … 6 = bugünden 6 gün sonra
   let chan = ''; // kanal süzgeci ('' = hepsi)
+  let showDiag = false; // kaynak ayrıntısı (neden yedek kaynak, ayrıştırıcının gördüğü ham kartlar)
 
   const page = openPage({
     title: 'Dizi akışı',
     cls: 'td-pg sf-pg',
-    html: `<div class="chips" id="sf-days" role="group" aria-label="Gün"></div><div class="chips" id="sf-chs" role="group" aria-label="Kanal"></div><small class="st-upd" id="sf-note" aria-live="polite"></small><div id="sf-list" class="td-list"></div>`,
+    html: `<div class="chips" id="sf-days" role="group" aria-label="Gün"></div><div class="chips" id="sf-chs" role="group" aria-label="Kanal"></div><small class="st-upd" id="sf-note" aria-live="polite"></small><div class="hint sp-detail sf-diag" id="sf-diag" hidden></div><div id="sf-list" class="td-list"></div>`,
     mount: () => {},
   });
   const root = page.el;
@@ -80,10 +81,15 @@ export function openSeriesFlow(env) {
     const when = new Date(from).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
     page.setTitle(`Dizi akışı · ${when}`);
     const note = q('#sf-note');
+    const diag = q('#sf-diag');
+    const hasDiag = !!(data && (data.todayOnly || (data.failed && data.failed.length)) && (data.note || (data.raw && data.raw.length)));
     if (data) {
       const base = data.todayOnly ? `Yalnız bugün (${data.via}) · ` : `${data.via} · `;
-      note.textContent = err ? `Güncellenemedi · kayıtlı veri (${fmtClock(data.at)})` : `${base}Son güncelleme ${fmtClock(data.at)}${data.failed && data.failed.length ? ` · ${data.failed.length} gün alınamadı` : ''}`;
+      const text = err ? `Güncellenemedi · kayıtlı veri (${fmtClock(data.at)})` : `${base}Son güncelleme ${fmtClock(data.at)}${data.failed && data.failed.length ? ` · ${data.failed.length} gün alınamadı` : ''}`;
+      note.innerHTML = `${esc(text)}${hasDiag ? ` <button class="chip" data-diag>${showDiag ? 'Ayrıntıyı gizle' : 'Ayrıntı'}</button>` : ''}`;
     } else note.textContent = '';
+    diag.hidden = !(hasDiag && showDiag);
+    diag.textContent = hasDiag && showDiag ? [data.note, ...(data.raw || [])].filter(Boolean).join('\n') : '';
 
     const el = q('#sf-list');
     if (!data) {
@@ -171,6 +177,10 @@ export function openSeriesFlow(env) {
     const c = e.target.closest('[data-chan]');
     if (c) {
       chan = c.dataset.chan;
+      return draw();
+    }
+    if (e.target.closest('[data-diag]')) {
+      showDiag = !showDiag;
       return draw();
     }
     if (e.target.closest('[data-refresh]')) return refresh(true);

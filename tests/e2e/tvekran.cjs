@@ -70,8 +70,51 @@ async function tvekranSection({ browser, base, mock, ok, sleep }) {
       await page.keyboard.press('Escape');
       await sleep(300);
     }
+    // sayfaların üst kenarı: geri düğmesi ve araç çubuğu düğmeleri odak halkasıyla (5 px) birlikte ekranda ve kaydırılan gövdede kalır
+    await page.click('#btn-home').catch(() => {});
+    await page.waitForSelector('.tile.t-guide', { timeout: 5000 });
+    await page.click('.tile.t-guide');
+    await page.waitForSelector('.pg .guide-tools button', { timeout: 8000 });
+    await sleep(300);
+    const edge = await page.evaluate(() => {
+      const r = (q) => document.querySelector(q).getBoundingClientRect();
+      const bar = r('.pg-bar .icon-btn');
+      const body = r('.pg .pg-body');
+      const btns = [...document.querySelectorAll('.pg .guide-tools button')].map((b) => b.getBoundingClientRect());
+      return { backTop: Math.round(bar.top), backLeft: Math.round(bar.left), body: Math.round(body.top), btnTop: Math.min(...btns.map((b) => b.top)), btnRight: Math.max(...btns.map((b) => b.right)), w: innerWidth };
+    });
+    ok(edge.backTop >= 12 && edge.backLeft >= 12, `TV: geri düğmesi ekran kenarından içeride, odak halkası kesilmez (üst ${edge.backTop}, sol ${edge.backLeft})`);
+    ok(edge.btnTop - edge.body >= 6, `TV Rehberi: “Program ara” ve “EPG yenile” gövdenin üst kenarından uzak, halkaları kesilmez (${Math.round(edge.btnTop - edge.body)} px)`);
+    ok(edge.w - edge.btnRight >= 6, `TV Rehberi: sağ düğme sağ kenardan uzak (${Math.round(edge.w - edge.btnRight)} px)`);
+    await page.keyboard.press('Escape');
+    await sleep(300);
     ok(errs.length === 0, 'TV ayarlar: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
     await page.screenshot({ path: path.join(__dirname, 'shots', '15-tv-ayarlar.png') }).catch(() => {});
+    await ctx.close();
+  }
+
+  // TV: Ara sayfası — kumandayla arama kutusuna ulaşılır (sekme düğmelerinden yukarı basınca geri okuna kayıp kutuyu atlıyordu)
+  {
+    const { ctx, page, errs } = await open({ width: 960, height: 540 }, true);
+    await page.click('#h-search');
+    await page.waitForSelector('#gs-q');
+    await sleep(500);
+    const act = () => page.evaluate(() => { const a = document.activeElement; return a ? (a.id || (a.closest('#gs-kind') ? 'kind:' + a.textContent.trim() : a.getAttribute('aria-label') || a.tagName)) : ''; });
+    const kinds = await page.$$eval('#gs-kind button', (b) => b.map((x) => x.textContent.trim()));
+    let reached = [];
+    for (let i = 0; i < kinds.length; i++) {
+      // i. sekme düğmesine odaklan, yukarı bas
+      await page.evaluate((n) => document.querySelectorAll('#gs-kind button')[n].focus(), i);
+      await page.keyboard.press('ArrowUp');
+      reached.push(await act());
+    }
+    ok(reached.every((x) => x === 'gs-q'), 'TV Ara: her sekme düğmesinden (' + kinds.join(', ') + ') yukarı → arama kutusu: ' + reached.join(','));
+    await page.evaluate(() => document.querySelector('.gs-pg [data-close], .gs-pg .pg-bar button').focus());
+    await page.keyboard.press('ArrowDown');
+    ok((await act()) === 'gs-q', 'TV Ara: geri düğmesinden aşağı → arama kutusu: ' + (await act()));
+    await page.keyboard.press('Enter');
+    ok(await page.$eval('#gs-q', (i) => !i.readOnly && document.activeElement === i), 'TV Ara: Tamam’a basınca kutu düzenlemeye açılır (salt okunur değil)');
+    ok(errs.length === 0, 'TV Ara: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
     await ctx.close();
   }
 

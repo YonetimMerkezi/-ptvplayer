@@ -141,3 +141,18 @@ test('scrollStep: uzun içerik yarım ekran adımlarla kayar, uçta durur, odak 
   const tiny = { scrollHeight: 400.5, clientHeight: 400, scrollTop: 0 };
   assert.equal(scrollStep(tiny, 'down'), false, 'piksel altı taşma kaydırma sayılmaz');
 });
+
+test('pickNext: tam genişlik alan (arama kutusu) üstteki küçük düğme (geri) yerine, altındaki her düğmeden yukarı basınca seçilir', () => {
+  // Ara sayfası: başlıkta geri düğmesi, altında tam genişlik arama kutusu + sağda mikrofon, onun altında sekme düğmeleri
+  const back = R(8, 6, 44, 44);
+  const input = R(16, 60, 864, 44);
+  const mic = R(890, 60, 44, 44);
+  const chips = [R(16, 112, 214, 44), R(238, 112, 214, 44), R(460, 112, 214, 44), R(682, 112, 214, 44)];
+  const all = [back, input, mic, ...chips];
+  const up = (c) => all[pickNext(c, all, 'up')]; // kaynak kendi dikdörtgeniyle listede: pickNext onu atlar
+  for (const c of chips) assert.equal(up(c), input, 'her sekme düğmesinden yukarı → arama kutusu');
+  const down = (c) => all[pickNext(c, all, 'down')];
+  assert.equal(down(back), input, 'geri düğmesinden aşağı → arama kutusu');
+  assert.equal(down(input), chips[1], 'kutudan aşağı → ortasındaki sekme');
+  assert.equal(down(mic), chips[3], 'mikrofondan aşağı → hemen altındaki sekme');
+});

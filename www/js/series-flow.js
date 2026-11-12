@@ -151,7 +151,12 @@ function rowOf(c, base) {
     altTitle = alt.slice(0, i).trim();
     altChannel = alt.slice(i + 1).trim();
   }
-  if (!channel) channel = altChannel;
+  // Görsel alt metni kartın kendi görselidir; metin parçaları ise komşu karttan kayabilir. Kanal adları birbirini içermiyorsa (gerçekten çelişiyorsa) alt metindeki kanal geçerli;
+  // afiş/görsel açıklaması gibi görünen alt metinler kanal sayılmaz.
+  const aF = fold(altChannel);
+  const cF = fold(channel);
+  const altIsChannel = altChannel && altChannel.length <= 30 && !/afis|poster|gorsel|resim|kapak|fragman|dizisi$/.test(aF);
+  if (altIsChannel && (!channel || (!cF.includes(aF) && !aF.includes(cF)))) channel = altChannel;
   // Başlık: alt metindeki ad ile eşleşen bağlantı metni; yoksa ilk "meta olmayan" bağlantı metni; yoksa alt metindeki ad
   const pool = c.links.length ? c.links : toks;
   let title = '';
@@ -199,7 +204,9 @@ function parseCards(html, hrefRe, base) {
     rows.push(r);
   }
   const sample = rows[0] ? `${rows[0].title} | ${rows[0].channel} | ${rows[0].time || '—'}` : (cards[0] && cards[0].tokens.slice(0, 4).join(' | ')) || '';
-  return { rows: sortRows(rows), diag: { bytes: String(html || '').length, anchors, cards: cards.length, sample } };
+  // Ham kartlar (ilk 6): ayrıştırıcının gördüğü metin ve görsel alt metinleri — yanlış eşleşme olunca nedeni buradan okunur
+  const raw = cards.slice(0, 6).map((c) => `${c.slug}: ${c.tokens.slice(0, 8).join(' | ')}${c.alts.length ? ` [alt: ${c.alts.slice(0, 2).join(' | ')}]` : ''}`);
+  return { rows: sortRows(rows), diag: { bytes: String(html || '').length, anchors, cards: cards.length, sample, raw } };
 }
 
 // 1001dizi.net: dizi bağlantıları /dizi-<ad> biçimindedir
@@ -278,7 +285,7 @@ export async function loadSeriesWeek({ net, base = DIZI_BASE, sinemalarUrl = SIN
     if (r.rows.length) {
       const days2 = WEEKDAYS.map(() => []);
       days2[dayIndex(nowMs)] = r.rows;
-      return { days: days2, via: 'sinemalar', failed: [], note: [...notes, `sinemalar: ${r.rows.length} satır`].join(' · '), todayOnly: true };
+      return { days: days2, via: 'sinemalar', failed: [], note: [...notes, `sinemalar: ${r.rows.length} satır, ${r.diag.cards} kart`].join(' · '), todayOnly: true, raw: r.diag.raw };
     }
     notes.push(`sinemalar: satır yok (${r.diag.cards} kart, ${r.diag.anchors} dizi bağlantısı; örnek: ${r.diag.sample || '—'})`);
   } catch (e) {

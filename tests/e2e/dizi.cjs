@@ -187,6 +187,12 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   rows = await rowsOf(B2.page);
   ok(rows.length === 1 && rows[0].title === 'Halef' && rows[0].time === '20:00' && /NOW · 42\. Bölüm/.test(rows[0].sub), 'site yapısı değişince sinemalar yedeği kullanıldı: ' + rows.map((r) => r.title).join());
   ok(/Yalnız bugün \(sinemalar\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
+  ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'ayrıntı başta kapalı');
+  await B2.page.click('#sf-note [data-diag]');
+  const dg = await B2.page.textContent('#sf-diag');
+  ok(/1001dizi: satır yok/.test(dg) && /halef: .*NOW/.test(dg), 'Ayrıntı: yedeğe geçme nedeni ve ayrıştırıcının gördüğü ham kart yazılı: ' + dg.replace(/\s+/g, ' ').slice(0, 160));
+  await B2.page.click('#sf-note [data-diag]');
+  ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'Ayrıntıyı gizle düğmesi kapatır');
   await B2.page.click('#sf-days [data-pos="2"]');
   ok(/yalnız bugünün listesini verdi/.test(await B2.page.textContent('#sf-list')), 'başka gün seçilince açıklayıcı boş durum');
   await B2.ctx.close();
