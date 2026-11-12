@@ -179,12 +179,12 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await openFlow(B2.page);
   await B2.page.waitForSelector('#sf-list .sf-r', { timeout: 15000 });
   rows = await rowsOf(B2.page);
-  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\\. Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
-  ok(/Bugün \\+ yarın \\(ücretsiz EPG\\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
+  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\. Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
+  ok(/Bugün \+ yarın \(ücretsiz EPG\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'ayrıntı başta kapalı');
   await B2.page.click('#sf-note [data-diag]');
   const dg = await B2.page.textContent('#sf-diag');
-  ok(/1001dizi: satır yok/.test(dg) && /ücretsiz EPG: bugün ve yarın/.test(dg), 'Ayrıntı: yedeğe geçme nedeni ve EPG kapsamı yazılı: ' + dg.replace(/\\s+/g, ' ').slice(0, 160));
+  ok(/1001dizi: satır yok/.test(dg) && /ücretsiz EPG: bugün ve yarın/.test(dg), 'Ayrıntı: yedeğe geçme nedeni ve EPG kapsamı yazılı: ' + dg.replace(/\s+/g, ' ').slice(0, 160));
   await B2.page.click('#sf-note [data-diag]');
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'Ayrıntıyı gizle düğmesi kapatır');
   await B2.page.click('#sf-days [data-pos="2"]');
@@ -197,7 +197,7 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await openFlow(C.page);
   await C.page.waitForSelector('#sf-retry', { timeout: 20000 });
   const det = await C.page.textContent('#sf-list');
-  ok(/Dizi akışı alınamadı/.test(det) && /haftalık/.test(det) && /ücretsiz EPG/.test(det), 'ücretsiz kaynaklar dizi vermezken nedenler yazılı: ' + det.replace(/\\s+/g, ' ').slice(0, 160));
+  ok(/Dizi akışı alınamadı/.test(det) && /haftalık/.test(det) && /ücretsiz EPG/.test(det), 'ücretsiz kaynaklar dizi vermezken nedenler yazılı: ' + det.replace(/\s+/g, ' ').slice(0, 160));
   sites.st.mode = 'ok';
   sites.st.epg = 'empty';
   await C.page.click('#sf-retry');
