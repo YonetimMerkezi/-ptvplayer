@@ -1,0 +1,7 @@
+    482 es
+     87 ar
+     36 uk
+     33 fr
+     25 de
+     24 pt
+     21 otros

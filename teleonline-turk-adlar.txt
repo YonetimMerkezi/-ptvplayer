@@ -1,0 +1,16 @@
+<display-name>ATV Andorra Televisión
+<display-name>ATV Andorra Televisión.TV
+<display-name>ATV Andorra Televisión SD
+<display-name>ATV Andorra Televisión HD
+<display-name>ATV Andorra Televisión FHD
+<display-name>ATV Andorra Televisión UHD
+<display-name>ATV Andorra Televisión 720
+<display-name>ATV Andorra Televisión 1080
+<display-name>Star TVE
+<display-name>Star TVE.TV
+<display-name>Star TVE SD
+<display-name>Star TVE HD
+<display-name>Star TVE FHD
+<display-name>Star TVE UHD
+<display-name>Star TVE 720
+<display-name>Star TVE 1080

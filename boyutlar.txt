@@ -1,0 +1,9 @@
+46092399 t.xml
+  176992 out/diziler-bugun.html
+  187523 out/diziler-cuma.html
+  132180 out/film-bugun.html
+  356141 out/kanal-trt1.html
+  152365 out/program-mehmed.html
+     540 out/teleonline-turk-adlar.txt
+      80 out/teleonline-ulkeler.txt
+47098220 total
