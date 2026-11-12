@@ -101,13 +101,13 @@ test('loadSeriesWeek: haftalık sayfa saat verir, gün sayfaları güne ayırır
     [dayPageUrl(4, B)]: new Error('HTTP 503'),
   };
   const net = fakeNet(pages);
-  const r = await loadSeriesWeek({ net, base: B, sinemalarUrl: 'https://s.test/x' });
+  const r = await loadSeriesWeek({ net, base: B });
   assert.equal(r.via, '1001dizi');
   assert.deepEqual(r.days.map((d) => d.length), [2, 0, 0, 1, 0, 0, 0]);
   assert.equal(r.days[3][0].time, '20:30');
   assert.deepEqual(r.days[0].map((x) => x.title), ['Altı Üstü İstanbul', 'Anne Yarısı']);
   assert.ok(r.failed.includes(4) && r.failed.includes(1), 'alınamayan günler bildirilir: ' + r.failed);
-  assert.ok(!net.calls.includes('https://s.test/x'), '1001dizi çalışırken sinemalar çağrılmaz');
+  assert.equal(net.calls.length, 8, 'başarılı 1001dizi akışında yalnız sekiz yayın sayfası istenir');
   assert.equal(net.calls.length, 8, '1 haftalık + 7 gün');
 });
 
@@ -170,7 +170,7 @@ test('loadSeriesWeek: hiçbir kaynak satır vermezse nedenleri ayrıntıya yazı
   const net = fakeNet({ [weekPageUrl(B)]: new Error('HTTP 403'), 'https://s.test/x': '<html></html>' });
   await assert.rejects(
     () => loadSeriesWeek({ net, base: B, sinemalarUrl: 'https://s.test/x' }),
-    (e) => e.message === 'Dizi akışı alınamadı.' && /haftalık: HTTP 403/.test(e.detail) && /sinemalar: satır yok/.test(e.detail),
+    (e) => e.message === 'Dizi akışı alınamadı.' && /haftalık: HTTP 403/.test(e.detail) && /ücretsiz EPG: dizi kategorisinde güncel kayıt bulunamadı/.test(e.detail),
   );
 });
 
