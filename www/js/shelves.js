@@ -2,7 +2,13 @@
 // Gezinme kuralları ve ölçüler saf işlevlerdir (test edilir); Shelves sınıfı DOM, kumanda tuşları ve odak hatırlamayı yönetir.
 import { visibleRows } from './vlist.js';
 
-export const SHELF_CAP = 24; // satırda en çok bu kadar yapım; fazlası "Tümünü gör" kutusunda
+export const SHELF_CAP = 24; // satırda varsayılan en çok yapım sayısı; fazlası "Tümünü gör" kutusunda
+// Ayarlar > Genel ayarlar > Satırdaki yapım sayısı. Üst sınır 100: her satırın kutuları DOM'a tam çizilir, düşük bellekli TV'de binlercesi kaldırılmaz.
+export const ROW_CAPS = [12, 24, 36, 48, 72, 100].map((n) => [n, String(n)]);
+export const normalizeRowCap = (v) => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return ROW_CAPS.some(([x]) => x === n) ? n : SHELF_CAP;
+};
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -64,12 +70,13 @@ function animate(el, prop, to, instant) {
 const TILE_SEL = '[data-more],[data-lock],[data-edit]';
 
 export class Shelves {
-  // opts: sizes(viewW, viewH) → shelfSizes sonucu, itemsOf(row) → öğe listesi (sıralı), titleHtml(row),
+  // opts: cap (satırdaki en çok yapım, ROW_CAPS), sizes(viewW, viewH) → shelfSizes sonucu, itemsOf(row) → öğe listesi (sıralı), titleHtml(row),
   //       renderCard(item, r, c) → html, renderTile(kind, row, r, c) → html (kind: more | lock | edit),
   //       onOpen(item, row, ev), onMore(row), onLock(row), onEdit(), onFocusItem(item, row), onLongPress(item, ev, el)
   constructor(el, opts) {
     this.el = el;
     this.o = opts;
+    this.cap = normalizeRowCap(opts.cap);
     this.items = []; // satırlar: { id, name, count, locked?, edit? }
     this._rows = new Map(); // satır no → { el, sig }
     this._cache = new Map(); // satır kimliği → { top, total }
@@ -151,10 +158,10 @@ export class Shelves {
     let c = this._cache.get(row.id);
     if (!c) {
       const all = this.o.itemsOf(row) || [];
-      c = { top: all.slice(0, SHELF_CAP), total: all.length };
+      c = { top: all.slice(0, this.cap), total: all.length };
       this._cache.set(row.id, c);
     }
-    const tile = c.total > SHELF_CAP ? 'more' : null;
+    const tile = c.total > this.cap ? 'more' : null;
     return { top: c.top, total: c.total, tile, len: c.top.length + (tile ? 1 : 0) };
   }
 

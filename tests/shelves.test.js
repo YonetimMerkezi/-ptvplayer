@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shelfSizes, nextCell, hTarget, SHELF_CAP } from '../www/js/shelves.js';
+import { shelfSizes, nextCell, hTarget, SHELF_CAP, ROW_CAPS, normalizeRowCap } from '../www/js/shelves.js';
 
 test('shelfSizes: TV ekranlarında bir satır tam, sonrakinin başlığı görünür; kutu sınırları', () => {
   for (const [w, h] of [[960, 273], [1280, 384], [1920, 608]]) {
@@ -55,3 +55,11 @@ test('hTarget: görünürse kaymaz; sağa taşarsa komşu payıyla kayar; başta
 });
 
 test('SHELF_CAP 24', () => assert.equal(SHELF_CAP, 24));
+
+test('satırdaki yapım sayısı: seçenekler, varsayılan 24, geçersiz değer varsayılana döner, üst sınır 100', () => {
+  assert.deepEqual(ROW_CAPS.map(([n]) => n), [12, 24, 36, 48, 72, 100]);
+  assert.ok(ROW_CAPS.some(([n]) => n === SHELF_CAP));
+  for (const [n] of ROW_CAPS) assert.equal(normalizeRowCap(n), n);
+  assert.equal(normalizeRowCap(String(48)), 48);
+  for (const bad of [undefined, null, '', 0, 7, 1000, 'x', {}]) assert.equal(normalizeRowCap(bad), SHELF_CAP);
+});

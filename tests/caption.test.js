@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CAPTION_LINES, DEFAULT_CAPTION, normalizeCaption, captionPx, applyCaption } from '../www/js/caption.js';
+import { CAPTION_LINES, DEFAULT_CAPTION, CAP_FS, normalizeCaption, captionPx, applyCaption } from '../www/js/caption.js';
 
 test('kutudaki ad: seçenekler ve varsayılan 3 satır', () => {
   assert.deepEqual(CAPTION_LINES.map(([n]) => n), [0, 2, 3, 5]);
@@ -30,4 +30,13 @@ test('applyCaption: --cap-lines ve data-nocap işaretini koyar', () => {
   assert.equal(props['--cap-lines'], '3'); // gizliyken değişken geçerli kalır (açılınca varsayılan)
   assert.equal(applyCaption('2', doc), 2);
   assert.equal('nocap' in doc.documentElement.dataset, false);
+});
+
+test('captionPx: ad yazısı küçülünce (telefon satırları 0,75 rem) alan satır başına daha az yer tutar; varsayılan yazıyla aynı', () => {
+  assert.equal(CAP_FS, 0.8125);
+  assert.equal(captionPx(3, 1, CAP_FS), captionPx(3, 1));
+  assert.equal(captionPx(3, 1, 0.75), Math.round((3 * 1.25 * 0.75 + 1.0625) * 16)); // 61 px
+  assert.ok(captionPx(3, 1, 0.75) < captionPx(3, 1));
+  assert.equal(captionPx(0, 1, 0.75), 0);
+  assert.equal(captionPx(3, 1.3, 0.75), Math.round((3 * 1.25 * 0.75 + 1.0625) * 16 * 1.3)); // yazı ölçeği çarpar
 });

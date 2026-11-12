@@ -8,8 +8,9 @@ export const CAPTION_LINES = [
 ];
 export const DEFAULT_CAPTION = 3;
 
-// 0,8125 rem yazı × 1,25 satır aralığı = 1,015625 rem; üst/alt boşluk toplam 1,0625 rem
-const LINE_REM = 1.015625;
+// Yazı 0,8125 rem (--cap-fs ile değişebilir) × 1,25 satır aralığı; üst/alt boşluk toplam 1,0625 rem
+export const CAP_FS = 0.8125;
+const LINE_K = 1.25;
 const PAD_REM = 1.0625;
 
 export function normalizeCaption(v) {
@@ -17,10 +18,10 @@ export function normalizeCaption(v) {
   return CAPTION_LINES.some(([x]) => x === n) ? n : DEFAULT_CAPTION;
 }
 
-// Ad alanının piksel yüksekliği (kök yazı 16 px; scale = yazı boyutu çarpanı). 0 satır = 0.
-export function captionPx(lines, scale = 1) {
+// Ad alanının piksel yüksekliği (kök yazı 16 px; scale = yazı boyutu çarpanı; fs = ad yazısı, rem). 0 satır = 0.
+export function captionPx(lines, scale = 1, fs = CAP_FS) {
   const n = normalizeCaption(lines);
-  return n === 0 ? 0 : Math.round((n * LINE_REM + PAD_REM) * 16 * scale);
+  return n === 0 ? 0 : Math.round((n * LINE_K * fs + PAD_REM) * 16 * scale);
 }
 
 export function applyCaption(lines, doc) {

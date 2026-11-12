@@ -167,6 +167,36 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await ctx.close();
   }
 
+  // ---- 1c) Satırdaki yapım sayısı ayarı: seçilen sayı kadar kutu, fazlası "Tümünü gör" kutusunda; Ayarlar'dan değişir
+  {
+    const { ctx, page, errs } = await open({ width: 390, height: 844 }, { tv: false, mv: 'rows', big: true });
+    await page.click('#tabs [data-tab=sources]');
+    await page.click('[data-set=general]');
+    await page.waitForSelector('#g-rcap');
+    const opts = await page.$$eval('#g-rcap option', (o) => o.map((x) => x.value));
+    ok(opts.join() === '12,24,36,48,72,100' && (await page.inputValue('#g-rcap')) === '24', 'Ayarlar: satırdaki yapım sayısı seçenekleri ve varsayılan 24: ' + opts.join());
+    await page.selectOption('#g-rcap', '12');
+    ok((await page.evaluate(() => window.__iptv.store.pref('set.rowCap', 24))) === 12, 'satırdaki yapım sayısı kaydedildi');
+    await page.click('.sheet [data-close]');
+    await page.click('#tabs [data-tab=movies]');
+    await page.waitForSelector('.sh-row', { timeout: 8000 });
+    await sleep(400);
+    const c12 = await page.evaluate(() => ({ cards: document.querySelectorAll('.sh-row[data-row="0"] .card').length, more: (document.querySelector('.sh-row[data-row="0"] .sh-more small') || {}).textContent }));
+    ok(c12.cards === 12 && c12.more === '30', `ayar 12: ilk satırda 12 kutu + "Tümünü gör" (30) (${c12.cards}, ${c12.more})`);
+    await page.click('#tabs [data-tab=sources]');
+    await page.click('[data-set=general]');
+    await page.waitForSelector('#g-rcap');
+    await page.selectOption('#g-rcap', '36');
+    await page.click('.sheet [data-close]');
+    await page.click('#tabs [data-tab=movies]');
+    await page.waitForSelector('.sh-row', { timeout: 8000 });
+    await sleep(400);
+    const c36 = await page.evaluate(() => ({ cards: document.querySelectorAll('.sh-row[data-row="0"] .card').length, more: !!document.querySelector('.sh-row[data-row="0"] .sh-more') }));
+    ok(c36.cards === 30 && !c36.more, `ayar 36: 30 yapımın hepsi satırda, "Tümünü gör" yok (${c36.cards})`);
+    ok(errs.length === 0, 'satır sayısı ayarı: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
+    await ctx.close();
+  }
+
   // ---- 2) TV 960×540: bir satır tam görünür, alttaki satırın başlığı görünür, halka kırpılmaz, vitrin metni sığar
   {
     const { ctx, page, errs } = await open({ width: 960, height: 540 });
@@ -340,6 +370,33 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.keyboard.press('Escape');
     await page.waitForSelector('#mv-play', { state: 'detached', timeout: 5000 });
     ok(true, 'telefon: Geri ayrıntıyı kapattı');
+
+    // telefon: kategori çubuğunda Düzenle düğmesi var (alttaki kumanda kutusu yok); ad yazısı küçük ve 3 satır, sonraki satır sızmaz
+    const ph = await page.evaluate(() => {
+      const bar = document.querySelector('#catbar');
+      const cap = document.querySelector('.sh-row .card .cap');
+      const cs = getComputedStyle(cap);
+      return {
+        bar: !!bar && !bar.hidden && getComputedStyle(bar).display !== 'none',
+        edit: (document.querySelector('#cat-edit') || {}).textContent,
+        tile: !!document.querySelector('.sh-edit'),
+        titles: window.__iptv.S.list.items.map((r) => r.name),
+        fs: parseFloat(cs.fontSize),
+        lh: parseFloat(cs.lineHeight),
+        h: cap.clientHeight,
+        bb: parseFloat(cs.borderBottomWidth),
+        lines: Number(getComputedStyle(document.querySelector('#list')).getPropertyValue('--cap-lines')),
+      };
+    });
+    ok(ph.bar && ph.edit === 'Düzenle' && !ph.tile && !ph.titles.includes('Düzenle'), 'telefon: kategori çubuğunda "Düzenle" düğmesi var, kumanda kutusu/satırı yok');
+    ok(ph.fs === 12 && ph.lines === 3, `telefon: ad yazısı 12 px ve 3 satır (${ph.fs}px, ${ph.lines} satır)`);
+    ok(Math.abs(ph.h - (6 + ph.lines * ph.lh)) <= 1 && ph.bb > 0, `telefon: ad alanı tam ${ph.lines} satırlık (sonraki satırın ucu sızmaz): ${ph.h}px ≈ 6 + ${ph.lines}×${ph.lh}`);
+    await page.click('#cat-edit');
+    await page.waitForSelector('.row.cat.edit', { timeout: 5000 });
+    ok((await page.textContent('#cat-edit')) === 'Bitti' && (await page.evaluate(() => !document.querySelector('.sh-row'))), 'telefon: Düzenle klasik kategori listesini düzenleme kipinde açtı');
+    await page.click('#cat-edit');
+    await page.waitForSelector('.sh-row', { timeout: 5000 });
+    ok((await page.textContent('#cat-edit')) === 'Düzenle', 'telefon: Bitti satırlara döndürdü');
 
     // yatay telefon + klavye/kumanda: vitrin görünür
     await page.setViewportSize({ width: 844, height: 390 });

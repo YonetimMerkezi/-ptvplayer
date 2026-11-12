@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 73,
+    title: 'Telefonda Netflix gibi ekran: düzenle, satır sayısı, adlar',
+    items: [
+      'Telefonda Netflix gibi görünümün üstünde kategori çubuğu ve “Düzenle” düğmesi var (kumandada düzenleme kutusu en altta kalır)',
+      'Ayarlar > Genel ayarlar > “Satırdaki yapım sayısı”: her satırda en çok 12, 24, 36, 48, 72 veya 100 kutu; fazlası “Tümünü gör” kutusunda',
+      'Telefonda satırlardaki film/dizi adları daha küçük yazıyla ve “Kutudaki film/dizi adı” ayarı kadar satırda (varsayılan 3) görünür; adın altından sonraki satırın ucu artık görünmez'
+    ],
+  },
+  {
     id: 72,
     title: 'Dikey telefonda ayarlar düzeldi',
     items: [

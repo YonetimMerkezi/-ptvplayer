@@ -30,12 +30,12 @@ import { holeClip } from './hole.js';
 import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
 import { initDpad } from './dpad.js';
 import { createHero, heroModel, heroCellW } from './hero.js';
-import { Shelves, shelfSizes } from './shelves.js';
+import { Shelves, shelfSizes, ROW_CAPS, SHELF_CAP, normalizeRowCap } from './shelves.js';
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { DECODER_MODES, DEFAULT_DECODER, normalizeDecoder } from './decoder.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
-import { CAPTION_LINES, DEFAULT_CAPTION, normalizeCaption, captionPx, applyCaption } from './caption.js';
+import { CAPTION_LINES, DEFAULT_CAPTION, CAP_FS, normalizeCaption, captionPx, applyCaption } from './caption.js';
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
@@ -605,7 +605,7 @@ function browseMode(kind) {
 }
 
 // Satırlar: "Tümü" satır olmaz (tüm listenin tek satırı anlamsız; klasik görünümde ve aramada durur), en üst satır "Devam et"tir.
-// Kilidi bu oturumda açılmış kategori normal satır olur; boş kategori görünmez; en altta düzenleme kutusu.
+// Kilidi bu oturumda açılmış kategori normal satır olur; boş kategori görünmez; kumandada en altta düzenleme kutusu.
 function rowsOf(kind, cats) {
   const out = [];
   for (const c of cats) {
@@ -613,7 +613,7 @@ function rowsOf(kind, cats) {
     const row = c.locked && S.unlocked.has(catKey(kind, c.id)) ? { ...c, locked: false } : c;
     if (row.locked || row.count > 0) out.push(row);
   }
-  out.push({ id: '__edit', name: 'Düzenle', edit: true });
+  if (isTvUi()) out.push({ id: '__edit', name: 'Düzenle', edit: true }); // kumandada: en alttaki kutu; dokunmatikte: kategori çubuğundaki Düzenle düğmesi
   return out;
 }
 
@@ -783,7 +783,7 @@ function wireCatbar(kind) {
 }
 
 function drawCatbar(kind, mode, all) {
-  $('#catbar').hidden = !(mode === 'cats' && all);
+  $('#catbar').hidden = !((mode === 'cats' || (mode === 'rows' && !isTvUi())) && all);
   $('#catq').hidden = !(S.groups[kind].length > 8 || S.catFilter);
   $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit;
   $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
@@ -936,10 +936,18 @@ function mountList(kind, mode = 'items') {
   S.listMode = mode;
   const longPress = (i) => S.items[i] && folderSheet(kind, S.items[i]);
   if (mode === 'rows') {
-    const lines = Math.min(2, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)));
-    el.style.setProperty('--cap-lines', String(lines)); // satırlarda ad en çok 2 satır: vitrin zaten tam adı gösterir
+    const want = normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION));
     S.list = new Shelves(el, {
-      sizes: (w, h) => shelfSizes({ viewW: w, viewH: h, scale: Math.max(1, fontScale()), capPx: captionPx(lines, fontScale()) }),
+      cap: normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)),
+      sizes: (w, h) => {
+        // geniş ekranda vitrin tam adı gösterir: ad en çok 2 satır. Dar ekranda (telefon) vitrin yok: ad ayardaki satır sayısı kadar, biraz küçük yazıyla
+        const narrow = w < 700;
+        const lines = narrow ? want : Math.min(2, want);
+        const fs = narrow ? 0.75 : CAP_FS;
+        el.style.setProperty('--cap-lines', String(lines || DEFAULT_CAPTION));
+        el.style.setProperty('--cap-fs', fs + 'rem');
+        return shelfSizes({ viewW: w, viewH: h, scale: Math.max(1, fontScale()), capPx: captionPx(lines, fontScale(), fs) });
+      },
       itemsOf: (row) => rowItems(kind, row),
       titleHtml: (row) => `${row.locked ? icon('lock') : ''}${row.folder ? icon('folder') : ''}<span>${esc(row.name)}</span>`,
       renderCard: (it, r, c) => card(it, r, `data-r="${r}" data-c="${c}"`),
@@ -1020,7 +1028,7 @@ function refreshList(keepScroll = false) {
   restoreCatCursor(kind);
   drawCrumb(kind);
   const empty = $('#empty');
-  const none = mode === 'items' ? !rows.length : mode === 'rows' ? !all || rows.length < 2 : !all || !rows.length;
+  const none = mode === 'items' ? !rows.length : mode === 'rows' ? !all || !S.cats.some((r) => !r.edit) : !all || !rows.length;
   drawCatbar(kind, mode, all);
   $('#list').hidden = none;
   empty.hidden = !none;
@@ -3291,6 +3299,7 @@ function generalSheet() {
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
       `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
+      `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Netflix gibi görünümde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
@@ -3326,6 +3335,10 @@ function generalSheet() {
       $('#g-cap', body).addEventListener('change', (e) => {
         store.setPref('set.caption', applyCaption(e.target.value, document));
         renderTab(); // ızgara hücre yüksekliği değişti: liste yeniden kurulur
+      });
+      $('#g-rcap', body).addEventListener('change', (e) => {
+        store.setPref('set.rowCap', normalizeRowCap(e.target.value));
+        renderTab(); // satırlar yeniden kurulur
       });
       $('#g-mv', body).addEventListener('change', (e) => {
         store.setPref('set.mvView', MV_VIEWS.some(([k]) => k === e.target.value) ? e.target.value : 'auto');
