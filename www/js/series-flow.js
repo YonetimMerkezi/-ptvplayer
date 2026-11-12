@@ -1,5 +1,4 @@
 // Dizi akışı: TV dizilerinin haftalık yayın programı (gün, kanal, saat, bölüm). Kaynak: 1001dizi.net (haftalık program + 7 gün sayfası);
-// bu hiç sonuç vermezse m.sinemalar.com TV dizileri sayfası denenir. Resmî API değil, herkese açık HTML sayfalarıdır; yapı değişebilir.
 // Bu yüzden ayrıştırıcı sınıf adlarına değil sayfanın metin akışına bakar (dizi bağlantısı + görsel alt metni + "Kanal - SS:DD" + "N. Bölüm" + durum)
 // ve ne okuduğunu gösteren bir teşhis (diag) döndürür. Saf mantık (ağ dışarıdan verilir); ekran series-flow-ui.js'te.
 import { fold } from './util.js';
@@ -9,7 +8,6 @@ import { loadFreeData, istDayStart, IST_MS, chanKey } from './epg-free.js';
 import { kindOf } from './today.js';
 
 export const DIZI_BASE = 'https://1001dizi.net';
-export const SINEMALAR_URL = 'https://m.sinemalar.com/mobileweb/tv-dizileri';
 
 // Pazartesi tabanlı hafta (1001dizi sayfaları böyle)
 export const WEEKDAYS = [
@@ -266,9 +264,6 @@ function parseCards(html, hrefRe, base) {
 const RE_1001 = /\/dizi-([a-z0-9][a-z0-9-]*)/i;
 export const parse1001 = (html, base = DIZI_BASE) => parseCards(html, RE_1001, base);
 
-// m.sinemalar.com: yapıyı bilmediğimiz için yalnız "dizi" yol parçası olan bağlantılar kart sayılır; aynı kart kuralları geçerlidir
-const RE_SINEMALAR = /\/(?:tv-)?dizi[a-z-]*\/([a-z0-9%][a-z0-9%_-]*)/i;
-export const parseSinemalar = (html, base = SINEMALAR_URL) => parseCards(html, RE_SINEMALAR, base);
 
 // ---------------------------------------------------------------- saat birleştirme
 // Gün sayfalarında saat olmayabilir; haftalık sayfadaki saat dizi (+kanal) anahtarıyla gün satırlarına eklenir.
