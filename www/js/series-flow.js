@@ -26,7 +26,7 @@ export const dayPageUrl = (idx, base = DIZI_BASE) => `${base}/${WEEKDAYS[idx][0]
 export const weekPageUrl = (base = DIZI_BASE) => `${base}/haftalik-dizi-programi`;
 
 // Yerel gün → Pazartesi tabanlı sıra (0 = Pazartesi … 6 = Pazar)
-export const dayIndex = (ms) => (new Date(ms).getDay() + 6) % 7;
+export const dayIndex = (ms) => (new Date(ms + IST_MS).getUTCDay() + 6) % 7;
 
 // ---------------------------------------------------------------- HTML → olay akışı
 const clean = (s) => decodeEntities(String(s)).replace(/\s+/g, ' ').trim();
@@ -192,7 +192,7 @@ function rowOf(c, base) {
 
 const sortRows = (rows) => rows.slice().sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99') || fold(a.title).localeCompare(fold(b.title), 'tr'));
 
-const istDayIndex = (ms) => (new Date(ms + IST_MS).getUTCDay() + 6) % 7;
+const istDayIndex = dayIndex;
 const istClock = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 function freeDiziDays(free, nowMs) {
