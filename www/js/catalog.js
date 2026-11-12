@@ -168,8 +168,8 @@ function ownTargets(source, item, ep) {
     const cfg = sourceCfg(source);
     if (item.kind === 'live') {
       return [
-        { url: X.liveUrl(cfg, item.streamId, 'm3u8'), mime: 'hls' },
-        { url: X.liveUrl(cfg, item.streamId, 'ts'), mime: 'ts' },
+        { url: X.liveUrl(cfg, item.streamId, 'm3u8'), mime: 'hls', live: true },
+        { url: X.liveUrl(cfg, item.streamId, 'ts'), mime: 'ts', live: true },
       ];
     }
     if (item.kind === 'movie') return [{ url: X.movieUrl(cfg, item.streamId, item.ext), mime: 'auto' }];
@@ -179,7 +179,7 @@ function ownTargets(source, item, ep) {
   const src = ep && ep.url ? ep : item;
   if (!src.url) return [];
   const mime = mimeOf(src.url);
-  const first = { url: src.url, mime, headers: src.headers || null };
+  const first = { url: src.url, mime, headers: src.headers || null, ...(item.kind === 'live' ? { live: true } : {}) };
   // Uzantısız canlı adres HLS çıkabilir: ikinci denemede HLS olarak aç.
   return item.kind === 'live' && mime === 'auto' ? [first, { ...first, mime: 'hls' }] : [first];
 }

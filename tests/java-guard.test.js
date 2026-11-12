@@ -192,8 +192,8 @@ test('Android TV bildirimi: kumanda başlatıcısı, afiş, dokunmatik ve leanba
 });
 
 test('yayın kaydı: yalnız ana oynatıcı kayda yazar, çıkışta/yeni yayında kayıt kapanır, liste (m3u8) kayda girmez', () => {
-  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer\), true, true\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
-  assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false, false\)/, 'çoklu ekran kutuları kayda yazmamalı ve ses gecikmesi almamalı');
+  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer, live\), true, true, compat\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
+  assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false, false, false\)/, 'çoklu ekran kutuları kayda yazmamalı, ses gecikmesi ve uyumlu mod almamalı');
   assert.match(kaynak, /public void stop\(final PluginCall call\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'oynatıcı kapanınca kayıt bitmeli');
   assert.match(kaynak, /if \(!keepRec\) \{\s*StreamRecorder\.stop\(null\);/, 'başka yayına geçilince kayıt bitmeli');
   assert.match(kaynak, /handleOnDestroy\(\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'uygulama kapanınca kayıt dosyası düzgün kapanmalı');
@@ -370,21 +370,34 @@ test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yal
   assert.match(sel[0], /startsWith\("video\/"\)\) return all/, 'ses ve diğer türlerin sırası değişmemeli');
   assert.ok(sel[0].indexOf('if (i.softwareOnly)') < sel[0].indexOf('if (!i.softwareOnly)'), 'yazılım çözücüler donanımın önüne alınmalı');
   assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\)/, 'seçici hem ses işlemcili hem sade kurulumda uygulanmalı');
-  assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı');
+  assert.match(kaynak, /\("software"\.equals\(decoderMode\) \|\| compatMode\) \? SOFTWARE_FIRST : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı (uyumlu mod yazılım çözücüyü başa alır)');
   assert.match(kaynak, /changed && player != null && !curUrl\.isEmpty\(\)\) \{[\s\S]*?startPlayback\(curUrl/, 'kip değişince açık yayın yeniden kurulmalı');
   assert.match(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/bridge.js'), 'utf8'), /setDecoder: call\('setDecoder'\)/);
 });
 
-test('yayın önbelleği: JS’teki her düzeyin yerelde karşılığı var, "fast" küçük ve hızlı başlar', async () => {
+test('yayın önbelleği: JS’teki her düzeyin yerelde karşılığı var, "fast" küçük ve hızlı başlar, canlıda başlama eşikleri sınırlı', async () => {
   const { BUFFER_LEVELS } = await import('../www/js/buffer.js');
-  const fn = kaynak.match(/private static DefaultLoadControl loadControlFor\(String level\) \{[\s\S]*?return b\.build\(\);/);
+  const fn = kaynak.match(/private static DefaultLoadControl loadControlFor\(String level, boolean live\) \{[\s\S]*?return b\.build\(\);/);
   assert.ok(fn, 'loadControlFor bulunmalı');
   for (const [id] of BUFFER_LEVELS) if (id !== 'high') assert.match(fn[0], new RegExp('"' + id + '"\\.equals\\(level\\)'), id + ' düzeyi yerelde işlenmeli');
-  const f = fn[0].match(/"fast"\.equals\(level\)\)\s*\{[\s\S]*?setBufferDurationsMs\((\d+), (\d+), (\d+), (\d+)\)/);
-  assert.ok(f, 'fast düzeyi süreleri ayarlamalı');
-  const [min, max, play, rebuf] = f.slice(1).map(Number);
-  assert.ok(min <= max && play <= min && rebuf <= min, 'Media3 kısıtları: başlama süreleri en az arabelleği aşamaz');
+  // her düzey: min, max, başlama, yeniden başlama (ms)
+  const levelOf = (id) => {
+    const m = fn[0].match(new RegExp('"' + id + '"\\.equals\\(level\\)\\)\\s*\\{[\\s\\S]*?min = (\\d+); max = (\\d+); start = (\\d+); resume = (\\d+);'));
+    assert.ok(m, id + ' düzeyi süreleri ayarlamalı');
+    return m.slice(1).map(Number);
+  };
+  for (const [id] of BUFFER_LEVELS.filter(([x]) => x !== 'high')) {
+    const [min, max, play, rebuf] = levelOf(id);
+    assert.ok(min <= max && play <= min && rebuf <= min, id + ' — Media3 kısıtları: başlama süreleri en az arabelleği aşamaz');
+  }
+  const [, , play] = levelOf('fast');
   assert.ok(play <= 1500, 'fast: yarım-bir saniyede başlamalı');
+  // varsayılan (high) düzey de aynı kısıtlara uymalı
+  const hi = fn[0].match(/\} else \{\s*min = (\d+); max = (\d+); start = (\d+); resume = (\d+);/);
+  assert.ok(hi, 'varsayılan düzey süreleri ayarlamalı');
+  const [hmin, hmax, hplay, hrebuf] = hi.slice(1).map(Number);
+  assert.ok(hmin <= hmax && hplay <= hmin && hrebuf <= hmin);
+  assert.match(fn[0], /b\.setBufferDurationsMs\(min, max, start, resume\)/);
 });
 
 test('yayın kaydı: paket ortasından başlayan progresif TS kaydedilir; veri yazılamayan kayıt boş sayılıp silinir', () => {
@@ -466,4 +479,30 @@ test('ses/altyazı izleri dil kodunu (lang) verir; dil tercihi iz adına bağlı
 test('hatırlatıcı bildirimi plan.note varsa metni doğrudan kullanır (abonelik bitiş uyarısı)', () => {
   const notifier = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/java/com/koruk/iptv/Notifier.java'), 'utf8');
   assert.ok(/optString\("note", ""\)/.test(notifier), 'Notifier.reminder plan.note okumalı');
+});
+
+test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bekçisi çalışıyor, uyumlu mod TS ayrıştırmasını genişletiyor', () => {
+  // canlı yayın gerçek hızda gelir: başlama/yeniden başlama tamponu sınırlanmazsa her takılma uzun donar (JS bekçisi 7 sn'de yayını baştan açar)
+  assert.match(kaynak, /loadControlFor\(String level, boolean live\)/);
+  assert.match(kaynak, /if \(live\) \{\s*start = Math\.min\(start, 2500\);\s*resume = Math\.min\(resume, 3000\);/);
+  assert.match(kaynak, /loadControlFor\(buffer, live\)/);
+  // bekçi her saniye (tick) çağrılır, kare sayacı ilerlemezse VIDEO_FROZEN bildirir ve uyumlu modu açar
+  assert.match(kaynak, /emitTime\(\);\s*watchVideo\(\);/);
+  assert.match(kaynak, /private void watchVideo\(\)[\s\S]*?renderedOutputBufferCount[\s\S]*?compat = true;[\s\S]*?"VIDEO_FROZEN"[\s\S]*?notifyListeners\("error"/);
+  // sabit resimli (düşük kare hızlı) yayınlar ve duraklatılmış/arka plandaki oynatıcı donmuş sayılmaz
+  assert.match(kaynak, /frameRate < 2f/);
+  assert.match(kaynak, /!p\.isPlaying\(\)/);
+  assert.match(kaynak, /getWindowVisibility\(\) != View\.VISIBLE/);
+  // uyumlu mod: yazılım çözücü başta + TS erişim birimi/anahtar kare ayrıştırması geniş; varsayılan modda ayar yok
+  assert.match(kaynak, /"software"\.equals\(decoderMode\) \|\| compatMode\) \? SOFTWARE_FIRST/);
+  assert.match(kaynak, /if \(compatMode\) extractors\.setTsExtractorFlags\(DefaultTsPayloadReaderFactory\.FLAG_DETECT_ACCESS_UNITS \| DefaultTsPayloadReaderFactory\.FLAG_ALLOW_NON_IDR_KEYFRAMES\)/);
+  assert.match(kaynak, /new DefaultMediaSourceFactory\(base, extractors\)/);
+  // aynı yayına yeniden bağlanmada (keepRec) uyumlu mod sürer; başka yayına geçince kapanır
+  assert.match(kaynak, /if \(!keepRec\) compat = false;/);
+  // iç yeniden kurulumlar canlı bilgisini korur (progressive .ts için Media3 canlı olduğunu bilmez)
+  assert.equal((kaynak.match(/startPlayback\(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false\)/g) || []).length, 3);
+  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 3);
+  // JS'ten gelen bayraklar okunuyor
+  assert.match(kaynak, /optBoolean\("live", false\)/);
+  assert.match(kaynak, /optBoolean\("compat", false\)/);
 });

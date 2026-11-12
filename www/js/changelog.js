@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 79,
+    title: 'Canlı yayın: donma ve bozuk görüntü düzeltmeleri',
+    items: [
+      'Canlı yayın açıldığı hâlde görüntü gelmiyor ya da kare donuyorsa uygulama bunu artık fark eder ve yayını “uyumlu modda” (yazılım çözücü + geniş TS ayrıştırma) yeniden açar; ikinci donmada yayının öbür biçimine (HLS ↔ TS) geçer',
+      'Canlı yayında tampon eşikleri kısaltıldı: açılışta en çok 2,5 sn, takılmadan sonra en çok 3 sn beklenir. Yayın zaten gerçek zamanlı aktığı için uzun bekleme “açılır açılmaz donuyor” döngüsüne yol açıyordu',
+      'Oynatıcıda “Görüntü bozuk?” düğmesi: karıncalı/bozuk görüntüde dokunun, kanal uyumlu modda yeniden açılır',
+      'Oynatıcı ayarları → “Canlı yayın biçimi” (Otomatik / HLS önce / TS önce). Otomatikte bir kanal bir biçimde 20 sn düzgün oynarsa uygulama o biçimi kanal için hatırlar'
+    ],
+  },
+  {
     id: 78,
     title: 'Spor: favori takım ve puan durumu',
     items: [

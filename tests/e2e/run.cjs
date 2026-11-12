@@ -1156,7 +1156,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         return { status: 200, ms: 30 + (n % 7), contentType: 'application/vnd.apple.mpegurl', bytes: 512, playlist: true };
       },
       play: async (a) => {
-        window.__calls.push(['play', a.url, a.mime, a.buffer, a.audioDelay, a.night]);
+        window.__calls.push(['play', a.url, a.mime, a.buffer, a.audioDelay, a.night, a.live, a.compat]);
         if (!window.__noPlay) setTimeout(() => listeners.state({ state: 'playing', playing: true, live: !/webm|\/rec\//.test(a.url) }), 50);
         setTimeout(() => listeners.time({ pos: 1000, dur: /webm|\/rec\//.test(a.url) ? 40000 : -1, buffered: 0 }), 100);
         // Yayın çözüldükçe ikinci ses parçası sonradan ortaya çıkar (TS yayınlarda olduğu gibi)
@@ -2413,6 +2413,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok((await page.$$eval('#g-stall option', (o) => o.map((x) => x.value).join())) === 'fast,normal,patient', 'takılma süresi seçenekleri: hızlı, normal, sabırlı');
   await page.selectOption('#g-rc', 'off');
   await page.selectOption('#g-stall', 'fast');
+  ok((await page.$$eval('#g-lfmt option', (o) => o.map((x) => x.value).join())) === 'auto,hls,ts', '“Canlı yayın biçimi” seçenekleri: otomatik, HLS, TS');
+  await page.selectOption('#g-lfmt', 'ts');
+  ok((await prefOf('set.liveFmt', 'auto')) === 'ts', 'canlı yayın biçimi kaydedildi');
+  await page.selectOption('#g-lfmt', 'auto');
   ok((await prefOf('set.reconnect', 'normal')) === 'off' && (await prefOf('set.stall', 'normal')) === 'fast', 'seçimler kalıcı kaydedildi');
   await page.click('.chk[data-k=altCh]');
   ok((await prefOf('set.altCh', true)) === false, 'yedek kanal denemesi kapatıldı');
@@ -2473,6 +2477,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, nBefore, { timeout: 2500 });
   ok(await page.$$eval('#pl-retry', (e) => e.length === 0), 'yeniden bağlanma “Normal”ken kopan yayın kendiliğinden yeniden denendi');
+  await page.evaluate(() => { window.__noPlay = false; });
+  await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
+  // canlı yayında görüntü donması: hata ekranı çıkmadan yeniden açılır; “Görüntü bozuk?” uyumlu kipte açar
+  const lastPlayCall = () => page.evaluate(() => window.__calls.filter((c) => c[0] === 'play').slice(-1)[0]);
+  const lp0 = await lastPlayCall();
+  ok(lp0[6] === true && lp0[7] === false, 'canlı kanal eklentiye live:true, compat:false ile açıldı');
+  const nF = (await playUrls()).length;
+  await page.evaluate(() => window.__emit('error', { message: 'VIDEO_FROZEN', code: -2 }));
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, nF, { timeout: 4000 });
+  ok((await page.$$eval('#pl-retry', (e) => e.length)) === 0, 'görüntü donması hata ekranı göstermeden yeniden açtı');
+  const lp1 = await lastPlayCall();
+  ok(lp1[1] === lp0[1], 'donmada aynı canlı adres yeniden açıldı');
+  await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
+  await page.evaluate(() => document.querySelector('#pl-ui').classList.add('show'));
+  ok(await page.$eval('#pl-fix', (b) => !b.hidden), '“Görüntü bozuk?” düğmesi yerel oynatıcıda görünüyor');
+  const nC = (await playUrls()).length;
+  await page.click('#pl-fix');
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, nC, { timeout: 4000 });
+  const lp2 = await lastPlayCall();
+  ok(lp2[7] === true && lp2[1] === lp0[1], '“Görüntü bozuk?” aynı kanalı uyumlu kipte (compat:true) yeniden açtı');
+  await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
+  const nD = (await playUrls()).length;
+  await page.evaluate(() => { window.__noPlay = true; window.__emit('error', { message: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' }); });
+  await page.waitForFunction((n) => window.__calls.filter((c) => c[0] === 'play').length > n, nD, { timeout: 4000 });
+  ok((await lastPlayCall())[7] === false, 'sonraki yeniden bağlanma isteği uyumlu kip bayrağını tekrar göndermiyor (eklenti kendi tutar)');
   await page.evaluate(() => { window.__noPlay = false; });
   await page.waitForSelector('#pl-status', { state: 'hidden', timeout: 12000 });
   // yayın bilgisi paneli

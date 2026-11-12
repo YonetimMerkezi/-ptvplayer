@@ -21,6 +21,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Environment;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Rational;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
@@ -58,6 +59,8 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.CaptionStyleCompat;
@@ -135,6 +138,15 @@ public class IptvPlayerPlugin extends Plugin {
     private String lastMime = "auto";
     private JSObject lastHeaders = null;
     private String lastBuffer = "high";
+    private boolean lastLive = false; // JS'in bildirdiği: canlı yayın mı (progressive .ts için Media3 bunu bilmez)
+    // Uyumlu mod (bu yayın için): görüntü donunca ya da kullanıcı isteyince açılır; yazılım çözücü başta, TS'de erişim birimi/anahtar kare ayrıştırması
+    // geniş tutulur. Aynı yayına yeniden bağlanmada sürer, başka yayına geçilince kapanır.
+    private volatile boolean compat = false;
+    // Görüntü donma bekçisi: oynuyor görünürken çizilen kare sayısı ilerlemiyorsa (karar vermesi için ticker'da bakılır)
+    private long vwAt = -1;
+    private long vwRendered = -1;
+    private static final long VIDEO_FIRST_MS = 9000; // oynuyor göründükten sonra ilk kare bu sürede çizilmezse
+    private static final long VIDEO_FREEZE_MS = 7000; // kareler bu kadar süre hiç ilerlemezse
     // Telefondan TV'ye oynatma (alıcı): durum anlık görüntüsü ana iş parçacığında güncellenir, sunucu iş parçacığı okur.
     private CastServer cast;
     private volatile boolean castActive = false;
@@ -163,6 +175,7 @@ public class IptvPlayerPlugin extends Plugin {
                 return;
             }
             emitTime();
+            watchVideo();
             if (StreamRecorder.active()) notifyListeners("recording", recState());
             main.postDelayed(this, 1000);
         }
@@ -247,11 +260,13 @@ public class IptvPlayerPlugin extends Plugin {
         final JSObject headers = call.getObject("headers");
         final String buffer = call.getData().optString("buffer", "high");
         final boolean keepRec = call.getData().optBoolean("keepRecording", false);
+        final boolean live = call.getData().optBoolean("live", false);
+        final boolean compatReq = call.getData().optBoolean("compat", false);
         audioDelayMs = clampDelay(call.getData().optInt("audioDelay", audioDelayMs));
         nightLevel = cleanNight(call.getData().optString("night", nightLevel));
         main.post(() -> {
             try {
-                startPlayback(url, mime, startMs, headers, buffer, keepRec);
+                startPlayback(url, mime, startMs, headers, buffer, keepRec, live, compatReq);
                 call.resolve();
             } catch (Exception e) {
                 call.reject(String.valueOf(e.getMessage()));
@@ -260,22 +275,35 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     // Yayın önbelleği düzeyi (Ayarlar > Genel): süreler ms; üst sınır bayt olarak da konur ki yüksek bithızlı yayın belleği doldurmasın.
-    private static DefaultLoadControl loadControlFor(String level) {
+    // Canlı yayın gerçek hızda gelir (önden indirilemez): başlamak ve kesintiden sonra sürmek için çok tampon beklenirse her takılma uzun süre donar ve
+    // JS bekçisi (7 sn) yayını baştan açar; bu yüzden canlıda bu iki eşik sınırlanır (en çok 2,5 sn ve 3 sn). Üst/alt tampon süreleri ayardaki gibi kalır.
+    private static DefaultLoadControl loadControlFor(String level, boolean live) {
         DefaultLoadControl.Builder b = new DefaultLoadControl.Builder();
+        int min;
+        int max;
+        int start;
+        int resume;
+        long bytes = 0;
         if ("max".equals(level)) {
-            b.setBufferDurationsMs(45000, 180000, 4000, 15000).setTargetBufferBytes(96 * 1024 * 1024);
+            min = 45000; max = 180000; start = 4000; resume = 15000; bytes = 96L * 1024 * 1024;
         } else if ("fast".equals(level)) {
             // hızlı kanal geçişi: az biriktir, 1 sn dolunca başla (küçük bellek kullanır)
-            b.setBufferDurationsMs(5000, 20000, 1000, 2000).setTargetBufferBytes(24 * 1024 * 1024);
+            min = 5000; max = 20000; start = 1000; resume = 2000; bytes = 24L * 1024 * 1024;
         } else if ("normal".equals(level)) {
-            b.setBufferDurationsMs(15000, 60000, 2500, 5000);
+            min = 15000; max = 60000; start = 2500; resume = 5000;
         } else {
-            b.setBufferDurationsMs(30000, 120000, 3000, 10000).setTargetBufferBytes(64 * 1024 * 1024);
+            min = 30000; max = 120000; start = 3000; resume = 10000; bytes = 64L * 1024 * 1024;
         }
+        if (live) {
+            start = Math.min(start, 2500);
+            resume = Math.min(resume, 3000);
+        }
+        b.setBufferDurationsMs(min, max, start, resume);
+        if (bytes > 0) b.setTargetBufferBytes((int) bytes);
         return b.build();
     }
 
-    private void startPlayback(String url, String mime, long startMs, JSObject headers, String buffer, boolean keepRec) {
+    private void startPlayback(String url, String mime, long startMs, JSObject headers, String buffer, boolean keepRec, boolean live, boolean compatReq) {
         // Kayıt, aynı yayına yeniden bağlanırken sürer; başka bir yayına/dosyaya geçilince biter.
         if (!keepRec) {
             StreamRecorder.stop(null);
@@ -283,14 +311,19 @@ public class IptvPlayerPlugin extends Plugin {
         }
         releasePlayer();
         ensureView();
+        if (!keepRec) compat = false; // başka yayına geçildi: uyumlu mod bu yayın içindi
+        if (compatReq) compat = true;
+        vwAt = -1;
+        vwRendered = -1;
         curUrl = url;
         lastMime = mime;
         lastHeaders = headers;
         lastBuffer = buffer;
+        lastLive = live;
         castActive = true;
         castState = "buffering";
 
-        player = buildExo(headers, true, loadControlFor(buffer), true, true);
+        player = buildExo(headers, true, loadControlFor(buffer, live), true, true, compat);
         player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
         player.addListener(new Player.Listener() {
             @Override
@@ -343,7 +376,7 @@ public class IptvPlayerPlugin extends Plugin {
 
     // Ortak oynatıcı kurulumu: başlıklar (User-Agent dahil), arabellek ayarı, ses odağı.
     // Çoklu ekran kutuları ses odağı istemez (yoksa birbirini duraklatırlar).
-    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load, boolean tap, boolean delay) {
+    private ExoPlayer buildExo(JSObject headers, boolean audioFocus, DefaultLoadControl load, boolean tap, boolean delay, boolean compatMode) {
         Map<String, String> props = new HashMap<>();
         String ua = UA;
         if (headers != null) {
@@ -368,7 +401,11 @@ public class IptvPlayerPlugin extends Plugin {
         // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
         if (tap) base = new TapDataSource.Factory(base);
-        final MediaCodecSelector selector = "software".equals(decoderMode) ? SOFTWARE_FIRST : MediaCodecSelector.DEFAULT;
+        final MediaCodecSelector selector = ("software".equals(decoderMode) || compatMode) ? SOFTWARE_FIRST : MediaCodecSelector.DEFAULT;
+        // Uyumlu modda TS ayrıştırması geniş tutulur: erişim birimi sınırları AUD olmadan da bulunur, IDR olmayan anahtar kareler de başlangıç sayılır
+        // (aksi halde bazı yayıncı kodlayıcılarında görüntü hiç çizilmez ya da donar). Varsayılanda hiçbir şey değişmez.
+        DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
+        if (compatMode) extractors.setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS | DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES);
         ExoPlayer.Builder eb;
         if (delay && (audioDelayMs != 0 || NightCompressor.isActive(nightLevel))) {
             // Gecikme ve gece modu PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
@@ -391,7 +428,7 @@ public class IptvPlayerPlugin extends Plugin {
             eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector));
         }
         return eb
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(base))
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(base, extractors))
                 .setLoadControl(load)
                 .setAudioAttributes(audio, audioFocus)
                 .setHandleAudioBecomingNoisy(true)
@@ -510,8 +547,8 @@ public class IptvPlayerPlugin extends Plugin {
                     player.seekTo(player.getCurrentPosition()); // sarma ses hattını boşaltır, yeni değer okunur
                 } else if (ms != 0 && !curUrl.isEmpty()) {
                     // oynatıcı ses işlemcisiz kurulmuştu: yeniden kur (canlıda yayın yeniden açılır, filmde konum korunur)
-                    long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
-                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
+                    long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
+                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false);
                 }
             }
             call.resolve();
@@ -570,8 +607,8 @@ public class IptvPlayerPlugin extends Plugin {
         decoderMode = mode;
         main.post(() -> {
             if (changed && player != null && !curUrl.isEmpty()) {
-                long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
-                startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
+                long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
+                startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false);
             }
             call.resolve();
         });
@@ -592,8 +629,8 @@ public class IptvPlayerPlugin extends Plugin {
                     nightProc.setLevel(level);
                     player.seekTo(player.getCurrentPosition()); // sarma ses hattını boşaltır, yeni düzey okunur
                 } else if (NightCompressor.isActive(level) && !curUrl.isEmpty()) {
-                    long pos = player.isCurrentMediaItemLive() ? 0L : Math.max(0L, player.getCurrentPosition());
-                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true);
+                    long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
+                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false);
                 }
             }
             call.resolve();
@@ -776,7 +813,7 @@ public class IptvPlayerPlugin extends Plugin {
         placeView(s.view, r);
         s.player = buildExo(headers, false, new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(5000, 20000, 1500, 3000)
-                .build(), false, false);
+                .build(), false, false, false);
         s.player.setVolume(muted ? 0f : 1f);
         s.player.setWakeMode(C.WAKE_MODE_NETWORK);
         // Çoklu video yüzeylerinde hazırlık sırasında son kareyi koru ve boşta kalan shutter'ı saydam tut.
@@ -980,6 +1017,7 @@ public class IptvPlayerPlugin extends Plugin {
                         o.put("dropped", dc.droppedBufferCount);
                         o.put("rendered", dc.renderedOutputBufferCount);
                     }
+                    o.put("compat", compat);
                     long bw = DefaultBandwidthMeter.getSingletonInstance(getContext()).getBitrateEstimate();
                     if (bw > 0) o.put("bandwidthBps", bw);
                 }
@@ -1384,6 +1422,37 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     // ------------------------------------------------------------------ olaylar
+
+    // Görüntü donma bekçisi (saniyede bir): oynuyor görünürken (hazır + oynatılıyor) çizilen kare sayısı ilerlemiyorsa çözücü takılmıştır —
+    // ses sürerken görüntü donar ya da hiç gelmez. Bu durum Media3'te hata sayılmaz, bu yüzden JS tarafı da fark edemezdi: "VIDEO_FROZEN" hatası
+    // bildirilir (JS aynı yayına yeniden bağlanır, ardından yedek adrese geçer) ve bu yayın için uyumlu mod açılır.
+    private void watchVideo() {
+        final ExoPlayer p = player;
+        if (p == null || playerView == null) return;
+        Format vf = p.getVideoFormat();
+        boolean slowByDesign = vf != null && vf.frameRate > 0 && vf.frameRate < 2f; // sabit resimli radyo gibi yayınlar
+        if (!p.isPlaying() || vf == null || slowByDesign || pipMode || playerView.getWindowVisibility() != View.VISIBLE || !playerView.isShown()) {
+            vwAt = -1;
+            return;
+        }
+        DecoderCounters dc = p.getVideoDecoderCounters();
+        if (dc == null) return;
+        dc.ensureUpdated();
+        long r = dc.renderedOutputBufferCount;
+        long t = SystemClock.elapsedRealtime();
+        if (vwAt < 0 || r != vwRendered) {
+            vwAt = t;
+            vwRendered = r;
+            return;
+        }
+        if (t - vwAt < (r == 0 ? VIDEO_FIRST_MS : VIDEO_FREEZE_MS)) return;
+        vwAt = -1;
+        compat = true;
+        JSObject o = new JSObject();
+        o.put("message", "VIDEO_FROZEN");
+        o.put("code", -2);
+        notifyListeners("error", o);
+    }
 
     private void emitState() {
         if (player == null) return;

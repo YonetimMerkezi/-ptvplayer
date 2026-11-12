@@ -7,6 +7,7 @@ const ERR = [
   [/CONTAINER_UNSUPPORTED|MANIFEST_MALFORMED|CONTAINER_MALFORMED/, 'Yayın biçimi okunamadı'],
   [/DECODER_INIT|DECODING_FORMAT|DECODING_FAILED/, 'Bu cihaz yayının görüntü/ses biçimini çözemiyor'],
   [/BEHIND_LIVE_WINDOW/, 'Canlı yayın geride kaldı'],
+  [/VIDEO_FROZEN/, 'Görüntü donuyor (cihazın çözücüsü takıldı)'],
 ];
 
 // Sunucunun HTTP durum koduna göre açıklama: 403/404/5xx farklı sorunlardır (abonelik ya da bağlantı sınırı / kanal yok / sunucu arızası).
@@ -30,7 +31,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
   add('time', (e) => on({ type: 'time', pos: e.pos, dur: e.dur, buffered: e.buffered }));
-  add('error', (e) => on({ type: 'error', message: describeError(e.message, e.http) }));
+  add('error', (e) => on({ type: 'error', message: describeError(e.message, e.http), frozen: /VIDEO_FROZEN/.test(String(e.message || '')) }));
   add('tracks', () => on({ type: 'tracks' }));
   add('recording', (e) => onRec(e));
   add('dlProgress', (e) => onDl(e));
@@ -40,8 +41,10 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     openExternal: (target) => plugin.openExternal({ url: target.url, mime: target.mime === 'hls' || /\\.m3u8(\\?|$)/i.test(target.url) ? 'application/vnd.apple.mpegurl' : target.mime === 'dash' || /\\.mpd(\\?|$)/i.test(target.url) ? 'application/dash+xml' : /^video\\//i.test(target.mime || '') ? target.mime : 'video/*' }),
     onPipChannel: (fn) => plugin.addListener('pipChannel', fn),
     // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
-    load: (target, startMs = 0, keepRecording = false) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight() }),
+    // opts.compat: uyumlu mod (yazılım çözücü başta, geniş TS ayrıştırma). target.live: canlı yayın (progressive .ts'te Media3 canlı olduğunu bilmez;
+    // tampon eşikleri ve yeniden kurulumda konum buna göre seçilir).
+    load: (target, startMs = 0, keepRecording = false, opts = null) =>
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat) }),
     // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
     rec: {
       start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),

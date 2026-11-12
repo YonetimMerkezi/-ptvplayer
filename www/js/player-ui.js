@@ -944,6 +944,14 @@ export function createPlayerUI({ engine, player, env }) {
     setStats(!statsOn);
     showUi(false);
   });
+  // Görüntü bozuk/donuk: aynı yayın uyumlu modda (yazılım çözücü, geniş TS ayrıştırma) yeniden açılır. Yalnız Android'de (Media3) anlamlı.
+  q('#pl-fix').hidden = engine.kind !== 'native';
+  q('#pl-fix').addEventListener('click', () => {
+    if (!player.retryCompat) return;
+    toast('Uyumlu modda yeniden açılıyor…', 2200);
+    player.retryCompat();
+    showUi(false);
+  });
   q('#pl-sync').addEventListener('click', () => syncSheet());
   q('#pl-rec').addEventListener('click', () => recSheet());
   q('#pl-pip').hidden = engine.kind !== 'native';

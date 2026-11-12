@@ -39,6 +39,7 @@ import { expiryInfo, expiryText, expiryPlan, PLAN_DAYS } from './expiry.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
 import { CAPTION_LINES, DEFAULT_CAPTION, CAP_FS, normalizeCaption, captionPx, applyCaption } from './caption.js';
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
+import { LIVE_FORMATS, DEFAULT_LIVE_FMT, normalizeLiveFmt, cleanFmtMap, rememberFmt, orderLive, preferFor } from './livefmt.js';
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
 import { REMOTE_KEYS } from './cast.js';
@@ -141,7 +142,16 @@ const onEngine = (ev) => player.handle(ev);
 engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0)), () => normalizeNight(store.pref('night', DEFAULT_NIGHT)), (e) => dlEvent(e)) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
 // Yeniden bağlanma davranışı Genel ayarlar › Yayın bağlantısı'ndan okunur (her denemede güncel değer)
 const policy = () => retryPolicy({ reconnect: store.pref('set.reconnect', DEFAULT_RECONNECT), stall: store.pref('set.stall', DEFAULT_STALL) });
-player = createPlayer({ engine, policy });
+// Yedek adres (öteki biçim) kesintisiz oynadıysa kanal için hatırlanır; sonraki açılışta o biçim başa alınır (Genel ayarlar › Canlı yayın biçimi).
+const LIVE_FMT_KEY = 'live.fmt';
+const onSteady = (target) => {
+  const item = player && player.state().item;
+  if (!item || item.kind !== 'live' || !target || target.alt) return;
+  const map = cleanFmtMap(store.pref(LIVE_FMT_KEY, {}));
+  const next = rememberFmt(map, item.id, target.mime);
+  if (next !== map) store.setPref(LIVE_FMT_KEY, next);
+};
+player = createPlayer({ engine, policy, onSteady });
 // Altyazı görünümü (boyut, renk, arka plan): kayıtlı seçim açılışta ve her değişiklikte oynatıcı eklentisine iletilir.
 const applySubtitleStyle = () => {
   if (engine.setSubtitleStyle) Promise.resolve(engine.setSubtitleStyle(subParams(store.pref('sub', DEFAULT_SUB)))).catch(() => {});
@@ -303,9 +313,11 @@ function setCatalog(raw) {
 // Oynatma adresleri; canlı kanalda aynı adlı kanallar yedek olarak sona eklenir.
 function targetsOf(item, ep) {
   if (item.kind !== 'live') return playTargets(S.source, item, ep);
-  if (!setting('altCh')) return playTargets(S.source, item, ep); // Genel ayarlar: yedek kanal denemesi kapalı
+  // canlı: hatırlanan (ya da ayardaki) biçim başa alınır
+  const prefer = preferFor(normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)), cleanFmtMap(store.pref(LIVE_FMT_KEY, {})), item.id);
+  if (!setting('altCh')) return orderLive(playTargets(S.source, item, ep), prefer); // Genel ayarlar: yedek kanal denemesi kapalı
   if (!S.altIdx) S.altIdx = buildAltIndex(S.cat.live);
-  return playTargets(S.source, item, ep, altsOf(S.altIdx, item));
+  return orderLive(playTargets(S.source, item, ep, altsOf(S.altIdx, item)), prefer);
 }
 
 // Çalışmayan kanal işareti: son 7 günde açılamayan kanallar listede "Çalışmıyor olabilir" görünür; açılınca kalkar.
@@ -3255,6 +3267,7 @@ function playerSheet() {
       (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Bazı kanallar bu cihazda bozuk, yeşil/beyaz ya da donuk görünüyorsa “Yazılım öncelikli”yi deneyin. Daha yavaştır, pili ve işlemciyi daha çok kullanır. Açık kanal hemen yeniden açılır</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
       `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
+      `<div class="sel-row"><span>Canlı yayın biçimi<small>Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır</small></span><select id="g-lfmt">${optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)))}</select></div>` +
       chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
       chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
       chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +
@@ -3300,6 +3313,10 @@ function playerSheet() {
       });
       $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
       $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
+      $('#g-lfmt', body).addEventListener('change', (e) => {
+        store.setPref('set.liveFmt', normalizeLiveFmt(e.target.value));
+        if (e.target.value !== 'auto') store.setPref(LIVE_FMT_KEY, {}); // açık seçim, kanal başına hatırlananların önüne geçsin
+      });
       $('#g-intro', body).addEventListener('change', (e) => store.setPref('set.intro', normalizeIntro(e.target.value)));
       const gsub = $('#g-sub', body);
       if (gsub) gsub.addEventListener('click', () => pui.subtitleSheet(() => ($('#g-sub-s', body).textContent = subLabel(store.pref('sub', DEFAULT_SUB)))));

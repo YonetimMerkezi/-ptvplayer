@@ -5,8 +5,10 @@ import { STEADY_MS, reconnectDelay, retryPolicy } from './retry.js';
 const STALL_MS = 25000; // ilk açılışta yayının gelmesi için
 const PROGRESS_EVERY_MS = 10000;
 const OPEN_CAP_MS = 90000; // film ilk açılışta veri geliyorsa (tampon büyüyorsa) en çok bu kadar beklenir
+const GOOD_MS = 20000; // yedek adres bu kadar kesintisiz oynarsa "bu yayın bu adresle çalışıyor" diye bildirilir
 
-export function createPlayer({ engine, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now() }) {
+// onSteady(hedef, sıra): ilk adres dışındaki bir adres GOOD_MS boyunca kesintisiz oynadığında bir kez çağrılır (çalışan biçim hatırlansın diye).
+export function createPlayer({ engine, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now(), onSteady = null }) {
   const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0 };
   const listeners = new Set();
   let progressCb = null;
@@ -19,6 +21,9 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
   let startMs = 0;
   let openedAt = 0;
   let lastBuf = 0; // son görülen tampon konumu: büyüyorsa veri geliyordur, açılış takılmış sayılmaz
+  let frozen = 0; // art arda görüntü donması (çözücü takılması) sayısı: ikincisinde yedek adrese geçilir
+  let compatNext = false; // bir sonraki açılış uyumlu modda olsun (kullanıcı "görüntü bozuk" dedi)
+  let goodSent = false;
 
   const emit = () => listeners.forEach((f) => f({ ...st }));
   const clearStall = () => {
@@ -53,18 +58,21 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     setStatus('loading');
     emit();
     try {
-      await engine.load(t, resumeAt, keep);
+      const opts = compatNext ? { compat: true } : undefined;
+      compatNext = false;
+      await engine.load(t, resumeAt, keep, opts);
     } catch (e) {
       fail(e && e.message ? e.message : 'Oynatıcı başlatılamadı');
     }
   }
 
   // Oynarken kopan ya da takılan yayına hızla yeniden bağlanır; art arda başarısız olursa yedek adrese de geçer.
-  function scheduleReconnect() {
+  function scheduleReconnect(skipNow = false) {
     clearStall();
     clearRetry();
+    goodSent = false;
     const n = reconnects++;
-    if (n >= 2 && st.targets.length > 1) st.idx = (st.idx + 1) % st.targets.length;
+    if ((skipNow || n >= 2) && st.targets.length > 1) st.idx = (st.idx + 1) % st.targets.length;
     st.status = 'buffering';
     st.reconnect = reconnects;
     st.error = '';
@@ -75,10 +83,18 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     }, reconnectDelay(n));
   }
 
-  function fail(message) {
+  // isFrozen: yayın "oynuyor" görünürken görüntü donmuş (çözücü takılmış). Aynı adrese bir kez uyumlu modda yeniden bağlanılır;
+  // yine donarsa beklemeden yedek adrese (öteki biçim) geçilir.
+  function fail(message, isFrozen = false) {
     if (st.status === 'idle' || retryTimer) return; // yeniden bağlanma zaten planlı
-    if (everPlayed && reconnects < (st.live ? policy().liveMax : policy().vodMax)) return scheduleReconnect();
+    let skip = false;
+    if (isFrozen && ++frozen >= 2) {
+      skip = true;
+      frozen = 0;
+    }
+    if (everPlayed && reconnects < (st.live ? policy().liveMax : policy().vodMax)) return scheduleReconnect(skip);
     if (!everPlayed && st.idx + 1 < st.targets.length) {
+      goodSent = false;
       st.idx++;
       startTarget(startMs, true);
       return;
@@ -92,7 +108,7 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
 
   function handle(ev) {
     if (st.status === 'idle') return;
-    if (ev.type === 'error') return fail(ev.message);
+    if (ev.type === 'error') return fail(ev.message, !!ev.frozen);
     if (ev.type === 'tracks') {
       st.tracksVer++; // ses/altyazı parçaları değişti: arayüz düğmeleri yeniden okusun
       emit();
@@ -107,6 +123,17 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
         if (now() - openedAt < OPEN_CAP_MS) armStall();
       }
       if (reconnects && st.status === 'playing' && playingSince !== null && now() - playingSince >= STEADY_MS) reconnects = 0;
+      if (st.status === 'playing' && playingSince !== null && now() - playingSince >= STEADY_MS) frozen = 0;
+      if (onSteady && !goodSent && st.status === 'playing' && playingSince !== null && now() - playingSince >= GOOD_MS) {
+        goodSent = true;
+        if (st.idx > 0) {
+          try {
+            onSteady(st.targets[st.idx], st.idx);
+          } catch {
+            /* hatırlama başarısız olsa da oynatma sürer */
+          }
+        }
+      }
       if (progressCb && ev.dur > 0 && now() - lastProgressAt >= PROGRESS_EVERY_MS && st.status === 'playing') {
         lastProgressAt = now();
         progressCb(st.pos, st.dur, st);
@@ -144,6 +171,9 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       Object.assign(st, { item, ep, targets, idx: 0, pos: startAt, dur: -1, live: item.kind === 'live', error: '' });
       everPlayed = false;
       reconnects = 0;
+      frozen = 0;
+      goodSent = false;
+      compatNext = false;
       st.reconnect = 0;
       clearRetry();
       startMs = startAt;
@@ -163,6 +193,20 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       st.idx = 0;
       everPlayed = false;
       reconnects = 0;
+      st.reconnect = 0;
+      clearRetry();
+      openedAt = now();
+      lastBuf = 0;
+      return startTarget(st.live ? 0 : st.pos, true);
+    },
+    // Kullanıcı "görüntü bozuk/donuyor" dedi: açık yayın aynı adreste uyumlu modda (yazılım çözücü, geniş TS ayrıştırma) yeniden açılır.
+    retryCompat() {
+      if (!st.targets.length || st.status === 'idle') return;
+      compatNext = true;
+      everPlayed = false;
+      reconnects = 0;
+      frozen = 0;
+      goodSent = false;
       st.reconnect = 0;
       clearRetry();
       openedAt = now();
