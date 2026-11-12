@@ -1,5 +1,5 @@
 // Netflix gibi film/dizi ekranı: her kategori yatayda kayan tek satır, üstte odaktaki yapımın vitrini.
-// Kapsam: TV 1920×1080 ve 960×540 gezinme, "Tümünü gör" ve Geri ile konumun dönmesi, kilitli kategori, Düzenle kutusu,
+// Kapsam: "Tümü" satırı yok, en üst satır "Devam et", TV 1920×1080 ve 960×540 gezinme, "Tümünü gör" ve Geri ile konumun dönmesi, kilitli kategori, Düzenle kutusu,
 // Ayarlar > Film ve dizi ekranı seçenekleri, telefon (dokunmatik kaydırma, vitrin yalnız yatay + kumanda).
 // Tek başına: node tests/e2e/satirlar.cjs; run.cjs sonunda da çağrılır.
 const path = require('node:path');
@@ -78,13 +78,14 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await enter(page);
     ok(await page.evaluate(() => document.querySelector('#list').classList.contains('sh') && !document.querySelector('.row.cat')), 'TV varsayılanı: kategoriler satır (klasik kategori listesi yok)');
     const t = await titles(page);
-    ok(t[0] === 'Tümü' && t.includes('Dram') && t.includes('Aksiyon') && t[t.length - 1] === 'Düzenle', 'satırlar: Tümü, kategoriler, en altta Düzenle: ' + t.join(', '));
+    ok(!t.includes('Tümü') && !t.includes('Devam et') && t.includes('Dram') && t.includes('Aksiyon') && t[t.length - 1] === 'Düzenle', 'satırlar: "Tümü" yok, kategoriler, en altta Düzenle: ' + t.join(', '));
     ok((await cell(page)) === '0.0', 'kumandada odak ilk satırın ilk kutusunda');
     ok(await page.evaluate(() => !document.querySelector('#hero').hidden && document.documentElement.classList.contains('hero-on')), 'vitrin alanı açık');
     const first = await activeName(page);
     ok(first.length > 0 && (await heroTitle(page)) === first, 'vitrin odaktaki filmin adını gösteriyor: ' + first);
     const cards0 = await page.evaluate(() => document.querySelectorAll('.sh-row[data-row="0"] .card').length);
-    ok(cards0 === 24, `ilk satırda 24 kutu çizili, hepsi yatay kayar (${cards0})`);
+    const count0 = Number(await page.textContent('.sh-row[data-row="0"] .sh-t small'));
+    ok(count0 > 0 && cards0 === Math.min(count0, 24), `ilk satırda kategorinin yapımları (en çok 24) çizili, hepsi yatay kayar (${cards0}/${count0})`);
 
     await page.waitForFunction(() => /Henrik Lindholm/.test(document.querySelector('#hero').textContent), null, { timeout: 5000 });
     await page.waitForFunction(() => document.querySelector('#hero-bg').classList.contains('has'), null, { timeout: 5000 });
@@ -146,6 +147,26 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await ctx.close();
   }
 
+  // ---- 1b) İzleme ilerlemesi varsa en üst satır "Devam et"tir (Tümü yok); Tümünü gör yarım kalanların hepsini açar
+  {
+    const { ctx, page, errs } = await open({ width: 1920, height: 1080 });
+    const pick = await page.evaluate(() => {
+      const sid = window.__iptv.S.source.id;
+      const list = window.__iptv.S.cat.movies;
+      list.slice(0, 2).forEach((it, i) => window.__iptv.store.setProgress(sid, { id: it.id, kind: 'movie', name: it.name, logo: it.logo }, 120000 + i, 600000));
+      return list.slice(0, 2).map((it) => it.name);
+    });
+    await enter(page);
+    const t = await titles(page);
+    ok(t[0] === 'Devam et' && !t.includes('Tümü') && t[t.length - 1] === 'Düzenle', 'ilerleme varsa ilk satır "Devam et", "Tümü" yok: ' + t.join(', '));
+    ok((await cell(page)) === '0.0' && (await activeName(page)).length > 0, 'kumandada odak "Devam et" satırının ilk kutusunda');
+    const cards = await page.evaluate(() => document.querySelectorAll('.sh-row[data-row="0"] .card').length);
+    ok(cards === pick.length, `"Devam et" satırında yarım kalan ${pick.length} film var (${cards})`);
+    ok((await heroTitle(page)) === (await activeName(page)), 'vitrin "Devam et"teki filmi gösteriyor');
+    ok(errs.length === 0, 'Devam et: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
+    await ctx.close();
+  }
+
   // ---- 2) TV 960×540: bir satır tam görünür, alttaki satırın başlığı görünür, halka kırpılmaz, vitrin metni sığar
   {
     const { ctx, page, errs } = await open({ width: 960, height: 540 });
@@ -174,7 +195,8 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await enter(page);
     const n0 = await page.evaluate(() => document.querySelectorAll('.sh-row[data-row="0"] [data-c]').length);
     ok(n0 === 25, `ilk satır 24 kutu + "Tümünü gör" (${n0} hücre)`);
-    ok(/60/.test(await page.textContent('.sh-row[data-row="0"] .sh-more')), '"Tümünü gör" kutusu toplam sayıyı gösteriyor (60)');
+    const first3 = (await titles(page))[0];
+    ok(/30/.test(await page.textContent('.sh-row[data-row="0"] .sh-more')), `"Tümünü gör" kutusu satırın toplam sayısını gösteriyor (${first3}: 30)`);
     await press(page, 'ArrowRight', 24, 40);
     await sleep(400);
     ok((await cell(page)) === '0.24' && (await page.evaluate(() => document.activeElement.hasAttribute('data-more'))), 'sağ ok ×24: odak "Tümünü gör" kutusunda');
@@ -186,7 +208,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.keyboard.press('Enter');
     await page.waitForSelector('#crumb-t', { timeout: 5000 });
     await page.waitForSelector('#list .card', { timeout: 5000 });
-    ok((await page.textContent('#crumb-t')) === 'Tümü' && (await page.evaluate(() => window.__iptv.S.items.length)) === 60, 'Tümünü gör: Tümü açıldı, 60 yapımın hepsi listede');
+    ok((await page.textContent('#crumb-t')) === first3 && (await page.evaluate(() => window.__iptv.S.items.length)) === 30, `Tümünü gör: ${first3} açıldı, 30 yapımın hepsi listede`);
     ok(await page.evaluate(() => !document.querySelector('#hero').hidden), 'ızgarada da vitrin açık');
     await page.keyboard.press('Escape');
     await page.waitForSelector('.sh-row', { timeout: 5000 });
@@ -210,7 +232,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await ctx.close();
   }
 
-  // ---- 4) Kilitli kategori: satırda kilit kutusu, şifre, açılınca yapımlar; Tümü sayısı kilitliyken düşer
+  // ---- 4) Kilitli kategori: satırda kilit kutusu, şifre, açılınca yapımlar
   {
     const { ctx, page, errs } = await open({ width: 1920, height: 1080 });
     // şifre, açık TV sayfasında tanımlanır (açılış kilidi istemesin); kategori kilitleri hemen etkin olur
@@ -219,7 +241,8 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
       window.__iptv.store.setPref('lock.pin', await makeRecord('1234'));
     });
     await enter(page);
-    const all0 = Number(await page.textContent('.sh-row[data-row="0"] .sh-t small'));
+    const rowN = async (name) => Number(await page.textContent(`.sh-row[data-row="${(await titles(page)).indexOf(name)}"] .sh-t small`));
+    const aks0 = await rowN('Aksiyon');
     await page.click('.sh-edit');
     await page.waitForSelector('.row.cat.edit', { timeout: 5000 });
     await page.click('.row.cat:has-text("Dram") [data-act=lock]');
@@ -228,8 +251,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await sleep(400);
     const dramR = (await titles(page)).indexOf('Dram');
     ok(await page.evaluate((r) => !!document.querySelector(`.sh-row[data-row="${r}"] .sh-lock`) && !!document.querySelector(`.sh-row[data-row="${r}"] .sh-t use[href="#i-lock"]`), dramR), 'kilitli kategori: satırda kilit simgesi ve "Kilitli" kutusu');
-    const all1 = Number(await page.textContent('.sh-row[data-row="0"] .sh-t small'));
-    ok(all1 < all0, `kilitli kategorinin yapımları Tümü satırından düştü (${all0} → ${all1})`);
+    ok((await rowN('Aksiyon')) === aks0, `kilitlenen kategori öteki satırı etkilemedi (Aksiyon ${aks0})`);
     ok((await page.evaluate((r) => document.querySelectorAll(`.sh-row[data-row="${r}"] .card`).length, dramR)) === 0, 'kilitli satırda hiç yapım kutusu yok');
 
     await page.click(`.sh-row[data-row="${dramR}"] .sh-lock`);
@@ -243,8 +265,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.waitForSelector('#lock', { state: 'detached' });
     await page.waitForFunction((r) => document.querySelectorAll(`.sh-row[data-row="${r}"] .card`).length > 0, dramR, { timeout: 5000 });
     ok(true, 'doğru şifre: satır açıldı, yapımlar göründü');
-    const all2 = Number(await page.textContent('.sh-row[data-row="0"] .sh-t small'));
-    ok(all2 === all0, `şifre girilince Tümü sayısı geri geldi (${all2})`);
+    ok((await rowN('Aksiyon')) === aks0 && (await titles(page)).indexOf('Dram') === dramR, 'şifre girilince satır sırası ve sayılar değişmedi');
     ok(errs.length === 0, 'kilit: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
     await ctx.close();
   }

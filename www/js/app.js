@@ -604,10 +604,12 @@ function browseMode(kind) {
   return isMv(kind) && !S.catEdit && !S.catFilter && mvView() === 'rows' ? 'rows' : 'cats';
 }
 
-// Satırlar: kilidi bu oturumda açılmış kategori normal satır olur; boş kategori görünmez; en altta düzenleme kutusu.
+// Satırlar: "Tümü" satır olmaz (tüm listenin tek satırı anlamsız; klasik görünümde ve aramada durur), en üst satır "Devam et"tir.
+// Kilidi bu oturumda açılmış kategori normal satır olur; boş kategori görünmez; en altta düzenleme kutusu.
 function rowsOf(kind, cats) {
   const out = [];
   for (const c of cats) {
+    if (c.id === '__all') continue;
     const row = c.locked && S.unlocked.has(catKey(kind, c.id)) ? { ...c, locked: false } : c;
     if (row.locked || row.count > 0) out.push(row);
   }

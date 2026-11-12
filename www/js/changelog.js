@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 69,
+    title: 'Film ve dizi satırları “Devam et”le başlar',
+    items: [
+      'Netflix gibi ekranda en üstteki “Tümü” satırı kaldırıldı; izlemeye başladığınız yapım varsa ilk satır “Devam et”, yoksa ilk kategori. Tüm liste Klasik görünümde ve aramada durmaya devam eder'
+    ],
+  },
+  {
     id: 68,
     title: 'TV’de odak, ayarlar ve görüntü çözücü',
     items: [
