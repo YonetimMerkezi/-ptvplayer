@@ -1,14 +1,10 @@
 // Dizi akışı: 1001dizi haftalık takvimi, ücretsiz EPG yedeği, gün/kanal filtreleri, oynatıcı, hatırlatıcı, önbellek ve hata yolları.
-// gün çipleri, kanal süzgeci, satırdan kanal açma, hatırlatıcı zili, önbellek, hata + yedek kaynak. Tek başına: node tests/e2e/dizi.cjs; run.cjs sonunda da çağrılır.
 const path = require('node:path');
-
 const CORS = { 'access-control-allow-origin': '*' };
 const B = 'https://1001dizi.net';
-
 const card = (slug, title, ch, time, ep, status) =>
   `<div class="c"><a href="${B}/dizi-${slug}"><img src="${B}/i/${slug}.jpg" alt="${title}, ${ch}"></a><a href="${B}/dizi-${slug}"><strong>${title}</strong></a><p>${time ? `${ch} - ${time}` : ch}</p><p>${ep}</p>${status ? `<span><b>${status}</b></span>` : ''}</div>`;
 const MENU = '<ul><li><a href="/bugunun-dizileri">BUGÜNÜN DİZİLERİ</a></li><li><a href="/dizi-populer">Popüler</a></li></ul>';
-
 // Her gün: Gündem'de bir dizi (20:00), Show TV'de bir dizi (21:00). Bugünün sayfasında ayrıca gece/sabah dizisi ve yayınlanmayan dizi.
 const COMMON = [
   ['gundem-dizisi', 'Gündem Dizisi', 'Gündem', '20:00', '12. Bölüm', 'Yeni Bölüm'],
@@ -19,7 +15,6 @@ const TODAY_EXTRA = [
   ['sabah-dizisi', 'Sabah Dizisi', 'Gündem', '00:01', '8. Bölüm', 'Yeni Bölüm'],
   ['ara-dizi', 'Ara Dizi', 'Show TV', '22:00', '9. Bölüm', 'BU HAFTA YAYINLANMIYOR'],
 ];
-
 function fakeSites() {
   const st = { mode: 'ok', epg: 'empty', calls: [] };
   const todayIdx = () => (new Date().getDay() + 6) % 7;
@@ -55,7 +50,6 @@ function fakeSites() {
   }
   return { st, install };
 }
-
 async function diziSection({ browser, base, mock, ok, sleep }) {
   console.log('dizi akışı: 1001dizi / ücretsiz EPG');
   const sites = fakeSites();
@@ -89,7 +83,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
     await page.waitForSelector('.sf-pg', { state: 'detached' });
   };
   const plansOf = (page) => page.evaluate(() => window.__iptv.store.pref('plans', []).filter((x) => String(x.id).startsWith('drem:')));
-
   // ---------------------------------------------------------------- 1) normal akış
   const { ctx, page, errs } = await mk();
   await page.click('.tile.t-today');
@@ -102,7 +95,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   ok(/^Dizi akışı · \d{1,2} \p{L}+ \p{L}+$/u.test(await page.textContent('.sf-pg .pg-bar h3')), 'başlıkta bugünün tarihi: ' + (await page.textContent('.sf-pg .pg-bar h3')));
   ok(sites.st.calls.length === 8, '1 haftalık + 7 gün sayfası istendi (' + sites.st.calls.length + ')');
   ok(/1001dizi · Son güncelleme \d\d:\d\d/.test(await page.textContent('#sf-note')), 'kaynak ve güncelleme saati yazıyor: ' + (await page.textContent('#sf-note')));
-
   const chipsTitle0 = await page.textContent('.sf-pg .pg-bar h3');
   let rows = await rowsOf(page);
   ok(rows.length === 5 && rows.map((r) => r.title).join('|') === 'Sabah Dizisi|Gündem Dizisi|Show Dizisi|Ara Dizi|Gece Dizisi', 'bugün 5 dizi, saat sırasıyla: ' + rows.map((r) => r.title).join('|'));
@@ -114,7 +106,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   ok(!rows.some((r) => /Popüler|İletişim|BUGÜNÜN/.test(r.title)), 'menü ve altbilgi bağlantıları liste dışı');
   const chipN = await page.$eval('#sf-days [data-pos="0"] small', (e) => e.textContent);
   ok(chipN === '5', 'gün çipinde dizi sayısı: ' + chipN);
-
   // 2) kanal süzgeci
   const chans = await page.$$eval('#sf-chs .chip', (e) => e.map((c) => c.textContent));
   ok(chans.join('|') === 'Tümü|Gündem|Show TV', 'kanal çipleri sayıya göre: ' + chans.join('|'));
@@ -127,7 +118,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   ok(true, 'listede olmayan kanal için ileti: Show TV listenizde bulunamadı');
   await page.click('#sf-chs [data-chan=""]');
   ok((await rowsOf(page)).length === 5, '“Tümü” süzgeci kaldırdı');
-
   // 3) kanal listede var: oynatıcı açılır
   await page.click('#sf-list .sf-r:has-text("Gündem Dizisi") .td-m');
   await page.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
@@ -135,7 +125,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await page.goBack();
   await page.waitForSelector('#player', { state: 'hidden', timeout: 5000 });
   ok(await page.isVisible('.sf-pg'), 'oynatıcıdan dönünce Dizi akışı sayfası açık');
-
   // 4) hatırlatıcı: yarının dizisi (saat her zaman ileride)
   await page.click('#sf-days [data-pos="1"]');
   await page.waitForSelector('#sf-list .sf-r .sp-bell');
@@ -156,14 +145,12 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await page.click('#sf-list .sf-r:has-text("Gündem Dizisi") .sp-bell');
   await page.waitForFunction(() => window.__iptv.store.pref('plans', []).some((x) => String(x.id).startsWith('drem:')), null, { timeout: 3000 });
   ok(true, 'hatırlatıcı yeniden kuruldu (Planlananlar için)');
-
   // 5) bugünün geçmiş/şimdi durumu
   await page.click('#sf-days [data-pos="0"]');
   rows = await rowsOf(page);
   ok(/past|now/.test(rows.find((r) => r.title === 'Sabah Dizisi').cls) || new Date().getHours() < 0, 'bugün 00:01 dizisi geçmiş ya da şimdi işaretli');
   ok(!rows.find((r) => r.title === 'Gece Dizisi').cls.match(/past|now/), 'bugün 23:59 dizisi henüz başlamadı');
   await page.screenshot({ path: path.join(process.env.SHOTS || '/tmp', '82-dizi-akisi.png') });
-
   // 6) önbellek: kapatıp açınca ağa gitmeden hemen gelir
   const n0 = sites.st.calls.length;
   await closeFlow(page);
@@ -172,7 +159,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await sleep(600);
   ok(sites.st.calls.length === n0, 'taze önbellek varken sayfalar yeniden istenmedi');
   ok((await rowsOf(page)).length === 5, 'önbellekten liste hemen geldi');
-
   // 7) güncelleme başarısız: kayıtlı veri kalır
   sites.st.mode = 'fail';
   await page.click('#sf-days [data-refresh]');
@@ -185,7 +171,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   ok(true, 'site geri gelince yenileme başarılı');
   ok(errs.length === 0, 'konsol hatası yok' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await ctx.close();
-
   // ---------------------------------------------------------------- 2) 1001dizi bozuk → ücretsiz EPG yedeği (bugün + yarın)
   sites.st.mode = 'empty';
   sites.st.epg = 'dizi';
@@ -205,7 +190,6 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await B2.page.click('#sf-days [data-pos="2"]');
   ok(/yalnızca bugün ve yarın/.test(await B2.page.textContent('#sf-list')), 'başka gün seçilince açıklayıcı boş durum');
   await B2.ctx.close();
-
   // ---------------------------------------------------------------- 3) hiçbir kaynakta dizi kaydı yok → teşhisli hata ve yeniden dene
   sites.st.mode = 'fail';
   sites.st.epg = 'empty';
@@ -222,9 +206,7 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   ok(C.errs.length === 0, 'konsol hatası yok (hata yolu)' + (C.errs.length ? ': ' + C.errs.slice(0, 3).join(' | ') : ''));
   await C.ctx.close();
 }
-
 module.exports = { diziSection, fakeSites };
-
 if (require.main === module) {
   (async () => {
     const http = require('node:http');
