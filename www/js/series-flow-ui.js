@@ -28,7 +28,7 @@ const weekKey = (ms) => {
 export function openSeriesFlow(env) {
   const { net, store } = env;
   const now = env.now || (() => Date.now());
-  let data = null; // { at, days, via, failed, note, todayOnly }
+  let data = null; // { at, days, via, failed, note, coverageDays, weekKey }
   let busy = false;
   let err = null;
   let pos = 0; // 0 = bugün … 6 = bugünden 6 gün sonra
@@ -44,7 +44,6 @@ export function openSeriesFlow(env) {
   const root = page.el;
   const q = (s) => $(s, root);
 
-  const dayStart0 = () => istDayStart(now(), 0);
   // Pozisyon p için: İstanbul takviminde Pazartesi tabanlı gün sırası ve gün başlangıcı.
   const dayOf = (p) => {
     const from = istDayStart(now(), p);
