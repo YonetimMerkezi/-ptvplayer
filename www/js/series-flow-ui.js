@@ -1,4 +1,4 @@
-// "Dizi akışı" ekranı: TV dizilerinin haftalık yayın programı (gün, kanal, saat, bölüm). Bugün TV'de ekranından açılır; modül ilk kullanımda yüklenir.
+// "Dizi akışı" ekranı: haftalık 1001dizi takvimi, bugün/yarın için ücretsiz EPG tamamlaması ve hatırlatıcılar.
 // Satıra dokununca kanal kullanıcının listesinde bulunursa açılır; zil dizi başlamadan önce hatırlatıcı kurar (Planlananlar'da görünür).
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
@@ -8,11 +8,18 @@ import { MATCH_LEAD_DEFAULT, leadLabel } from './plan.js';
 
 const CACHE_KEY = 'series-flow:v1';
 const FRESH_MS = 3 * 3600e3;
-const MAX_AGE = 14 * 864e5; // program haftalık tekrarlanır; eski kayıt yine de işe yarar
+const MAX_AGE = 8 * 864e5; // yalnız aynı yayın haftasının önbelleği kullanılabilir
 const SHOW_MS = 150 * 60e3; // dizi en çok bu kadar sürüyor sayılır ("şimdi" göstergesi)
 const REM_PREFIX = 'drem:';
 
-// env: { net, store, toast, liveItems(), play(items, index), reminders: { list(), set(plan), remove(id) }, now?, base?, sinemalarUrl? }
+const weekKey = (ms) => {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+};
+
+// env: { net, store, toast, liveItems(), play(items, index), reminders: { list(), set(plan), remove(id) }, now?, base? }
 export function openSeriesFlow(env) {
   const { net, store } = env;
   const now = env.now || (() => Date.now());
@@ -82,14 +89,14 @@ export function openSeriesFlow(env) {
     page.setTitle(`Dizi akışı · ${when}`);
     const note = q('#sf-note');
     const diag = q('#sf-diag');
-    const hasDiag = !!(data && (data.todayOnly || (data.failed && data.failed.length)) && (data.note || (data.raw && data.raw.length)));
+    const hasDiag = !!(data && (data.coverageDays === 2 || (data.failed && data.failed.length)) && data.note);
     if (data) {
-      const base = data.todayOnly ? `Yalnız bugün (${data.via}) · ` : `${data.via} · `;
+      const base = data.coverageDays === 2 ? `Bugün + yarın (${data.via}) · ` : `${data.via} · `;
       const text = err ? `Güncellenemedi · kayıtlı veri (${fmtClock(data.at)})` : `${base}Son güncelleme ${fmtClock(data.at)}${data.failed && data.failed.length ? ` · ${data.failed.length} gün alınamadı` : ''}`;
       note.innerHTML = `${esc(text)}${hasDiag ? ` <button class="chip" data-diag>${showDiag ? 'Ayrıntıyı gizle' : 'Ayrıntı'}</button>` : ''}`;
     } else note.textContent = '';
     diag.hidden = !(hasDiag && showDiag);
-    diag.textContent = hasDiag && showDiag ? [data.note, ...(data.raw || [])].filter(Boolean).join('\n') : '';
+    diag.textContent = hasDiag && showDiag ? [data.note].filter(Boolean).join('\n') : '';
 
     const el = q('#sf-list');
     if (!data) {
@@ -100,15 +107,16 @@ export function openSeriesFlow(env) {
     }
     const rows = rowsOfDay();
     if (!rows.length) {
-      el.innerHTML = `<div class="empty"><h3>${pos === 0 ? 'Bugün' : esc(WEEKDAYS[idx][1])} için dizi bulunamadı</h3><p>${chan ? 'Seçili kanalda dizi yok; “Tümü”ne dokunun.' : data.todayOnly ? 'Bu kaynak yalnız bugünün listesini verdi. “Bugün”e dokunun.' : 'Bu gün sayfası boş geldi ya da alınamadı. “Yenile” ile tekrar deneyin.'}</p>${data.note ? `<p class="hint sp-detail">${esc(data.note)}</p>` : ''}</div>`;
+      el.innerHTML = `<div class="empty"><h3>${pos === 0 ? 'Bugün' : esc(WEEKDAYS[idx][1])} için dizi bulunamadı</h3><p>${chan ? 'Seçili kanalda dizi yok; “Tümü”ne dokunun.' : data.coverageDays === 2 && pos > 1 ? 'Ücretsiz EPG kaynağı yalnızca bugün ve yarın için dizi bilgisi sağlıyor.' : 'Bu gün sayfası boş geldi ya da alınamadı. “Yenile” ile tekrar deneyin.'}</p>${data.note ? `<p class="hint sp-detail">${esc(data.note)}</p>` : ''}</div>`;
       el._rows = [];
       return;
     }
     const ids = remIds();
     el.innerHTML = rows
       .map((r, i) => {
-        const s = startOf(from, r.time);
-        const state = pos !== 0 || s == null ? '' : t >= s + SHOW_MS ? 'past' : t >= s ? 'now' : '';
+        const s = r.startAt || startOf(from, r.time);
+        const endAt = r.endAt || (s == null ? null : s + SHOW_MS);
+        const state = pos !== 0 || s == null ? '' : t >= endAt ? 'past' : t >= s ? 'now' : '';
         const canBell = env.reminders && s != null && s > t && !r.off;
         const on = ids.has(REM_PREFIX + s + ':' + r.slug);
         const sub = [r.channel, r.ep, r.status].filter(Boolean).join(' · ');
@@ -122,7 +130,7 @@ export function openSeriesFlow(env) {
 
   async function persist() {
     try {
-      await store.cache.set(CACHE_KEY, { at: data.at, data });
+      await store.cache.set(CACHE_KEY, { at: data.at, weekKey: weekKey(data.at), data: { ...data, weekKey: weekKey(data.at) } });
     } catch {
       /* kayıt başarısız olsa da liste çalışır */
     }
@@ -133,10 +141,10 @@ export function openSeriesFlow(env) {
     busy = true;
     draw();
     try {
-      const r = await loadSeriesWeek({ net, base: env.base, sinemalarUrl: env.sinemalarUrl, nowMs: now() });
-      // Yedek kaynak yalnız bugünü verir; elimizdeki haftalık liste daha değerli, onu bozmayız
-      if (r.todayOnly && data && !data.todayOnly) throw Object.assign(new Error('Yalnız bugünün listesi alınabildi'), { detail: r.note });
-      data = { at: now(), ...r };
+      const r = await loadSeriesWeek({ net, base: env.base, nowMs: now() });
+      // İki günlük EPG yedeği, aynı haftanın geçerli 7 günlük önbelleğini asla ezmez.
+      if (r.coverageDays === 2 && data && data.coverageDays !== 2 && data.weekKey === weekKey(now())) throw Object.assign(new Error('Yalnız bugün ve yarının listesi alınabildi'), { detail: r.note });
+      data = { at: now(), weekKey: weekKey(now()), ...r };
       err = null;
       persist();
     } catch (e) {
@@ -149,7 +157,7 @@ export function openSeriesFlow(env) {
   }
 
   function toggleBell(r, from) {
-    const s = startOf(from, r.time);
+    const s = r.startAt || startOf(from, r.time);
     if (s == null || !env.reminders) return;
     const id = REM_PREFIX + s + ':' + r.slug;
     if (remIds().has(id)) {
@@ -161,7 +169,7 @@ export function openSeriesFlow(env) {
       env.reminders.set({
         id, kind: 'rem', src: 'dizi', lead, chId: it ? it.id : '', chName: r.channel,
         title: r.ep ? `${r.title} · ${r.ep}` : r.title,
-        s, e: s + SHOW_MS, at: s - lead * 60000,
+        s, e: r.endAt || s + SHOW_MS, at: s - lead * 60000,
       });
       env.toast && env.toast(`Hatırlatıcı kuruldu · ${leadLabel(lead)}`, 2000);
     }
@@ -204,7 +212,7 @@ export function openSeriesFlow(env) {
   (async () => {
     try {
       const c = await store.cache.get(CACHE_KEY);
-      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE) data = c.data;
+      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE && c.weekKey === weekKey(now())) data = { ...c.data, weekKey: c.weekKey };
     } catch {
       /* kayıtlı veri yok */
     }
