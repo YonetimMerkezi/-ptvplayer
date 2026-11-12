@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 72,
+    title: 'Dikey telefonda ayarlar düzeldi',
+    items: [
+      'Genel ayarlar’da “Film ve dizi ekranı” satırı telefon dikeyken ekrandan taşıyordu ve açıklama yazısı dar bir sütunda harf harf kırılıyordu; seçenek adları kısaldı, satırlar artık ekrana sığar'
+    ],
+  },
+  {
     id: 71,
     title: 'Vitrin afişinin kenarı her ekranda yumuşak',
     items: [

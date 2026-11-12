@@ -804,7 +804,7 @@ function renderBrowse(v, kind) {
 // ---- TV vitrini (hero.js): kategorinin içinde kumandayla gezilen film/dizi kutusunun geniş arka planı, adı, puanı, özeti.
 // Yalnız TV kipinde ve film/dizi kutuları görünürken açık; telefonda hiçbir şey değişmez. Ayar: Genel ayarlar > TV vitrini.
 // Film ve dizi ekranı (Genel ayarlar): Netflix gibi satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: TV'de Netflix gibi, telefonda klasik.
-const MV_VIEWS = [['auto', 'Otomatik (TV: Netflix gibi, telefon: Klasik)'], ['rows', 'Netflix gibi (satırlar + vitrin)'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
+const MV_VIEWS = [['auto', 'Otomatik'], ['rows', 'Netflix gibi'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
 const isMv = (kind) => kind === 'movie' || kind === 'series';
 function mvView() {
   const p = store.pref('set.mvView', 'auto');
@@ -3288,9 +3288,9 @@ function generalSheet() {
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
-      chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ile bölümlerde izleme ilerlemesi') +
+      chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
-      `<div class="sel-row"><span>Film ve dizi ekranı<small>Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
+      `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
       `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +

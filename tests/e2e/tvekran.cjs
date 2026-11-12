@@ -85,6 +85,36 @@ async function tvekranSection({ browser, base, mock, ok, sleep }) {
     ok(errs.length === 0, 'telefon ayarlar: sayfa hatası yok');
     await ctx.close();
   }
+
+  // Telefon dikey (390 geniş): hiçbir ayar satırı ekran dışına taşmaz, açıklama yazısı dar bir sütuna ezilmez
+  // (uzun seçenek yazısı olan "Film ve dizi ekranı" seçicisi satırı genişletip açıklamayı harf harf kırıyordu)
+  for (const set of ['general', 'player']) {
+    const { ctx, page } = await open({ width: 390, height: 844 }, false);
+    await page.click('#tabs [data-tab=sources]');
+    await page.click(`.set-tile[data-set=${set}]`);
+    await page.waitForSelector('.sheet-back .sheet', { timeout: 5000 });
+    const bad = await page.evaluate(() => {
+      const out = [];
+      const sheet = document.querySelector('.sheet');
+      if (sheet.scrollWidth > sheet.clientWidth + 1) out.push(`pencere yatay taşıyor (${sheet.scrollWidth} > ${sheet.clientWidth})`);
+      for (const row of sheet.querySelectorAll('.sel-row')) {
+        const r = row.getBoundingClientRect();
+        const sp = row.querySelector(':scope > span').getBoundingClientRect();
+        const sel = row.querySelector('select');
+        const sr = sel ? sel.getBoundingClientRect() : r;
+        const name = row.querySelector('span').firstChild.textContent;
+        if (sr.right > innerWidth + 1 || r.right > innerWidth + 1) out.push(`${name}: ekrandan taşıyor (${Math.round(sr.right)} > ${innerWidth})`);
+        if (sp.width < r.width * 0.4) out.push(`${name}: açıklama sütunu dar (${Math.round(sp.width)}/${Math.round(r.width)})`);
+      }
+      return out;
+    });
+    ok(bad.length === 0, `telefon dikey, ${set} ayarları: satırlar taşmıyor, açıklama ezilmiyor` + (bad.length ? ': ' + bad.join('; ') : ''));
+    await sleep(450);
+    await page.evaluate(() => document.querySelector('#g-mv')?.scrollIntoView({ block: 'center' }));
+    await sleep(150);
+    await page.screenshot({ path: path.join(__dirname, 'shots', `16-telefon-${set}.png`) }).catch(() => {});
+    await ctx.close();
+  }
 }
 
 module.exports = { tvekranSection };

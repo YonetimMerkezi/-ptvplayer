@@ -543,8 +543,9 @@ html.native-preview #player { display: none; }
 .chk .t { flex: 1; min-width: 0; }
 .chk small { display: block; color: var(--muted); }
 .sel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--line); }
+.sel-row > span { flex: 1 1 0; min-width: 0; } /* uzun seçenek yazısı açıklamayı ezmesin */
 .sel-row small { display: block; color: var(--muted); font-size: 0.75rem; }
-.sel-row select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; height: 38px; padding: 0 8px; }
+.sel-row select { flex: 0 1 auto; min-width: 0; max-width: 50%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; height: 38px; padding: 0 8px; }
 
 
 /* ---- kayan adlar: satıra sığmayan kanal/kategori/program adı kesilmez, kayarak gösterilir ---- */
