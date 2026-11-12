@@ -4040,6 +4040,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./sports.cjs').sportsSection({ browser, base, mock, ok, sleep, SHOTS });
   await require('./bugun.cjs').bugunSection({ browser, base, mock, ok, sleep });
   await require('./uyari.cjs').uyariSection({ browser, base, mock, ok, sleep });
+  await require('./takim.cjs').takimSection({ browser, base, mock, ok, sleep });
 
   await browser.close();
   www.close();

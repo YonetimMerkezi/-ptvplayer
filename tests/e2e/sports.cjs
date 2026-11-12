@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { preRoster: '', fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], lsDetail: [], lsDetailMode: 'data', tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
+  const st = { tableMode: 'data', tableCalls: [], preRoster: '', fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], lsDetail: [], lsDetailMode: 'data', tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -195,6 +195,17 @@ function fakeEspn() {
         st.summaryCalls.push(sm[2]);
         if (st.summaryFail) return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
         return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(summaries()[sm[2]] || {}) });
+      }
+      const tb = /\/apis\/v2\/sports\/soccer\/([^/]+)\/standings/.exec(route.request().url());
+      if (tb) {
+        // puan durumu: 'data' (tek tablo), 'groups' (iki grup), 'fail' (HTTP 500), 'empty' (tablo yok)
+        st.tableCalls.push(tb[1]);
+        if (st.tableMode === 'fail') return route.fulfill({ status: 500, headers: CORS, body: 'hata' });
+        const stat = (name, value) => ({ name, value });
+        const ent = (n, r, p, w, d, l, gd, pts) => ({ team: { displayName: n, logos: [{ href: 'https://img.sporekrani.com/' + r + '.png' }] }, stats: [stat('rank', r), stat('gamesPlayed', p), stat('wins', w), stat('ties', d), stat('losses', l), stat('pointDifferential', gd), stat('points', pts)] });
+        const rows = [ent('Fenerbahçe', 2, 12, 8, 2, 2, 10, 26), ent('Galatasaray', 1, 12, 9, 2, 1, 14, 29), ent('Beşiktaş', 3, 12, 6, 3, 3, 4, 21)];
+        const body = st.tableMode === 'empty' ? { children: [] } : st.tableMode === 'groups' ? { children: [{ name: 'Grup A', standings: { entries: rows } }, { name: 'Grup B', standings: { entries: rows.slice(0, 2) } }] } : { children: [{ name: 'Süper Lig', standings: { entries: rows } }] };
+        return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify(body) });
       }
       const slug = /soccer\/([^/]+)\/scoreboard/.exec(route.request().url());
       const id = slug ? slug[1] : '';
@@ -812,7 +823,7 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   await D.ctx.close();
 }
 
-module.exports = { sportsSection };
+module.exports = { sportsSection, fakeEspn };
 
 if (require.main === module) {
   (async () => {

@@ -11,6 +11,7 @@ import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
 import { SCHED_BASES, loadSchedDay, seInfoFor, mergeSe } from './sports-se.js';
 import { BADGE_HOST, badgeSearchUrl, pickBadge, sideLogo, logoHtml, nationFlags } from './sports-logos.js';
+import { FAV_CHIP, cleanFavs, isFavSide, hasFavMatch, toggleFav, autoRemindTargets, nextDone } from './sports-fav.js';
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v1'; // LiveScore gün listeleri
@@ -72,6 +73,9 @@ export function openSports(env) {
   let loading = false;
   let day = dayStart(now());
   let lg = '';
+  const FAV_KEY = 'sp.favs'; // takip edilen takımlar
+  const FAV_DONE_KEY = 'sp.favdone'; // otomatik hatırlatıcısı kurulmuş maç kimlikleri (elle kaldırılan yeniden kurulmaz)
+  let favs = cleanFavs(store.pref(FAV_KEY, []));
   let chan = new Map(); // maç kimliği → { item, p }
   let byId = new Map();
   let timer = 0;
@@ -81,7 +85,7 @@ export function openSports(env) {
     title: 'Spor · Futbol',
     cls: 'sp-pg',
     // gün çipleri, güncelleme durumu ve yenile düğmesi tek satırda (dar ekranda durum + yenile üstte, günler altta)
-    html: `<div class="sp-top"><div class="chips" id="sp-days" role="group" aria-label="Gün"></div><small id="sp-upd" aria-live="polite"></small><button class="icon-btn" id="sp-ref" aria-label="Skorları yenile">${icon('refresh')}</button></div>
+    html: `<div class="sp-top"><div class="chips" id="sp-days" role="group" aria-label="Gün"></div><small id="sp-upd" aria-live="polite"></small><button class="icon-btn" id="sp-tab" aria-label="Puan durumu" title="Puan durumu">${icon('list')}</button><button class="icon-btn" id="sp-ref" aria-label="Skorları yenile">${icon('refresh')}</button></div>
       <div class="chips" id="sp-lgs" role="group" aria-label="Lig"></div>
       <div id="sp-list" class="sp-list"><div class="empty"><p>Maçlar yükleniyor…</p></div></div>`,
     mount: () => {},
@@ -222,7 +226,7 @@ export function openSports(env) {
     }
     if (badgeQ.length) runBadges();
   }
-  const teamHtml = (side, other) => `<span class="sp-tm">${logoHtml(sideLogo(side, other, badgeOf), side.label, esc)}<span>${esc(side.label)}</span></span>`;
+  const teamHtml = (side, other) => `<span class="sp-tm">${favs.length && isFavSide(favs, side) ? '<i class="sp-fv" aria-label="Takip ediliyor">★</i>' : ''}${logoHtml(sideLogo(side, other, badgeOf), side.label, esc)}<span>${esc(side.label)}</span></span>`;
 
   // ---- maç hatırlatıcısı: satırdaki zil (dokunmatik; kumandada ayrıntı sayfasındaki seçeneklerle kurulur) ----
   const LEAD_KEY = 'sp.lead';
@@ -289,6 +293,80 @@ export function openSports(env) {
     else setReminder(m, Number(store.pref(LEAD_KEY, MATCH_LEAD_DEFAULT)));
   }
 
+  // ---- favori takımlar: takip edilen takımların oynanmamış maçları için hatırlatıcı kendiliğinden kurulur ----
+  // Aynı maç tekrar kurulmaz (kaldırdığınız hatırlatıcı geri gelmez); takip bırakılırsa kendiliğinden kurulanlar kaldırılır.
+  const readDone = () => {
+    const v = store.pref(FAV_DONE_KEY, []);
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  };
+  function autoRemind() {
+    if (!rem || !favs.length || !matches.length) return 0;
+    let planned = [];
+    try {
+      planned = (rem.list() || []).map((x) => x.id);
+    } catch {
+      return 0;
+    }
+    const todo = autoRemindTargets(matches, favs, { now: now(), done: readDone(), planned });
+    const lead = Number(store.pref(LEAD_KEY, MATCH_LEAD_DEFAULT));
+    const ids = [];
+    for (const m of todo) {
+      try {
+        rem.set(makeMatchPlan(m, { lead, ...remindInfo(m) }));
+        ids.push(matchPlanId(m));
+      } catch {
+        /* bu maç için kurulamadı; sonra yeniden denenir */
+      }
+    }
+    if (todo.length || readDone().length) {
+      try {
+        store.setPref(FAV_DONE_KEY, nextDone(readDone(), ids, now()));
+      } catch {
+        /* kayıt başarısız */
+      }
+    }
+    if (ids.length) syncBells();
+    return ids.length;
+  }
+
+  // Takımı takip eder / bırakır; döner: takip ediliyor mu
+  function toggleTeam(side) {
+    const r = toggleFav(favs, side);
+    if (r.full) {
+      toast('En fazla 30 takım takip edilebilir', 2600);
+      return false;
+    }
+    favs = r.favs;
+    try {
+      store.setPref(FAV_KEY, favs);
+    } catch {
+      /* kayıt başarısız */
+    }
+    const name = side.label || side.name;
+    if (r.on) {
+      const n = autoRemind();
+      toast(n ? `${name} takip ediliyor · ${n} maç için hatırlatıcı kuruldu` : `${name} takip ediliyor`, 2800);
+    } else {
+      // takipten çıkınca, yalnızca bu takım yüzünden kendiliğinden kurulmuş hatırlatıcılar kalkar
+      if (rem) {
+        loadRem();
+        const done = new Set(readDone());
+        let n = 0;
+        for (const m of matches) {
+          const id = matchPlanId(m);
+          if (done.has(id) && remIds.has(id) && !hasFavMatch(favs, m) && canRemind(m, now())) {
+            rem.remove(id);
+            n++;
+          }
+        }
+        if (n) syncBells();
+      }
+      toast(`${name} takipten çıkarıldı`, 2200);
+    }
+    if (page.el.isConnected) draw();
+    return r.on;
+  }
+
   function rowHtml(m) {
     const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : noScore(m, now()) ? `<span class="sp-ft">Skor yok</span>` : `<time>${fmtClock(m.t)}</time>${bellHtml(m)}`;
     const sc = score(m);
@@ -320,9 +398,11 @@ export function openSports(env) {
       })
       .join(''));
     const { all, chips } = chipsFor(matchesOnDay(matches, day));
-    if (lg && !chips.some((c) => c.id === lg)) lg = '';
+    if (lg === FAV_CHIP ? !favs.length : lg && !chips.some((c) => c.id === lg)) lg = '';
+    const favN = favs.length ? matchesOnDay(matches, day).filter((m) => hasFavMatch(favs, m)).length : 0;
     put(q('#sp-lgs'),
       `<button class="chip${lg === '' ? ' on' : ''}" data-lg="">Tümü<small>${all}</small></button>` +
+      (favs.length ? `<button class="chip fav${lg === FAV_CHIP ? ' on' : ''}" data-lg="${FAV_CHIP}">★ Takımlarım<small>${favN}</small></button>` : '') +
       chips.map((c) => `<button class="chip${lg === c.id ? ' on' : ''}" data-lg="${esc(c.id)}">${esc(c.name)}<small>${c.count}</small></button>`).join(''));
     const on = q('#sp-days .chip.on');
     if (on && on.scrollIntoView && !on.dataset.seen) {
@@ -361,7 +441,8 @@ export function openSports(env) {
   function drawListNow() {
     const list = q('#sp-list');
     if (!list) return;
-    const { secs, hidden } = capSections(sections(matchesOnDay(matches, day), lg), MAX_ROWS);
+    const dayMs = matchesOnDay(matches, day);
+    const { secs, hidden } = capSections(lg === FAV_CHIP ? [{ lg: { id: FAV_CHIP, name: 'Takımlarım' }, matches: dayMs.filter((m) => hasFavMatch(favs, m)) }].filter((x) => x.matches.length) : sections(dayMs, lg), MAX_ROWS);
     if (!secs.length) {
       // Gün için yayın akışı henüz indirilmediyse (ya da iniyorsa) “Maç yok” yerine “yükleniyor”: takvim oradan da gelebilir
       const waiting = loading || lsBusy || tvPending.has(day) || (!tvDays.has(day) && !tvFailAt.has(day));
@@ -369,7 +450,9 @@ export function openSports(env) {
         ? '<div class="empty"><p>Maçlar yükleniyor…</p></div>'
         : err
           ? `<div class="empty"><h3>Maçlar alınamadı</h3><p>${esc(err)}</p>${errDetail ? `<p class="hint sp-detail">Ayrıntı: ${esc(errDetail)}</p>` : ''}<button class="btn" id="sp-retry">Yeniden dene</button></div>`
-          : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`);
+          : lg === FAV_CHIP
+            ? `<div class="empty"><h3>Maç yok</h3><p>Takip ettiğiniz takımların ${esc(dayLabel(day, now()))} maçı yok.</p></div>`
+            : `<div class="empty"><h3>Maç yok</h3><p>${esc(dayLabel(day, now()))} için seçili liglerde maç bulunamadı.</p></div>${sourceNote()}`);
       return;
     }
     loadRem();
@@ -377,7 +460,8 @@ export function openSports(env) {
     put(list,
       sourceNote() +
       rows.map(rowHtml).join('') +
-      (hidden ? `<p class="hint sp-more">… ve ${hidden} maç daha. Listeyi daraltmak için yukarıdan bir lig seçin.</p>` : ''));
+      (hidden ? `<p class="hint sp-more">… ve ${hidden} maç daha. Listeyi daraltmak için yukarıdan bir lig seçin.</p>` : '') +
+      (favs.length ? '' : '<p class="hint sp-more">Bir maça dokunup takım adının yanındaki ★ ile takımı takip edebilirsiniz; maçları için hatırlatıcı otomatik kurulur.</p>'));
     queueBadges(rows);
   }
 
@@ -645,6 +729,7 @@ export function openSports(env) {
       errDetail = '';
     }
     keepFocus(draw);
+    if (autoRemind()) toast('Takip ettiğiniz takımların maçları için hatırlatıcı kuruldu', 2800);
     if (day !== d0) ensureLs(day);
   }
 
@@ -679,6 +764,7 @@ export function openSports(env) {
           badgeOf: (name) => badgeOf(name, 'small'),
           tvOf: (x) => tvFor.get(x.id) || [],
           ensureTv: (x) => ensureTv(dayStart(x.t)),
+          fav: { on: (side) => isFavSide(favs, side), toggle: (side) => toggleTeam(side) },
           remind: rem
             ? {
               leads: MATCH_LEADS,
@@ -695,6 +781,16 @@ export function openSports(env) {
       );
     } catch (e) {
       toast('Ayrıntı açılamadı: ' + ((e && e.message) || e), 3000);
+    }
+  }
+
+  // Puan durumu: ayrı modül, ilk dokunuşta yüklenir
+  async function openTable() {
+    try {
+      const mod = await import('./sports-table-ui.js');
+      mod.openStandings({ net, store, toast, base, now, favs: () => favs, leagueId: lg });
+    } catch (e) {
+      toast('Puan durumu açılamadı: ' + ((e && e.message) || e), 3000);
     }
   }
 
@@ -717,6 +813,7 @@ export function openSports(env) {
       if (nl && nl.focus) nl.focus({ preventScroll: true });
       return;
     }
+    if (e.target.closest('#sp-tab')) return openTable();
     if (e.target.closest('#sp-ref') || e.target.closest('#sp-retry')) return refresh();
     if (e.target.closest('#sp-upd')) {
       showDiag = !showDiag;
@@ -755,6 +852,7 @@ export function openSports(env) {
     // İndirme çizimden önce başlar: ilk çizimde "yükleniyor" görünür ("Maç yok" yanıp sönmez).
     if (!c || now() - c.at > FRESH_MS || lsStale(day)) refresh({ quiet: !!(c || lsDays.size) });
     draw();
+    autoRemind();
     ensureTv(day);
     timer = setInterval(tick, LIVE_REFRESH_MS);
   })();

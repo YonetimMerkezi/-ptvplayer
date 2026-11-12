@@ -105,11 +105,21 @@ export function openMatchDetail(env, m) {
     const stText = none && st.state === 'pre' ? `Skor alınamadı · ${esc(dayLabel(dayStart(m.t), now()))} ${fmtClock(m.t)}` : st.state === 'pre' && !st.off ? `${esc(dayLabel(dayStart(m.t), now()))} · ${fmtClock(m.t)}` : esc(st.text || '');
     const where = [(data && data.venue) || m.venue, data && data.city].filter(Boolean).join(', ');
     const meta = [where, data && data.referee ? `Hakem: ${data.referee}` : '', data && data.attendance ? `Seyirci: ${data.attendance.toLocaleString('tr-TR')}` : ''].filter(Boolean);
+    const had = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.follow : '';
+    const follow = (side) => {
+      if (!env.fav) return '';
+      const on = env.fav.on(m[side]);
+      return `<button class="sd-fol${on ? ' on' : ''}" data-follow="${side}" aria-pressed="${on}" aria-label="${on ? 'Takipten çıkar' : 'Takip et'}: ${esc(m[side].label)}">${icon(on ? 'star-on' : 'star')}<span>${on ? 'Takipte' : 'Takip et'}</span></button>`;
+    };
     q('#sd-top').innerHTML = `<div class="sd-lg">${esc(lgName)}${m.round ? ` <small>· ${esc(m.round)}</small>` : ''}</div>
-      <div class="sd-teams"><div class="sd-team">${teamLogo(m.home, m.away)}<span>${esc(m.home.label)}</span></div>
+      <div class="sd-teams"><div class="sd-team">${teamLogo(m.home, m.away)}<span>${esc(m.home.label)}</span>${follow('home')}</div>
         <div class="sd-mid">${mid}<span class="${stClass}">${stText}</span>${pen}</div>
-        <div class="sd-team">${teamLogo(m.away, m.home)}<span>${esc(m.away.label)}</span></div></div>
+        <div class="sd-team">${teamLogo(m.away, m.home)}<span>${esc(m.away.label)}</span>${follow('away')}</div></div>
       ${meta.length ? `<div class="sd-meta">${meta.map(esc).join(' · ')}</div>` : ''}`;
+    if (had) {
+      const b = q(`#sd-top [data-follow="${had}"]`);
+      if (b && b.focus) b.focus({ preventScroll: true });
+    }
   }
 
   // Hatırlatıcı: maçtan ne kadar önce haber verileceği (seçili süreye dokunmak kaldırır). Yalnız başlamamış maçta görünür;
@@ -254,6 +264,12 @@ export function openMatchDetail(env, m) {
 
   root.addEventListener('click', (e) => {
     if (e.target.closest('#sd-ref') || e.target.closest('#sd-retry')) return refresh();
+    const fol = env.fav && e.target.closest('[data-follow]');
+    if (fol) {
+      env.fav.toggle(m[fol.dataset.follow]);
+      drawTop();
+      return drawRemind();
+    }
     const ld = rem && e.target.closest('[data-lead]');
     if (ld) {
       const min = Number(ld.dataset.lead);

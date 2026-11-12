@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 78,
+    title: 'Spor: favori takım ve puan durumu',
+    items: [
+      'Maç ayrıntısında takımın altındaki “Takip et” ile favori takım seçilir. Takip edilen takımın adının yanında ★ görünür; Spor ekranındaki “★ Takımlarım” çipi yalnız onların maçlarını gösterir',
+      'Takip edilen takımların başlamamış maçları (8 gün içinde) için hatırlatıcı kendiliğinden kurulur; sizin kaldırdığınız hatırlatıcı geri gelmez, takibi bırakınca kendiliğinden kurulanlar kalkar',
+      'Spor ekranının üstündeki liste düğmesiyle “Puan durumu”: Süper Lig, Premier Lig, La Liga, Serie A, Bundesliga, Ligue 1 ve UEFA kupaları; takip ettiğiniz takımın satırı ★ ile işaretlenir'
+    ],
+  },
+  {
     id: 77,
     title: 'Ses/altyazı dili tercihi ve abonelik bitiş uyarısı',
     items: [
