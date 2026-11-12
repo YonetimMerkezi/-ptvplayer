@@ -1,4 +1,4 @@
-// Dizi akışı: Bugün TV'de ekranındaki “Dizi akışı” düğmesi, sahte 1001dizi.net (haftalık sayfa saat verir, gün sayfaları saatsiz) ve sahte sinemalar,
+// Dizi akışı: 1001dizi haftalık takvimi, ücretsiz EPG yedeği, gün/kanal filtreleri, oynatıcı, hatırlatıcı, önbellek ve hata yolları.
 // gün çipleri, kanal süzgeci, satırdan kanal açma, hatırlatıcı zili, önbellek, hata + yedek kaynak. Tek başına: node tests/e2e/dizi.cjs; run.cjs sonunda da çağrılır.
 const path = require('node:path');
 
@@ -26,7 +26,6 @@ function fakeSites() {
   const dayPage = (idx) => `<html><body>${MENU}${[...COMMON, ...(idx === todayIdx() ? TODAY_EXTRA : [])].map((c) => card(c[0], c[1], c[2], '', c[4], c[5])).join('')}<footer><a href="/iletisim">İletişim</a></footer></body></html>`;
   const weekPage = () => `<html><body>${MENU}${[...COMMON, ...TODAY_EXTRA].map((c) => card(...c)).join('')}</body></html>`;
   const slugs = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
-  const SIN = `<html><body><a href="/mobileweb/tv-dizisi/halef"><b>Halef</b></a><p>NOW - 20:00</p><p>42. Bölüm</p></body></html>`;
   function freeEpg() {
     const now = Date.now();
     const ch = Object.fromEntries(['trt1', 'kanald', 'atv', 'show', 'star', 'tv8', 'now', 'kanal7'].map((id) => [id, { n: id.toUpperCase(), p: [] }]));
@@ -195,12 +194,12 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await openFlow(B2.page);
   await B2.page.waitForSelector('#sf-list .sf-r', { timeout: 15000 });
   rows = await rowsOf(B2.page);
-  ok(rows.length === 1 && rows[0].title === 'Halef' && rows[0].time === '20:00' && /NOW · 42\. Bölüm/.test(rows[0].sub), 'site yapısı değişince sinemalar yedeği kullanıldı: ' + rows.map((r) => r.title).join());
-  ok(/Yalnız bugün \(sinemalar\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
+  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\\. Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
+  ok(/Bugün \\+ yarın \\(ücretsiz EPG\\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'ayrıntı başta kapalı');
   await B2.page.click('#sf-note [data-diag]');
   const dg = await B2.page.textContent('#sf-diag');
-  ok(/1001dizi: satır yok/.test(dg) && /halef: .*NOW/.test(dg), 'Ayrıntı: yedeğe geçme nedeni ve ayrıştırıcının gördüğü ham kart yazılı: ' + dg.replace(/\s+/g, ' ').slice(0, 160));
+  ok(/1001dizi: satır yok/.test(dg) && /ücretsiz EPG: bugün ve yarın/.test(dg), 'Ayrıntı: yedeğe geçme nedeni ve EPG kapsamı yazılı: ' + dg.replace(/\\s+/g, ' ').slice(0, 160));
   await B2.page.click('#sf-note [data-diag]');
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'Ayrıntıyı gizle düğmesi kapatır');
   await B2.page.click('#sf-days [data-pos="2"]');
@@ -214,7 +213,7 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await openFlow(C.page);
   await C.page.waitForSelector('#sf-retry', { timeout: 20000 });
   const det = await C.page.textContent('#sf-list');
-  ok(/Dizi akışı alınamadı/.test(det) && /haftalık/.test(det) && /sinemalar/.test(det), 'iki kaynak da yokken nedenler yazılı: ' + det.replace(/\s+/g, ' ').slice(0, 160));
+  ok(/Dizi akışı alınamadı/.test(det) && /haftalık/.test(det) && /ücretsiz EPG/.test(det), 'ücretsiz kaynaklar dizi vermezken nedenler yazılı: ' + det.replace(/\\s+/g, ' ').slice(0, 160));
   sites.st.mode = 'ok';
   sites.st.epg = 'empty';
   await C.page.click('#sf-retry');
