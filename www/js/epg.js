@@ -24,6 +24,18 @@ function tagText(block, tag) {
   return m ? decodeEntities(cdata(m[1]).replace(/<[^>]+>/g, '')).trim() : '';
 }
 
+// Programın türü (<category>): birden çoksa " / " ile birleşir, kısa tutulur. Bugün ekranı dizi/film/spor ayrımını buradan yapar.
+function categoriesOf(block) {
+  const out = [];
+  const re = /<category(?:\s[^>]*)?>([\s\S]*?)<\/category>/gi;
+  let m;
+  while ((m = re.exec(block)) && out.length < 3) {
+    const t = decodeEntities(cdata(m[1])).replace(/<[^>]+>/g, '').trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.join(' / ').slice(0, 80);
+}
+
 function attr(openTag, name) {
   const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(openTag);
   return m ? decodeEntities(m[1] ?? m[2]) : '';
@@ -104,7 +116,7 @@ export class XmltvParser {
     if (d.length > this.maxDesc) d = d.slice(0, this.maxDesc - 1) + '…';
     let list = this.byChannel.get(ch);
     if (!list) this.byChannel.set(ch, (list = []));
-    list.push({ s, e, t: tagText(inner, 'title'), d });
+    list.push({ s, e, t: tagText(inner, 'title'), d, c: categoriesOf(inner) });
     this.count++;
   }
 

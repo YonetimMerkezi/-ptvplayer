@@ -75,5 +75,5 @@ test('çok renkli temalarda her sekme, her ayar kutusu ve ana kutu için renk ku
   const sets = new Set([...app.matchAll(/class="set-tile" data-set="([a-z]+)"/g)].map((m) => m[1]));
   assert.ok(sets.size >= 12);
   for (const k of sets) assert.ok(css.includes(`html[data-multi] .set-tile[data-set=${k}]`), `ayar kutusu rengi yok: ${k}`);
-  for (const k of ['live', 'movie', 'series', 'cats']) for (const th of ['cards', 'solid', 'neon', 'sunset']) assert.ok(css.includes(`html[data-theme="${th}"] .tile.t-${k}`), `${th}: ${k} kutusu`);
+  for (const k of ['live', 'movie', 'series', 'today']) for (const th of ['cards', 'solid', 'neon', 'sunset']) assert.ok(css.includes(`html[data-theme="${th}"] .tile.t-${k}`), `${th}: ${k} kutusu`);
 });

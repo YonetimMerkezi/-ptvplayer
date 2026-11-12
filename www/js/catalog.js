@@ -279,7 +279,7 @@ export async function loadEpg(source, cat, net, { onProgress = () => {}, now = D
         const eid = resolveEpgId(ch, index);
         if (!eid || !parsed.byChannel.has(eid)) continue;
         map[ch.id] = eid;
-        if (!prog[eid]) prog[eid] = parsed.byChannel.get(eid).map((p) => [p.s, p.e, p.t, p.d]);
+        if (!prog[eid]) prog[eid] = parsed.byChannel.get(eid).map((p) => [p.s, p.e, p.t, p.d, p.c || '']);
       }
       return { fetchedAt: now, map, prog, matched: Object.keys(map).length };
     } catch (e) {
@@ -302,7 +302,7 @@ export class EpgView {
     if (!eid) return [];
     let l = this._cache.get(eid);
     if (!l) {
-      l = (this.data.prog[eid] || []).map(([s, e, t, d]) => ({ s, e, t, d }));
+      l = (this.data.prog[eid] || []).map(([s, e, t, d, c]) => ({ s, e, t, d, c: c || '' }));
       this._cache.set(eid, l);
     }
     return l;
@@ -328,8 +328,8 @@ export class EpgView {
       let ft = this._folded.get(eid);
       if (!ft) this._folded.set(eid, (ft = list.map((r) => fold(r[2]))));
       for (let i = 0; i < list.length; i++) {
-        const [s, e, title, d] = list[i];
-        if (e >= from && ft[i].includes(t)) out.push({ id: itemId, p: { s, e, t: title, d } });
+        const [s, e, title, d, c] = list[i];
+        if (e >= from && ft[i].includes(t)) out.push({ id: itemId, p: { s, e, t: title, d, c: c || '' } });
       }
     }
     out.sort((a, b) => a.p.s - b.p.s);
@@ -342,7 +342,7 @@ export class EpgView {
     for (const [eid, list] of Object.entries(this.data.prog)) {
       const itemId = this._rep.get(eid);
       if (!itemId) continue;
-      for (const [s, e, t, d] of list) if (s >= from && s <= to) out.push({ id: itemId, p: { s, e, t, d } });
+      for (const [s, e, t, d, c] of list) if (s >= from && s <= to) out.push({ id: itemId, p: { s, e, t, d, c: c || '' } });
     }
     return out;
   }

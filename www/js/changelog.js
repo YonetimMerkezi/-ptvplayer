@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 76,
+    title: 'Bugün TV’de: spor, film, dizi saatleri',
+    items: [
+      'Ana ekranda “Kategoriler” kutusunun yerine “Bugün TV’de” kutusu geldi: TV rehberinden bugünün (ya da yarının) spor, film ve dizi programlarını saatleriyle listeler (kategorilere Canlı TV, Filmler ve Diziler içinden ulaşılır)',
+      '“Kanallar” düğmesiyle yalnız seçtiğiniz kanalların programları gösterilir (seçim kayıtlıdır); “Bitenler” ile geçmiş programlar da görünür',
+      'Programa dokununca hatırlatıcı, kayıt ve izleme seçenekleri açılır. Tür bilgisi rehberin kendi türünden (Dizi, Film, Spor) alınır; tür yoksa yalnız belirgin başlıklar (“12. Bölüm”, “Süper Lig”…) sayılır'
+    ],
+  },
+  {
     id: 75,
     title: 'Maç öncesi kadro',
     items: [

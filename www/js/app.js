@@ -1815,6 +1815,24 @@ async function openSportsPage() {
   }
 }
 
+// Bugün TV'de: TV rehberinden bugünün spor, film ve dizi programları (seçilen kanallara göre). Modül ilk kullanımda yüklenir.
+async function openToday() {
+  try {
+    const m = await import('./today-ui.js');
+    m.openToday({
+      liveItems: () => visibleAll('live'),
+      epgReady: () => S.epg.ready,
+      listFor: (it) => S.epg.listFor(it),
+      epgBetween: (from, to) => S.epg.between(from, to),
+      programSheet: (it, p) => guideProgramSheet(it, p, [it], 0),
+      channels: () => store.pref('today.ch.' + sid(), []),
+      setChannels: (ids) => store.setPref('today.ch.' + sid(), ids),
+    });
+  } catch (e) {
+    toast('Bugün ekranı açılamadı: ' + ((e && e.message) || e));
+  }
+}
+
 async function openAdmin() {
   try {
     const m = await import('./admin-ui.js');
@@ -2047,7 +2065,6 @@ function renderHome(v) {
   const favN = store.favs(sid()).length;
   const recN = store.recents(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
-  const catN = S.groups.live.length + S.groups.movie.length + S.groups.series.length;
   v.innerHTML = `<div class="home">
     <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
     <div class="hero"><div class="hero-t"><small>Hoş Geldiniz</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
@@ -2055,7 +2072,7 @@ function renderHome(v) {
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
       <button class="tile t-movie" data-go="movies">${icon('movie')}<b>Filmler</b><small>${cnt(c.movies.length, 'film')}</small></button>
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
-      <button class="tile t-cats" data-go="cats">${icon('folder')}<b>Kategoriler</b><small>${cnt(catN, 'kategori')}</small></button>
+      <button class="tile t-today" data-go="today">${icon('cal')}<b>Bugün TV’de</b><small>Spor · Film · Dizi</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
@@ -2091,9 +2108,9 @@ function goTo(go) {
   if (kidActive() && (go === 'rec' || go === 'multi' || go === 'dl')) return; // çocuk modunda kayıtlar, indirilenler ve çoklu ekran yok
   if (go === 'rec') return recordingsSheet();
   if (go === 'dl') return downloadsSheet();
-  if (go === 'cats') return categoriesPage();
   if (go === 'guide') return guidePage();
   if (go === 'sport') return openSportsPage();
+  if (go === 'today') return openToday();
   setTab(go);
 }
 
@@ -3013,45 +3030,6 @@ function guidePage() {
             refreshButton.textContent = 'EPG yenile';
           }
         }
-      });
-      draw();
-    },
-  });
-}
-
-// Ana ekran "Kategoriler": üç türün tüm kategorileri tek yerde; seçilince o tür açılıp kategoriye girilir.
-function categoriesPage() {
-  const KINDS = [['live', 'Canlı TV', 'live'], ['movie', 'Filmler', 'movies'], ['series', 'Diziler', 'series']];
-  let kind = 'live';
-  openPage({
-    title: 'Kategoriler',
-    cls: 'pk-pg',
-    html: `<div class="seg" id="kc-seg">${KINDS.map(([k, t]) => `<button data-k="${k}">${t}</button>`).join('')}</div><div id="kc-list"></div>`,
-    mount: (body, api) => {
-      let rows = [];
-      const list = new VirtualList($('#kc-list', body), {
-        rowH: scaled(56),
-        render: (c, i) => `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`,
-        onTap: (i) => {
-          const c = rows[i];
-          if (!c) return;
-          const tab = KINDS.find(([k]) => k === kind)[2];
-          closeThen(api, () => {
-            setTab(tab);
-            enterGroup(kind, c.id);
-          });
-        },
-      });
-      const draw = () => {
-        $$('#kc-seg button', body).forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
-        rows = categoryRows(kind).filter((r) => r.id !== '__recent' || r.count);
-        list.setItems(rows);
-      };
-      $('#kc-seg', body).addEventListener('click', (e) => {
-        const b = e.target.closest('[data-k]');
-        if (!b) return;
-        kind = b.dataset.k;
-        draw();
       });
       draw();
     },

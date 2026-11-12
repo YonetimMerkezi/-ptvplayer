@@ -23,6 +23,9 @@ export const SERIES = [
   { id: 2, name: 'Sessiz Ev', seasons: 1, eps: 4 },
 ];
 
+// Sahte rehberde programların türü (Bugün TV'de ekranı için): her kanalda dizi, film, spor, haber ve türsüz programlar dönüşümlü
+const CATS = ['Dizi', 'Film', 'Spor', 'Haber', ''];
+
 function xmltvTime(ms) {
   const d = new Date(ms);
   const p = (n) => String(n).padStart(2, '0');
@@ -35,7 +38,7 @@ export function xmltv(now = Date.now(), channels = liveChannels().slice(0, 40)) 
   for (const c of channels) out.push(`<channel id="${c.tvg}"><display-name>${c.name}</display-name></channel>`);
   for (const c of channels) {
     for (let h = 0; h < 26; h++) {
-      out.push(`<programme start="${xmltvTime(base + h * 3600e3)}" stop="${xmltvTime(base + (h + 1) * 3600e3)}" channel="${c.tvg}"><title lang="tr">${c.name} Program ${h}</title><desc>Açıklama &amp; ayrıntı ${h}</desc></programme>`);
+      out.push(`<programme start="${xmltvTime(base + h * 3600e3)}" stop="${xmltvTime(base + (h + 1) * 3600e3)}" channel="${c.tvg}"><title lang="tr">${c.name} Program ${h}</title>${CATS[(c.id + h) % CATS.length] ? `<category lang="tr">${CATS[(c.id + h) % CATS.length]}</category>` : ''}<desc>Açıklama &amp; ayrıntı ${h}</desc></programme>`);
     }
   }
   out.push('</tv>');
