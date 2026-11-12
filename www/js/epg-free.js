@@ -117,6 +117,21 @@ export function parseTvdebugun(html, dayStartMs) {
 
 // ---------------------------------------------------------------- kaynak alma
 
+// Bitişi başlangıçtan önce/aynı olan kayıt (ör. süresiz "canlı yayın" satırı) sonraki programın başlangıcına kadar sürer; sonraki yoksa atılır.
+function sane(list) {
+  const a = [...list].sort((x, y) => x.s - y.s);
+  const out = [];
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i];
+    if (p.e > p.s) out.push(p);
+    else {
+      const next = a.slice(i + 1).find((q) => q.s > p.s);
+      if (next) out.push({ ...p, e: next.s });
+    }
+  }
+  return out;
+}
+
 const lastStartOf = (chs) => chs.reduce((m, c) => c.list.reduce((a, p) => Math.max(a, p.s), m), 0);
 
 function stats(chs, now, win) {
@@ -150,6 +165,8 @@ async function fetchXmltv(src, net, now) {
   let bytes = 0;
   await net.read(src.url, { onText: (t) => parser.push(t), onProgress: (n) => (bytes = n) });
   const r = parser.end();
+  const countries = {};
+  for (const ch of r.channels.values()) countries[ch.country || '?'] = (countries[ch.country || '?'] || 0) + 1;
   const chs = [];
   for (const [id, list] of r.byChannel) {
     if (!list.length) continue;
@@ -157,7 +174,7 @@ async function fetchXmltv(src, net, now) {
     const name = String((ch && ch.name) || id).replace(/\.tr$/i, '').trim();
     chs.push({ name, list: list.map((p) => ({ s: p.s, e: p.e, t: p.t, d: p.d, c: p.c, x: p.x || '', f: p.f || '' })) });
   }
-  return { channels: chs, bytes };
+  return { channels: chs, bytes, total: r.channels.size, countries };
 }
 
 async function fetchHtml(src, net, now) {
@@ -211,9 +228,13 @@ export async function fetchSource(src, net, now = Date.now()) {
     const win = freeWindow(now);
     const got = src.kind === 'html' ? await fetchHtml(src, net, now) : await fetchXmltv(src, net, now);
     const chs = got.channels
-      .map((c) => ({ name: c.name, list: c.list.filter((p) => p.e > win.from && p.s < win.to && p.t) }))
+      .map((c) => ({ name: c.name, list: sane(c.list).filter((p) => p.e > win.from && p.s < win.to && p.t) }))
       .filter((c) => c.list.length);
     Object.assign(res, { channels: chs, bytes: got.bytes, note: got.note || '' }, stats(chs, now, win));
+    if (src.country && !res.ch) {
+      const top = Object.entries(got.countries || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, n]) => `${k} ${n}`).join(', ');
+      throw new Error(`“${src.country}” ülke kanalı yok (kaynakta ${got.total || 0} kanal; ülkeler: ${top || '—'})`);
+    }
     if (res.ch < MIN_CHANNELS) throw new Error(res.ch ? `çok az kanal (${res.ch})` : 'bugün için program yok (güncel değil)');
     if (res.onAir / res.ch < 0.5) throw new Error(`güncel değil: şu an yayında görünen kanal ${res.onAir}/${res.ch}`);
     res.ok = true;
@@ -244,7 +265,11 @@ function titlesCompatible(a, b) {
 // Aynı yayın dilimi: başlangıçlar neredeyse aynıysa (bir kanalda aynı anda iki program olamaz) ya da biraz kaymış ama adlar uyumluysa
 export function sameSlot(a, b) {
   const d = Math.abs(a.s - b.s);
-  return d <= 2 * 60e3 || (d <= 15 * 60e3 && titlesCompatible(a.t, b.t));
+  if (d <= 15 * 60e3 && titlesCompatible(a.t, b.t)) return true;
+  // Başlangıçlar neredeyse aynı: süreleri de benzemeli (2 dakikalık "İstiklal Marşı" 45 dakikalık programın kopyası değildir)
+  const da = Math.max(1, a.e - a.s);
+  const db = Math.max(1, b.e - b.s);
+  return d <= 2 * 60e3 && Math.min(da, db) / Math.max(da, db) >= 0.5;
 }
 
 function coverage(list, win) {
@@ -253,15 +278,19 @@ function coverage(list, win) {
   return sum;
 }
 
-// Bir kanalın kaynaklarındaki programları tek listede toplar. En çok yayın süresini kapsayan kaynak temel olur; diğerleri eşleşen
-// programı tamamlar (boş açıklama/tür/bölüm/etiket) ve yalnız temelde boş kalan aralıkları doldurur. Çakışan kopya eklenmez.
+// Bir kanalın kaynaklarındaki programları tek listede toplar. En çok yayın süresini kapsayan kaynak temel olur ve olduğu gibi alınır;
+// diğer kaynaklar yalnız başka kaynaktaki karşılığını bulursa onu tamamlar (boş açıklama/tür/bölüm/etiket) ya da temelde boş kalan
+// aralığı doldurur. Çakışan kopya eklenmez. Bir kaynak kendi içinde asla "kopya" sayılmaz (araya giren kısa programlar korunur).
 export function mergePrograms(lists, win, stat = null) {
   const order = lists.map((l, i) => ({ ...l, i, cov: coverage(l.list, win) })).sort((a, b) => b.cov - a.cov || a.i - b.i);
   const out = [];
-  for (const src of order) {
+  const clip = (a, b) => Math.min(a.e, b.e) - Math.max(a.s, b.s);
+  for (const [n, src] of order.entries()) {
     for (const p of src.list) {
-      const hit = out.find((q) => sameSlot(q, p));
-      if (hit) {
+      const cands = out.filter((q) => q.src !== src.id && sameSlot(q, p));
+      if (cands.length) {
+        cands.sort((a, b) => Number(!titlesCompatible(a.t, p.t)) - Number(!titlesCompatible(b.t, p.t)) || Math.abs(a.s - p.s) - Math.abs(b.s - p.s));
+        const hit = cands[0];
         if (stat) stat.dup++;
         for (const k of ['d', 'c', 'x', 'f']) {
           if (!hit[k] && p[k]) {
@@ -271,16 +300,20 @@ export function mergePrograms(lists, win, stat = null) {
         }
         continue;
       }
-      const clash = out.some((q) => Math.min(q.e, p.e) - Math.max(q.s, p.s) > GAP_OVERLAP);
-      if (!clash) out.push({ s: p.s, e: p.e, t: p.t, d: p.d || '', c: p.c || '', x: p.x || '', f: p.f || '' });
-      else if (stat) stat.clash++;
+      if (n > 0) {
+        const dur = Math.max(1, p.e - p.s);
+        const clash = out.some((q) => clip(q, p) > GAP_OVERLAP || clip(q, p) > dur / 2);
+        if (clash) {
+          if (stat) stat.clash++;
+          continue;
+        }
+      }
+      out.push({ s: p.s, e: p.e, t: p.t, d: p.d || '', c: p.c || '', x: p.x || '', f: p.f || '', src: src.id });
     }
-    if (src === order[0]) out.sort((a, b) => a.s - b.s);
   }
-  out.sort((a, b) => a.s - b.s);
-  const final = out.filter((p) => p.e > win.from && p.s < win.to);
+  out.sort((a, b) => a.s - b.s || a.e - b.e);
   if (stat) stat.base = order[0] ? order[0].id : '';
-  return final;
+  return out.filter((p) => p.e > win.from && p.s < win.to).map(({ src, ...rest }) => rest);
 }
 
 const srcMeta = (r, used) => ({

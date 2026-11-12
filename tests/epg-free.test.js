@@ -116,6 +116,24 @@ test('fetchSource: XMLTV kaynağı alınır, ülke süzgeci ve güncellik deneti
   assert.ok(tr.channels.every((c) => Number(c.name.replace(/\D/g, '')) % 2 === 1));
 });
 
+test('fetchSource: süresiz kayıt sonraki programa bağlanır; ülke süzgeci hiç kanal bırakmazsa nedeni yazılır', async () => {
+  let xml = '<tv>';
+  for (let i = 1; i <= 10; i++) {
+    xml += `<channel id="c${i}" country="es"><display-name>C${i}</display-name></channel>`;
+    xml += `<programme start="20261112190000 +0300" stop="20261112190000 +0300" channel="c${i}"><title>Canlı Yayın</title></programme>`;
+    xml += `<programme start="20261112200000 +0300" stop="20261112220000 +0300" channel="c${i}"><title>Maç</title></programme>`;
+  }
+  xml += '</tv>';
+  const ok = await fetchSource({ id: 'z', name: 'Z', kind: 'xmltv', url: 'http://s/z.xml' }, fakeServer([[/z\.xml/, xml]]), NOW);
+  assert.equal(ok.ok, true, ok.error);
+  const first = ok.channels[0].list[0];
+  assert.equal(first.t, 'Canlı Yayın');
+  assert.equal(first.e - first.s, 3600e3); // sonraki programın başlangıcına kadar
+  const tr = await fetchSource({ id: 'z', name: 'Z', kind: 'xmltv', country: 'tr', url: 'http://s/z.xml' }, fakeServer([[/z\.xml/, xml]]), NOW);
+  assert.equal(tr.ok, false);
+  assert.match(tr.error, /“tr” ülke kanalı yok.*es 10/);
+});
+
 test('fetchSource: eski, az kanallı ve ulaşılamayan kaynak geçersiz sayılır', async () => {
   const stale = await fetchSource({ id: 'e', name: 'Eski', kind: 'xmltv', url: 'http://s/e.xml' }, fakeServer([[/e\.xml/, xmltv(12, { day: '20261101' })]]), NOW);
   assert.equal(stale.ok, false);
@@ -198,6 +216,26 @@ test('mergePrograms: kopya atılır, eksik alan tamamlanır, çakışan eklenmez
   assert.equal(stat.clash, 1);
   assert.equal(stat.base, 'a');
   // yalnız tek kaynak
+  assert.equal(mergePrograms([{ id: 'a', list: a }], win).length, 3);
+});
+
+test('mergePrograms: araya giren kısa program kaybolmaz, yanlış programı zenginleştirmez', () => {
+  const win = freeWindow(NOW);
+  const a = [
+    P(at(5, 43), at(5, 45), 'İstiklal Marşı'),
+    P(at(5, 45), at(6, 30), 'Hayallerinin Peşinde'),
+    P(at(6, 30), at(7, 30), 'Lezzetli Tavsiye'),
+  ];
+  const b = [
+    P(at(5, 43), at(5, 45), 'İstiklal Marşı', { c: 'Belgesel' }),
+    P(at(5, 45), at(6, 30), 'Hayallerinin Peşinde', { c: 'Yaşam' }),
+    P(at(5, 50), at(5, 53), 'Araya girmiş reklam'), // büyük programın içine düşen kısa kayıt eklenmez
+  ];
+  const out = mergePrograms([{ id: 'a', list: a }, { id: 'b', list: b }], win);
+  assert.deepEqual(out.map((p) => p.t), ['İstiklal Marşı', 'Hayallerinin Peşinde', 'Lezzetli Tavsiye']);
+  assert.equal(out[0].c, 'Belgesel');
+  assert.equal(out[1].c, 'Yaşam');
+  // aynı kaynağın ardışık kayıtları (2 dk arayla) birbirinin kopyası sayılmaz
   assert.equal(mergePrograms([{ id: 'a', list: a }], win).length, 3);
 });
 
