@@ -1871,9 +1871,37 @@ async function openToday() {
       programSheet: (it, p) => guideProgramSheet(it, p, [it], 0),
       channels: () => store.pref('today.ch.' + sid(), []),
       setChannels: (ids) => store.setPref('today.ch.' + sid(), ids),
+      openFlow: openSeriesFlow,
     });
   } catch (e) {
     toast('Bugün ekranı açılamadı: ' + ((e && e.message) || e));
+  }
+}
+
+// Dizi akışı: 1001dizi.net / sinemalar.com haftalık dizi programı (kanal, saat, bölüm). Modül ilk kullanımda yüklenir.
+async function openSeriesFlow() {
+  try {
+    const m = await import('./series-flow-ui.js');
+    m.openSeriesFlow({
+      net,
+      store,
+      toast,
+      liveItems: () => visibleAll('live'),
+      play: (items, index) => playLive(items, index),
+      // Hatırlatıcılar maç hatırlatıcılarıyla aynı plan listesinde durur (Planlananlar ekranında görünür)
+      reminders: {
+        list: () => readPlans(),
+        set: (plan) => {
+          const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) };
+          setPlans(addPlan(readPlans(), p));
+          ensurePlanPermissions();
+          return p;
+        },
+        remove: (id) => setPlans(removePlan(readPlans(), id)),
+      },
+    });
+  } catch (e) {
+    toast('Dizi akışı açılamadı: ' + ((e && e.message) || e));
   }
 }
 

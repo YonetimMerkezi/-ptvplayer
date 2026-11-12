@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 80,
+    title: 'Dizi akışı',
+    items: [
+      'Bugün TV’de ekranının üstündeki “Dizi akışı” düğmesiyle haftalık dizi programı: hangi dizi, hangi kanalda, kaçta, kaçıncı bölüm (yeni bölüm / bu hafta yayınlanmıyor bilgisiyle). Veri 1001dizi.net’ten alınır; o alınamazsa sinemalar.com denenir',
+      'Üstteki gün çipleriyle bugünden itibaren 7 gün gezilir; kanal çipleriyle tek kanala daralır. Satıra dokununca kanal listenizde varsa açılır',
+      'Satırdaki zil dizi başlamadan 15 dk önce hatırlatıcı kurar (Planlananlar’da görünür). Liste 3 saat önbellekte tutulur; “Yenile” ile elle güncellenir, alınamazsa kayıtlı liste kalır'
+    ],
+  },
+  {
     id: 79,
     title: 'Canlı yayın: donma ve bozuk görüntü düzeltmeleri',
     items: [
