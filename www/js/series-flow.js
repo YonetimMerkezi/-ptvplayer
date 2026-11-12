@@ -202,7 +202,7 @@ function freeDiziDays(free, nowMs) {
     const channelName = String((channel && channel.n) || '').trim();
     if (!channelName) continue;
     for (const p of (channel && channel.p) || []) {
-      const startAt = Number(p && p[0]);
+      const startAt = p && p[0] != null ? Number(p[0]) : NaN;
       if (!Number.isFinite(startAt)) continue;
       const offset = starts.findIndex((from) => startAt >= from && startAt < from + 864e5);
       if (offset < 0 || kindOf({ t: String(p[2] || ''), c: String(p[4] || '') }) !== 'dizi') continue;
@@ -215,7 +215,7 @@ function freeDiziDays(free, nowMs) {
         ep: String(p[5] || '').trim(), status,
         off: /yayinlanmiyor|iptal/.test(fold(status)),
         url: '', source: 'EPG', startAt,
-        endAt: Number.isFinite(Number(p[1])) ? Number(p[1]) : null,
+        endAt: p[1] != null && Number.isFinite(Number(p[1])) ? Number(p[1]) : null,
       });
     }
   }
@@ -304,8 +304,7 @@ async function pool(items, n, fn) {
 
 const msg = (e) => String((e && e.message) || e || 'hata').slice(0, 100);
 
-// Döner: { days: [7 dizi satırı listesi, Pazartesi…Pazar], via, note, failed: [alınamayan gün sıraları], today?: true }
-// 1001dizi'den hiç satır gelmezse sinemalar denenir (gün bilgisi olmadığından yalnız "bugün" listesi: today = satırlar). Hiçbiri olmazsa hata atar (detail: nedenler).
+// Döner: 1001dizi haftalık takvimi + bugün/yarın ücretsiz EPG tamamlaması; birincil kaynak boşsa EPG iki günlük yedek olur.
 export async function loadSeriesWeek({ net, base = DIZI_BASE, timeoutMs = 20000, parallel = 4, nowMs = Date.now(), freeLoader = loadFreeData } = {}) {
   const get = (url) => withTimeout(net.text(url, { fast: true }), timeoutMs);
   const jobs = [{ key: 'week', url: weekPageUrl(base) }, ...WEEKDAYS.map((_, i) => ({ key: i, url: dayPageUrl(i, base) }))];
