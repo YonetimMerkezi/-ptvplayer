@@ -145,7 +145,7 @@ test('loadSeriesWeek: 1001dizi boşsa ücretsiz EPG bugün ve yarın için yedek
     v: 1, at: now, from: now - 864e5, to: now + 2 * 864e5, tz: 'Europe/Istanbul',
     ch: {
       trt1: { n: 'TRT 1', p: [
-        [todayStart, todayStart + 7200e3, 'Mehmed: Fetihler Sultanı', '', 'Dizi', '1. Sezon 5. Bölüm', 'Yeni Bölüm'],
+        [todayStart, todayStart + 7200e3, 'Mehmed: Fetihler Sultanı', '', 'Dizi', '1. Sezon 5. Bölüm', 'n'],
         [tomorrowStart, tomorrowStart + 5400e3, 'Seksenler', '', 'Dizi', '', 'Tekrar'],
         [todayStart + 3600e3, todayStart + 7200e3, 'Canlı Futbol Maçı', '', 'Spor', '', ''],
       ] },
