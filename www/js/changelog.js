@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 70,
+    title: 'Geniş görseli olmayan filmlerde de tam arka plan',
+    items: [
+      'Vitrinde geniş görseli bulunmayan film ve dizilerde afiş artık sağda sert kenarlı durmaz: arkasında afişin bulanık yansıması ekranı doldurur, afişin kenarları buna karışır. Geniş görselli yapımlarda değişiklik yok'
+    ],
+  },
+  {
     id: 69,
     title: 'Film ve dizi satırları “Devam et”le başlar',
     items: [

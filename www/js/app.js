@@ -844,6 +844,22 @@ function paintHero(it, info, final) {
 // Arka plan: iki katman çapraz geçer; yeni görsel yüklenene dek eskisi durur (boş/yanıp sönme olmaz). Önce geniş görsel, olmazsa afiş.
 let heroBgSeq = 0;
 let heroBgUrl = '';
+// Dikey afişin bulanık, geniş yansıması: sağda bütün gösterilen afişin arkasında ekranı doldurur, böylece geniş görseli olmayan yapım da
+// tam arka planlı görünür. Küçük (16:9) tuvale çizilip CSS ile büyütülür; filtre kullanılmadığından hafif modda ve düşük bellekli TV'de de ucuzdur.
+function paintGlow(cv, im) {
+  const W = 64;
+  const H = 36;
+  cv.width = W;
+  cv.height = H;
+  const w = im.naturalWidth;
+  const h = im.naturalHeight;
+  if (!w || !h) return;
+  const sh = Math.min(h, (w * H) / W); // afişin 16:9'luk üst-orta dilimi
+  try {
+    cv.getContext('2d').drawImage(im, 0, Math.max(0, (h - sh) * 0.3), w, sh, 0, 0, W, H);
+  } catch (_) {}
+}
+
 function paintHeroBg(urls, nWide = urls.length) {
   const el = $('#hero-bg');
   if (!el) return;
@@ -854,7 +870,7 @@ function paintHeroBg(urls, nWide = urls.length) {
     if (!url) {
       heroBgUrl = '';
       el.classList.remove('has');
-      for (const i of el.children) i.classList.remove('on');
+      for (const x of el.children) x.classList.remove('on', 'show');
       return;
     }
     if (url === heroBgUrl) return;
@@ -862,11 +878,15 @@ function paintHeroBg(urls, nWide = urls.length) {
     im.referrerPolicy = 'no-referrer';
     im.onload = () => {
       if (seq !== heroBgSeq) return;
-      const [a, b] = el.children;
+      const [a, b] = el.querySelectorAll('i');
+      const glow = el.querySelector('canvas.glow');
       const to = a.classList.contains('on') ? b : a;
       const from = to === a ? b : a;
+      const poster = n >= nWide;
       to.style.backgroundImage = `url(${JSON.stringify(url)})`;
-      to.classList.toggle('poster', n >= nWide); // dikey afiş sağda bütün gösterilir (kırpılıp büyütülmez)
+      to.classList.toggle('poster', poster); // dikey afiş sağda bütün gösterilir (kırpılıp büyütülmez), arkasında bulanık yansıması
+      glow.classList.toggle('show', poster);
+      if (poster) paintGlow(glow, im);
       to.classList.add('on');
       from.classList.remove('on');
       el.classList.add('has');

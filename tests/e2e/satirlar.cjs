@@ -418,6 +418,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.waitForFunction(() => /\/backdrop\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => i.style.backgroundImage).join()), null, { timeout: 8000 });
     st = await bgState(page);
     ok(st.has && !st.poster, 'ayrıntı gelince geniş görsel (kırpmasız, tam ekran) görünüyor');
+    ok(await page.evaluate(() => !document.querySelector('#hero-bg canvas.glow').classList.contains('show')), 'geniş görselde afiş yansıması kapalı');
     // sonraki kutuya geçince geniş görsel gelene dek eskisi durur, afişe düşmez
     await press(page, 'ArrowRight', 1, 100);
     await sleep(500);
@@ -434,6 +435,14 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     st = await bgState(page);
     ok(st.has && st.poster, 'ayrıntı gelmeyince afiş yedek olarak çizildi ve "poster" düzeninde (sağda, bütün)');
     ok((await page.evaluate(() => getComputedStyle(document.querySelector('#hero-bg i.on')).backgroundSize)) === 'contain', 'afiş kırpılmadan (contain) gösteriliyor');
+    // arkasında afişin bulanık yansıması ekranı doldurur: sağdaki afişten uzakta (sol-orta) arka plan siyah değil, afişin rengini taşır
+    await sleep(700);
+    ok(await page.evaluate(() => { const c = document.querySelector('#hero-bg canvas.glow'); return c.classList.contains('show') && c.width === 64 && getComputedStyle(c).opacity > 0.5; }), 'afiş yansıması açık ve görünür');
+    const px = await page.evaluate(async () => {
+      const c = document.querySelector('#hero-bg canvas.glow');
+      return c.getContext('2d').getImageData(10, 10, 1, 1).data.join();
+    }).catch(() => 'korumalı');
+    ok(px === 'korumalı' || /^(?!0,0,0,)/.test(px), 'yansıma tuvaline afiş çizildi (' + px + ')');
     ok(errs.length === 0, 'afiş yedeği: sayfa hatası yok');
     await ctx.close();
   }
