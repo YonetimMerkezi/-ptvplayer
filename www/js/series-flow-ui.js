@@ -12,11 +12,15 @@ const MAX_AGE = 8 * 864e5; // yalnız aynı yayın haftasının önbelleği kull
 const SHOW_MS = 150 * 60e3; // dizi en çok bu kadar sürüyor sayılır ("şimdi" göstergesi)
 const REM_PREFIX = 'drem:';
 
+const istDateKey = (ms) => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
+  const part = (type) => parts.find((x) => x.type === type)?.value || '';
+  return part('year') + '-' + part('month') + '-' + part('day');
+};
 const weekKey = (ms) => {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+  const d = new Date(istDateKey(ms) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
 };
 
 // env: { net, store, toast, liveItems(), play(items, index), reminders: { list(), set(plan), remove(id) }, now?, base? }
@@ -130,7 +134,7 @@ export function openSeriesFlow(env) {
 
   async function persist() {
     try {
-      await store.cache.set(CACHE_KEY, { at: data.at, weekKey: weekKey(data.at), data: { ...data, weekKey: weekKey(data.at) } });
+      await store.cache.set(CACHE_KEY, { at: data.at, weekKey: weekKey(data.at), dateKey: istDateKey(data.at), data: { ...data, weekKey: weekKey(data.at) } });
     } catch {
       /* kayıt başarısız olsa da liste çalışır */
     }
@@ -212,7 +216,7 @@ export function openSeriesFlow(env) {
   (async () => {
     try {
       const c = await store.cache.get(CACHE_KEY);
-      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE && c.weekKey === weekKey(now())) data = { ...c.data, weekKey: c.weekKey };
+      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE && (c.data.coverageDays === 2 ? c.dateKey === istDateKey(now()) : c.weekKey === weekKey(now()))) data = { ...c.data, weekKey: c.weekKey };
     } catch {
       /* kayıtlı veri yok */
     }
