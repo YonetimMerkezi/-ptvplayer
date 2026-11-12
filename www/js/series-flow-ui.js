@@ -214,7 +214,12 @@ export function openSeriesFlow(env) {
   (async () => {
     try {
       const c = await store.cache.get(CACHE_KEY);
-      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE && (c.data.coverageDays === 2 ? c.dateKey === istDateKey(now()) : c.weekKey === weekKey(now()))) data = { ...c.data, weekKey: c.weekKey };
+      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE) {
+        const coverage = c.data.coverageDays || (c.data.todayOnly ? 1 : 7);
+        const savedWeek = c.weekKey || weekKey(c.at);
+        const valid = coverage === 2 ? c.dateKey === istDateKey(now()) : coverage === 7 && !c.data.todayOnly && savedWeek === weekKey(now());
+        if (valid) data = { ...c.data, coverageDays: coverage, weekKey: savedWeek };
+      }
     } catch {
       /* kayıtlı veri yok */
     }
