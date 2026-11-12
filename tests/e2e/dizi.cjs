@@ -17,7 +17,7 @@ const TODAY_EXTRA = [
 ];
 function fakeSites() {
   const st = { mode: 'ok', epg: 'empty', calls: [] };
-  const todayIdx = () => (new Date().getDay() + 6) % 7;
+  const todayIdx = () => (new Date(Date.now() + 3 * 3600e3).getUTCDay() + 6) % 7;
   const dayPage = (idx) => `<html><body>${MENU}${[...COMMON, ...(idx === todayIdx() ? TODAY_EXTRA : [])].map((c) => card(c[0], c[1], c[2], '', c[4], c[5])).join('')}<footer><a href="/iletisim">İletişim</a></footer></body></html>`;
   const weekPage = () => `<html><body>${MENU}${[...COMMON, ...TODAY_EXTRA].map((c) => card(...c)).join('')}</body></html>`;
   const slugs = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
