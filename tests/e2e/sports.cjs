@@ -6,7 +6,7 @@ const path = require('node:path');
 const CORS = { 'access-control-allow-origin': '*' };
 
 function fakeEspn() {
-  const st = { fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], lsDetail: [], lsDetailMode: 'data', tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
+  const st = { preRoster: '', fail: false, failDelay: 0, rejectLimit: false, summaryFail: false, summaryCalls: [], failLeagues: new Set(['ger.1']), calls: [], urls: [], lsMode: 'empty', lsCalls: [], lsDetail: [], lsDetailMode: 'data', tvMode: 'empty', tvCalls: [], seMode: 'data0', seCalls: [], altMode: 'fail', altCalls: [], badgeCalls: [] };
   const at = (dayOff, h, m = 0) => {
     const d = new Date();
     d.setHours(h, m, 0, 0);
@@ -58,7 +58,14 @@ function fakeEspn() {
       ],
       gameInfo: { venue: { fullName: 'Tüpraş Stadyumu', address: { city: 'İstanbul' } }, officials: [{ fullName: 'Cüneyt Çakır' }], attendance: 41000 },
     },
-    1: comp('pre', 'STATUS_SCHEDULED', undefined, undefined, { comp: { geoBroadcasts: [{ media: { shortName: 'Paramount+' }, region: 'us' }] } }),
+    1: {
+      ...comp('pre', 'STATUS_SCHEDULED', undefined, undefined, { comp: { geoBroadcasts: [{ media: { shortName: 'Paramount+' }, region: 'us' }] } }),
+      // preRoster: 'squad' = ilk 11 işaretsiz oyuncu listesi, 'full' = ilk 11 + yedek (maçtan ~1 saat önce)
+      ...(st.preRoster ? { rosters: [
+        { homeAway: 'home', team: { id: '1' }, formation: st.preRoster === 'full' ? '4-2-3-1' : undefined, roster: [{ ...(st.preRoster === 'full' ? { starter: true } : {}), jersey: '1', athlete: { displayName: 'Muslera' }, position: { abbreviation: 'G' } }, { ...(st.preRoster === 'full' ? { starter: false } : {}), jersey: '9', athlete: { displayName: 'Icardi' }, position: { abbreviation: 'F' } }] },
+        { homeAway: 'away', team: { id: '2' }, roster: [{ ...(st.preRoster === 'full' ? { starter: true } : {}), jersey: '1', athlete: { displayName: 'Livakovic' }, position: { abbreviation: 'G' } }] },
+      ] } : {}),
+    },
     3: { ...comp('post', 'STATUS_FULL_TIME', '2', '2'), keyEvents: [{ type: { text: 'Goal' }, scoringPlay: true, clock: { displayValue: "5'" }, team: { id: '2' }, participants: [{ athlete: { displayName: 'Deneme Oyuncu' } }] }] },
   });
   // Sahte LiveScore: lsMode 'empty' (boş gün), 'data' (ESPN'de olmayan maçlar + bir yinelenen), 'fail' (HTTP 500), 'badshape' (beklenmeyen JSON)
@@ -344,7 +351,25 @@ async function sportsSection({ browser, base, mock, ok, sleep, SHOTS }) {
   ok((await text(a, '.sd-ch .nm')).join('|') === chName, 'ayrıntı: rehberdeki kanal Yayın bölümünde (' + (await text(a, '.sd-ch .nm')).join('|') + ')');
   ok(/Galatasaray - Fenerbahçe/.test(await a.textContent('.sd-ch .sub')), 'ayrıntı: kanal satırında program adı');
   ok(!/Paramount|ESPN/.test(await a.textContent('#sd-bc')), 'ayrıntı: yurtdışı yayıncı ve kaynak adı yok');
-  ok(/Maç başlayınca/.test(await a.textContent('#sd-body')) || (await a.$$('.sd-e')).length === 0, 'ayrıntı: başlamamış maçta olay yok, açıklama var');
+  ok(/Kadro genelde maçtan yaklaşık 1 saat önce/.test(await a.textContent('#sd-body')) && (await a.$$('.sd-e')).length === 0 && (await a.$$('.sd-lu')).length === 0, 'ayrıntı: başlamamış maçta olay yok, kadronun ne zaman geleceği yazıyor');
+  // maç öncesi kadro: önce ilk 11 işaretsiz liste, sonra ilk 11 açıklanınca
+  const preRefresh = async () => {
+    const n = espn.st.summaryCalls.length;
+    await a.click('#sd-ref');
+    await a.waitForFunction(() => /Son güncelleme/.test(document.querySelector('#sd-upd').textContent), null, { timeout: 5000 });
+    return espn.st.summaryCalls.length === n + 1;
+  };
+  espn.st.preRoster = 'squad';
+  ok(await preRefresh(), 'maç öncesi: yenile ayrıntıyı yeniden indirdi');
+  await a.waitForSelector('.sd-lu', { timeout: 4000 });
+  const squadTxt = await a.textContent('#sd-body');
+  ok((await a.$$('.sd-lu')).length === 2 && /İlk 11 henüz açıklanmadı/.test(squadTxt) && /Oyuncular:.*Muslera/.test(squadTxt) && !/Yedekler:/.test(squadTxt) && !/Kadro genelde/.test(squadTxt), 'maç öncesi: ilk 11 işaretsizse oyuncu listesi (yedek değil) ve "ilk 11 açıklanmadı" notu');
+  espn.st.preRoster = 'full';
+  ok(await preRefresh(), 'maç öncesi: ilk 11 açıklanınca yenilendi');
+  await a.waitForFunction(() => /4-2-3-1/.test(document.querySelector('.sd-lu').textContent), null, { timeout: 4000 });
+  const fullTxt = await a.textContent('#sd-body');
+  ok(/Muslera/.test(await a.textContent('.sd-lu ul')) && /Yedekler:.*Icardi/.test(fullTxt) && !/İlk 11 henüz/.test(fullTxt), 'maç öncesi: ilk 11 + yedekler görünür, "açıklanmadı" notu kalktı');
+  espn.st.preRoster = '';
   await a.click('.sd-ch');
   await a.waitForFunction(() => document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing'), null, { timeout: 8000 });
   ok(true, 'ayrıntıdan kanala dokununca oynatıldı');

@@ -5,7 +5,7 @@ import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel, noScore } from './sports.js';
 import { LS_HOSTS, loadLsEvents } from './sports-ls.js';
-import { loadSummary, KIND_LABEL, broadcastGroups } from './sports-detail.js';
+import { loadSummary, KIND_LABEL, broadcastGroups, shouldPoll } from './sports-detail.js';
 import { sideLogo, logoHtml } from './sports-logos.js';
 
 const EPG_BEFORE = 90 * 60000;
@@ -179,11 +179,12 @@ export function openMatchDetail(env, m) {
       const l = d.lineups[side];
       if (!l) return '';
       const li = (p) => `<li><span class="n">${esc(p.n)}</span>${esc(p.name)}${p.pos && p.pos !== 'SUB' ? ` <small>${esc(p.pos)}</small>` : ''}</li>`;
-      return `<div class="sd-lu"><h5>${esc(team.label)}${l.formation ? ` <small>${esc(l.formation)}</small>` : ''}</h5><ul>${l.starters.map(li).join('')}</ul>${l.subs.length ? `<p class="sd-subs"><b>Yedekler:</b> ${l.subs.map((p) => esc(p.name)).join(', ')}</p>` : ''}</div>`;
+      return `<div class="sd-lu"><h5>${esc(team.label)}${l.formation ? ` <small>${esc(l.formation)}</small>` : ''}</h5><ul>${l.starters.map(li).join('')}</ul>${l.subs.length ? `<p class="sd-subs"><b>${l.squad ? 'Oyuncular' : 'Yedekler'}:</b> ${l.subs.map((p) => esc(p.name)).join(', ')}</p>` : ''}</div>`;
     };
     const h = col('home', m.home);
     const a = col('away', m.away);
-    return h || a ? `<section class="sd-sec"><h4>Kadro</h4><div class="sd-lus">${h}${a}</div></section>` : '';
+    const open = [d.lineups.home, d.lineups.away].some((l) => l && l.starters.length);
+    return h || a ? `<section class="sd-sec"><h4>Kadro</h4>${open ? '' : '<p class="sd-note">İlk 11 henüz açıklanmadı.</p>'}<div class="sd-lus">${h}${a}</div></section>` : '';
   }
 
   // Maçta gol atılmış mı (skordan): olay alınamadıysa nedeni yalnız o zaman gösterilir
@@ -204,13 +205,13 @@ export function openMatchDetail(env, m) {
       eventsHtml(data) + lineupHtml(data) +
       (data.lsOnly
         ? `<p class="sd-note">${data.events.length ? 'Bu maç için yalnız gol bilgisi var (kadro yok).' : 'Bu maç için olay ve kadro bilgisi yok.'}</p>${!data.events.length && data.evNote && hasGoals() ? `<p class="hint sd-diag">Gol dakikaları alınamadı (LiveScore: ${esc(data.evNote)})</p>` : ''}${data.evWarn ? `<p class="hint sd-diag">${esc(data.evWarn)}</p>` : ''}`
-        : data.empty ? `<p class="sd-note">${pre ? 'Maç başlayınca olaylar ve kadro burada görünür.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
+        : data.empty ? `<p class="sd-note">${pre ? 'Kadro genelde maçtan yaklaşık 1 saat önce açıklanır; açıklanınca burada görünür. Olaylar maç başlayınca eklenir.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
   }
 
   function drawStatus() {
     const el = q('#sd-upd');
     if (!el) return;
-    el.textContent = loading && fetchedAt ? 'Güncelleniyor…' : err && fetchedAt ? `Güncellenemedi · son veri ${fmtClock(fetchedAt)}` : fetchedAt ? `Son güncelleme ${fmtClock(fetchedAt)}${live() === 'in' ? ' · canlı maçta 45 sn’de bir yenilenir' : ''}` : '';
+    el.textContent = loading && fetchedAt ? 'Güncelleniyor…' : err && fetchedAt ? `Güncellenemedi · son veri ${fmtClock(fetchedAt)}` : fetchedAt ? `Son güncelleme ${fmtClock(fetchedAt)}${live() === 'in' ? ' · canlı maçta 45 sn’de bir yenilenir' : live() === 'pre' && shouldPoll('pre', m.t, now()) ? ' · kadro için 45 sn’de bir yenilenir' : ''}` : '';
   }
 
   async function refresh() {
@@ -290,7 +291,7 @@ export function openMatchDetail(env, m) {
   }
   timer = setInterval(() => {
     if (!root.isConnected) return clearInterval(timer);
-    if (live() === 'in' || (live() === 'pre' && m.t - now() < 10 * 60e3)) refresh();
+    if (shouldPoll(live(), m.t, now())) refresh();
   }, LIVE_MS);
 
   return page;

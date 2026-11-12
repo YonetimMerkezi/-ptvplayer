@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 75,
+    title: 'Maç öncesi kadro',
+    items: [
+      'Başlamamış maçın ayrıntısında kadro, ESPN yayımlar yayımlamaz görünür; açık sayfa başlamaya 90 dakika kala 45 saniyede bir kendini yeniler',
+      'İlk 11 henüz belli değilse oyuncular “Oyuncular” satırında listelenir ve “İlk 11 henüz açıklanmadı” yazar; kadro yoksa ne zaman açıklanacağı belirtilir (genelde maçtan ~1 saat önce, her ligde yok)'
+    ],
+  },
+  {
     id: 74,
     title: 'Maç ayrıntısı daha kompakt',
     items: [

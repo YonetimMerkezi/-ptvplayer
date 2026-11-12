@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { broadcastGroups, summaryUrl, eventIdOf, eventKind, markerKind, minuteValue, parseSummary, loadSummary } from '../www/js/sports-detail.js';
+import { broadcastGroups, summaryUrl, eventIdOf, eventKind, markerKind, minuteValue, parseSummary, loadSummary, shouldPoll, PRE_POLL_MS } from '../www/js/sports-detail.js';
 import { parseBroadcasts, parseScoreboard, findPrograms, findProgram } from '../www/js/sports.js';
 
 const SUMMARY = {
@@ -88,6 +88,35 @@ test('parseSummary: istatistik verilmez (ESPN yanıtında olsa bile)', () => {
   const d = parseSummary(SUMMARY, {});
   assert.equal('stats' in d, false);
   assert.equal(JSON.stringify(d).includes('Topla oynama'), false);
+});
+
+test('parseSummary: maç öncesi liste (ilk 11 işaretsiz) yedek sayılmaz, oyuncu listesi olur', () => {
+  const pre = {
+    header: { competitions: [{ status: { type: { state: 'pre', name: 'STATUS_SCHEDULED' } }, competitors: [{ homeAway: 'home', team: { id: '10' } }, { homeAway: 'away', team: { id: '20' } }] }] },
+    rosters: [
+      { homeAway: 'home', team: { id: '10' }, roster: [{ jersey: '1', athlete: { displayName: 'Muslera' } }, { jersey: '9', athlete: { displayName: 'Icardi' } }] },
+      { homeAway: 'away', team: { id: '20' }, formation: '4-3-3', roster: [{ starter: true, jersey: '10', athlete: { displayName: 'Tadic' } }, { starter: false, jersey: '11', athlete: { displayName: 'Yedek' } }] },
+    ],
+  };
+  const d = parseSummary(pre, {});
+  assert.equal(d.empty, false);
+  assert.equal(d.lineups.home.squad, true);
+  assert.deepEqual(d.lineups.home.starters, []);
+  assert.deepEqual(d.lineups.home.subs.map((p) => p.name), ['Muslera', 'Icardi']);
+  assert.equal(d.lineups.away.squad, false);
+  assert.deepEqual(d.lineups.away.starters.map((p) => p.name), ['Tadic']);
+  assert.equal(parseSummary({ rosters: [] }, {}).empty, true);
+});
+
+test('shouldPoll: canlı maç hep; başlamamış maç yalnız başlamaya ~90 dk kala (ve gecikmede); bitmiş maç hiç', () => {
+  const now = 1e12;
+  assert.equal(shouldPoll('in', now - 1e6, now), true);
+  assert.equal(shouldPoll('pre', now + PRE_POLL_MS - 1, now), true);
+  assert.equal(shouldPoll('pre', now + 3 * 60e6, now), false);
+  assert.equal(shouldPoll('pre', now + 60 * 60e3, now), true);
+  assert.equal(shouldPoll('pre', now - 5 * 60e3, now), true);
+  assert.equal(shouldPoll('post', now, now), false);
+  assert.equal(PRE_POLL_MS >= 60 * 60e3, true);
 });
 
 test('parseSummary: kadro, diziliş, yedekler; hakem/seyirci', () => {

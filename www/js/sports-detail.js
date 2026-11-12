@@ -137,10 +137,13 @@ function parseLineups(j, ids) {
       .filter((p) => p.name);
     if (!players.length) continue;
     const f = r.formation;
+    // Maç öncesi liste çoğu zaman "ilk 11" işareti olmadan gelir: hepsini yedek saymak yanlış olur, düz oyuncu listesi olarak gösterilir
+    const squad = !players.some((p) => p.starter);
     out[side] = {
       formation: str(typeof f === 'string' ? f : f && (f.summary || f.displayName)),
       starters: players.filter((p) => p.starter),
       subs: players.filter((p) => !p.starter),
+      squad,
     };
   }
   return out;
@@ -178,6 +181,10 @@ export function parseSummary(json, m) {
   data.empty = !data.events.length && !data.lineups.home && !data.lineups.away;
   return data;
 }
+
+// Başlamamış maçın kadrosu genelde başlama saatinden ~1 saat önce açıklanır: ayrıntı sayfası açıkken bu süreye girince otomatik yoklanır.
+export const PRE_POLL_MS = 90 * 60e3;
+export const shouldPoll = (state, t, nowMs) => state === 'in' || (state === 'pre' && Number(t) - nowMs < PRE_POLL_MS);
 
 // Ayrıntıyı indirir. Döner: parseSummary çıktısı; ağ/biçim hatasında Error (hata.detail: kısa neden).
 export async function loadSummary({ net, match, base = ESPN_BASE, timeoutMs = 12000 }) {
