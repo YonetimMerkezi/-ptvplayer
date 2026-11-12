@@ -25,8 +25,8 @@ function fakeSites() {
     const now = Date.now();
     const ch = Object.fromEntries(['trt1', 'kanald', 'atv', 'show', 'star', 'tv8', 'now', 'kanal7'].map((id) => [id, { n: id.toUpperCase(), p: [] }]));
     if (st.epg === 'dizi') {
-      const start = new Date(now);
-      start.setHours(10, 0, 0, 0);
+      const start = new Date(now + 3 * 3600e3);
+      start.setUTCHours(7, 0, 0, 0); // 10:00 Europe/Istanbul
       const s = start.getTime();
       ch.trt1.p.push([s, s + 90 * 60000, 'EPG Dizisi', '', 'Dizi', '5. Bölüm', 'Yeni Bölüm']);
     }
