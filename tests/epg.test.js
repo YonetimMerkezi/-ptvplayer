@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseXmltvTime, XmltvParser, buildEpgIndex, resolveEpgId, nowNext } from '../www/js/epg.js';
+import { parseXmltvTime, XmltvParser, buildEpgIndex, resolveEpgId, nowNext, parseEpisode, packProg, unpackProg } from '../www/js/epg.js';
 
 const NOW = Date.UTC(2026, 10, 8, 12, 0, 0); // 8 Kasım 2026 12:00 UTC
 
@@ -71,4 +71,52 @@ test('şimdi ve sonraki', () => {
   assert.equal(nowNext(list, 50).next.t, 'A');
   assert.equal(nowNext(list, 600).next, null);
   assert.deepEqual(nowNext([], 1), { now: null, next: null, progress: 0 });
+});
+
+test('bölüm bilgisi: yalnız açıkça yazılı biçimler; program kodları ve tahmin yok', () => {
+  assert.equal(parseEpisode('1.4.', 'xmltv_ns'), '2. Sezon 5. Bölüm'); // xmltv_ns 0 tabanlıdır
+  assert.equal(parseEpisode('0.0.0/1', 'xmltv_ns'), '1. Sezon 1. Bölüm');
+  assert.equal(parseEpisode('.12.', 'xmltv_ns'), '13. Bölüm');
+  assert.equal(parseEpisode('S02E05', 'onscreen'), '2. Sezon 5. Bölüm');
+  assert.equal(parseEpisode('2x05'), '2. Sezon 5. Bölüm');
+  assert.equal(parseEpisode('12. Bölüm'), '12. Bölüm');
+  assert.equal(parseEpisode('E7'), '7. Bölüm');
+  assert.equal(parseEpisode('EP0123.0456', 'dd_progid'), '');
+  assert.equal(parseEpisode('rastgele metin', 'onscreen'), '');
+  assert.equal(parseEpisode('', 'xmltv_ns'), '');
+  assert.equal(parseEpisode('..', 'xmltv_ns'), '');
+});
+
+test('XMLTV: bölüm numarası ve yeni/tekrar/canlı etiketi yalnız kaynakta varsa gelir; ülke ve kanal süzgeci', () => {
+  const xml = `<tv>
+<channel id="a" country="tr"><display-name>A</display-name></channel>
+<channel id="b" country="es"><display-name>B</display-name></channel>
+<programme start="20261108120000 +0000" stop="20261108130000 +0000" channel="a"><title>Dizi</title><episode-num system="xmltv_ns">1.4.</episode-num><new/></programme>
+<programme start="20261108130000 +0000" stop="20261108140000 +0000" channel="a"><title>Tekrar</title><episode-num system="onscreen">S03E01</episode-num><previously-shown/></programme>
+<programme start="20261108140000 +0000" stop="20261108150000 +0000" channel="a"><title>Canlı</title><live/></programme>
+<programme start="20261108150000 +0000" stop="20261108160000 +0000" channel="a"><title>Düz</title><episode-num system="dd_progid">EP00123.0001</episode-num></programme>
+<programme start="20261108120000 +0000" stop="20261108130000 +0000" channel="b"><title>İspanyolca</title></programme>
+</tv>`;
+  const parser = new XmltvParser({ now: NOW, accept: (id) => parser.channels.get(id)?.country === 'tr' });
+  const r = parser.push(xml).end();
+  assert.equal(r.channels.get('a').country, 'tr');
+  assert.deepEqual([...r.byChannel.keys()], ['a']);
+  const [d, t, c, plain] = r.byChannel.get('a');
+  assert.equal(d.x, '2. Sezon 5. Bölüm');
+  assert.equal(d.f, 'n');
+  assert.equal(t.x, '3. Sezon 1. Bölüm');
+  assert.equal(t.f, 'r');
+  assert.equal(c.f, 'l');
+  assert.equal(plain.x, undefined);
+  assert.equal(plain.f, undefined);
+});
+
+test('program satırı: etiket/bölüm yoksa eski 5 alanlı biçim aynen kalır', () => {
+  const plain = { s: 1, e: 2, t: 'A', d: 'd', c: 'Dizi' };
+  assert.deepEqual(packProg(plain), [1, 2, 'A', 'd', 'Dizi']);
+  assert.deepEqual(unpackProg([1, 2, 'A', 'd', 'Dizi']), plain);
+  const full = { ...plain, x: '1. Bölüm', f: 'n' };
+  assert.deepEqual(packProg(full), [1, 2, 'A', 'd', 'Dizi', '1. Bölüm', 'n']);
+  assert.deepEqual(unpackProg(packProg(full)), full);
+  assert.deepEqual(unpackProg([1, 2, 'A']), { s: 1, e: 2, t: 'A', d: undefined, c: '' });
 });

@@ -1,0 +1,45 @@
+name: EPG derle
+
+# Ücretsiz TV rehberi kaynaklarını 3 saatte bir sınar, geçerli olanları birleştirir ve `epg-data` dalına yazar.
+# Uygulama birleşik epg.json'u buradan okur; bu dal APK derlemesini tetiklemez (APK yalnız main'de derlenir).
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/epg-build.mjs'
+      - 'www/js/epg-free.js'
+      - 'www/js/epg.js'
+      - '.github/workflows/epg-build.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: epg-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Kaynakları sına ve birleştir
+        run: node scripts/epg-build.mjs epg-out
+      - name: epg-data dalına yaz
+        if: always()
+        working-directory: epg-out
+        run: |
+          [ -f status.json ] || exit 0
+          git init -q -b epg-data
+          git config user.name "epg-bot"
+          git config user.email "epg-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "EPG $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" epg-data
