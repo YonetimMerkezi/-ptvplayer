@@ -1,6 +1,6 @@
 // Ücretsiz TV rehberi sunucu işi (GitHub Actions, 3 saatte bir): kaynakları sınar, geçerli olanları birleştirir, JSON üretir.
 // Çıktı (epg-out/): epg.json (uygulamanın okuduğu), status.json (kaynak durumları), inceleme.json (kontrol için ayrıntı),
-// ornek.json (birkaç kanalın kaynak kaynak ham akışı), tvakisi-kanal.sample.txt (tek kanal sayfası örneği; ayrıştırıcı için).
+// ornek.json (birkaç kanalın kaynak kaynak ham akışı).
 // Yeni birleşim geçersizse (kaynakların hiçbiri güncel değil) önceki geçerli epg.json korunur.
 // Kullanım: node scripts/epg-build.mjs [çıktı-klasörü]
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -33,7 +33,7 @@ async function main() {
     }
     const lm = src.url ? lastMod.get(src.url) || lastMod.get(src.url.replace(/^http:/, 'https:')) : null;
     if (lm) r.updated = new Date(lm).toISOString();
-    console.log(`${src.id}: ${r.ok ? 'TAMAM' : 'GEÇERSİZ'} ch=${r.ch} pr=${r.pr} onAir=${r.onAir} tomorrow=${r.tomorrow} ep=${r.withEpisode} flag=${r.flagged} ${r.error || ''}`);
+    console.log(`${src.id}: ${r.ok ? 'TAMAM' : 'GEÇERSİZ'} ch=${r.ch} pr=${r.pr} onAir=${r.onAir} tomorrow=${r.tomorrow} ep=${r.withEpisode} flag=${r.flagged} tür=${r.typed || 0}/${r.inferred || 0} ${r.error || r.note || ''}`);
     results.push(r);
   }
 
@@ -79,14 +79,6 @@ async function main() {
     }
   }
   await write('ornek.json', ornek);
-
-  // tvakisi.com: ana sayfalarda yalnız "şu an" var; tek kanal sayfasında tam akış olup olmadığı için ham örnek
-  try {
-    const html = await net.text('https://tvakisi.com/trt-1-yayin-akisi');
-    await write('tvakisi-kanal.sample.txt', html.slice(0, 400000));
-  } catch (e) {
-    await write('tvakisi-kanal.sample.txt', `ALINAMADI: ${e.message}`);
-  }
 
   console.log(`\nSonuç: ${verdict.ok ? 'GEÇERLİ' : 'GEÇERSİZ'} · ${Object.keys(data.ch).length} kanal · ${programmes} program`);
   if (!verdict.ok && !kept) process.exitCode = 1;

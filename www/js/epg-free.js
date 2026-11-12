@@ -28,6 +28,11 @@ export const FREE_SOURCES = [
     kind: 'html',
     device: true,
     pages: (now) => [0, 1].map((day) => ({ day, url: `https://tvdebugun.net/yayin-akisi/${istDate(now, day)}/` })),
+    // Sitenin “bugün hangi diziler/filmler var” sayfaları: kanalların yayın akışında dizi/film olarak duyurduğu programlar (yalnız bugün)
+    lists: [
+      { url: 'https://tvdebugun.net/bugun-hangi-diziler-var/', kind: 'Dizi' },
+      { url: 'https://tvdebugun.net/bugun-hangi-film-var/', kind: 'Film' },
+    ],
   },
   { id: 'openepg', name: 'Open-EPG', kind: 'xmltv', device: true, url: 'https://www.open-epg.com/files/turkey1.xml.gz' },
   { id: 'epgshare', name: 'EPGShare', kind: 'xmltv', device: true, url: 'https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz' },
@@ -113,6 +118,30 @@ export function parseTvdebugun(html, dayStartMs) {
     if (list.length) out.channels.push({ name, list });
   }
   return out;
+}
+
+const TR_MONTHS = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'];
+
+// “Bugün hangi diziler/film var” sayfası → { date: sayfanın günü (yyyy-mm-dd) ya da '', rows: [{ s, t, ch }] }
+export function parseTvdebugunList(html, dayStartMs) {
+  const src = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
+  let date = '';
+  const dm = />\s*(\d{1,2})\s+([^\s<\d]+)\s+(\d{4})\s*·/.exec(src);
+  if (dm) {
+    const mi = TR_MONTHS.indexOf(fold(dm[2]));
+    if (mi >= 0) date = `${dm[3]}-${String(mi + 1).padStart(2, '0')}-${String(Number(dm[1])).padStart(2, '0')}`;
+  }
+  const rows = [];
+  const re = /<li class="yapim-satir[^"]*">([\s\S]*?)<\/li>/gi;
+  let m;
+  while ((m = re.exec(src))) {
+    const tm = /class="yapim-saat"[^>]*>\s*(\d{1,2}):(\d{2})/i.exec(m[1]);
+    const t = /class="yapim-ad[^"]*"[^>]*>([^<]+)</i.exec(m[1]);
+    const ch = /class="yapim-kanal"[\s\S]*?<span>([^<]+)<\/span>/i.exec(m[1]);
+    if (!tm || !t || !ch) continue;
+    rows.push({ s: dayStartMs + (Number(tm[1]) * 60 + Number(tm[2])) * 60000, t: attrText(t[1]), ch: attrText(ch[1]) });
+  }
+  return { date, rows };
 }
 
 // ---------------------------------------------------------------- kaynak alma
@@ -205,6 +234,48 @@ async function fetchHtml(src, net, now) {
     }
   }
   if (!pages) throw new Error(notes.join('; ') || 'Gün sayfası alınamadı');
+
+  // Tür: sitenin dizi/film listelerinde geçen programlar o türde işaretlenir (kaynakta tür yazıyorsa dokunulmaz).
+  let typed = 0;
+  let inferred = 0;
+  const todayAired = [];
+  for (const lst of src.lists || []) {
+    try {
+      const r = parseTvdebugunList(await net.text(lst.url), istDayStart(now, 0));
+      if (r.date !== istDate(now, 0)) {
+        notes.push(`${lst.kind} listesi farklı gün gösteriyor`);
+        continue;
+      }
+      for (const row of r.rows) {
+        const key = chanKey(row.ch) || row.ch;
+        const ch = byName.get(key);
+        if (!ch) continue;
+        const near = ch.list
+          .filter((p) => Math.abs(p.s - row.s) <= 2 * 60e3 && (titlesCompatible(p.t, row.t) || Math.abs(p.s - row.s) <= 60e3))
+          .sort((a, b) => Math.abs(a.s - row.s) - Math.abs(b.s - row.s))[0];
+        if (near && !near.c) {
+          near.c = lst.kind;
+          typed++;
+        }
+        // Kaynak programı başka türde yazmışsa (ör. "Belgesel") yarına tür taşınmaz
+        if (near && near.c === lst.kind) todayAired.push({ key, tk: tkey(row.t), kind: lst.kind });
+      }
+    } catch (e) {
+      notes.push(`${lst.kind} listesi: ${e.message || e}`);
+    }
+  }
+  // Yarın için site liste vermez (hafta günü sayfaları geçmiş haftalardan derlenir). Bugün dizi/film listesinde geçen aynı ad ve aynı
+  // kanaldaki yarınki programlar aynı türde sayılır.
+  const tomorrow = istDayStart(now, 1);
+  for (const a of todayAired) {
+    if (!a.tk) continue;
+    for (const p of byName.get(a.key).list) {
+      if (p.s >= tomorrow && !p.c && tkey(p.t) === a.tk) {
+        p.c = a.kind;
+        inferred++;
+      }
+    }
+  }
   const chs = [];
   for (const c of byName.values()) {
     c.list.sort((a, b) => a.s - b.s);
@@ -217,7 +288,7 @@ async function fetchHtml(src, net, now) {
     }
     chs.push(c);
   }
-  return { channels: chs, bytes, note: notes.join('; ') };
+  return { channels: chs, bytes, note: notes.join('; '), typed, inferred };
 }
 
 // Tek kaynağı alır ve sınar. Dönüş: { id, name, ok, error?, ms, bytes, ch, pr, lastStart, tomorrow, onAir, channels }
@@ -230,7 +301,7 @@ export async function fetchSource(src, net, now = Date.now()) {
     const chs = got.channels
       .map((c) => ({ name: c.name, list: sane(c.list).filter((p) => p.e > win.from && p.s < win.to && p.t) }))
       .filter((c) => c.list.length);
-    Object.assign(res, { channels: chs, bytes: got.bytes, note: got.note || '' }, stats(chs, now, win));
+    Object.assign(res, { channels: chs, bytes: got.bytes, note: got.note || '', typed: got.typed || 0, inferred: got.inferred || 0 }, stats(chs, now, win));
     if (src.country && !res.ch) {
       const top = Object.entries(got.countries || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, n]) => `${k} ${n}`).join(', ');
       throw new Error(`“${src.country}” ülke kanalı yok (kaynakta ${got.total || 0} kanal; ülkeler: ${top || '—'})`);
@@ -328,6 +399,9 @@ const srcMeta = (r, used) => ({
   tomorrow: !!r.tomorrow,
   withEpisode: r.withEpisode || 0,
   flagged: r.flagged || 0,
+  ...(r.typed ? { typed: r.typed } : {}),
+  ...(r.inferred ? { inferred: r.inferred } : {}),
+  ...(r.note ? { note: r.note } : {}),
   ...(r.episodeSamples && r.episodeSamples.length ? { episodeSamples: r.episodeSamples } : {}),
   used: used || 0,
   ms: r.ms || 0,

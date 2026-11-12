@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { createNet } from '../www/js/net.js';
 import {
-  istDate, istDayStart, freeWindow, chanKey, parseTvdebugun, fetchSource, sameSlot, mergePrograms, buildFreeData, validateFree,
+  istDate, istDayStart, freeWindow, chanKey, parseTvdebugun, parseTvdebugunList, fetchSource, sameSlot, mergePrograms, buildFreeData, validateFree,
   matchFree, mergeEpgData, loadFreeData, probeFreeSources, FREE_SOURCES, AGG_URLS, MIN_CHANNELS,
 } from '../www/js/epg-free.js';
 import { EpgView } from '../www/js/catalog.js';
@@ -182,6 +182,67 @@ test('fetchSource: tvdebugun iki gün sayfası; son programın bitişi ertesi g�
   // iki sayfa da olmazsa kaynak geçersiz
   const r3 = await fetchSource(src, fakeServer([]), NOW);
   assert.equal(r3.ok, false);
+});
+
+const listFixture = readFileSync(new URL('./fixtures/tvdebugun-diziler.html', import.meta.url), 'utf8');
+const listPage = (date, rows) =>
+  `<html><body><p style="margin:0">${date} · <!-- -->3<!-- --> dizi</p><ul class="yapim-liste">${rows
+    .map(([t, n, c]) => `<li class="yapim-satir yapim-satir--bag"><span class="yapim-saat">${t}</span><a href="/program/x/" class="yapim-ad yapim-ad-bag">${n}</a><a href="/k/" class="yapim-kanal"><img alt=""/><span>${c}</span></a></li>`)
+    .join('')}</ul></body></html>`;
+
+test('tvdebugun dizi/film listesi: gerçek sayfa örneği (gün, saat, ad, kanal)', () => {
+  const r = parseTvdebugunList(listFixture, D0);
+  assert.equal(r.date, '2026-11-12');
+  assert.equal(r.rows.length, 7);
+  assert.deepEqual(r.rows[0], { s: at(19, 0), t: 'Gelin', ch: 'Kanal 7' });
+  assert.deepEqual(r.rows[3], { s: at(13, 15), t: 'Seksenler', ch: 'TRT 1' });
+  assert.deepEqual(r.rows[5], { s: at(1, 40), t: 'Mehmed: Fetihler Sultanı', ch: 'TRT 1' });
+  assert.deepEqual(parseTvdebugunList('<html>değişmiş</html>', D0), { date: '', rows: [] });
+});
+
+test('fetchSource: tvdebugun listeleri programı türlendirir; yarın yalnız aynı ad ve kanalla; kaynağın kendi türüne dokunulmaz', async () => {
+  const day = (d) => manyCards(10).replace('2026-11-12', d);
+  const withType = day('2026-11-12').replace('<a href="/program/seksenler/" class="akis-program-bag">Seksenler</a><span class="akis-alt">1 sa 38 dk</span>', '<a href="/program/seksenler/" class="akis-program-bag">Seksenler</a><span class="akis-alt">Belgesel · 1 sa 38 dk</span>');
+  const net = fakeServer([
+    [/yayin-akisi\/2026-11-12/, () => new Response(withType)],
+    [/yayin-akisi\/2026-11-13/, () => new Response(day('2026-11-13'))],
+    [/hangi-diziler/, () => new Response(listPage('12 Kasım 2026', [['01:00', 'Mehmed: Fetihler Sultanı', 'Kanal 1'], ['01:40', 'Mehmed: Fetihler Sultanı', 'Kanal 1'], ['04:05', 'Seksenler', 'Kanal 1']]))],
+    [/hangi-film/, () => new Response(listPage('12 Kasım 2026', [['03:25', 'Alparslan: Büyük Selçuklu', 'Kanal 2'], ['01:00', 'Listede olmayan', 'Yok Kanal']]))],
+  ]);
+  const r = await fetchSource(FREE_SOURCES.find((s) => s.id === 'tvdebugun'), net, NOW);
+  assert.equal(r.ok, true, r.error);
+  const k1 = r.channels.find((c) => c.name === 'Kanal 1').list;
+  const k2 = r.channels.find((c) => c.name === 'Kanal 2').list;
+  const today = (list, h, m) => list.find((p) => p.s === at(h, m));
+  const tomorrow = (list, h, m) => list.find((p) => p.s === at(h, m, 1));
+  assert.equal(today(k1, 1, 0).c, 'Dizi');
+  assert.equal(today(k1, 1, 40).c, 'Dizi');
+  assert.equal(today(k1, 4, 5).c, 'Belgesel'); // kaynağın yazdığı tür korunur
+  assert.equal(today(k2, 3, 25).c, 'Film');
+  assert.equal(today(k2, 1, 0).c, ''); // listede yok: tür uydurulmaz
+  assert.equal(r.typed, 3);
+  // yarın: bugünkü listede geçen aynı ad + aynı kanal
+  assert.equal(tomorrow(k1, 1, 0).c, 'Dizi');
+  assert.equal(tomorrow(k2, 3, 25).c, 'Film');
+  assert.equal(tomorrow(k2, 1, 0).c, '');
+  assert.equal(tomorrow(k1, 4, 5).c, ''); // bugün kaynak farklı tür yazdığı için yarına dizi türü taşınmaz
+  assert.equal(r.inferred, 3); // Kanal 1: Mehmed ×2, Kanal 2: Alparslan ×1
+});
+
+test('fetchSource: listeler alınamazsa ya da başka güne aitse kaynak yine geçerli, tür eklenmez', async () => {
+  const day = (d) => manyCards(10).replace('2026-11-12', d);
+  const net = fakeServer([
+    [/yayin-akisi\/2026-11-12/, () => new Response(day('2026-11-12'))],
+    [/yayin-akisi\/2026-11-13/, () => new Response(day('2026-11-13'))],
+    [/hangi-diziler/, () => new Response(listPage('11 Kasım 2026', [['01:00', 'Mehmed: Fetihler Sultanı', 'Kanal 1']]))],
+  ]);
+  const r = await fetchSource(FREE_SOURCES.find((s) => s.id === 'tvdebugun'), net, NOW);
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.typed, 0);
+  assert.equal(r.inferred, 0);
+  assert.match(r.note, /Dizi listesi farklı gün/);
+  assert.match(r.note, /Film listesi/);
+  assert.ok(r.channels[0].list.every((p) => !p.c || p.c !== 'Dizi'));
 });
 
 const P = (s, e, t, extra = {}) => ({ s, e, t, d: '', c: '', x: '', f: '', ...extra });
