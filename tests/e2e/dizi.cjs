@@ -179,7 +179,7 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await openFlow(B2.page);
   await B2.page.waitForSelector('#sf-list .sf-r', { timeout: 15000 });
   rows = await rowsOf(B2.page);
-  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\. Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
+  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\. Bölüm · Yeni Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
   ok(/Bugün \+ yarın \(ücretsiz EPG\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'ayrıntı başta kapalı');
   await B2.page.click('#sf-note [data-diag]');
