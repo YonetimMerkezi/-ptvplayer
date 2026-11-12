@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 83,
+    title: 'Android TV için alternatif görüntü çözücü tercihleri',
+    items: [
+      'Oynatıcı ayarları › Görüntü çözücü bölümüne üç seçenek eklendi: Otomatik, Donanım öncelikli ve Yazılım öncelikli. Seçim Android Media3 üzerinde uygulanır ve açık yayın yeniden başlatılır',
+      'Mi TV Stick 4K gibi Android TV cihazlarında görüntü bozulması yaşanırsa önce Donanım öncelikli, sonuç alınamazsa Yazılım öncelikli denenebilir. Yazılım çözümleme işlemciyi daha fazla kullanabilir',
+      'Harici oynatıcı seçeneği mevcut şekilde korunur; cihazda VLC veya MX Player yüklüyse Android seçim penceresinden açılabilir'
+    ],
+  },
+  {
     id: 82,
     title: 'Yayın bilgisinde çözücü ve olay kaydı',
     items: [
