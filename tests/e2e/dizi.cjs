@@ -28,7 +28,7 @@ function fakeSites() {
       const start = new Date(now + 3 * 3600e3);
       start.setUTCHours(7, 0, 0, 0); // 10:00 Europe/Istanbul
       const s = start.getTime();
-      ch.trt1.p.push([s, s + 90 * 60000, 'EPG Dizisi', '', 'Dizi', '5. Bölüm', 'Yeni Bölüm']);
+      ch.trt1.p.push([s, s + 90 * 60000, 'EPG Dizisi', '', 'Dizi', '5. Bölüm', 'n']);
     }
     return { v: 1, at: now, from: now - 864e5, to: now + 2 * 864e5, tz: 'Europe/Istanbul', sources: [], ch };
   }
@@ -179,7 +179,7 @@ async function diziSection({ browser, base, mock, ok, sleep }) {
   await openFlow(B2.page);
   await B2.page.waitForSelector('#sf-list .sf-r', { timeout: 15000 });
   rows = await rowsOf(B2.page);
-  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\. Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
+  ok(rows.length === 1 && rows[0].title === 'EPG Dizisi' && rows[0].time === '10:00' && /TRT1 · 5\. Bölüm · Yeni Bölüm/.test(rows[0].sub), 'site yapısı değişince ücretsiz EPG yedeği kullanıldı: ' + rows.map((r) => r.title).join());
   ok(/Bugün \+ yarın \(ücretsiz EPG\)/.test(await B2.page.textContent('#sf-note')), 'kaynak notu: ' + (await B2.page.textContent('#sf-note')));
   ok(await B2.page.$eval('#sf-diag', (d) => d.hidden), 'ayrıntı başta kapalı');
   await B2.page.click('#sf-note [data-diag]');
