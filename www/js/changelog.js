@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 74,
+    title: 'Maç ayrıntısı daha kompakt',
+    items: [
+      'Maç ayrıntısında istatistik bölümü kaldırıldı (topla oynama, şut, korner vb.)',
+      'Başlık, olaylar ve kadro daha sıkı yerleşimle gösterilir; kadro telefonda da iki sütundur, “SUB” etiketi gizlendi'
+    ],
+  },
+  {
     id: 73,
     title: 'Telefonda Netflix gibi ekran: düzenle, satır sayısı, adlar',
     items: [

@@ -669,7 +669,7 @@ export function openSports(env) {
 
   // ---- dokunmalar ----
   // Maça dokununca ayrıntı ekranı açılır; yayın kanalları (rehber, yayın akışı) o ekrandadır.
-  // Maç ayrıntısı (olaylar, istatistik, kadro, yayın kanalları): ayrı modül, ilk dokunuşta yüklenir.
+  // Maç ayrıntısı (olaylar, kadro, yayın kanalları): ayrı modül, ilk dokunuşta yüklenir.
   async function openDetail(m) {
     try {
       const mod = await import('./sports-detail-ui.js');

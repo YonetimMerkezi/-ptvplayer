@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { broadcastGroups, summaryUrl, eventIdOf, eventKind, markerKind, minuteValue, parseSummary, loadSummary, STAT_ROWS } from '../www/js/sports-detail.js';
+import { broadcastGroups, summaryUrl, eventIdOf, eventKind, markerKind, minuteValue, parseSummary, loadSummary } from '../www/js/sports-detail.js';
 import { parseBroadcasts, parseScoreboard, findPrograms, findProgram } from '../www/js/sports.js';
 
 const SUMMARY = {
@@ -84,13 +84,13 @@ test('parseSummary: olaylar takıma ve dakikaya göre, ilgisiz olaylar atılır'
   assert.equal(d.away.score, 1);
 });
 
-test('parseSummary: istatistik yalnız iki takımda da bulunan satırlar, yüzde biçimi', () => {
+test('parseSummary: istatistik verilmez (ESPN yanıtında olsa bile)', () => {
   const d = parseSummary(SUMMARY, {});
-  assert.deepEqual(d.stats.map((s) => [s.label, s.home, s.away]), [['Topla oynama', '55%', '45%'], ['Şut', '12', '7']]);
-  assert.ok(STAT_ROWS.length >= 8);
+  assert.equal('stats' in d, false);
+  assert.equal(JSON.stringify(d).includes('Topla oynama'), false);
 });
 
-test('parseSummary: kadro, diziliş, yedekler; stat/hakem/seyirci', () => {
+test('parseSummary: kadro, diziliş, yedekler; hakem/seyirci', () => {
   const d = parseSummary(SUMMARY, {});
   assert.equal(d.lineups.home.formation, '4-2-3-1');
   assert.equal(d.lineups.away.formation, '4-4-2');
@@ -113,7 +113,6 @@ test('parseSummary: boş/bozuk yanıt hata atmaz ve "empty" işaretlenir', () =>
     const d = parseSummary(bad, {});
     assert.equal(d.empty, true);
     assert.deepEqual(d.events, []);
-    assert.deepEqual(d.stats, []);
     assert.equal(d.home.score, null);
   }
 });
