@@ -34,6 +34,8 @@ import { Shelves, shelfSizes, ROW_CAPS, SHELF_CAP, normalizeRowCap } from './she
 import { TV_MODES, DEFAULT_TV_MODE, normalizeTvMode, resolveTv } from './tvmode.js';
 import { BUFFER_LEVELS, DEFAULT_BUFFER, normalizeBuffer } from './buffer.js';
 import { DECODER_MODES, DEFAULT_DECODER, normalizeDecoder } from './decoder.js';
+import { AUDIO_LANGS, SUB_LANGS, normalizeAudioLang, normalizeSubLang } from './langpref.js';
+import { expiryInfo, expiryText, expiryPlan, PLAN_DAYS } from './expiry.js';
 import { LITE_MODES, DEFAULT_LITE, normalizeLite, applyLite } from './lite.js';
 import { CAPTION_LINES, DEFAULT_CAPTION, CAP_FS, normalizeCaption, captionPx, applyCaption } from './caption.js';
 import { RECONNECT_MODES, STALL_LEVELS, DEFAULT_RECONNECT, DEFAULT_STALL, normalizeReconnect, normalizeStall, retryPolicy } from './retry.js';
@@ -167,6 +169,7 @@ const pui = createPlayerUI({
     onEpgSheet: (it) => epgSheet(it),
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
+    langPref: () => ({ audio: normalizeAudioLang(store.pref('set.audioLang', 'auto')), sub: normalizeSubLang(store.pref('set.subLang', 'auto')), subIfMissing: setting('subMissing') }),
     autoNext: () => setting('autoNext'),
     intro: () => normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)),
     previewRect,
@@ -294,6 +297,7 @@ function setCatalog(raw) {
   S.groups = { live: groupList(cat.live), movie: groupList(cat.movies), series: groupList(cat.series) };
   pruneGroups();
   renderKidChrome();
+  watchExpiry();
 }
 
 // Oynatma adresleri; canlı kanalda aynı adlı kanallar yedek olarak sona eklenir.
@@ -1338,11 +1342,39 @@ const readPlans = () => activePlans(store.pref(PLANS_KEY, []));
 let webTimers = [];
 
 function webRemind(pl) {
-  toast(`${pl.title} başlıyor · ${pl.chName}`, 8000);
+  toast(pl.note ? `${pl.title} · ${pl.note}` : `${pl.title} başlıyor · ${pl.chName}`, 8000);
   try {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(pl.title, { body: `${pl.chName} · ${fmtClock(pl.s)}` });
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(pl.title, { body: pl.note || `${pl.chName} · ${fmtClock(pl.s)}` });
   } catch {
     /* bildirim açılamadı: ekrandaki ileti yeter */
+  }
+}
+
+// Abonelik bitiş uyarısı (yalnız Xtream; çocuk modunda yok): son 7 günde ekranda günde bir kez uyarı, son 14 günde bitişten 3 gün önce
+// sabah 10'da bildirim (Planlananlar'da görünür). Aynı bitiş için bildirim bir kez kurulur; abonelik yenilenirse (yeni bitiş tarihi) yeniden.
+function watchExpiry(now = Date.now()) {
+  const src = S.source;
+  const exp = S.cat && S.cat.account && S.cat.account.expires;
+  if (!src || src.type !== 'xtream' || kidActive()) return;
+  const info = expiryInfo(exp, now);
+  if (!info) return;
+  const key = `${src.id}:${exp}`;
+  const date = new Date(exp).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+  const day = new Date(now).toDateString();
+  const seen = store.pref('exp.seen', null);
+  if (info.level !== 'ok' && !(seen && seen.key === key && seen.day === day)) {
+    store.setPref('exp.seen', { key, day });
+    toast(info.level === 'expired' ? `“${src.name}” aboneliği sona ermiş (${date})` : `“${src.name}” aboneliği ${info.days === 1 ? 'yarın' : info.days + ' gün sonra'} bitiyor (${date})`, 7000);
+  }
+  const prefix = `exp:${src.id}:`;
+  const list = readPlans();
+  const plan = info.days <= PLAN_DAYS ? expiryPlan({ srcId: src.id, srcName: src.name, expires: exp, now }) : null;
+  const planned = store.pref('exp.planned', null) === key;
+  const stale = list.filter((x) => String(x.id).startsWith(prefix) && (!plan || x.id !== plan.id));
+  if (stale.length) setPlans(list.filter((x) => !stale.includes(x)));
+  if (plan && !planned) {
+    store.setPref('exp.planned', key);
+    setPlans(addPlan(readPlans(), plan));
   }
 }
 
@@ -2061,6 +2093,7 @@ function renderHome(v) {
   const c = S.cat;
   const src = S.source;
   const exp = c.account && c.account.expires ? fmtDate(new Date(c.account.expires), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const expInfo = c.account && c.account.expires ? expiryInfo(c.account.expires) : null;
   const cnt = (n, w) => (n ? `${n} ${w}` : '');
   const favN = store.favs(sid()).length;
   const recN = store.recents(sid()).length;
@@ -2083,7 +2116,7 @@ function renderHome(v) {
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       <button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>
     </div>
-    <div class="home-foot"><span>${exp ? 'Bitiş Tarihi: ' + esc(exp) : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
+    <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
   v.onclick = (e) => {
     if (e.target.closest('[data-refresh]')) {
@@ -3226,6 +3259,11 @@ function playerSheet() {
       chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
       chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +
       `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
+      (nativePlugin
+        ? `<div class="sel-row"><span>Tercih edilen ses dili<small>Birden çok ses izi olan film ve yayınlarda açılışta bu dil seçilir</small></span><select id="g-alang">${optionsHtml(AUDIO_LANGS, normalizeAudioLang(store.pref('set.audioLang', 'auto')))}</select></div>` +
+          `<div class="sel-row"><span>Altyazı dili<small>Açılışta bu dilde altyazı açılır; Kapalı seçilirse hiç açılmaz</small></span><select id="g-slang">${optionsHtml(SUB_LANGS, normalizeSubLang(store.pref('set.subLang', 'auto')))}</select></div>` +
+          chkRow('subMissing', 'Altyazıyı yalnız tercih ettiğim ses yoksa aç', 'Örn. ses dili Türkçe seçiliyken film Türkçe değilse Türkçe altyazı açılır; Türkçe ses varsa açılmaz')
+        : '') +
       (nativePlugin ? `<div class="sel-row"><span>Altyazı görünümü<small id="g-sub-s">${esc(subLabel(store.pref('sub', DEFAULT_SUB)))}</small></span><button class="btn sm ghost" id="g-sub">Ayarla</button></div>` : '') +
       `<div class="sel-row"><span>Kumanda renkli tuşları<small>Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin</small></span><button class="btn sm ghost" id="g-rm">Ayarla</button></div>` +
       `<div class="sect">Alt düğmelerde adı yazsın<small class="hint" style="display:block">İşaretlenenlerin simgesinin yanında adı da yazar; diğerleri yalnız simge olur. Düğmeler ortada, tek satırdadır.</small></div>` +
@@ -3251,6 +3289,10 @@ function playerSheet() {
       });
       $('#g-rm', body).addEventListener('click', () => remoteSheet());
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
+      const galang = $('#g-alang', body);
+      if (galang) galang.addEventListener('change', (e) => store.setPref('set.audioLang', normalizeAudioLang(e.target.value)));
+      const gslang = $('#g-slang', body);
+      if (gslang) gslang.addEventListener('change', (e) => store.setPref('set.subLang', normalizeSubLang(e.target.value)));
       const gdec = $('#g-dec', body);
       if (gdec) gdec.addEventListener('change', (e) => {
         store.setPref('set.decoder', normalizeDecoder(e.target.value));
@@ -4916,7 +4958,7 @@ setTimeout(syncPlans, 2500); // alarmları kayıtlı listeyle eşitle (yeniden b
 if (nativePlugin) setTimeout(() => dlLoad().then(() => engine.dl.resumeAll(false)).catch(() => {}), 2000);
 
 initNav();
-window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdate, restoreUpd, refreshManaged }; // hata ayıklama ve uçtan uca testler için
+window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdate, restoreUpd, refreshManaged, watchExpiry }; // hata ayıklama ve uçtan uca testler için
 
 (async function boot() {
   if (lockEnabled()) lockApp(); // açılışta şifre ekranı

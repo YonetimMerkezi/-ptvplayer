@@ -446,6 +446,7 @@ body.on-home #btn-search { display: none; }
 .home-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; font-size: 0.8125rem; color: var(--muted); }
 .home-foot button { color: inherit; display: flex; align-items: center; gap: 6px; min-height: 36px; }
 .home-foot .ic { width: 18px; height: 18px; }
+.home-foot .exp-warn { color: var(--danger); font-weight: 700; } /* abonelik bitişine ≤7 gün ya da bitmiş */
 .home-foot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* yatay (telefon yan, tablet, TV): dört büyük kutu tek satırda, kısayollar altında; alt sekmeler yerine geri oku */

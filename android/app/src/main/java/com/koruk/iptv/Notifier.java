@@ -74,7 +74,7 @@ final class Notifier {
         Notification n = builder(c, CH_REMIND)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(title)
-            .setContentText(plan.optString("chName", "") + " · " + when + " başlıyor")
+            .setContentText(plan.optString("note", "").isEmpty() ? plan.optString("chName", "") + " · " + when + " başlıyor" : plan.optString("note", ""))
             .setContentIntent(open(c, plan))
             .setAutoCancel(true)
             .build();

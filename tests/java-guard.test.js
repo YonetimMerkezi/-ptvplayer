@@ -458,3 +458,12 @@ test('oynatma hatası: sunucunun HTTP durum kodu hata zincirinden okunup hem tek
   const n = (kaynak.match(/int http = httpStatusOf\(error\);\s*if \(http > 0\) o\.put\("http", http\);/g) || []).length;
   assert.equal(n, 2, 'tek oynatıcı ve çoklu ekran hata olayları HTTP kodunu taşımalı');
 });
+
+test('ses/altyazı izleri dil kodunu (lang) verir; dil tercihi iz adına bağlı kalmaz', () => {
+  assert.ok(/o\.put\("lang",\s*f\.language == null \? "" : f\.language\)/.test(kaynak), 'getTracks iz nesnesine lang konmalı');
+});
+
+test('hatırlatıcı bildirimi plan.note varsa metni doğrudan kullanır (abonelik bitiş uyarısı)', () => {
+  const notifier = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/java/com/koruk/iptv/Notifier.java'), 'utf8');
+  assert.ok(/optString\("note", ""\)/.test(notifier), 'Notifier.reminder plan.note okumalı');
+});

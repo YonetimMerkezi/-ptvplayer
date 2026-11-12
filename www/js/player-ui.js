@@ -10,6 +10,7 @@ import { REC_LIMITS, fmtElapsed } from './rec.js';
 import { DELAY_PRESETS, clampDelay, stepDelay, fmtDelay, describeDelay } from './avsync.js';
 import { statsRows } from './stats.js';
 import { NIGHT_LEVELS, normalizeNight, nightLabel, DEFAULT_NIGHT } from './night.js';
+import { decideTracks } from './langpref.js';
 import { nextUp, introSkip, DEFAULT_INTRO } from './nextup.js';
 import { PLAYER_ACTIONS, DEFAULT_PLAYER, colorOf, actionFor } from './remote.js';
 import { SUB_SIZES, SUB_COLORS, SUB_BGS, SUB_POS, DEFAULT_SUB, normalizeSub, subParams, subPreviewStyle } from './subtitle.js';
@@ -374,14 +375,45 @@ export function createPlayerUI({ engine, player, env }) {
   let trackCache = noTracks();
   const cacheTracks = (t) => (trackCache = { audio: (t && t.audio) || [], text: (t && t.text) || [], textOn: !!(t && t.textOn) });
 
+  // Tercih edilen ses/altyazı dili (Oynatıcı ayarları): her yayın/bölüm için ses ve altyazı ayrı ayrı bir kez uygulanır;
+  // sonrasında kullanıcı elle değiştirirse bozulmaz. Döner: izlerden biri değiştirildi mi.
+  let langDone = { key: '', audio: false, text: false };
+  async function applyLangPref(st, t) {
+    const pref = env.langPref ? env.langPref() : null;
+    if (!pref || (pref.audio === 'auto' && pref.sub === 'auto')) return false;
+    const key = st.item.id + (st.ep ? st.ep.id : '');
+    if (langDone.key !== key) langDone = { key, audio: false, text: false };
+    const r = decideTracks(t, pref);
+    let changed = false;
+    if (!langDone.audio && t.audio && t.audio.length) {
+      langDone.audio = true;
+      if (r.audio !== null) {
+        await Promise.resolve(engine.selectTrack('audio', r.audio)).catch(() => {});
+        changed = true;
+      }
+    }
+    if (!langDone.text && t.text && t.text.length) {
+      langDone.text = true;
+      if (r.text !== null) {
+        await Promise.resolve(engine.selectTrack('text', r.text === 'off' ? '' : r.text)).catch(() => {});
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   async function loadTrackButtons(st) {
     const key = st.item.id + (st.ep ? st.ep.id : '') + ':' + st.tracksVer;
     if (!env.native || tracksLoadedFor === key) return;
     tracksLoadedFor = key;
     trackCache = noTracks();
     try {
-      const t = await engine.tracks();
+      let t = await engine.tracks();
       cacheTracks(t);
+      if (await applyLangPref(st, t)) {
+        t = await engine.tracks();
+        cacheTracks(t);
+      }
       q('#pl-audio').hidden = !(t.audio && t.audio.length > 1);
       q('#pl-text').hidden = !(t.text && t.text.length > 0);
     } catch {

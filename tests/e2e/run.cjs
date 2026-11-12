@@ -1398,6 +1398,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('.sheet .list-item[data-id="2:0"]');
   ok(await page.evaluate(() => window.__calls.some((c) => c[0] === 'track' && c[1] === 'text' && c[2] === '2:0')), 'altyazı izi seçimi eklentiye iletildi');
   await page.waitForSelector('.sheet-back', { state: 'detached' });
+  // tercih edilen ses/altyazı dili: kanal değişince (yeni yayın) uygun iz kendiliğinden seçilir; elle seçimle çakışmaz
+  {
+    const setLang = (a, sub) => page.evaluate(([x, y]) => { window.__iptv.store.setPref('set.audioLang', x); window.__iptv.store.setPref('set.subLang', y); }, [a, sub]);
+    const zap = async (id) => {
+      const n = await page.evaluate(() => window.__calls.length);
+      await page.evaluate((b) => document.querySelector(b).click(), id);
+      await page.waitForFunction((k) => window.__calls.length > k && window.__calls.slice(k).some((c) => c[0] === 'play'), n, { timeout: 4000 });
+      await sleep(900); // izler okunup tercih uygulanır
+      return page.evaluate((k) => window.__calls.slice(k).filter((c) => c[0] === 'track').map((c) => c.slice(1).join(':')), n);
+    };
+    await setLang('auto', 'auto');
+    ok((await zap('#pl-next')).length === 0, 'dil tercihi otomatikken iz seçimine dokunulmuyor');
+    await setLang('en', 'auto');
+    const t1 = await zap('#pl-prev');
+    ok(t1.join('|') === 'audio:1:0', 'tercih edilen ses dili (İngilizce) yeni yayında seçildi: ' + t1.join('|'));
+    await setLang('de', 'tr'); // Almanca ses yok → “yalnız ses yoksa” açıkken Türkçe altyazı
+    const t2 = await zap('#pl-next');
+    ok(t2.join('|') === 'text:2:0', 'tercih edilen ses yoksa Türkçe altyazı açıldı: ' + t2.join('|'));
+    await setLang('tr', 'tr'); // Türkçe ses var ve seçili → hiçbir şey seçilmez, altyazı da açılmaz
+    const t3 = await zap('#pl-prev');
+    ok(t3.length === 0, 'Türkçe ses zaten seçiliyken altyazı açılmadı ve iz değişmedi: ' + t3.join('|'));
+    await setLang('auto', 'auto');
+  }
   // kaydırma hareketleri yerel eklentiye iletiliyor
   const nv = await page.$eval('#player', (e) => ({ w: e.clientWidth, h: e.clientHeight }));
   const ndrag = async (x0, y0, x1, y1) => {
@@ -4016,6 +4039,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await require('./tvekran.cjs').tvekranSection({ browser, base, mock, ok, sleep });
   await require('./sports.cjs').sportsSection({ browser, base, mock, ok, sleep, SHOTS });
   await require('./bugun.cjs').bugunSection({ browser, base, mock, ok, sleep });
+  await require('./uyari.cjs').uyariSection({ browser, base, mock, ok, sleep });
 
   await browser.close();
   www.close();

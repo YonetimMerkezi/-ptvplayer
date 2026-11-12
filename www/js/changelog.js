@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 77,
+    title: 'Ses/altyazı dili tercihi ve abonelik bitiş uyarısı',
+    items: [
+      'Oynatıcı ayarları: “Tercih edilen ses dili” ve “Altyazı dili”. Film ya da yayın açılınca uygun ses ve altyazı kendiliğinden seçilir; “Altyazıyı yalnız tercih ettiğim ses yoksa aç” ile örneğin Türkçe ses yoksa Türkçe altyazı açılır (yalnız Android)',
+      'Xtream aboneliğinin bitişine 7 gün kala ana ekranda kırmızı uyarı ve günde bir kez ileti; son 14 günde bitişten 3 gün önce sabah 10’da bildirim gelir (Planlananlar’da görünür)'
+    ],
+  },
+  {
     id: 76,
     title: 'Bugün TV’de: spor, film, dizi saatleri',
     items: [

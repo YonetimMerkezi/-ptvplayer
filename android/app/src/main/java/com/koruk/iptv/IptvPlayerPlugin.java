@@ -1009,6 +1009,7 @@ public class IptvPlayerPlugin extends Plugin {
                         JSObject o = new JSObject();
                         o.put("id", g + ":" + t);
                         o.put("label", trackLabel(f, type == C.TRACK_TYPE_AUDIO ? "Ses" : "Altyazı", t + 1));
+                        o.put("lang", f.language == null ? "" : f.language);
                         o.put("selected", group.isTrackSelected(t));
                         if (type == C.TRACK_TYPE_AUDIO) audio.put(o);
                         else {
