@@ -4,7 +4,7 @@ import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels } from './today.js';
 import { loadSeriesWeek, dayIndex } from './series-flow.js';
-import { istDayStart } from './epg-free.js';
+import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 
 const KIND_EMPTY = { spor: 'spor', film: 'film', dizi: 'dizi' };
@@ -41,7 +41,7 @@ export function openToday(env) {
       if (!it || (sel.length && !sel.includes(it.id))) continue;
       const m = /^(\\d{1,2}):(\\d{2})$/.exec(r.time || '');
       const start = Number.isFinite(Number(r.startAt)) && r.startAt != null ? Number(r.startAt) : m
-        ? (() => { const d = new Date(from + 3 * 3600e3); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), Number(m[1]), Number(m[2])) - 3 * 3600e3; })()
+        ? (() => { const d = new Date(from + IST_MS); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), Number(m[1]), Number(m[2])) - IST_MS; })()
         : NaN;
       if (!Number.isFinite(start)) continue;
       const end = r.endAt != null && Number.isFinite(Number(r.endAt)) ? Number(r.endAt) : start + 150 * 60000;
@@ -68,7 +68,7 @@ export function openToday(env) {
 
   function draw() {
     const t = now();
-    const ready = env.epgReady();
+    const ready = env.epgReady() || !!seriesData;
     const res = ready ? todayRows({ entries: entries(), kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     q('#td-kinds').innerHTML = KINDS.map(([id, label]) => `<button class="chip${id === kind ? ' on' : ''}" data-kind="${id}"${id === kind ? ' data-autofocus' : ''}>${label}<small>${res.counts[id]}</small></button>`).join('');
     q('#td-opts').innerHTML =
