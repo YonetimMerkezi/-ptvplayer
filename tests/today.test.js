@@ -119,3 +119,15 @@ test('XmltvParser: <category> okunur, birden çoksa birleşir, yoksa boş', () =
   assert.equal(l[0].c, 'Dizi / Drama & Aşk');
   assert.equal(l[1].c, '');
 });
+
+test('todayRows: Kanal D dizileri dizi alanına eklenir, haber ve yarışma eklenmez', () => {
+  const entries = [
+    { id: 'kd', channel: 'TR: KANAL D UHD', p: prog(16, 19, 'Güller ve Günahlar') },
+    { id: 'kd', channel: 'TR: KANAL D UHD', p: prog(20, 23, "Beyaz'la Joker") },
+    { id: 'kd', channel: 'TR: KANAL D UHD', p: prog(23, 25, 'Daha 17') },
+    { id: 'kd', channel: 'TR: KANAL D UHD', p: prog(19, 20, 'Kanal D Ana Haber') },
+  ];
+  const r = todayRows({ entries, kind: 'dizi', now: H(15) });
+  assert.deepEqual(r.rows.map((x) => x.p.t), ['Güller ve Günahlar', 'Daha 17']);
+  assert.deepEqual(r.counts, { spor: 0, film: 0, dizi: 2 });
+});
