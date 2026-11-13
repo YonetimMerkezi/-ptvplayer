@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFilmSchedule } from '../www/js/today-film-source.js';
+import { parseFilmSchedule, loadFilmSchedule } from '../www/js/today-film-source.js';
 
 test('film yayın akışı li kayıtlarını saat, ad ve kanal olarak ayrıştırır', () => {
   const html = `<ul>
@@ -53,4 +53,22 @@ test('kanal bağlantısı öncesindeki saat ve başlıktan HTML sınıfsız kay�
     { time: '00:15', title: 'Turna Misali', channel: 'SİNEMA YERLİ 2', channelUrl: '/sinema-yerli-2-yayin-akisi/' },
     { time: '00:30', title: 'Dünya Evi', channel: 'SİNEMA YERLİ', channelUrl: '/sinema-yerli-yayin-akisi/' },
   ]);
+});
+
+test('ana film sayfası boşsa TVdeBugün film listesi yedek kaynak olur', async () => {
+  const calls = [];
+  const net = {
+    async text(url) {
+      calls.push(url);
+      if (url.includes('film-yayin-akisi')) return '<html>sayfa yapısı değişti</html>';
+      return `<h2>13 Kasım 2026 · Bugünün Filmleri</h2>
+        <li class="yapim-satir"><span class="yapim-saat">19:30</span><b class="yapim-ad">Rocky Balboa</b><span class="yapim-kanal"><span>TLC</span></span></li>
+        <li class="yapim-satir"><span class="yapim-saat">20:00</span><b class="yapim-ad">Buz Devri 4</b><span class="yapim-kanal"><span>ATV</span></span></li>`;
+    }
+  };
+  const result = await loadFilmSchedule({ net });
+  assert.equal(result.films.length, 2);
+  assert.equal(result.films[0].title, 'Rocky Balboa');
+  assert.equal(result.films[1].channel, 'ATV');
+  assert.ok(calls.some((x) => x.includes('bugun-hangi-film-var')));
 });
