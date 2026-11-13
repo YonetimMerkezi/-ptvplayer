@@ -30,3 +30,14 @@ test('bozuk ve eksik film satırlarını atlar, tekrarları tekilleştirir', () 
   const row = '<li class="channel-flow-list__item"><div class="time">19:30</div><div class="title">Rocky Balboa</div><div class="channel-name">TLC</div></li>';
   assert.equal(parseFilmSchedule(row + row + '<li class="channel-flow-list__item"><div class="title">Eksik</div></li>').length, 1);
 });
+
+test('CSS sınıfları değiştiğinde saat ve kanal bağlantısından yedek ayrıştırma yapar', () => {
+  const html = `<main>
+    <div class="row"><span>19:30</span><strong>Rocky Balboa</strong><a href="/tlc-yayin-akisi/">TLC</a></div>
+    <div class="row"><span>20:00</span><strong>Buz Devri 4</strong><a href="/atv-yayin-akisi/">ATV</a></div>
+  </main>`;
+  assert.deepEqual(parseFilmSchedule(html), [
+    { time: '19:30', title: 'Rocky Balboa', channel: 'TLC', channelUrl: '/tlc-yayin-akisi/' },
+    { time: '20:00', title: 'Buz Devri 4', channel: 'ATV', channelUrl: '/atv-yayin-akisi/' },
+  ]);
+});
