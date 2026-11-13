@@ -4,7 +4,7 @@ import { kindOf, channelKind, dayStart, todayRows, normalizeChannels, MAX_ROWS }
 import { XmltvParser } from '../www/js/epg.js';
 
 test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
-  for (const n of ['Sinema TV', 'Sinema 2', 'beIN Movies', 'beIN Movies Stars', 'MovieSmart Action', 'FilmBox Premium']) assert.equal(channelKind(n), 'film', n);
+  for (const n of ['Sinema TV', 'Sinema 2', 'Cinema TV', 'beIN Movies', 'beIN Movies Stars', 'MovieSmart Action', 'FilmBox Premium', 'Cine 1']) assert.equal(channelKind(n), 'film', n);
   for (const n of ['beIN Series', 'beIN Series 1']) assert.equal(channelKind(n), 'dizi', n);
   assert.equal(channelKind('A Para'), 'ignore');
   assert.equal(channelKind('FB TV HD'), 'spor');
