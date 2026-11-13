@@ -4656,8 +4656,8 @@ async function saveMovieCatalogFile() {
   const sourceMovies = Array.isArray(catalog && catalog.movies) ? catalog.movies : [];
   const movies = sourceMovies.map((item) => {
     const title = String(item && (item.name || item.title) || '').trim();
-    const embeddedYear = title.match(/(?:\\((?:19|20)\\d{2}\\)|\\|\\s*(?:19|20)\\d{2})\\s*$/);
-    const yearValue = Number(item && item.year) || (embeddedYear ? Number(embeddedYear[0].match(/\\d{4}/)[0]) : 0);
+    const embeddedYear = title.match(/(?:\((?:19|20)\d{2}\)|\|\s*(?:19|20)\d{2})\s*$/);
+    const yearValue = Number(item && item.year) || (embeddedYear ? Number(embeddedYear[0].match(/\d{4}/)[0]) : 0);
     const providerRating = Number(item && item.rating);
     return {
       id: String(item && item.id || ''),
