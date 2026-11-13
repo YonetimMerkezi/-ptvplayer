@@ -137,7 +137,7 @@ export function openSeriesFlow(env) {
         const sub = [r.ep, r.status].filter(Boolean).join(' · ');
         const channelItem = channelsByName(env.liveItems ? env.liveItems() : [], [r.channel])[0];
         const channelMark = channelItem ? `<span class="sf-channel">${channelItem.logo ? `<img src="${esc(channelItem.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span>${esc(r.channel)}</span></span>` : `<span>${esc(r.channel)}</span>`;
-        return `<div class="td-r sf-r ${state}${r.off ? ' off' : ''}" role="button" tabindex="0" data-i="${i}">
+        return `<div class="td-r sf-r ${state}${r.off ? ' off' : ''}" role="group" tabindex="0" data-i="${i}">
           <div class="td-t"><time>${esc(r.time || '—')}</time>${state === 'now' ? '<b class="td-now">ŞİMDİ</b>' : ''}</div>
           <div class="td-m"><b>${esc(r.title)}</b><span>${channelMark}${sub ? ` · ${esc(sub)}` : ''}</span></div><button class="sp-bell sf-follow${following ? ' on' : ''}" tabindex="0" data-follow aria-pressed="${following}" aria-label="${following ? 'Dizi takibini bırak' : 'Diziyi takip et'}" title="${following ? 'Takip ediliyor' : 'Diziyi takip et'}">${icon(following ? 'star-on' : 'star')}</button>${canBell ? `<button class="sp-bell${on ? ' on' : ''}" tabindex="0" data-bell aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}">${icon('bell')}</button>` : ''}</div>`;
       })
