@@ -25,7 +25,7 @@ export function channelKind(name) {
   if (!n) return '';
   // Kanal türü EPG başlığından/kategorisinden üstündür.
   if (n === 'a para' || n.startsWith('a para ')) return 'ignore';
-  if (/^(a spor|trt spor|trt spor yildiz|s sport|s sports|bein sport|bein sports|sports tv|sport tv|tivibu spor|eurosport|fb tv|b spor)( |$)/.test(n)) return 'spor';
+  if (/^(a spor|trt spor|trt spor yildiz|s sport|s sports|bein sport|bein sports|sports tv|sport tv|tivibu spor|eurosport|fb tv|b spor)( |$)/.test(n) || n.includes('b n sp rts') || n.includes('b n sports')) return 'spor';
   if (n === 'bein series' || n.startsWith('bein series ')) return 'dizi';
   if (n.includes('sinema') || n.includes('bein movies') || n.includes('moviesmart') || n.includes('movie smart') || n.includes('filmbox') || n.includes('film box') || n.includes('cinefilm') || n.startsWith('cine 1')) return 'film';
   return '';
@@ -43,7 +43,7 @@ export function kindOf(p) {
   if (RE_SERIES_TITLE.test(t) || RE_EPISODE.test(d)) return 'dizi';
   if (RE_SPORT_TITLE.test(t) && !RE_NEWS.test(t)) return 'spor';
   if (RE_NEWS.test(c) || RE_NEWS.test(t)) return '';
-  if (['film', 'filmi', 'movie', 'movies', 'sinema', 'cinema'].some((word) => c.includes(word)) || RE_FILM_TITLE.test(t) || /^film\\s*[-:]/.test(t)) return 'film';
+  if (['film', 'filmi', 'movie', 'movies', 'sinema', 'cinema'].some((word) => c.includes(word)) || RE_FILM_TITLE.test(t) || /\\b(film|filmi|movie|movies|sinema|cinema)\\b/.test(t)) return 'film';
   const sharedFilmGenre = RE_FILM_CAT.test(c) || RE_FILM_CAT.test(d);
   if (sharedFilmGenre && RE_EPISODE.test(t)) return 'dizi';
   if (RE_NON_FILM.test(c) || RE_NON_FILM.test(t)) return '';
