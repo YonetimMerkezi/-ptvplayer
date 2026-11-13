@@ -238,7 +238,7 @@ export async function loadMovieAdvisories(net, store, meta, item) {
   if (!title) return null;
   const key = 'movie-advisory:v3:' + (meta.imdbId || foldText(title) + ':' + year);
   const cached = await store.cache.get(key).catch(() => null);
-  const hasUsefulData = (r) => !!(r && ((r.warnings && r.warnings.length) || (r.ratings && r.ratings.length) || r.guidance));
+  const hasUsefulData = (r) => !!(r && ((r.warnings && r.warnings.length) || (r.ratings && r.ratings.length) || r.guidance || r.imdbRating));
   const ttl = hasUsefulData(cached) ? TTL_FOUND : TTL_EMPTY;
   if (cached && cached.checkedAt && Date.now() - cached.checkedAt < ttl) return cached;
   const record = { imdbId: meta.imdbId || '', title, year, checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
