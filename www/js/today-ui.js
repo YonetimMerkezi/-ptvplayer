@@ -62,10 +62,10 @@ export function openToday(env) {
         if (it) for (const p of env.listFor(it)) out.push({ id: it.id, p });
         out.push(...seriesEntries().filter((x) => x.id === id));
       }
-      return out;
+      return seriesEntries().concat(out);
     }
     const from = dayStart(t, 0);
-    return env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, p: h.p })).concat(seriesEntries());
+    return seriesEntries().concat(env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, p: h.p })));
   }
 
   function reminderIds() {
