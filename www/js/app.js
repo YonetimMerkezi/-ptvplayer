@@ -61,6 +61,7 @@ import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
+import { recommendMovies } from './movie-recommendations.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -1544,9 +1545,15 @@ function openMovie(it) {
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   return openPage({
     cls: 'dt-pg',
-    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl></div></div>`,
+    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
     mount: (body) => {
       $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
+      $('#mv-similar-row', body).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-similar]');
+        if (!b) return;
+        const next = visibleAll('movie').find((x) => x.id === b.dataset.similar);
+        if (next) openMovie(next);
+      });
       const st = $('#mv-start', body);
       if (st) st.addEventListener('click', () => startPlay(it, { startAt: 0, ctx: movieCtx(it) }));
       const cb = $('#mv-cast', body);
@@ -1578,6 +1585,13 @@ function openMovie(it) {
           plot.textContent = info.plot || it.plot || 'Bu film için özet bulunamadı.';
           $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
           $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
+          const picks = recommendMovies(it, info, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
+          const section = $('#mv-similar', body);
+          const row = $('#mv-similar-row', body);
+          if (picks.length) {
+            row.innerHTML = picks.map((x) => `<button class="mv-similar-card" data-similar="${esc(x.id)}" aria-label="${esc(x.name)}"><span class="mv-similar-poster">${posterOf(x)}</span><b>${esc(x.name)}</b>${x.group ? `<small>${esc(x.group)}</small>` : ''}</button>`).join('');
+            section.hidden = false;
+          }
         })
         .catch(() => {
           plot.textContent = 'Özet alınamadı.';
