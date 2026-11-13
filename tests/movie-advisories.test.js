@@ -48,3 +48,15 @@ test('Screenwise watchFor artık family_guidance teknik etiketi üretmez', () =>
   assert.deepEqual(result.warnings.map((w) => w.category), ['language', 'violence']);
   assert.ok(result.warnings.every((w) => w.label && w.icon));
 });
+
+test('Screenwise ayrıntılı uyarılar ve aile rehberi özeti Türkçeleştirilir', () => {
+  const language = translateScreenwiseText('The **R-rating is earned** through heavy language and the persistent, bone-deep anxiety of the situation.');
+  const violence = translateScreenwiseText('Some scenes involving the construction site accident that reveals the bomb are **physically intense** and potentially triggering for those sensitive to workplace gore.');
+  const guidance = translateScreenwiseText('Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle. It’s the kind of movie that makes you look at every construction pit in the city a little differently.');
+  assert.match(language, /R yaş sınıfının nedeni/);
+  assert.match(language, /yoğun argo ve küfür/);
+  assert.match(violence, /inşaat kazası/);
+  assert.match(violence, /rahatsız edici olabilir/);
+  assert.match(guidance, /gerilim filmidir/);
+  assert.doesNotMatch(language + violence + guidance, /heavy language|physically intense|construction site accident|mid-tier thriller/i);
+});
