@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parse1001, streamOf, timeMap, fillTimes, loadSeriesWeek, dayPageUrl, weekPageUrl, dayIndex, WEEKDAYS } from '../www/js/series-flow.js';
+import { isSportsChannel, parse1001, streamOf, timeMap, fillTimes, loadSeriesWeek, dayPageUrl, weekPageUrl, dayIndex, WEEKDAYS } from '../www/js/series-flow.js';
 
 const B = 'https://1001dizi.net';
+
+test('isSportsChannel: A Para ve spor kanalları dizi listesinden çıkarılır', () => {
+  for (const n of ['S Sport', 'S Sports', 'S Sport 2', 'A Para', 'A Spor', 'beIN Sports 1']) assert.equal(isSportsChannel(n), true, n);
+  for (const n of ['beIN Series', 'beIN Series 1', 'Sinema TV']) assert.equal(isSportsChannel(n), false, n);
+});
 
 // Kart biçimi A: görsel bağlantısı + başlık bağlantısı ayrı, "Kanal - SS:DD", "N. Bölüm", durum etiketi bağlantı dışında
 const cardA = (slug, title, ch, time, ep, status) =>
