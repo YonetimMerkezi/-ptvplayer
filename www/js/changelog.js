@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 89,
+    title: 'Film hatırlatıcıları ve dizi takibi',
+    items: [
+      'Bugün TV’de film satırlarında kanal logosu ve film hatırlatıcısı gösterilir; zil düğmesi TV kumandasıyla odaklanıp seçilebilir ve Planlananlar listesine kaydedilir',
+      'Dizi akışında yıldız düğmesiyle diziler takip listesine eklenir veya çıkarılır; takip edilen diziler için doğrulanmış “Yeni Bölüm” yayınları otomatik hatırlatıcıya dönüşür',
+      'Aynı yeni bölüm için yinelenen bildirim planı oluşturulmaz; dizi takibi bırakıldığında o diziye ait otomatik planlar kaldırılır',
+      'Kanal adı ve logosu mevcut canlı kanal listesiyle eşleştirilir; TV kumandası odağı satır eylemleri arasında korunur'
+    ],
+  },
+  {
     id: 88,
     title: 'Spor ekranı puan durumu düğmesi',
     items: ['Puan durumu simgesinin yanına görünür metin etiketi eklendi; düğme TV kumandası ve dokunmatik kullanım için belirginleştirildi']
