@@ -85,7 +85,7 @@ export function openSports(env) {
     title: 'Spor · Futbol',
     cls: 'sp-pg',
     // gün çipleri, güncelleme durumu ve yenile düğmesi tek satırda (dar ekranda durum + yenile üstte, günler altta)
-    html: `<div class="sp-top"><div class="chips" id="sp-days" role="group" aria-label="Gün"></div><small id="sp-upd" aria-live="polite"></small><button class="icon-btn" id="sp-tab" aria-label="Puan durumu" title="Puan durumu">${icon('list')}</button><button class="icon-btn" id="sp-ref" aria-label="Skorları yenile">${icon('refresh')}</button></div>
+    html: `<div class="sp-top"><div class="chips" id="sp-days" role="group" aria-label="Gün"></div><small id="sp-upd" aria-live="polite"></small><button class="sp-table-btn" id="sp-tab" aria-label="Puan durumu" title="Puan durumu">${icon('list')}<span>Puan durumu</span></button><button class="icon-btn" id="sp-ref" aria-label="Skorları yenile">${icon('refresh')}</button></div>
       <div class="chips" id="sp-lgs" role="group" aria-label="Lig"></div>
       <div id="sp-list" class="sp-list"><div class="empty"><p>Maçlar yükleniyor…</p></div></div>`,
     mount: () => {},
