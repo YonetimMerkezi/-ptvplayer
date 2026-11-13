@@ -1564,19 +1564,25 @@ const advisoryLabel = (v) => ({ violence: 'Şiddet', fear: 'Korku', language: 'A
 const advisoryLevel = (v) => ({ low: 'Düşük', moderate: 'Orta', high: 'Yüksek', severe: 'Çok yüksek' }[String(v || '').toLowerCase()] || '');
 async function paintMovieAdvisories(body, meta) {
   const host = $('#mv-advisories', body);
-  if (!host || !meta || !meta.imdbId) return;
+  if (!host || !body.isConnected) return;
   let record = null;
-  try { record = await store.cache.get('movie-advisory:' + meta.imdbId); } catch { /* önbellek yok */ }
+  if (meta && meta.imdbId) {
+    try { record = await store.cache.get('movie-advisory:' + meta.imdbId); } catch { /* önbellek yok */ }
+  }
   if (!body.isConnected || !host.isConnected) return;
   const warnings = Array.isArray(record && record.warnings) ? record.warnings.filter((w) => w && (w.category || w.type)) : [];
   const ratings = Array.isArray(record && record.ratings) ? record.ratings : [];
-  if (!warnings.length && !ratings.length) { host.hidden = true; return; }
   const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
-  host.innerHTML = ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
-    const label = advisoryLabel(w.category || w.type);
-    const level = advisoryLevel(w.level || w.severity);
-    return '<span class="mv-warning-chip">' + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
-  }).join('') + '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
+  const sourceNames = { ktb: 'T.C. Kültür ve Turizm Bakanlığı', screenwise: 'Screenwise aile rehberi' };
+  const hasRecord = !!(warnings.length || ratings.length);
+  host.innerHTML = (hasRecord
+    ? ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
+        const label = advisoryLabel(w.category || w.type);
+        const level = advisoryLevel(w.level || w.severity);
+        return '<span class="mv-warning-chip">' + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
+      }).join('')
+    : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : 'İçerik uyarıları kontrol ediliyor') + '</span>') +
+    '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
   host.hidden = false;
   $('#mv-warning-info', host).addEventListener('click', () => {
     const ratingRows = ratings.map((r) => '<article class="mv-warning-detail"><div><b>Türkiye yaş sınıflandırması</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
@@ -1585,11 +1591,13 @@ async function paintMovieAdvisories(body, meta) {
       const level = advisoryLevel(w.level || w.severity);
       const detail = w.details || w.description || w.summary || '';
       const source = w.source || 'Kaynak belirtilmemiş';
-      return '<article class="mv-warning-detail"><div><b>' + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + '</small></article>';
+      return '<article class="mv-warning-detail"><div><b>' + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + (w.url ? ' · <a href="' + esc(w.url) + '" target="_blank" rel="noopener">Kaynağı aç</a>' : '') + '</small></article>';
     }).join('');
-    const sourceRows = Object.entries(record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(k === 'ktb' ? 'T.C. Kültür ve Turizm Bakanlığı' : k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : 'Kontrol edilemedi') + '</p>').join('');
-    const checked = record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
-    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') + '<p class="mv-warning-checked">Sınıflandırma kaydı bulunmaması, filmde uyarı olmadığı anlamına gelmez.</p>' });
+    const sourceRows = Object.entries(record && record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(sourceNames[k] || k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : v.status === 'unavailable' ? 'Kaynak sayfası veri sunmadı' : 'Kontrol edilemedi') + (v.message ? ' (' + esc(v.message) + ')' : '') + '</p>').join('');
+    const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
+    const guidance = record && record.guidance ? '<article class="mv-warning-detail"><b>Screenwise aile rehberi</b>' + (record.guidance.summary ? '<p>' + esc(record.guidance.summary) + '</p>' : '') + (record.guidance.ageFit ? '<p>' + esc(record.guidance.ageFit) + '</p>' : '') + (record.guidance.score != null ? '<small>Rehber puanı: ' + esc(record.guidance.score) + '/100</small>' : '') + '</article>' : '';
+    const empty = !rows && !guidance ? '<p>Bu film için doğrulanmış bir sınıflandırma veya içerik uyarısı henüz alınamadı. Bu, filmde sakıncalı içerik bulunmadığı anlamına gelmez.</p>' : '';
+    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + guidance + empty + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
   });
 }
 
@@ -1600,6 +1608,7 @@ function openMovie(it) {
     cls: 'dt-pg',
     html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
     mount: (body) => {
+      paintMovieAdvisories(body, null);
       $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
       $('#mv-similar-row', body).addEventListener('click', (e) => {
         const b = e.target.closest('[data-similar]');
