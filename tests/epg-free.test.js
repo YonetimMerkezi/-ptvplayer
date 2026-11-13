@@ -472,7 +472,7 @@ test('13 Kasım Kanal D hatalı EPG kaydı doğrulanmış akışla yenilenir', a
   const old = { v: 1, at: now, from, to, ch: { kanald: { n: 'KANAL D', p: [
     [from + 19 * 3600e3, from + 26.5 * 3600e3, 'Kanal D Ana Haber', '', 'Haber']
   ] } } };
-  const net = fakeServer([[/agg\\.test/, JSON.stringify(old)]]);
+  const net = fakeServer([[/agg\.test/, JSON.stringify(old)]]);
   const result = await loadFreeData(net, { now, sources: [], aggUrls: ['https://agg.test/epg.json'] });
   const rows = result.ch.kanald.p;
   assert.deepEqual(rows.map((p) => [p[2], p[1] - p[0]]), [
