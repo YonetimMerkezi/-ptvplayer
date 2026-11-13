@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 94,
+    title: 'Film kanalı seçimi ve FB TV filtresi',
+    items: [
+      'Film sekmesine ayrı Film kanalları seçimi eklendi; seçimler kaynak bazında saklanır ve genel kanal filtresinden bağımsızdır',
+      'Film listesinde yalnız seçilen kanallardaki EPG tarafından açıkça Film/Sinema olarak tanımlanan programlar gösterilir; türü belirsiz yayınlar tahminle eklenmez',
+      'FB TV, kanal adı ve program kategorisi ne olursa olsun Dizi akışından çıkarılır ve Spor olarak sınıflandırılır'
+    ],
+  },
+  {
     id: 93,
     title: 'Bugün TV’de tür ve kanal filtreleri düzeltildi',
     items: [
