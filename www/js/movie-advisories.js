@@ -42,6 +42,7 @@ const screenwiseTranslations = [
   [/If you’re looking for a family movie, keep scrolling\. But if you have a 16-year-old who is into history or high-stakes procedural dramas, this is a sharp, well-acted choice that avoids the typical Hollywood fluff\./i, 'Ailece izlenecek bir film arıyorsanız başka bir seçeneğe yönelin. Ancak tarih veya yüksek riskli operasyon dramalarını seven 16 yaşında bir genç için güçlü oyunculukları olan, nitelikli bir tercih olabilir.'],
   [/This is strictly for the \*\*older teen and adult\*\* crowd\./i, 'Bu film daha büyük yaştaki gençlere ve yetişkinlere yöneliktir.'],
   [/The R-rating isn’t just for show[—-]it’s a/i, 'R yaş sınıfı yalnızca formalite değil; filmde'],
+  [/The R-rating isn't just for show[—-]it is a mature, stressful thriller that will likely bore younger viewers\\./i, 'R yaş sınıflandırması, genç izleyicileri sıkabilecek yetişkinlere yönelik ve gerilim dozu yüksek bir filmi işaret ediyor.'],
   [/heavy language/ig, 'yoğun argo ve ağır dil'],
   [/persistent, bone-deep anxiety/ig, 'sürekli ve derin gerilim'],
   [/physically intense/ig, 'fiziksel açıdan yoğun'],
