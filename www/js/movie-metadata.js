@@ -6,7 +6,7 @@ const CACHE_TTL = 30 * 86400000;
 const done = new Map();
 const busy = new Map();
 const cleanTitle = (value) => fold(String(value || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/[._:]+/g, ' ').replace(/\s+/g, ' ').trim());
-const TITLE_ALIASES = { funye: { title: 'Fuze', imdbId: 'tt31189814', year: 2025 } };
+const TITLE_ALIASES = {\n  funye: { title: 'Fuze', imdbId: 'tt31189814', year: 2025 },\n  '10 numarali kamara': { title: 'The Woman in Cabin 10', imdbId: 'tt7130300', year: 2025 },\n};
 const yearOf = (value) => {
   const m = String(value || '').match(/(?:19|20)\d{2}/);
   return m ? Number(m[0]) : 0;
