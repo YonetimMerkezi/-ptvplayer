@@ -32,6 +32,7 @@ export function openSeriesFlow(env) {
   let busy = false;
   let err = null;
   let pos = 0; // 0 = bugün … 6 = bugünden 6 gün sonra
+  let alignToNow = true;
   let chan = ''; // kanal süzgeci ('' = hepsi)
   let showDiag = false; // kaynak ayrıntısı (neden yedek kaynak, ayrıştırıcının gördüğü ham kartlar)
 
@@ -67,13 +68,7 @@ export function openSeriesFlow(env) {
   function rowsOfDay() {
     if (!data) return [];
     const { idx } = dayOf(pos);
-    return (data.days[idx] || []).filter((r) => {
-      if (chan && r.channel !== chan) return false;
-      if (pos !== 0) return true;
-      const s = r.startAt || startOf(istDayStart(now(), 0), r.time);
-      const e = r.endAt || (s == null ? null : s + SHOW_MS);
-      return e == null || e > now();
-    });
+    return (data.days[idx] || []).filter((r) => !chan || r.channel === chan);
   }
 
   function draw() {
@@ -136,6 +131,17 @@ export function openSeriesFlow(env) {
       })
       .join('');
     el._rows = rows;
+    // Bugünün ekranı ilk açıldığında görünüm şu anki yayına hizalanır.
+    // Geçmiş kayıtlar listenin üstünde kalır; kullanıcı yukarı kaydırarak geriye gidebilir.
+    if (pos === 0 && alignToNow) {
+      const target = el.querySelector('.sf-r.now') || [...el.querySelectorAll('.sf-r')].find((node) => {
+        const row = rows[Number(node.dataset.i)];
+        const start = row && (row.startAt || startOf(from, row.time));
+        return start != null && start >= t;
+      });
+      if (target) el.scrollTop += target.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      alignToNow = false;
+    }
   }
 
   async function persist() {
@@ -190,6 +196,7 @@ export function openSeriesFlow(env) {
     const d = e.target.closest('[data-pos]');
     if (d) {
       pos = Number(d.dataset.pos);
+      alignToNow = pos === 0;
       return draw();
     }
     const c = e.target.closest('[data-chan]');
