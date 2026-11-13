@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 88,
+    title: 'Spor ekranı puan durumu düğmesi',
+    items: ['Puan durumu simgesinin yanına görünür metin etiketi eklendi; düğme TV kumandası ve dokunmatik kullanım için belirginleştirildi']
+  },
+  {
     id: 87,
     title: 'Dizi akışında spor kanalı filtresi',
     items: [
