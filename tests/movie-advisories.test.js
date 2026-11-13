@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning, translateAdvisoryText } from '../www/js/movie-advisories.js';
+import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning, translateAdvisoryText, loadMovieAdvisories } from '../www/js/movie-advisories.js';
 
 test('KTB film kaydındaki yaş ve içerik işaretlerini çıkarır', () => {
   const html = '<article><h3>Örnek Film</h3><p>16 Yaş ve Üzeri İzleyici Kitlesi İçindir.</p><p>Şiddet veya Korku Unsurları İçerir.</p><p>Olumsuz Örnek Oluşturabilecek Davranışlar İçerir.</p></article>';
