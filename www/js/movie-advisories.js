@@ -151,7 +151,7 @@ function fallbackTranslate(value) {
   for (const [re, tr] of rules) s = s.replace(re, tr);
   return s;
 }
-async function translateAdvisoryText(net, value) {
+export async function translateAdvisoryText(net, value) {
   const original = String(value || '').trim();
   if (!original || !/[a-z]{3}/i.test(original)) return original;
   if (translationCache.has(original)) return translationCache.get(original);
