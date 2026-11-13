@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kindOf, dayStart, todayRows, normalizeChannels, MAX_ROWS } from '../www/js/today.js';
+import { kindOf, channelKind, dayStart, todayRows, normalizeChannels, MAX_ROWS } from '../www/js/today.js';
 import { XmltvParser } from '../www/js/epg.js';
+
+test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
+  for (const n of ['Sinema TV', 'Sinema 2', 'beIN Movies', 'beIN Movies Stars', 'MovieSmart Action', 'FilmBox Premium']) assert.equal(channelKind(n), 'film', n);
+  for (const n of ['beIN Series', 'beIN Series 1']) assert.equal(channelKind(n), 'dizi', n);
+  assert.equal(channelKind('A Para'), '');
+  assert.equal(channelKind('S Sport 2'), '');
+});
 
 test('kindOf: rehber kategorisi önceliklidir (Türkçe/İngilizce)', () => {
   assert.equal(kindOf({ t: 'X', c: 'Dizi' }), 'dizi');
@@ -50,18 +57,21 @@ test('todayRows: bugünün programları tür ve zamana göre; biten gizli, şimd
     { id: 'a', p: prog(15, 16, 'Şimdi Dizi', 'Dizi') },
     { id: 'b', p: prog(20, 22, 'Akşam Dizi', 'Dizi') },
     { id: 'b', p: prog(18, 20, 'Film X', 'Film') },
+    { id: 'movie-channel', channel: 'Sinema TV', p: prog(16, 17, 'Özel Gösterim', '') },
+    { id: 'series-channel', channel: 'beIN Series 1', p: prog(17, 18, 'Dizi yayını', 'Drama') },
     { id: 'c', p: prog(17, 19, 'Maç', 'Spor') },
     { id: 'c', p: prog(19, 20, 'Belgesel', 'Belgesel') },
     { id: 'a', p: { s: H(26), e: H(27), t: 'Yarın dizi', d: '', c: 'Dizi' } },
   ];
   const r = todayRows({ entries, kind: 'dizi', now: NOW });
   assert.deepEqual(r.rows.map((x) => [x.p.t, x.state]), [['Şimdi Dizi', 'now'], ['Akşam Dizi', 'next']]);
-  assert.deepEqual(r.counts, { spor: 1, film: 1, dizi: 2 });
+  assert.deepEqual(r.counts, { spor: 1, film: 2, dizi: 3 });
   const all = todayRows({ entries, kind: 'dizi', now: NOW, includePast: true });
   assert.deepEqual(all.rows.map((x) => [x.p.t, x.state]), [['Biten Dizi', 'past'], ['Şimdi Dizi', 'now'], ['Akşam Dizi', 'next']]);
   const tomorrow = todayRows({ entries, kind: 'dizi', now: NOW, day: 1 });
   assert.deepEqual(tomorrow.rows.map((x) => x.p.t), ['Yarın dizi']);
-  assert.equal(todayRows({ entries, kind: 'film', now: NOW }).rows[0].p.t, 'Film X');
+  assert.deepEqual(todayRows({ entries, kind: 'film', now: NOW }).rows.map((x) => x.p.t), ['Özel Gösterim', 'Film X']);
+  assert.equal(todayRows({ entries, kind: 'dizi', now: NOW }).rows.some((x) => x.id === 'series-channel'), true);
 });
 
 test('todayRows: aynı kanal+başlangıç tekrar etmez; üst sınır', () => {
