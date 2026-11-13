@@ -1163,3 +1163,21 @@ html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 3px var(--ring, #fff);
 .sp-top .sp-table-btn svg{width:19px;height:19px;flex:none}
 .sp-top .sp-table-btn:active{background:var(--raised)}
 html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale(1.05);box-shadow:0 0 0 2px var(--ring-edge),0 0 0 5px var(--ring);outline:none}
+
+
+/* Film içerik uyarıları */
+.mv-advisories { display:flex; flex-wrap:wrap; align-items:center; gap:6px; min-width:0; }
+.mv-warning-chip { display:inline-flex; align-items:center; border:1px solid color-mix(in srgb, var(--danger, #e56b72) 45%, transparent); background:color-mix(in srgb, var(--danger, #e56b72) 12%, transparent); color:var(--text); border-radius:999px; padding:4px 9px; font-size:.78rem; line-height:1.25; }
+.mv-warning-info { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:30px; border:1px solid var(--line); border-radius:999px; padding:4px 10px; background:var(--raised); color:var(--accent); font-size:.8rem; font-weight:650; cursor:pointer; }
+.mv-warning-info .ic { width:15px; height:15px; }
+.mv-warning-list { display:grid; gap:10px; }
+.mv-warning-detail { padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--raised); }
+.mv-warning-detail > div { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+.mv-warning-detail > div span { color:var(--muted); font-size:.8rem; }
+.mv-warning-detail p { margin:8px 0; line-height:1.5; }
+.mv-warning-detail small,.mv-warning-checked { color:var(--muted); font-size:.78rem; }
+.mv-warning-checked { margin:12px 2px 0; }
+@media not all and (orientation: landscape) and (min-width: 640px) {
+  .dt { grid-template-areas:"pos title" "pos meta" "warning warning" "btns btns" "body body"; grid-template-rows:auto 1fr auto auto auto; }
+  .mv-advisories { grid-area:warning; }
+}
