@@ -17,7 +17,7 @@ function decodeHtml(value) {
 }
 
 function classText(html, className) {
-  const re = new RegExp('<([a-z][\\w:-]*)\\b[^>]*class=["\\'][^"\\']*\\b' + className + '\\b[^"\\']*["\\'][^>]*>([\\s\\S]*?)<\\/\\1>', 'i');
+  const re = new RegExp(`<([a-z][\\w:-]*)\\b[^>]*class=[\"'][^\"']*\\b${className}\\b[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/\\1>`, 'i');
   const m = re.exec(html);
   return m ? decodeHtml(m[2]) : '';
 }
