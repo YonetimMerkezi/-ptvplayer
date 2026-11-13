@@ -8,6 +8,7 @@ test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
   for (const n of ['beIN Series', 'beIN Series 1']) assert.equal(channelKind(n), 'dizi', n);
   assert.equal(channelKind('A Para'), 'ignore');
   assert.equal(channelKind('FB TV HD'), 'spor');
+  assert.equal(channelKind('TR: FB TV HD'), 'spor');
   assert.equal(channelKind('S Sport 2'), 'spor');
   assert.equal(channelKind('A Spor HEVC'), 'spor');
   assert.equal(channelKind('beIN Sports 2 Premium'), 'spor');
