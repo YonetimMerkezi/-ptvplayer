@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matchMovieMetadata, loadMovieMetadata, parseMovieCatalogTitle } from '../www/js/movie-metadata.js';
+import { matchMovieMetadata, loadMovieMetadata, parseMovieCatalogTitle, resolveMovieWithWikidata } from '../www/js/movie-metadata.js';
 
 test('Türkçe veya orijinal ad tam eşleşirse doğru filmi bulur', () => {
   const rows = [
@@ -81,32 +81,34 @@ test('ayrıştırılmış IPTV başlığıyla IMDb eşleşmesi yapar', async () 
   assert.match(calls[0], /search=Dune/);
 });
 
-test('Fünye yerel adı orijinal Fuze IMDb kimliğiyle eşleşir', async () => {
+test('Cinemeta sonucu yoksa Türkçe Wikidata adıyla otomatik IMDb kimliği bulur', async () => {
   const calls = [];
   const net = { json: async (url) => {
     calls.push(url);
-    return { meta: { id: 'tt31189814', imdb_id: 'tt31189814', imdbRating: '6.3', year: '2025', name: 'Fuze' } };
+    if (url.includes('/catalog/')) return { metas: [] };
+    if (url.includes('wbsearchentities')) return { search: [{ id: 'Q123', description: '2025 yapımı film' }] };
+    if (url.includes('wbgetentities')) return { entities: { Q123: {
+      labels: { tr: { value: 'Örnek Yerel Film' }, en: { value: 'Original Movie' } },
+      aliases: { tr: [{ value: 'Başka Yerel Ad' }] },
+      claims: { P345: [{ mainsnak: { datavalue: { value: 'tt1234567' } } }], P577: [{ mainsnak: { datavalue: { value: { time: '+2025-01-01T00:00:00Z' } } } }] }
+    } } };
+    return { meta: { id: 'tt1234567', imdb_id: 'tt1234567', imdbRating: '7.4', year: '2025', name: 'Original Movie' } };
   }};
-  const meta = await loadMovieMetadata(net, { name: 'Fünye | 2025 | 6.3 | HMAX' });
-  assert.equal(meta.imdbId, 'tt31189814');
-  assert.equal(meta.imdbRating, '6.3');
-  assert.equal(meta.title, 'Fuze');
-  assert.equal(calls.length, 1);
-  assert.match(calls[0], /tt31189814/);
+  const meta = await loadMovieMetadata(net, { name: 'Örnek Yerel Film | 2025' });
+  assert.equal(meta.imdbId, 'tt1234567');
+  assert.equal(meta.imdbRating, '7.4');
+  assert.ok(calls.some((url) => url.includes('wbsearchentities')));
+  assert.ok(calls.some((url) => url.includes('wbgetentities')));
 });
-
-test('10 Numaralı Kamara yerel adı orijinal IMDb kaydıyla eşleşir', async () => {
-  const calls = [];
-  const net = { json: async (url) => {
-    calls.push(url);
-    return { meta: { id: 'tt7130300', imdb_id: 'tt7130300', imdbRating: '5.8', year: '2025', name: 'The Woman in Cabin 10' } };
-  }};
-  const meta = await loadMovieMetadata(net, { name: '10 Numaralı Kamara | 2025 | 6.4' });
-  assert.equal(meta.imdbId, 'tt7130300');
-  assert.equal(meta.imdbRating, '5.8');
-  assert.equal(calls.length, 1);
+test('Wikidata eşleştirmesi yıl uyuşmazlığında IMDb kimliği döndürmez', async () => {
+  const net = { json: async (url) => url.includes('wbsearchentities')
+    ? { search: [{ id: 'Q123', description: 'film' }] }
+    : { entities: { Q123: {
+      labels: { tr: { value: 'Aynı Adlı Film' } },
+      claims: { P345: [{ mainsnak: { datavalue: { value: 'tt1234567' } } }], P577: [{ mainsnak: { datavalue: { value: { time: '+2020-01-01T00:00:00Z' } } } }] }
+    } } } };
+  assert.equal(await resolveMovieWithWikidata(net, 'Aynı Adlı Film', 2025), null);
 });
-
 test('orijinal başlık alanıyla Türkçe katalog adını otomatik eşleştirir', () => {
   const rows = [
     { name: 'The Woman in Cabin 10', original_name: 'The Woman in Cabin 10', aliases: ['10 Numaralı Kamara'], year: '2025', imdb_id: 'tt7130300' },
