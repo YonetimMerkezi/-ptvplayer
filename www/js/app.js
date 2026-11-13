@@ -4654,13 +4654,13 @@ async function saveBackupFile() {
 async function saveMovieCatalogFile() {
   const catalog = S.rawCat || S.cat;
   const sourceMovies = Array.isArray(catalog && catalog.movies) ? catalog.movies : [];
-  const movies = sourceMovies.map((item) => {
+  const movies = sourceMovies.map((item, index) => {
     const title = String(item && (item.name || item.title) || '').trim();
     const embeddedYear = title.match(/(?:\((?:19|20)\d{2}\)|\|\s*(?:19|20)\d{2})\s*$/);
     const yearValue = Number(item && item.year) || (embeddedYear ? Number(embeddedYear[0].match(/\d{4}/)[0]) : 0);
     const providerRating = Number(item && item.rating);
     return {
-      id: String(item && item.id || ''),
+      recordNumber: index + 1,
       title,
       originalTitle: String(item && (item.original_name || item.original_title || item.originalTitle) || '').trim() || null,
       year: yearValue || null,
