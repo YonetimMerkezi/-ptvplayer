@@ -1581,7 +1581,7 @@ async function paintMovieAdvisories(body, meta, failure = '') {
   if (!host || !body.isConnected) return;
   let record = null;
   if (meta) {
-    const key = 'movie-advisory:v3:' + (meta.imdbId || String(meta.title || '').toLocaleLowerCase('tr') .replace(/[^a-z0-9ığüşöç]+/g, ' ').trim() + ':' + (Number(meta.year) || 0));
+    const key = 'movie-advisory:v3:' + (meta.imdbId || String(meta.title || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim() + ':' + (Number(meta.year) || 0));
     try { record = await store.cache.get(key); } catch { /* önbellek yok */ }
   }
   if (!body.isConnected || !host.isConnected) return;
