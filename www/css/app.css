@@ -1181,3 +1181,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   .dt { grid-template-areas:"pos title" "pos meta" "warning warning" "btns btns" "body body"; grid-template-rows:auto 1fr auto auto auto; }
   .mv-advisories { grid-area:warning; }
 }
+
+.mv-warning-chip .ic { width:15px; height:15px; margin-right:5px; flex:0 0 auto; }
+.mv-warning-detail > div b { display:inline-flex; align-items:center; gap:7px; }
+.mv-warning-detail > div b .ic { width:19px; height:19px; color:var(--accent); flex:0 0 auto; }
