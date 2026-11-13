@@ -10,10 +10,10 @@ import { kindOf } from './today.js';
 export const DIZI_BASE = 'https://1001dizi.net';
 
 // Spor yayıncılarının programları dizi akışına yanlışlıkla karışmasın.
-const SPORTS_CHANNEL = /(?:^| )(?:a spor|a para|trt spor(?: yildiz)?|s sports?(?: \\d+)?|bein sports?(?: \\d+)?|sports? tv|tivibu spor(?: \\d+)?|eurosport(?: \\d+)?|fb tv|b spor)(?: |$)/i;
+const SPORTS_CHANNELS = ['a spor', 'a para', 'trt spor', 'trt spor yildiz', 's sport', 's sports', 'bein sport', 'bein sports', 'sports tv', 'sport tv', 'tivibu spor', 'eurosport', 'fb tv', 'b spor'];
 export function isSportsChannel(name) {
   const value = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
-  return !!value && SPORTS_CHANNEL.test(value);
+  return !!value && SPORTS_CHANNELS.some((channel) => value === channel || value.startsWith(channel + ' '));
 }
 
 // Pazartesi tabanlı hafta (1001dizi sayfaları böyle)
