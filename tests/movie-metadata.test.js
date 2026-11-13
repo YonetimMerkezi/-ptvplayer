@@ -106,3 +106,31 @@ test('10 Numaralı Kamara yerel adı orijinal IMDb kaydıyla eşleşir', async (
   assert.equal(meta.imdbRating, '5.8');
   assert.equal(calls.length, 1);
 });
+
+test('orijinal başlık alanıyla Türkçe katalog adını otomatik eşleştirir', () => {
+  const rows = [
+    { name: 'The Woman in Cabin 10', original_name: 'The Woman in Cabin 10', aliases: ['10 Numaralı Kamara'], year: '2025', imdb_id: 'tt7130300' },
+    { name: 'Cabin', year: '2011', imdb_id: 'tt9990001' },
+  ];
+  assert.equal(matchMovieMetadata(rows, '10 Numaralı Kamara', 2025).imdb_id, 'tt7130300');
+});
+test('yakın ama farklı film adında yanlış IMDb eşleşmesi yapmaz', () => {
+  const rows = [
+    { name: 'The Woman in Cabin', year: '2025', imdb_id: 'tt1111111' },
+    { name: 'Cabin in the Woods', year: '2025', imdb_id: 'tt2222222' },
+  ];
+  assert.equal(matchMovieMetadata(rows, '10 Numaralı Kamara', 2025), null);
+});
+test('alternatif orijinal ad varsa sırayla arayıp doğru IMDb kaydını bulur', async () => {
+  const calls = [];
+  const net = { json: async (url) => {
+    calls.push(url);
+    if (url.includes('search=Yerel')) return { metas: [] };
+    if (url.includes('search=Original')) return { metas: [{ name: 'Original Film', year: '2024', imdb_id: 'tt4444444' }] };
+    return { meta: { id: 'tt4444444', imdb_id: 'tt4444444', imdbRating: '7.2', year: '2024', name: 'Original Film' } };
+  }};
+  const meta = await loadMovieMetadata(net, { name: 'Yerel Film | 2024', original_title: 'Original Film' });
+  assert.equal(meta.imdbId, 'tt4444444');
+  assert.equal(meta.imdbRating, '7.2');
+  assert.equal(calls.length, 3);
+});
