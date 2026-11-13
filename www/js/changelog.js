@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 90,
+    title: 'Benzer filmler ve kumandayla kanal geçişi',
+    items: [
+      'Film detaylarının altında aynı kategori ve mevcut film metaverisine göre sıralanan benzer içerikler yatay afiş şeridinde gösterilir; M3U ve Xtream kaynakları desteklenir',
+      'Benzer film kartları TV kumandasıyla odaklanabilir; OK ile seçilen filmin detay ekranı açılır',
+      'Canlı TV’de CH+ / CH− ve medya sonraki/önceki tuşları kanal listesinde ileri-geri geçiş yapar; listenin uçlarında başa veya sona sarar',
+      'Film ve dizi oynatımındaki sonraki/önceki içerik davranışı kanal geçişi için değiştirilmez'
+    ],
+  },
+  {
     id: 89,
     title: 'Film hatırlatıcıları ve dizi takibi',
     items: [
