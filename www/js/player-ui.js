@@ -512,9 +512,10 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   function go(delta) {
-    if (!ctx) return;
-    const i = ctx.index + delta;
-    if (i < 0 || i >= ctx.items.length) return;
+    if (!ctx || !ctx.items || !ctx.items.length) return;
+    let i = ctx.index + delta;
+    if (player.state().live) i = (i + ctx.items.length) % ctx.items.length;
+    else if (i < 0 || i >= ctx.items.length) return;
     ctx.index = i;
     ctx.play(ctx.items[i], i);
   }
