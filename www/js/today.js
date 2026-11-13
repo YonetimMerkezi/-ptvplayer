@@ -23,6 +23,9 @@ const RE_NON_FILM = /\b(haber|haberleri|bulten|news|talk show|sohbet|magazin|mag
 export function channelKind(name) {
   const n = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
   if (!n) return '';
+  // Kanal türü EPG başlığından/kategorisinden üstündür.
+  if (n === 'a para' || n.startsWith('a para ')) return 'ignore';
+  if (/^(a spor|trt spor|trt spor yildiz|s sport|s sports|bein sport|bein sports|sports tv|sport tv|tivibu spor|eurosport|fb tv|b spor)( |$)/.test(n)) return 'spor';
   if (n === 'bein series' || n.startsWith('bein series ')) return 'dizi';
   if (n.includes('sinema') || n.includes('bein movies') || n.includes('moviesmart') || n.includes('movie smart') || n.includes('filmbox') || n.includes('film box') || n.includes('cinefilm') || n.startsWith('cine 1')) return 'film';
   return '';
@@ -32,28 +35,20 @@ export function kindOf(p) {
   const c = fold(String((p && p.c) || ''));
   const t = fold(String((p && p.t) || ''));
   const d = fold(String((p && p.d) || ''));
-  const duration = Number(p && p.e) - Number(p && p.s);
-  const minutes = Number.isFinite(duration) && duration > 0 ? duration / 60000 : 0;
 
-  // Kesin tür bilgileri önce gelir.
+  // EPG kategori ve program başlığı açıkça tür belirtiyorsa kullan.
   if (RE_SERIES_CAT.test(c)) return 'dizi';
   if (RE_SPORT_CAT.test(c)) return RE_NEWS.test(c) || RE_NEWS.test(t) ? '' : 'spor';
   if (RE_NON_FILM.test(c)) return '';
   if (RE_SERIES_TITLE.test(t) || RE_EPISODE.test(d)) return 'dizi';
   if (RE_SPORT_TITLE.test(t) && !RE_NEWS.test(t)) return 'spor';
   if (RE_NEWS.test(c) || RE_NEWS.test(t)) return '';
-
-  if (['film', 'filmi', 'movie', 'movies', 'sinema', 'cinema'].some((word) => c.includes(word)) || RE_FILM_TITLE.test(t)) return 'film';
+  if (['film', 'filmi', 'movie', 'movies', 'sinema', 'cinema'].some((word) => c.includes(word)) || RE_FILM_TITLE.test(t) || /^film\\s*[-:]/.test(t)) return 'film';
   const sharedFilmGenre = RE_FILM_CAT.test(c) || RE_FILM_CAT.test(d);
   if (sharedFilmGenre && RE_EPISODE.test(t)) return 'dizi';
   if (RE_NON_FILM.test(c) || RE_NON_FILM.test(t)) return '';
-
-  // Bazı EPG sağlayıcıları kategori alanını boş gönderiyor. Uzun metraj
-  // süresini yedek sinyal olarak kullan; aşırı uzun yayınları ve kısa programları alma.
-  if (minutes >= 75 && minutes <= 210) {
-    if (RE_SERIES_TITLE.test(t) || RE_SPORT_TITLE.test(t)) return '';
-    return 'film';
-  }
+  // Süre tek başına film kanıtı değildir; haber, spor, yarışma ve dizi
+  // yayınları uzun sürdükleri için bu yolla yanlış sınıflandırılmamalıdır.
   return '';
 }
 
@@ -75,7 +70,9 @@ export function todayRows({ entries, kind, now, day = 0, includePast = false, ma
   const rows = [];
   for (const { id, p, channel } of entries) {
     if (!p || p.s < from || p.s >= to) continue;
-    const k = channelKind(channel) || kindOf(p);
+    const byChannel = channelKind(channel);
+    if (byChannel === 'ignore') continue;
+    const k = byChannel || kindOf(p);
     if (!k) continue;
     const key = `${id}|${p.s}`;
     if (seen.has(key)) continue;
