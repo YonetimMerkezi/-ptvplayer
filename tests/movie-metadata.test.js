@@ -94,3 +94,15 @@ test('Fünye yerel adı orijinal Fuze IMDb kimliğiyle eşleşir', async () => {
   assert.equal(calls.length, 1);
   assert.match(calls[0], /tt31189814/);
 });
+
+test('10 Numaralı Kamara yerel adı orijinal IMDb kaydıyla eşleşir', async () => {
+  const calls = [];
+  const net = { json: async (url) => {
+    calls.push(url);
+    return { meta: { id: 'tt7130300', imdb_id: 'tt7130300', imdbRating: '5.8', year: '2025', name: 'The Woman in Cabin 10' } };
+  }};
+  const meta = await loadMovieMetadata(net, { name: '10 Numaralı Kamara | 2025 | 6.4' });
+  assert.equal(meta.imdbId, 'tt7130300');
+  assert.equal(meta.imdbRating, '5.8');
+  assert.equal(calls.length, 1);
+});
