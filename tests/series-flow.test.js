@@ -5,7 +5,7 @@ import { isSportsChannel, parse1001, streamOf, timeMap, fillTimes, loadSeriesWee
 const B = 'https://1001dizi.net';
 
 test('isSportsChannel: A Para ve spor kanalları dizi listesinden çıkarılır', () => {
-  for (const n of ['S Sport', 'S Sports', 'S Sport 2', 'A Para', 'A Spor', 'beIN Sports 1']) assert.equal(isSportsChannel(n), true, n);
+  for (const n of ['S Sport', 'S Sports', 'S Sport 2', 'A Para', 'A Spor', 'beIN Sports 1', 'FB TV', 'FB TV HD']) assert.equal(isSportsChannel(n), true, n);
   for (const n of ['beIN Series', 'beIN Series 1', 'Sinema TV']) assert.equal(isSportsChannel(n), false, n);
 });
 
