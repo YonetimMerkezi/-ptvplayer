@@ -37,16 +37,17 @@ export function openToday(env) {
       const channelIds = new Set();
       const base = new Date(now()); base.setHours(0, 0, 0, 0);
       for (const film of result.films) {
-        const match = /^(\d{1,2}):(\d{2})$/.exec(film.time);
+        const match = /^(\\d{1,2}):(\\d{2})$/.exec(film.time);
         if (!match) continue;
         const startDate = new Date(base);
         startDate.setHours(Number(match[1]), Number(match[2]), 0, 0);
         const start = startDate.getTime();
-        const channels = channelsByName(live, [film.channel], 14);
-        for (const it of channels) {
-          channelIds.add(String(it.id));
-          mapped.push({ id: it.id, channel: it.name, p: { s: start, e: start + 120 * 60000, t: film.title, d: '', c: 'Film', u: true }, sourceChannel: film.channel });
-        }
+        const it = channelsByName(live, [film.channel], 14)[0] || null;
+        // Film yayını, kullanıcının kanal listesinde bulunmasa da rehberde gösterilir.
+        const id = it ? String(it.id) : 'film-source:' + film.channel.toLocaleLowerCase('tr-TR').replace(/[^\\p{L}\\p{N}]+/gu, '-');
+        const channel = it ? it.name : film.channel;
+        if (it) channelIds.add(String(it.id));
+        mapped.push({ id, channel, p: { s: start, e: start + 120 * 60000, t: film.title, d: '', c: 'Film', u: true }, sourceChannel: film.channel, sourceOnly: !it });
       }
       if (token !== filmLoadToken) return;
       filmSource = { loaded: true, loading: false, films: result.films, entries: mapped, channels: [...channelIds], fetchedAt: result.fetchedAt, error: '' };
