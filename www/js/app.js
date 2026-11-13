@@ -64,7 +64,7 @@ import { buildReport, encodeReport, describeReport, pushError } from './report.j
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
 import { loadMovieMetadata } from './movie-metadata.js';
-import { loadMovieAdvisories } from './movie-advisories.js';
+import { loadMovieAdvisories, translateScreenwiseText } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
 const Cap = window.Capacitor;
@@ -1574,23 +1574,7 @@ const advisorySmart = (warning) => {
   if (/negative.example|harmful.behavio|olumsuz örnek/.test(raw)) return { label: 'Olumsuz davranış örnekleri', icon: 'alert-triangle', level: 'Orta' };
   return { label: 'İçerik hassasiyeti', icon: 'info', level: '' };
 };
-const advisoryTr = (value) => {
-  const s = String(value || '').replace(/\\*\\*/g, '').trim();
-  if (!s) return '';
-  const known = [
-    [/The R-rating is earned through heavy language and the persistent, bone-deep anxiety of the situation\\.?/i, 'R yaş sınıflandırmasının nedeni yoğun argo ve küfür kullanımı ile olayların sürekli ve derin bir kaygı yaratmasıdır.'],
-    [/Some scenes involving the construction site accident that reveals the bomb are physically intense and potentially triggering for those sensitive to workplace gore\\.?/i, 'Bombanın ortaya çıktığı inşaat alanı kazasını içeren bazı sahneler fiziksel açıdan yoğun ve iş kazası görüntülerine duyarlı kişiler için rahatsız edici olabilir.'],
-    [/Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle\\./i, 'Fuze, gösterişten çok gerçekçiliğe odaklanan, orta tempolu bir gerilim filmidir.'],
-    [/It’s the kind of movie that makes you look at every construction pit in the city a little differently\\./i, 'Film, şehirdeki inşaat alanlarına farklı gözle bakmanıza neden olabilir.'],
-    [/If you’re looking for a family movie, keep scrolling\\./i, 'Ailece izlenecek bir film arıyorsanız bu yapım uygun bir tercih olmayabilir.'],
-    [/But if you have a 16-year-old who is into history or high-stakes procedural dramas, this is a sharp, well-acted choice that avoids the typical Hollywood fluff\\./i, 'Ancak tarih veya yüksek gerilimli polisiye dramaları seven 16 yaşındaki gençler için güçlü oyunculuklara sahip, başarılı bir seçenek olabilir.'],
-    [/This is strictly for the older teen and adult crowd\\./i, 'Bu film daha büyük yaştaki gençlere ve yetişkinlere yöneliktir.'],
-    [/The R-rating isn’t just for show/i, 'R sınıflandırması yalnızca biçimsel bir uyarı değildir.'],
-  ];
-  let out = s;
-  for (const [re, tr] of known) out = out.replace(re, tr);
-  return out === s ? s.replace(/\\bR-rating\\b/gi, 'R yaş sınıflandırması').replace(/\\bheavy language\\b/gi, 'yoğun argo ve küfür').replace(/\\bphysically intense\\b/gi, 'fiziksel açıdan yoğun').replace(/\\bconstruction site\\b/gi, 'inşaat alanı').replace(/\\bworkplace gore\\b/gi, 'iş kazası görüntüleri') : out;
-};
+const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
 
 async function paintMovieAdvisories(body, meta, failure = '') {
   const host = $('#mv-advisories', body);
