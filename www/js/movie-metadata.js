@@ -3,6 +3,7 @@ import { fold } from './util.js';
 
 const BASE = 'https://v3-cinemeta.strem.io';
 const CACHE_TTL = 30 * 86400000;
+const CACHE_MISS_TTL = 6 * 3600000;
 const done = new Map();
 const busy = new Map();
 const cleanTitle = (value) => fold(String(value || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/[._:]+/g, ' ').replace(/\s+/g, ' ').trim());
@@ -115,9 +116,9 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
   const key = `${cleanTitle(title)}|${year || 0}`;
   const persistentKey = 'movie-metadata:v1:' + key;
   const cached = store && store.cache ? await store.cache.get(persistentKey).catch(() => null) : null;
-  if (cached && cached.savedAt && Date.now() - cached.savedAt < CACHE_TTL && cached.value) {
-    done.set(key, cached.value);
-    return cached.value;
+  if (cached && cached.savedAt && Date.now() - cached.savedAt < (cached.value ? CACHE_TTL : CACHE_MISS_TTL)) {
+    if (cached.value) done.set(key, cached.value);
+    return cached.value || null;
   }
   if (done.has(key)) return done.get(key);
   if (busy.has(key)) return busy.get(key);
@@ -160,8 +161,8 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
     if (value) {
       done.set(key, value);
       while (done.size > 500) done.delete(done.keys().next().value);
-      if (store && store.cache) await store.cache.set(persistentKey, { savedAt: Date.now(), value }).catch(() => {});
     }
+    if (store && store.cache) await store.cache.set(persistentKey, { savedAt: Date.now(), value: value || null }).catch(() => {});
     return value;
   }).finally(() => busy.delete(key));
 }
