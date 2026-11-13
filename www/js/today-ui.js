@@ -47,7 +47,7 @@ export function openToday(env) {
         : NaN;
       if (!Number.isFinite(start)) continue;
       const end = r.endAt != null && Number.isFinite(Number(r.endAt)) ? Number(r.endAt) : start + 150 * 60000;
-      out.push({ id: it.id, p: { s: start, e: end, t: r.title, d: [r.ep, r.status].filter(Boolean).join(' · '), c: 'Dizi' } });
+      out.push({ id: it.id, channel: it.name, p: { s: start, e: end, t: r.title, d: [r.ep, r.status].filter(Boolean).join(' · '), c: 'Dizi' } });
     }
     return out;
   }
@@ -59,13 +59,14 @@ export function openToday(env) {
       const out = [];
       for (const id of sel) {
         const it = map.get(id);
-        if (it) for (const p of env.listFor(it)) out.push({ id: it.id, p });
+        if (it) for (const p of env.listFor(it)) out.push({ id: it.id, channel: it.name, p });
         out.push(...seriesEntries().filter((x) => x.id === id));
       }
       return seriesEntries().concat(out);
     }
     const from = dayStart(t, 0);
-    return seriesEntries().concat(env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, p: h.p })));
+    const map = byId();
+    return seriesEntries().concat(env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, channel: (map.get(h.id) || {}).name || '', p: h.p })));
   }
 
   function reminderIds() {
