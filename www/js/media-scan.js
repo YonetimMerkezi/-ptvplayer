@@ -50,8 +50,7 @@ async function loadSeriesMetadata(net, item, store) {
   const detail = await net.json(BASE + '/meta/series/' + encodeURIComponent(id) + '.json', { fast: true });
   const meta = detail && detail.meta;
   if (!meta || String(meta.imdb_id || meta.id || '') !== id) return null;
-  const rating = Number(meta.imdbRating);
-  const value = { imdbId: id, imdbRating: Number.isFinite(rating) && rating > 0 && rating <= 10 ? rating.toFixed(1) : '', year: yearOf(meta.year) || year, title: meta.name || parsed.title, kind: 'series', source: 'Cinemeta' };
+  const value = { imdbId: id, year: yearOf(meta.year) || year, title: meta.name || parsed.title, kind: 'series', source: 'Cinemeta' };
   await store.cache.set(key, { savedAt: Date.now(), value }).catch(() => {});
   return value;
 }
