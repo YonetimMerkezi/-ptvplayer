@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 102,
+    title: 'Kanal D rehberi ve film listesi için ek kaynak düzeltmesi',
+    items: [
+      'Kanal D için açık saatli yayın akışı kaynağı önceliklendirildi; 13 Kasım akışında Ana Haber 19.00–20.00, Beyaz’la Joker 20.00–23.15 ve Daha 17 23.15–02.00 olarak düzeltilir',
+      'Önceki sürümden kalan hatalı EPG önbelleği yeni düzeltme sürümünde zorunlu yenilenir',
+      'Film yayın akışı ana kaynaktan okunamazsa TV’de Bugün film listesi yedek kaynak olarak kullanılır'
+    ],
+  },
+
+  {
     id: 101,
     title: 'Kanal D yayın akışı düzeltildi',
     items: [
