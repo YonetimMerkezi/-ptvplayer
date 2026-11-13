@@ -2,7 +2,6 @@
 // Metadata kuyruğu ilerlerken içerik uyarıları ayrı havuzda çalışır.
 import { loadMovieMetadata, matchMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadMovieAdvisories } from './movie-advisories.js';
-import { loadVodInfo } from './catalog.js';
 
 const BASE = 'https://v3-cinemeta.strem.io';
 const active = new Map();
@@ -79,8 +78,7 @@ export function startMediaScan({ source, catalog, net, store, onProgress = () =>
         try {
           let meta = null;
           if (row.kind === 'movie') {
-            const vodInfo = source.type === 'xtream' ? await loadVodInfo(source, net, row.item).catch(() => null) : null;
-            meta = await loadMovieMetadata(net, row.item, vodInfo, store);
+            meta = await loadMovieMetadata(net, row.item, null, store);
             if (meta) {
               matched++;
               advisoryQueued++;
