@@ -3,7 +3,7 @@
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels } from './today.js';
-import { loadSeriesWeek, dayIndex } from './series-flow.js';
+import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 
@@ -37,6 +37,7 @@ export function openToday(env) {
     const items = env.liveItems() || [];
     const out = [];
     for (const r of seriesData.days[idx] || []) {
+      if (isSportsChannel(r.channel)) continue;
       const it = channelsByName(items, [r.channel])[0];
       if (!it || (sel.length && !sel.includes(it.id))) continue;
       const m = /^(\\d{1,2}):(\\d{2})$/.exec(r.time || '');
