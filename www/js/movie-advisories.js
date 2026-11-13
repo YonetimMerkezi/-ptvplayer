@@ -5,21 +5,21 @@ const KTB = 'https://filmsiniflandirma.ktb.gov.tr';
 const SCREENWISE = 'https://screenwiseapp.com';
 const TTL_FOUND = 30 * 86400000;
 const TTL_EMPTY = 24 * 3600000;
-const foldText = (s) => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
+const foldText = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 const warningRules = [
   ['violence', /siddet|korku unsurlar/i, 'Şiddet veya korku'],
   ['sex', /cinsellik|ciplaklik/i, 'Cinsellik veya çıplaklık'],
   ['negative_examples', /olumsuz ornek/i, 'Olumsuz örnek oluşturabilecek davranışlar'],
 ];
 const ageRules = [
-  [/18\\s*yas|18\\+/, '18+'], [/16\\s*yas|16\\+/, '16+'], [/13\\s*yas|13\\+/, '13+'],
-  [/10\\s*yas|10\\+/, '10+'], [/6\\s*yas|6\\+/, '6+'],
+  [/18\s*yas|18\+/, '18+'], [/16\s*yas|16\+/, '16+'], [/13\s*yas|13\+/, '13+'],
+  [/10\s*yas|10\+/, '10+'], [/6\s*yas|6\+/, '6+'],
 ];
 function decodeHtml(s) {
   return String(s || '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
 export function parseKtbClassification(html, title, year = 0) {
-  const raw = decodeHtml(String(html || '').replace(/<script[\\s\\S]*?<\\/script>/gi, ' ').replace(/<style[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' '));
+  const raw = decodeHtml(String(html || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
   const normalized = foldText(raw);
   const wanted = foldText(title);
   if (!wanted || !normalized) return null;
@@ -77,7 +77,7 @@ async function loadScreenwise(net, meta, title, record) {
   if (parsed.wise) record.guidance = { source: 'Screenwise', url: parsed.url, score: parsed.wise.overall, summary: parsed.wise.oneLiner, ageFit: parsed.wise.ageFit };
 }
 export async function loadMovieAdvisories(net, store, meta, item) {
-  if (!meta || !/^tt\\d+$/.test(String(meta.imdbId || ''))) return null;
+  if (!meta || !/^tt\d+$/.test(String(meta.imdbId || ''))) return null;
   const key = 'movie-advisory:v2:' + meta.imdbId;
   const cached = await store.cache.get(key).catch(() => null);
   const hasUsefulData = (r) => !!(r && ((r.warnings && r.warnings.length) || (r.ratings && r.ratings.length) || r.guidance));
