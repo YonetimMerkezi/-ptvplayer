@@ -6,10 +6,6 @@ const CACHE_TTL = 30 * 86400000;
 const done = new Map();
 const busy = new Map();
 const cleanTitle = (value) => fold(String(value || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/[._:]+/g, ' ').replace(/\s+/g, ' ').trim());
-const TITLE_ALIASES = {
-  funye: { title: 'Fuze', imdbId: 'tt31189814', year: 2025 },
-  '10 numarali kamara': { title: 'The Woman in Cabin 10', imdbId: 'tt7130300', year: 2025 },
-};
 const yearOf = (value) => {
   const m = String(value || '').match(/(?:19|20)\d{2}/);
   return m ? Number(m[0]) : 0;
@@ -52,7 +48,7 @@ export function matchMovieMetadata(results, title, year = 0) {
   if (!wanted || !Array.isArray(results)) return null;
   const eligible = results.filter((m) => {
     const y = yearOf(m && (m.year || m.releaseInfo));
-    return !year || !y || y === Number(year);
+    return !year || y === Number(year);
   });
   const exact = eligible.filter((m) => titleOf(m).some((name) => cleanTitle(name) === wanted));
   if (exact.length === 1) return exact[0];
@@ -64,20 +60,57 @@ export function matchMovieMetadata(results, title, year = 0) {
   return scored[0].m;
 }
 
+
+const WIKIDATA = 'https://www.wikidata.org/w/api.php';
+const claimValue = (entity, property) => {
+  const claim = entity && entity.claims && entity.claims[property] && entity.claims[property][0];
+  return claim && claim.mainsnak && claim.mainsnak.datavalue && claim.mainsnak.datavalue.value;
+};
+const entityTitles = (entity) => {
+  const values = [];
+  for (const group of [entity && entity.labels, entity && entity.aliases]) {
+    if (!group) continue;
+    for (const value of Object.values(group)) {
+      if (Array.isArray(value)) values.push(...value.map((x) => x && x.value));
+      else if (value && value.value) values.push(value.value);
+    }
+  }
+  return values.filter((x) => typeof x === 'string' && x.trim());
+};
+export async function resolveMovieWithWikidata(net, title, year = 0) {
+  const query = String(title || '').trim();
+  if (!query) return null;
+  const searchUrl = WIKIDATA + '?action=wbsearchentities&search=' + encodeURIComponent(query) + '&language=tr&uselang=tr&format=json&origin=*';
+  const search = await net.json(searchUrl, { fast: true });
+  const ids = (Array.isArray(search && search.search) ? search.search : [])
+    .filter((x) => x && /^Q\\d+$/.test(x.id) && /film|movie|sinema|motion picture/i.test(String(x.description || '')))
+    .slice(0, 8).map((x) => x.id);
+  if (!ids.length) return null;
+  const detailUrl = WIKIDATA + '?action=wbgetentities&ids=' + ids.join('|') + '&props=labels|aliases|claims&languages=tr|en&format=json&origin=*';
+  const detail = await net.json(detailUrl, { fast: true });
+  const candidates = Object.values(detail && detail.entities || {}).map((entity) => {
+    const imdb = claimValue(entity, 'P345');
+    const date = claimValue(entity, 'P577');
+    const entityYear = yearOf(date && date.time);
+    const names = entityTitles(entity);
+    const exact = names.some((name) => cleanTitle(name) === cleanTitle(query));
+    return { imdbId: typeof imdb === 'string' ? imdb : '', year: entityYear, names, exact };
+  }).filter((x) => /^tt\\d+$/.test(x.imdbId) && (!year || x.year === Number(year)) && x.exact);
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 export async function loadMovieMetadata(net, item, vodInfo = null, store = null) {
   const rawTitle = String(item && (item.name || item.title) || '').trim();
   const parsed = parseMovieCatalogTitle(rawTitle);
-  const alias = TITLE_ALIASES[cleanTitle(parsed.title)];
   const title = parsed.title;
   if (!title) return null;
-  const year = yearOf((vodInfo && (vodInfo.year || vodInfo.release_date)) || (item && (item.year || item.release_date)) || parsed.year || (alias && alias.year) || title);
+  const year = yearOf((vodInfo && (vodInfo.year || vodInfo.release_date)) || (item && (item.year || item.release_date)) || parsed.year || title);
   const candidateTitles = [...new Set([
     title,
     item && (item.original_name || item.originalName || item.original_title || item.originalTitle),
     item && (item.title || item.name),
     vodInfo && (vodInfo.original_name || vodInfo.originalName || vodInfo.original_title || vodInfo.originalTitle),
     vodInfo && (vodInfo.name || vodInfo.title),
-    alias && alias.title,
   ].filter((v) => typeof v === 'string' && v.trim()).map((v) => parseMovieCatalogTitle(v).title))];
   const key = `${cleanTitle(title)}|${year || 0}`;
   const persistentKey = 'movie-metadata:v1:' + key;
@@ -91,8 +124,8 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
 
   const task = (async () => {
     let match = null;
-    let id = alias && alias.imdbId || '';
-    if (!id) {
+    let id = '';
+    {
       for (const candidate of candidateTitles) {
         const query = encodeURIComponent(candidate);
         const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
