@@ -46,5 +46,5 @@ test('kimlik uyuşmazlığında puan döndürmez', async () => {
   const net = { json: async (url) => url.includes('/catalog/')
     ? { metas: [{ name: 'The Shawshank Redemption', aliases: ['Esaretin Bedeli'], year: '1994', imdb_id: 'tt0111161' }] }
     : { meta: { id: 'tt1375666', imdb_id: 'tt1375666', imdbRating: '8.8' } } };
-  assert.equal(await loadMovieMetadata(net, { name: 'Esaretin Bedeli' }, { year: '1994' }), null);
+  assert.equal(await loadMovieMetadata(net, { name: 'The Shawshank Redemption' }, { year: '1994' }), null);
 });
