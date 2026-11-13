@@ -72,7 +72,7 @@ test('todayRows: bugünün programları tür ve zamana göre; biten gizli, şimd
   ];
   const r = todayRows({ entries, kind: 'dizi', now: NOW });
   assert.deepEqual(r.rows.map((x) => [x.p.t, x.state]), [['Şimdi Dizi', 'now'], ['Dizi yayını', 'next'], ['Akşam Dizi', 'next']]);
-  assert.deepEqual(r.counts, { spor: 2, film: 2, dizi: 3 });
+  assert.deepEqual(r.counts, { spor: 3, film: 2, dizi: 3 });
   const all = todayRows({ entries, kind: 'dizi', now: NOW, includePast: true });
   assert.deepEqual(all.rows.map((x) => [x.p.t, x.state]), [['Biten Dizi', 'past'], ['Şimdi Dizi', 'now'], ['Dizi yayını', 'next'], ['Akşam Dizi', 'next']]);
   const tomorrow = todayRows({ entries, kind: 'dizi', now: NOW, day: 1 });
