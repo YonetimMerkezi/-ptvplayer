@@ -64,6 +64,7 @@ import { buildReport, encodeReport, describeReport, pushError } from './report.j
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
 import { loadMovieMetadata } from './movie-metadata.js';
+import { loadMovieAdvisories } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
 const Cap = window.Capacitor;
@@ -1568,24 +1569,27 @@ async function paintMovieAdvisories(body, meta) {
   try { record = await store.cache.get('movie-advisory:' + meta.imdbId); } catch { /* önbellek yok */ }
   if (!body.isConnected || !host.isConnected) return;
   const warnings = Array.isArray(record && record.warnings) ? record.warnings.filter((w) => w && (w.category || w.type)) : [];
-  if (!warnings.length) { host.hidden = true; return; }
+  const ratings = Array.isArray(record && record.ratings) ? record.ratings : [];
+  if (!warnings.length && !ratings.length) { host.hidden = true; return; }
   const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
-  host.innerHTML = unique.slice(0, 5).map((w) => {
+  host.innerHTML = ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
     const label = advisoryLabel(w.category || w.type);
     const level = advisoryLevel(w.level || w.severity);
     return '<span class="mv-warning-chip">' + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
   }).join('') + '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
   host.hidden = false;
   $('#mv-warning-info', host).addEventListener('click', () => {
-    const rows = warnings.map((w) => {
+    const ratingRows = ratings.map((r) => '<article class="mv-warning-detail"><div><b>Türkiye yaş sınıflandırması</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
+    const rows = ratingRows + warnings.map((w) => {
       const label = advisoryLabel(w.category || w.type);
       const level = advisoryLevel(w.level || w.severity);
       const detail = w.details || w.description || w.summary || '';
       const source = w.source || 'Kaynak belirtilmemiş';
       return '<article class="mv-warning-detail"><div><b>' + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + '</small></article>';
     }).join('');
+    const sourceRows = Object.entries(record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(k === 'ktb' ? 'T.C. Kültür ve Turizm Bakanlığı' : k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : 'Kontrol edilemedi') + '</p>').join('');
     const checked = record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
-    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + '</div>' + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
+    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') + '<p class="mv-warning-checked">Sınıflandırma kaydı bulunmaması, filmde uyarı olmadığı anlamına gelmez.</p>' });
   });
 }
 
@@ -1635,7 +1639,7 @@ function openMovie(it) {
           // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
           loadMovieMetadata(net, it, info || null).then((meta) => {
             if (!meta || !body.isConnected) return;
-            paintMovieAdvisories(body, meta).catch(() => {});
+            loadMovieAdvisories(net, store, meta, it).then(() => paintMovieAdvisories(body, meta)).catch(() => {});
             if (!meta.imdbRating) return;
             const chips = [it.group, yearOf((info && info.year) || meta.year), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating)), `IMDb ★ ${meta.imdbRating}`];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
