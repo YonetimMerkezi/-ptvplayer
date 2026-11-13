@@ -6,8 +6,10 @@ import { XmltvParser } from '../www/js/epg.js';
 test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
   for (const n of ['Sinema TV', 'Sinema 2', 'beIN Movies', 'beIN Movies Stars', 'MovieSmart Action', 'FilmBox Premium']) assert.equal(channelKind(n), 'film', n);
   for (const n of ['beIN Series', 'beIN Series 1']) assert.equal(channelKind(n), 'dizi', n);
-  assert.equal(channelKind('A Para'), '');
-  assert.equal(channelKind('S Sport 2'), '');
+  assert.equal(channelKind('A Para'), 'ignore');
+  assert.equal(channelKind('S Sport 2'), 'spor');
+  assert.equal(channelKind('A Spor HEVC'), 'spor');
+  assert.equal(channelKind('beIN Sports 2 Premium'), 'spor');
 });
 
 test('kindOf: rehber kategorisi önceliklidir (Türkçe/İngilizce)', () => {
@@ -37,10 +39,11 @@ test('kindOf: kategori yoksa yalnız belirgin başlık kalıpları', () => {
   assert.equal(kindOf({ t: 'Spor Haberleri Maç Özeti Bülteni' }), '');
   assert.equal(kindOf({ t: 'Akşam Haberleri' }), '');
   assert.equal(kindOf({ t: 'Mac and Cheese Tarifi' }), '');
-  assert.equal(kindOf({ t: 'Adsız Uzun Metraj', s: 1000, e: 1000 + 110 * 60000 }), 'film');
+  assert.equal(kindOf({ t: 'Adsız Uzun Metraj', s: 1000, e: 1000 + 110 * 60000 }), '');
   assert.equal(kindOf({ t: 'Drama Filmi', c: 'Drama', s: 1000, e: 1000 + 110 * 60000 }), 'film');
   assert.equal(kindOf({ t: 'Taşacak Bu Deniz', c: 'Dizi', s: 1000, e: 1000 + 255 * 60000 }), 'dizi');
   assert.equal(kindOf({ t: 'Akşam Haberleri', s: 1000, e: 1000 + 90 * 60000 }), '');
+  assert.equal(kindOf({ t: 'Spor Ajansı', s: 1000, e: 1000 + 120 * 60000 }), '');
   assert.equal(kindOf({ t: 'Kısa Stüdyo Programı', s: 1000, e: 1000 + 45 * 60000 }), '');
   assert.equal(kindOf({ t: 'Süper Lig Maçı', s: 1000, e: 1000 + 120 * 60000 }), 'spor');
   assert.equal(kindOf(null), '');
@@ -59,19 +62,23 @@ test('todayRows: bugünün programları tür ve zamana göre; biten gizli, şimd
     { id: 'b', p: prog(18, 20, 'Film X', 'Film') },
     { id: 'movie-channel', channel: 'Sinema TV', p: prog(16, 17, 'Özel Gösterim', '') },
     { id: 'series-channel', channel: 'beIN Series 1', p: prog(17, 18, 'Dizi yayını', 'Drama') },
+    { id: 'sport-channel', channel: 'beIN Sports 2 Premium', p: prog(16, 18, 'Antalyaspor - Bodrum FK', 'Dizi') },
+    { id: 'economy-channel', channel: 'A Para', p: prog(16, 18, 'Gün Ortası', 'Film') },
     { id: 'c', p: prog(17, 19, 'Maç', 'Spor') },
     { id: 'c', p: prog(19, 20, 'Belgesel', 'Belgesel') },
     { id: 'a', p: { s: H(26), e: H(27), t: 'Yarın dizi', d: '', c: 'Dizi' } },
   ];
   const r = todayRows({ entries, kind: 'dizi', now: NOW });
   assert.deepEqual(r.rows.map((x) => [x.p.t, x.state]), [['Şimdi Dizi', 'now'], ['Dizi yayını', 'next'], ['Akşam Dizi', 'next']]);
-  assert.deepEqual(r.counts, { spor: 1, film: 2, dizi: 3 });
+  assert.deepEqual(r.counts, { spor: 2, film: 2, dizi: 3 });
   const all = todayRows({ entries, kind: 'dizi', now: NOW, includePast: true });
   assert.deepEqual(all.rows.map((x) => [x.p.t, x.state]), [['Biten Dizi', 'past'], ['Şimdi Dizi', 'now'], ['Dizi yayını', 'next'], ['Akşam Dizi', 'next']]);
   const tomorrow = todayRows({ entries, kind: 'dizi', now: NOW, day: 1 });
   assert.deepEqual(tomorrow.rows.map((x) => x.p.t), ['Yarın dizi']);
   assert.deepEqual(todayRows({ entries, kind: 'film', now: NOW }).rows.map((x) => x.p.t), ['Özel Gösterim', 'Film X']);
   assert.equal(todayRows({ entries, kind: 'dizi', now: NOW }).rows.some((x) => x.id === 'series-channel'), true);
+  assert.equal(todayRows({ entries, kind: 'dizi', now: NOW }).rows.some((x) => x.id === 'sport-channel'), false);
+  assert.equal(todayRows({ entries, kind: 'film', now: NOW }).rows.some((x) => x.id === 'sport-channel' || x.id === 'economy-channel'), false);
 });
 
 test('todayRows: aynı kanal+başlangıç tekrar etmez; üst sınır', () => {
