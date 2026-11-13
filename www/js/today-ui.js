@@ -2,7 +2,7 @@
 // Modül ilk kullanımda yüklenir (app.js openToday).
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage } from './ui.js';
-import { KINDS, todayRows, dayStart, normalizeChannels } from './today.js';
+import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf } from './today.js';
 import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
@@ -18,6 +18,8 @@ export function openToday(env) {
   let day = 0;
   let past = false;
   let sel = normalizeChannels(env.channels());
+  const savedFilmChannels = env.filmChannels ? env.filmChannels() : null;
+  let filmSel = savedFilmChannels == null ? null : normalizeChannels(savedFilmChannels);
   let seriesData = null;
 
   const page = openPage({
@@ -91,12 +93,18 @@ export function openToday(env) {
   function draw() {
     const t = now();
     const ready = env.epgReady() || !!seriesData;
-    const res = ready ? todayRows({ entries: entries(), kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
+    const allEntries = entries();
+    const filmEntries = filmSel == null
+      ? allEntries.filter((x) => channelKind(x.channel) === 'film' && kindOf(x.p) === 'film')
+      : allEntries.filter((x) => filmSel.includes(String(x.id)) && kindOf(x.p) === 'film');
+    const visibleEntries = kind === 'film' ? filmEntries : allEntries;
+    const res = ready ? todayRows({ entries: visibleEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     q('#td-kinds').innerHTML = KINDS.map(([id, label]) => `<button class="chip${id === kind ? ' on' : ''}" data-kind="${id}"${id === kind ? ' data-autofocus' : ''}>${label}<small>${res.counts[id]}</small></button>`).join('');
     q('#td-opts').innerHTML =
       `<button class="chip${day === 0 ? ' on' : ''}" data-day="0">Bugün</button><button class="chip${day === 1 ? ' on' : ''}" data-day="1">Yarın</button>` +
       (day === 0 ? `<button class="chip${past ? ' on' : ''}" data-past aria-pressed="${past}">Bitenler</button>` : '') +
-      `<button class="chip" data-pick>${icon('tv')} Kanallar<small>${sel.length ? sel.length : 'Tümü'}</small></button>`;
+      `<button class="chip" data-pick>${icon('tv')} Kanallar<small>${sel.length ? sel.length : 'Tümü'}</small></button>` +
+      (kind === 'film' ? `<button class="chip" data-film-pick>Film kanalları<small>${filmSel == null ? 'Otomatik' : filmSel.length}</small></button>` : '');
     page.setTitle(`${day ? 'Yarın' : 'Bugün'} TV’de · ${new Date(dayStart(t, day)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`);
     const el = q('#td-list');
     if (!ready) {
@@ -124,30 +132,36 @@ export function openToday(env) {
     el._rows = res.rows;
   }
 
-  function pick() {
+  function pick(filmOnly = false) {
     let term = '';
+    if (filmOnly && filmSel == null) filmSel = normalizeChannels(env.liveItems().filter((it) => channelKind(it.name) === 'film').map((it) => it.id));
     const all = () => env.liveItems().filter((it) => env.listFor(it).length > 0);
     const pg = openPage({
-      title: 'Kanalları seç',
+      title: filmOnly ? 'Film kanallarını seç' : 'Kanalları seç',
       cls: 'td-pg td-pick',
-      html: `<div class="td-ptools"><input id="td-q" type="search" placeholder="Kanal ara…" autocomplete="off"><button class="btn sm ghost" id="td-clear">Tümü (seçimi temizle)</button></div><p class="hint" id="td-ph"></p><div id="td-pl" class="td-list"></div>`,
+      html: `<div class="td-ptools"><input id="td-q" type="search" placeholder="Kanal ara…" autocomplete="off"><button class="btn sm ghost" id="td-clear">${filmOnly ? 'Otomatik film kanalları' : 'Tümü (seçimi temizle)'}</button></div><p class="hint" id="td-ph"></p><div id="td-pl" class="td-list"></div>`,
       mount: () => {},
     });
     const pq = (s) => $(s, pg.el);
     const render = () => {
       const t = fold(term);
       const items = all();
-      const chosen = new Set(sel);
+      const chosen = new Set(filmOnly ? (filmSel || []) : sel);
       const shown = items.filter((it) => !t || fold(it.name).includes(t)).sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id))).slice(0, 150);
-      pq('#td-ph').textContent = sel.length ? `${sel.length} kanal seçili. Yalnız bu kanalların programları gösterilir.` : 'Hiçbiri seçili değil: bütün rehber kanalları gösterilir. Rehberi olan kanallar listelenir.';
+      pq('#td-ph').textContent = filmOnly ? 'Yalnız seçtiğiniz kanallardaki EPG tarafından açıkça Film/Sinema olarak tanımlanan programlar gösterilir. Tür bilgisi olmayan yayınlar tahminle eklenmez.' : (sel.length ? `${sel.length} kanal seçili. Yalnız bu kanalların programları gösterilir.` : 'Hiçbiri seçili değil: bütün rehber kanalları gösterilir. Rehberi olan kanallar listelenir.');
       pq('#td-pl').innerHTML = shown.length
         ? shown.map((it) => `<div class="td-c${chosen.has(it.id) ? ' on' : ''}" role="button" tabindex="0" data-id="${esc(it.id)}" aria-pressed="${chosen.has(it.id)}">${logo(it.logo, it.name)}<div class="td-m"><b>${esc(it.name)}</b><span>${esc(it.group || '')}</span></div><i class="td-ck">${chosen.has(it.id) ? icon('check') : ''}</i></div>`).join('')
         : '<div class="empty"><p>Kanal bulunamadı. Yalnız TV rehberi bilgisi olan kanallar listelenir.</p></div>';
     };
     pg.el.addEventListener('click', (e) => {
       if (e.target.closest('#td-clear')) {
-        sel = [];
-        env.setChannels(sel);
+        if (filmOnly) {
+          filmSel = null;
+          env.setFilmChannels && env.setFilmChannels(null);
+        } else {
+          sel = [];
+          env.setChannels(sel);
+        }
         render();
         draw();
         return;
@@ -155,8 +169,14 @@ export function openToday(env) {
       const c = e.target.closest('.td-c');
       if (!c) return;
       const id = c.dataset.id;
-      sel = sel.includes(id) ? sel.filter((x) => x !== id) : normalizeChannels([...sel, id]);
-      env.setChannels(sel);
+      if (filmOnly) {
+        const chosen = filmSel || [];
+        filmSel = chosen.includes(id) ? chosen.filter((x) => x !== id) : normalizeChannels([...chosen, id]);
+        env.setFilmChannels && env.setFilmChannels(filmSel);
+      } else {
+        sel = sel.includes(id) ? sel.filter((x) => x !== id) : normalizeChannels([...sel, id]);
+        env.setChannels(sel);
+      }
       render();
       draw(); // arkadaki liste hemen yeni seçimle çizilir
     });
@@ -189,7 +209,8 @@ export function openToday(env) {
       past = !past;
       return draw();
     }
-    if (e.target.closest('[data-pick]')) return pick();
+    if (e.target.closest('[data-pick]')) return pick(false);
+    if (e.target.closest('[data-film-pick]')) return pick(true);
     const r = e.target.closest('.td-r');
     if (r) {
       const row = (q('#td-list')._rows || [])[Number(r.dataset.i)];
