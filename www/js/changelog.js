@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 95,
+    title: 'Film yayın akışı kaynağı eklendi',
+    items: [
+      'Bugün TV’de > Film listesi TV Yayın Akışı kaynağından alınır; film adı, yayın saati ve kanal bilgisi IPTV kanal listenizle eşleştirilir',
+      'Kaynak erişilemezse mevcut EPG tabanlı film listesi yedek olarak kullanılmaya devam eder; Spor ve Dizi ekranları değişmez'
+    ],
+  },
+  {
     id: 94,
     title: 'Film kanalı seçimi ve FB TV filtresi',
     items: [
