@@ -395,7 +395,8 @@ test('loadFreeData: önce birleşik özet; eskiyse/yoksa kaynaklara doğrudan', 
   const r1 = await loadFreeData(net1, { now: NOW });
   assert.equal(r1.via, 'sunucu');
   assert.equal(Object.keys(r1.ch).length, 20);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2); // birleşik EPG + Kanal D eksik/bozuksa EPGShare düzeltme denemesi
+  assert.match(calls[1], /epgshare01/);
 
   // ilk adres eski, ikincisi (yansı) güncel
   const stale = JSON.stringify(bigData(20, { at: NOW - 50 * 3600e3 }));
