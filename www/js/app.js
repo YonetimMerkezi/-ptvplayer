@@ -1646,7 +1646,7 @@ function openMovie(it) {
             $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
           }
           // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
-          loadMovieMetadata(net, it, info || null).then((meta) => {
+          loadMovieMetadata(net, it, info || null, store).then((meta) => {
             if (!meta || !body.isConnected) return;
             loadMovieAdvisories(net, store, meta, it).then(() => paintMovieAdvisories(body, meta)).catch(() => {});
             if (!meta.imdbRating) return;
