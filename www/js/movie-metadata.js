@@ -17,9 +17,7 @@ export function matchMovieMetadata(results, title, year = 0) {
   const exact = results.filter((m) => titleOf(m).some((name) => cleanTitle(name) === wanted));
   if (year) {
     const sameYear = exact.filter((m) => yearOf(m.year) === Number(year));
-    if (sameYear.length === 1) return sameYear[0];
-    if (sameYear.length > 1) return null;
-    return null;
+    return sameYear.length === 1 ? sameYear[0] : null;
   }
   return exact.length === 1 ? exact[0] : null;
 }
@@ -28,24 +26,30 @@ export function loadMovieMetadata(net, item, vodInfo = null) {
   const title = String(item && (item.name || item.title) || '').trim();
   if (!title) return Promise.resolve(null);
   const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || title);
-  const query = encodeURIComponent(title.replace(/\s*\(\d{4}\)\s*$/, '').trim());
-  const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
-  const metas = catalog && catalog.metas;
-  const match = matchMovieMetadata(metas, title, year);
-  if (!match || !/^tt\d+$/.test(String(match.imdb_id || match.id || ''))) return null;
-  const id = String(match.imdb_id || match.id);
-  const detail = await net.json(`${BASE}/meta/movie/${encodeURIComponent(id)}.json`);
-  const meta = detail && detail.meta;
-  if (!meta || String(meta.imdb_id || meta.id || '') !== id) return null;
-  const rating = Number(meta.imdbRating);
-  return {
-    imdbId: id,
-    imdbRating: Number.isFinite(rating) && rating > 0 && rating <= 10 ? rating.toFixed(1) : '',
-    year: yearOf(meta.year) || year,
-    title: meta.name || match.name || title,
-    source: 'Cinemeta',
-  };
+  const key = `${cleanTitle(title)}|${year || 0}`;
+  if (done.has(key)) return Promise.resolve(done.get(key));
+  if (busy.has(key)) return busy.get(key);
+
+  const task = (async () => {
+    const query = encodeURIComponent(title.replace(/\s*\(\d{4}\)\s*$/, '').trim());
+    const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
+    const match = matchMovieMetadata(catalog && catalog.metas, title, year);
+    const id = match && String(match.imdb_id || match.id || '');
+    if (!/^tt\d+$/.test(id)) return null;
+
+    const detail = await net.json(`${BASE}/meta/movie/${encodeURIComponent(id)}.json`);
+    const meta = detail && detail.meta;
+    if (!meta || String(meta.imdb_id || meta.id || '') !== id) return null;
+    const rating = Number(meta.imdbRating);
+    return {
+      imdbId: id,
+      imdbRating: Number.isFinite(rating) && rating > 0 && rating <= 10 ? rating.toFixed(1) : '',
+      year: yearOf(meta.year) || year,
+      title: meta.name || match.name || title,
+      source: 'Cinemeta',
+    };
   })();
+
   busy.set(key, task);
   return task.then((value) => {
     done.set(key, value);
