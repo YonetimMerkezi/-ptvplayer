@@ -1592,9 +1592,9 @@ async function paintMovieAdvisories(body, meta, failure = '') {
   const ratings = Array.isArray(record && record.ratings) ? record.ratings : [];
   const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
   const sourceNames = { ktb: 'T.C. Kültür ve Turizm Bakanlığı', screenwise: 'Screenwise aile rehberi' };
-  const hasRecord = !!(warnings.length || ratings.length || (record && (record.guidance || record.imdbRating)));
+  const hasRecord = !!(warnings.length || ratings.length || (record && record.guidance));
   host.innerHTML = (hasRecord
-    ? ((record && record.imdbRating) ? '<span class="mv-warning-chip mv-rating-chip">IMDb ★ ' + esc(record.imdbRating) + '</span>' : '') + ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
+    ? ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
         const smart = advisorySmart(w);
         const label = smart.label;
         const level = advisoryLevel(w.level || w.severity) || smart.level;
@@ -1666,13 +1666,12 @@ function openMovie(it) {
             $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
             $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
           }
-          // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
+          // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
           loadMovieMetadata(net, it, info || null, store).then((meta) => {
             if (!body.isConnected) return;
             const advisoryMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
-            loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, meta ? '' : 'IMDb puanı bulunamadı; başlık üzerinden içerik uyarıları arandı.')).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.'));
-            if (!meta.imdbRating) return;
-            const chips = [it.group, yearOf((info && info.year) || meta.year), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating)), `IMDb ★ ${meta.imdbRating}`];
+            loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.')).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.'));
+            const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
           }).catch(() => { if (body.isConnected) paintMovieAdvisories(body, null, 'Film bilgileri alınamadı; internet bağlantısını veya veri kaynağını kontrol edin.'); });
           const picks = recommendMovies(it, info || {}, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
