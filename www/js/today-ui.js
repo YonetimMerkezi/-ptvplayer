@@ -22,6 +22,8 @@ export function openToday(env) {
   const savedFilmChannels = env.filmChannels ? env.filmChannels() : null;
   let filmSel = savedFilmChannels == null || (Array.isArray(savedFilmChannels) && savedFilmChannels.length === 0) ? null : normalizeChannels(savedFilmChannels);
   let seriesData = null;
+  let epgLoading = !!env.ensureEpg && !env.epgReady();
+  let epgError = '';
   let filmSource = { loaded: false, loading: false, films: [], entries: [], channels: [], error: '' };
   let filmLoadToken = 0;
 
@@ -171,7 +173,9 @@ export function openToday(env) {
       return;
     }
     if (!ready) {
-      el.innerHTML = '<div class="empty"><h3>TV rehberi yok</h3><p>Programlar TV rehberinden gelir. Ayarlar &gt; TV rehberi bölümünden rehber adresi ekleyin ya da listenizin rehberini yenileyin.</p></div>';
+      el.innerHTML = epgLoading
+        ? '<div class="empty"><h3>Programlar yükleniyor…</h3><p>Spor yayınları, TV rehberi ve diğer içerikler hazırlanıyor.</p></div>'
+        : `<div class="empty"><h3>TV rehberi yok</h3><p>${esc(epgError || 'Programlar TV rehberinden gelir. Ayarlar > TV rehberi bölümünden rehber adresi ekleyin ya da listenizin rehberini yenileyin.')}</p></div>`;
       return;
     }
     if (!res.rows.length) {
@@ -298,11 +302,25 @@ export function openToday(env) {
   });
 
   draw();
-  if (env.net) refreshFilmSource();
-  if (env.net) loadSeriesWeek({ net: env.net, nowMs: now() }).then((r) => {
+  // Sayfa açılır açılmaz üç veri kaynağı birlikte başlatılır: EPG (spor), film yayın akışı ve haftalık dizi akışı.
+  const startupTasks = [];
+  if (env.ensureEpg) {
+    epgLoading = !env.epgReady();
+    startupTasks.push(Promise.resolve().then(() => env.ensureEpg()).then(() => {
+      epgError = '';
+    }).catch((e) => {
+      epgError = String((e && e.message) || e || 'TV rehberi alınamadı');
+    }).finally(() => {
+      epgLoading = false;
+      if (root.isConnected) draw();
+    }));
+  }
+  if (env.net) startupTasks.push(refreshFilmSource());
+  if (env.net) startupTasks.push(loadSeriesWeek({ net: env.net, nowMs: now() }).then((r) => {
     seriesData = r;
     if (root.isConnected) draw();
-  }).catch(() => {});
+  }).catch(() => {}));
+  Promise.allSettled(startupTasks);
   // şimdi/biten durumu dakikada bir yenilenir
   const timer = setInterval(() => {
     if (!root.isConnected) return clearInterval(timer);
