@@ -395,8 +395,8 @@ test('loadFreeData: önce birleşik özet; eskiyse/yoksa kaynaklara doğrudan', 
   const r1 = await loadFreeData(net1, { now: NOW });
   assert.equal(r1.via, 'sunucu');
   assert.equal(Object.keys(r1.ch).length, 20);
-  assert.equal(calls.length, 2); // birleşik EPG + Kanal D eksik/bozuksa EPGShare düzeltme denemesi
-  assert.match(calls[1], /epgshare01/);
+  assert.ok(calls.length > 2); // birleşik EPG'den sonra Kanal D kaynağı kontrol edilir
+  assert.ok(calls.some((url) => url.includes('tvdebugun.net/yayin-akisi/')));
 
   // ilk adres eski, ikincisi (yansı) güncel
   const stale = JSON.stringify(bigData(20, { at: NOW - 50 * 3600e3 }));
@@ -429,7 +429,7 @@ test('probeFreeSources: her yol ayrı satır; sunucuya özel kaynak sınanmaz', 
   assert.equal(AGG_URLS.length, 2);
 });
 
-test('buildFreeData: Kanal D program saatlerinde EPGShare akışını tercih eder', () => {
+test('buildFreeData: Kanal D program saatlerinde TVdeBugün açık saatli akışı tercih eder', () => {
   const start = Date.UTC(2026, 10, 13, 0, 0);
   const open = [
     { s: start + 16 * 3600e3, e: start + 17 * 3600e3, t: 'Kanal D Ana Haber', c: 'Haber' },
@@ -440,9 +440,15 @@ test('buildFreeData: Kanal D program saatlerinde EPGShare akışını tercih ede
     { s: start + 17 * 3600e3, e: start + 20.25 * 3600e3, t: "Beyaz'la Joker", c: 'Yarışma' },
     { s: start + 20.25 * 3600e3, e: start + 23 * 3600e3, t: 'Daha 17', c: 'Dizi' },
   ];
+  const htmlSchedule = [
+    { s: start + 16 * 3600e3, e: start + 17 * 3600e3, t: 'Kanal D Ana Haber', c: 'Haber' },
+    { s: start + 17 * 3600e3, e: start + 20.25 * 3600e3, t: "Beyaz'la Joker", c: 'Yarışma' },
+    { s: start + 20.25 * 3600e3, e: start + 23 * 3600e3, t: 'Daha 17', c: 'Dizi' },
+  ];
   const data = buildFreeData([
     { id: 'openepg', ok: true, channels: [{ name: 'KANAL D', list: open }] },
     { id: 'epgshare', ok: true, channels: [{ name: 'KANAL D HD', list: share }] },
+    { id: 'tvdebugun', ok: true, channels: [{ name: 'KANAL D', list: htmlSchedule }] },
   ], start + 18 * 3600e3);
   const rows = data.ch.kanald.p;
   assert.equal(rows.find((x) => x[2] === "Beyaz'la Joker")[1] - rows.find((x) => x[2] === "Beyaz'la Joker")[0], 3.25 * 3600e3);
@@ -469,9 +475,11 @@ test('kanalDNeedsRepair: uzun haber/yarışma bloklarını yakalar, doğru süre
 test('13 Kasım Kanal D hatalı EPG kaydı doğrulanmış akışla yenilenir', async () => {
   const now = Date.UTC(2026, 10, 13, 16, 27); // 19.27 İstanbul
   const from = istDayStart(now, 0), to = istDayStart(now, 2);
-  const old = { v: 1, at: now, from, to, ch: { kanald: { n: 'KANAL D', p: [
+  const ch = Object.fromEntries(Array.from({ length: 8 }, (_, i) => ['kanal' + i, { n: 'Kanal ' + i, p: [] }]));
+  ch.kanald = { n: 'KANAL D', p: [
     [from + 19 * 3600e3, from + 26.5 * 3600e3, 'Kanal D Ana Haber', '', 'Haber']
-  ] } } };
+  ] };
+  const old = { v: 1, at: now, from, to, ch };
   const net = fakeServer([[/agg\.test/, JSON.stringify(old)]]);
   const result = await loadFreeData(net, { now, sources: [], aggUrls: ['https://agg.test/epg.json'] });
   const rows = result.ch.kanald.p;
