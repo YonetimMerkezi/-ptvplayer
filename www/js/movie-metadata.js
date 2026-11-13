@@ -33,9 +33,11 @@ export function matchMovieMetadata(results, title, year = 0) {
 }
 
 export async function loadMovieMetadata(net, item, vodInfo = null, store = null) {
-  const title = String(item && (item.name || item.title) || '').trim();
+  const rawTitle = String(item && (item.name || item.title) || '').trim();
+  const parsed = parseMovieCatalogTitle(rawTitle);
+  const title = parsed.title;
   if (!title) return null;
-  const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || title);
+  const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || parsed.year || title);
   const key = `${cleanTitle(title)}|${year || 0}`;
   const persistentKey = 'movie-metadata:v1:' + key;
   const cached = store && store.cache ? await store.cache.get(persistentKey).catch(() => null) : null;
@@ -47,7 +49,7 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
   if (busy.has(key)) return busy.get(key);
 
   const task = (async () => {
-    const query = encodeURIComponent(title.replace(/\s*\(\d{4}\)\s*$/, '').trim());
+    const query = encodeURIComponent(title);
     const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
     const match = matchMovieMetadata(catalog && catalog.metas, title, year);
     const id = match && String(match.imdb_id || match.id || '');
