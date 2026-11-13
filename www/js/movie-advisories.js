@@ -36,11 +36,11 @@ export function parseKtbClassification(html, title, year = 0) {
 }
 
 const screenwiseTranslations = [
-  [/The \\*\\*R-rating is earned\\*\\* through heavy language and the persistent, bone-deep anxiety of the situation\\./i, 'R yaş sınıfı; yoğun argo ve filmin yarattığı sürekli, derin gerilimden kaynaklanıyor.'],
-  [/Some scenes involving the construction site accident that reveals the bomb are \\*\\*physically intense\\*\\* and potentially triggering for those sensitive to workplace gore\\./i, 'Bombanın ortaya çıktığı inşaat kazasını içeren bazı sahneler fiziksel açıdan yoğun ve iş kazası görüntülerine hassas izleyiciler için rahatsız edici olabilir.'],
-  [/Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle\\. It’s the kind of movie that makes you look at every construction pit in the city a little differently\\./i, 'Fuze, gösterişten çok gerçekçiliğe dayanan, orta tempolu başarılı bir gerilim filmi. Şehirdeki inşaat alanlarına bundan sonra farklı gözle bakmanıza neden olabilir.'],
-  [/If you’re looking for a family movie, keep scrolling\\. But if you have a 16-year-old who is into history or high-stakes procedural dramas, this is a sharp, well-acted choice that avoids the typical Hollywood fluff\\./i, 'Ailece izlenecek bir film arıyorsanız başka bir seçeneğe yönelin. Ancak tarih veya yüksek riskli operasyon dramalarını seven 16 yaşında bir genç için güçlü oyunculukları olan, nitelikli bir tercih olabilir.'],
-  [/This is strictly for the \\*\\*older teen and adult\\*\\* crowd\\./i, 'Bu film daha büyük yaştaki gençlere ve yetişkinlere yöneliktir.'],
+  [/The \*\*R-rating is earned\*\* through heavy language and the persistent, bone-deep anxiety of the situation\./i, 'R yaş sınıfı; yoğun argo ve filmin yarattığı sürekli, derin gerilimden kaynaklanıyor.'],
+  [/Some scenes involving the construction site accident that reveals the bomb are \*\*physically intense\*\* and potentially triggering for those sensitive to workplace gore\./i, 'Bombanın ortaya çıktığı inşaat kazasını içeren bazı sahneler fiziksel açıdan yoğun ve iş kazası görüntülerine hassas izleyiciler için rahatsız edici olabilir.'],
+  [/Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle\. It’s the kind of movie that makes you look at every construction pit in the city a little differently\./i, 'Fuze, gösterişten çok gerçekçiliğe dayanan, orta tempolu başarılı bir gerilim filmi. Şehirdeki inşaat alanlarına bundan sonra farklı gözle bakmanıza neden olabilir.'],
+  [/If you’re looking for a family movie, keep scrolling\. But if you have a 16-year-old who is into history or high-stakes procedural dramas, this is a sharp, well-acted choice that avoids the typical Hollywood fluff\./i, 'Ailece izlenecek bir film arıyorsanız başka bir seçeneğe yönelin. Ancak tarih veya yüksek riskli operasyon dramalarını seven 16 yaşında bir genç için güçlü oyunculukları olan, nitelikli bir tercih olabilir.'],
+  [/This is strictly for the \*\*older teen and adult\*\* crowd\./i, 'Bu film daha büyük yaştaki gençlere ve yetişkinlere yöneliktir.'],
   [/The R-rating isn’t just for show[—-]it’s a/i, 'R yaş sınıfı yalnızca formalite değil; filmde'],
   [/heavy language/ig, 'yoğun argo ve ağır dil'],
   [/persistent, bone-deep anxiety/ig, 'sürekli ve derin gerilim'],
