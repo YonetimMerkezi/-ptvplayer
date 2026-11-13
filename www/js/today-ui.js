@@ -97,8 +97,13 @@ export function openToday(env) {
     const filmEntries = filmSel == null
       ? allEntries.filter((x) => channelKind(x.channel) === 'film' && kindOf(x.p) === 'film')
       : allEntries.filter((x) => filmSel.includes(String(x.id)) && kindOf(x.p) === 'film');
-    const visibleEntries = kind === 'film' ? filmEntries : allEntries;
-    const res = ready ? todayRows({ entries: visibleEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
+    const resAll = ready ? todayRows({ entries: allEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
+    const resFilm = ready ? todayRows({ entries: filmEntries, kind: 'film', now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
+    const res = {
+      rows: kind === 'film' ? resFilm.rows : resAll.rows,
+      counts: { ...resAll.counts, film: resFilm.counts.film },
+      truncated: kind === 'film' ? resFilm.truncated : resAll.truncated,
+    };
     q('#td-kinds').innerHTML = KINDS.map(([id, label]) => `<button class="chip${id === kind ? ' on' : ''}" data-kind="${id}"${id === kind ? ' data-autofocus' : ''}>${label}<small>${res.counts[id]}</small></button>`).join('');
     q('#td-opts').innerHTML =
       `<button class="chip${day === 0 ? ' on' : ''}" data-day="0">Bugün</button><button class="chip${day === 1 ? ' on' : ''}" data-day="1">Yarın</button>` +
