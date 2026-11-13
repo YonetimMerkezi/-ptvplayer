@@ -4651,10 +4651,63 @@ async function saveBackupFile() {
   toast('Yedek indirildi', 3000);
 }
 
+async function saveMovieCatalogFile() {
+  const catalog = S.rawCat || S.cat;
+  const sourceMovies = Array.isArray(catalog && catalog.movies) ? catalog.movies : [];
+  const movies = sourceMovies.map((item) => {
+    const title = String(item && (item.name || item.title) || '').trim();
+    const embeddedYear = title.match(/(?:\\((?:19|20)\\d{2}\\)|\\|\\s*(?:19|20)\\d{2})\\s*$/);
+    const yearValue = Number(item && item.year) || (embeddedYear ? Number(embeddedYear[0].match(/\\d{4}/)[0]) : 0);
+    const providerRating = Number(item && item.rating);
+    return {
+      id: String(item && item.id || ''),
+      title,
+      originalTitle: String(item && (item.original_name || item.original_title || item.originalTitle) || '').trim() || null,
+      year: yearValue || null,
+      category: String(item && item.group || '').trim() || null,
+      providerRating: Number.isFinite(providerRating) && providerRating > 0 ? providerRating : null,
+    };
+  }).filter((item) => item.title);
+
+  if (!movies.length) {
+    toast('Film kataloğu bulunamadı. Önce film listesini yükleyin.', 3500);
+    return;
+  }
+
+  const payload = {
+    format: 'iptv-player-movie-catalog',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    sourceType: S.source && S.source.type === 'xtream' ? 'xtream' : 'm3u',
+    movieCount: movies.length,
+    notes: {
+      providerRating: 'IPTV sağlayıcısının gönderdiği ham puandır; IMDb puanı olarak değerlendirilmemelidir.',
+      privacy: 'Kullanıcı adı, parola, sunucu adresi, yayın URLsi, poster URLsi ve stream ID dışa aktarılmaz.',
+    },
+    movies,
+  };
+  const text = JSON.stringify(payload, null, 2);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const name = 'film-katalogu-' + stamp + '.json';
+
+  if (nativePlugin) {
+    const result = await nativePlugin.saveText({ name, text, mime: 'application/json' });
+    toast('Film kataloğu kaydedildi: ' + ((result && result.where) || 'cihaz'), 4000);
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(movies.length + ' film kaydı dışa aktarıldı.', 3500);
+}
+
 function backupSheet() {
   const sh = openSheet({
     title: 'Yedekle / geri yükle',
-    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori (silmeler dahil), izleme ilerlemesi ve kategori düzenini karşılıklı eşitler. Favori ve ilerlemede en yeni değişiklik geçerli olur</small></span></button><button class="chk' + (store.pref('sync.auto', true) !== false ? ' on' : '') + '" id="bk-auto" role="switch" aria-checked="' + (store.pref('sync.auto', true) !== false) + '"><i>' + icon('check') + '</i><span class="t">Kendiliğinden eşitle<small>Uygulama açılınca ve öne gelince, eşleşmiş TV aynı ağdaysa sessizce eşitler</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
+    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button><button class="list-item" id="bk-movies"><span class="t">Film kataloğunu dışa aktar<small>Yalnızca film bilgileri; hesap bilgileri ve yayın adresleri eklenmez</small></span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori (silmeler dahil), izleme ilerlemesi ve kategori düzenini karşılıklı eşitler. Favori ve ilerlemede en yeni değişiklik geçerli olur</small></span></button><button class="chk' + (store.pref('sync.auto', true) !== false ? ' on' : '') + '" id="bk-auto" role="switch" aria-checked="' + (store.pref('sync.auto', true) !== false) + '"><i>' + icon('check') + '</i><span class="t">Kendiliğinden eşitle<small>Uygulama açılınca ve öne gelince, eşleşmiş TV aynı ağdaysa sessizce eşitler</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
     mount: (body) => {
       const autoBtn = $('#bk-auto', body);
       if (autoBtn) {
@@ -4679,6 +4732,13 @@ function backupSheet() {
           await saveBackupFile();
         } catch (err) {
           toast('Yedek kaydedilemedi: ' + String((err && err.message) || err), 4000);
+        }
+      });
+      $('#bk-movies', body).addEventListener('click', async () => {
+        try {
+          await saveMovieCatalogFile();
+        } catch (err) {
+          toast('Film kataloğu dışa aktarılamadı: ' + String((err && err.message) || err), 4000);
         }
       });
       $('#bk-file', body).addEventListener('change', async (e) => {
