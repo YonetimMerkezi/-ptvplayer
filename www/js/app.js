@@ -1579,7 +1579,7 @@ async function paintMovieAdvisories(body, meta, failure = '') {
     ? ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
         const label = advisoryLabel(w.category || w.type);
         const level = advisoryLevel(w.level || w.severity);
-        return '<span class="mv-warning-chip">' + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
+        return '<span class="mv-warning-chip">' + icon(w.icon || ({ violence: 'shield-alert', fear: 'brain', language: 'message-circle-warning', sex: 'eye-off', drugs: 'flask-conical', discrimination: 'users', negative_examples: 'alert-triangle' }[w.category] || 'info')) + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
       }).join('')
     : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : (failure || 'İçerik uyarıları kontrol ediliyor')) + '</span>') +
     '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
@@ -1587,11 +1587,12 @@ async function paintMovieAdvisories(body, meta, failure = '') {
   $('#mv-warning-info', host).addEventListener('click', () => {
     const ratingRows = ratings.map((r) => '<article class="mv-warning-detail"><div><b>Türkiye yaş sınıflandırması</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
     const rows = ratingRows + warnings.map((w) => {
-      const label = advisoryLabel(w.category || w.type);
+      const label = w.label || advisoryLabel(w.category || w.type);
       const level = advisoryLevel(w.level || w.severity);
       const detail = w.details || w.description || w.summary || '';
       const source = w.source || 'Kaynak belirtilmemiş';
-      return '<article class="mv-warning-detail"><div><b>' + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + (w.url ? ' · <a href="' + esc(w.url) + '" target="_blank" rel="noopener">Kaynağı aç</a>' : '') + '</small></article>';
+      const glyph = icon(w.icon || ({ violence: 'shield-alert', fear: 'brain', language: 'message-circle-warning', sex: 'eye-off', drugs: 'flask-conical', discrimination: 'users', negative_examples: 'alert-triangle' }[w.category] || 'info'));
+      return '<article class="mv-warning-detail"><div><b>' + glyph + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + (w.url ? ' · <a href="' + esc(w.url) + '" target="_blank" rel="noopener">Kaynağı aç</a>' : '') + '</small></article>';
     }).join('');
     const sourceRows = Object.entries(record && record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(sourceNames[k] || k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : v.status === 'unavailable' ? 'Kaynak sayfası veri sunmadı' : 'Kontrol edilemedi') + (v.message ? ' (' + esc(v.message) + ')' : '') + '</p>').join('');
     const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
