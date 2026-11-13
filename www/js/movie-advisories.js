@@ -1,37 +1,87 @@
-// Ücretsiz içerik uyarısı toplayıcısı. Resmî KTB Film Sınıflandırma portalı aranır;
-// bulunamayan kayıtlar uyarı varmış gibi yorumlanmaz. Sonuçlar IndexedDB'de cihazda saklanır.
+// Ücretsiz içerik uyarısı toplayıcısı.
+// Resmî KTB işaretleri ile Screenwise aile rehberliği ayrı kaynaklar olarak saklanır.
+// Bir kaynağın yanıt vermemesi "uyarı yok" anlamına gelmez.
 const KTB = 'https://filmsiniflandirma.ktb.gov.tr';
+const SCREENWISE = 'https://screenwiseapp.com';
 const TTL = 30 * 86400000;
 const foldText = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 const warningRules = [
-  ['violence', /şiddet|siddet|korku unsurlar/i, 'Şiddet veya korku'],
-  ['sex', /cinsellik|çıplaklık|ciplaklik/i, 'Cinsellik veya çıplaklık'],
-  ['negative_examples', /olumsuz örnek|olumsuz ornek/i, 'Olumsuz örnek oluşturabilecek davranışlar'],
+  ['violence', /siddet|korku unsurlar/i, 'Şiddet veya korku'],
+  ['sex', /cinsellik|ciplaklik/i, 'Cinsellik veya çıplaklık'],
+  ['negative_examples', /olumsuz ornek/i, 'Olumsuz örnek oluşturabilecek davranışlar'],
 ];
 const ageRules = [
-  [/18\s*yaş|18\+/i, '18+'], [/16\s*yaş|16\+/i, '16+'], [/13\s*yaş|13\+/i, '13+'],
-  [/10\s*yaş|10\+/i, '10+'], [/6\s*yaş|6\+/i, '6+'],
+  [/18\s*yas|18\+/, '18+'], [/16\s*yas|16\+/, '16+'], [/13\s*yas|13\+/, '13+'],
+  [/10\s*yas|10\+/, '10+'], [/6\s*yas|6\+/, '6+'],
 ];
 function decodeHtml(s) {
   return String(s || '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
 export function parseKtbClassification(html, title, year = 0) {
   const raw = decodeHtml(String(html || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+  const normalized = foldText(raw);
   const wanted = foldText(title);
-  if (!wanted || !raw) return null;
-  const at = foldText(raw).indexOf(wanted);
+  if (!wanted || !normalized) return null;
+  const at = normalized.indexOf(wanted);
   if (at < 0) return null;
-  // Başlık eşleşmesinin yakınındaki metin kart içeriğidir; sayfanın diğer filmlerini karıştırma.
-  const from = Math.max(0, at - 180);
-  const excerpt = raw.slice(from, Math.min(raw.length, from + title.length + 900));
-  const normalized = foldText(excerpt);
-  if (!normalized.includes(wanted)) return null;
+  // SPA kabuğu içinde film adı geçse bile sınıflandırma kartı yoksa sonuç üretme.
+  const excerpt = normalized.slice(Math.max(0, at - 180), at + wanted.length + 900);
+  if (!excerpt.includes(wanted) || !ageRules.some(([re]) => re.test(excerpt)) && !warningRules.some(([, re]) => re.test(excerpt))) return null;
   const warnings = warningRules.filter(([, re]) => re.test(excerpt)).map(([category, , label]) => ({
     category, label, details: label + ' işareti resmî sınıflandırma kaydında yer alıyor.',
     source: 'T.C. Kültür ve Turizm Bakanlığı', url: KTB + '/browse',
   }));
   const age = ageRules.find(([re]) => re.test(excerpt));
   return { ageRating: age ? age[1] : '', warnings, source: 'T.C. Kültür ve Turizm Bakanlığı', url: KTB + '/browse', matchedTitle: title, year: Number(year) || 0 };
+}
+function asTextList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((x) => typeof x === 'string' ? x : x && (x.text || x.title || x.description)).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
+}
+export function parseScreenwiseMedia(media, sourceUrl = SCREENWISE) {
+  if (!media || typeof media !== 'object') return null;
+  const copy = media.wise && media.wise.parentCopy || {};
+  const watchFor = asTextList(copy.watchFor);
+  const warnings = watchFor.map((details, i) => ({
+    category: 'family_guidance_' + (i + 1),
+    label: details.length > 72 ? details.slice(0, 69).trimEnd() + '…' : details,
+    details, source: 'Screenwise aile rehberi', url: media.url || sourceUrl,
+  }));
+  return {
+    title: media.title || '',
+    url: media.url || sourceUrl,
+    wise: media.wise ? {
+      overall: Number.isFinite(Number(media.wise.overall)) ? Number(media.wise.overall) : null,
+      oneLiner: String(media.wise.oneLiner || copy.verdict || '').trim(),
+      ageFit: String(copy.ageFitNote || '').trim(),
+    } : null,
+    warnings,
+  };
+}
+async function loadScreenwise(net, meta, title, record) {
+  const searchUrl = SCREENWISE + '/api/v1/media/search?imdb_id=' + encodeURIComponent(meta.imdbId) + '&type=movie';
+  const search = await net.json(searchUrl, { fast: true });
+  const candidates = Array.isArray(search && search.results) ? search.results : [];
+  const match = candidates.find((x) => x && x.media && x.media.slug && Number(x.matchConfidence) >= 0.75 && (!x.media.type || x.media.type === 'movie'));
+  if (!match) {
+    record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers' };
+    return;
+  }
+  const media = await net.json(SCREENWISE + '/api/v1/media/' + encodeURIComponent(match.media.slug), { fast: true });
+  const parsed = parseScreenwiseMedia(media);
+  if (!parsed) {
+    record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers' };
+    return;
+  }
+  record.sources.screenwise = {
+    status: 'found', checkedAt: Date.now(), url: parsed.url,
+    matchConfidence: Number(match.matchConfidence), title: parsed.title || title,
+  };
+  record.warnings.push(...parsed.warnings);
+  if (parsed.wise) record.guidance = {
+    source: 'Screenwise', url: parsed.url, score: parsed.wise.overall,
+    summary: parsed.wise.oneLiner, ageFit: parsed.wise.ageFit,
+  };
 }
 export async function loadMovieAdvisories(net, store, meta, item) {
   if (!meta || !/^tt\d+$/.test(String(meta.imdbId || ''))) return null;
@@ -44,8 +94,8 @@ export async function loadMovieAdvisories(net, store, meta, item) {
     imdbId: meta.imdbId, title, year: Number(meta.year) || 0,
     checkedAt: Date.now(), sources: {}, warnings: [], ratings: [],
   };
+  // KTB'nin /browse sayfası bir SPA kabuğu döndürüyor; kart verisi yoksa no_data demiyoruz.
   try {
-    // Portalın herkese açık liste/arama ekranı; kimlik doğrulama veya özel uç nokta kullanılmaz.
     const url = KTB + '/browse?search=' + encodeURIComponent(title);
     const html = await net.text(url, { fast: true });
     const found = parseKtbClassification(html, title, meta.year);
@@ -53,10 +103,19 @@ export async function loadMovieAdvisories(net, store, meta, item) {
       record.sources.ktb = { status: 'found', checkedAt: record.checkedAt, url: found.url };
       record.warnings.push(...found.warnings);
       if (found.ageRating) record.ratings.push({ value: found.ageRating, source: found.source, country: 'TR' });
-    } else record.sources.ktb = { status: 'no_data', checkedAt: record.checkedAt, url: KTB + '/browse' };
+    } else record.sources.ktb = {
+      status: /sayfa yukleniyor|page loading/i.test(foldText(html)) ? 'unavailable' : 'no_data',
+      checkedAt: record.checkedAt, url: KTB + '/browse',
+    };
   } catch (e) {
     record.sources.ktb = { status: 'error', message: String(e && e.message || e), checkedAt: record.checkedAt };
   }
+  try {
+    await loadScreenwise(net, meta, title, record);
+  } catch (e) {
+    record.sources.screenwise = { status: 'error', message: String(e && e.message || e), checkedAt: Date.now(), url: SCREENWISE + '/developers' };
+  }
+  // Kaynaklardan hiçbiri sonuç vermese de durumları sakla; eksik veriyi olumlu/olumsuz diye yorumlama.
   await store.cache.set(key, record).catch(() => {});
   return record;
 }
