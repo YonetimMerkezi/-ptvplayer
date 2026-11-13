@@ -434,7 +434,14 @@ export function buildFreeData(results, now = Date.now(), { detail = false } = {}
   const info = {};
   for (const [k, lists] of byKey) {
     const stat = { dup: 0, filled: 0, clash: 0, base: '' };
-    const merged = mergePrograms(lists, win, detail ? stat : null);
+    // Kanal D için EPGShare saatleri, diğer kaynaklardaki hatalı/uzatılmış program sürelerinden daha tutarlı.
+    // Özellikle Ana Haber ve Beyaz'la Joker bitişleri yanlışlıkla bir sonraki güne kadar uzatılabiliyor.
+    const preferredKanalD = k === 'kanald'
+      ? (lists.find((l) => l.id === 'epgshare') || lists.find((l) => l.id === 'openepg') || lists.find((l) => l.id === 'tvdebugun'))
+      : null;
+    const merged = preferredKanalD
+      ? mergePrograms([preferredKanalD], win, detail ? stat : null)
+      : mergePrograms(lists, win, detail ? stat : null);
     if (!merged.length) continue;
     ch[k] = { n: nameFrom.get(k), p: merged.map(packProg) };
     if (detail) info[k] = { n: nameFrom.get(k), src: Object.fromEntries(lists.map((l) => [l.id, l.list.length])), names: Object.fromEntries(lists.map((l) => [l.id, l.raw])), out: merged.length, ...stat };
@@ -485,6 +492,13 @@ export function mergeEpgData(base, extra) {
   const map = { ...base.map };
   const prog = { ...base.prog };
   for (const [id, eid] of Object.entries(extra.map)) {
+    // Kanal D'de sağlayıcı XMLTV'si bazen haber/yarışma sürelerini hatalı uzatıyor.
+    // Birleşik EPG'deki doğrulanmış EPGShare akışını bu kanal için de uygula.
+    if (eid === '~kanald' && extra.prog[eid] && extra.prog[eid].length) {
+      map[id] = eid;
+      prog[eid] = extra.prog[eid];
+      continue;
+    }
     if (map[id] && prog[map[id]] && prog[map[id]].length) continue;
     map[id] = eid;
     prog[eid] = extra.prog[eid];
