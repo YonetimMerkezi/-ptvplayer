@@ -1558,12 +1558,43 @@ function movieCtx(it) {
   return { items: [it, sug], index: 0, movie: true, autoNext: false, play: (m) => startPlay(m, { ctx: movieCtx(m) }) };
 }
 
+// Film içerik uyarıları: kaynak toplayıcı sonuçları IndexedDB'de movie-advisory:<IMDb ID> anahtarıyla saklar.
+const advisoryLabel = (v) => ({ violence: 'Şiddet', fear: 'Korku', language: 'Ağır dil', sex: 'Cinsellik', nudity: 'Çıplaklık', drugs: 'Alkol / madde', self_harm: 'Kendine zarar', discrimination: 'Ayrımcılık', flashing: 'Yanıp sönen ışıklar' }[String(v || '').toLowerCase()] || String(v || '').trim());
+const advisoryLevel = (v) => ({ low: 'Düşük', moderate: 'Orta', high: 'Yüksek', severe: 'Çok yüksek' }[String(v || '').toLowerCase()] || '');
+async function paintMovieAdvisories(body, meta) {
+  const host = $('#mv-advisories', body);
+  if (!host || !meta || !meta.imdbId) return;
+  let record = null;
+  try { record = await store.cache.get('movie-advisory:' + meta.imdbId); } catch { /* önbellek yok */ }
+  if (!body.isConnected || !host.isConnected) return;
+  const warnings = Array.isArray(record && record.warnings) ? record.warnings.filter((w) => w && (w.category || w.type)) : [];
+  if (!warnings.length) { host.hidden = true; return; }
+  const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
+  host.innerHTML = unique.slice(0, 5).map((w) => {
+    const label = advisoryLabel(w.category || w.type);
+    const level = advisoryLevel(w.level || w.severity);
+    return '<span class="mv-warning-chip">' + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
+  }).join('') + '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
+  host.hidden = false;
+  $('#mv-warning-info', host).addEventListener('click', () => {
+    const rows = warnings.map((w) => {
+      const label = advisoryLabel(w.category || w.type);
+      const level = advisoryLevel(w.level || w.severity);
+      const detail = w.details || w.description || w.summary || '';
+      const source = w.source || 'Kaynak belirtilmemiş';
+      return '<article class="mv-warning-detail"><div><b>' + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + '</small></article>';
+    }).join('');
+    const checked = record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
+    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + '</div>' + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
+  });
+}
+
 function openMovie(it) {
   const p = store.progress(sid(), it.id);
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   return openPage({
     cls: 'dt-pg',
-    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
+    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
     mount: (body) => {
       $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
       $('#mv-similar-row', body).addEventListener('click', (e) => {
@@ -1603,7 +1634,9 @@ function openMovie(it) {
           }
           // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
           loadMovieMetadata(net, it, info || null).then((meta) => {
-            if (!meta || !body.isConnected || !meta.imdbRating) return;
+            if (!meta || !body.isConnected) return;
+            paintMovieAdvisories(body, meta).catch(() => {});
+            if (!meta.imdbRating) return;
             const chips = [it.group, yearOf((info && info.year) || meta.year), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating)), `IMDb ★ ${meta.imdbRating}`];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
           }).catch(() => {});
