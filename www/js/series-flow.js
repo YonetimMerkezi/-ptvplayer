@@ -13,7 +13,7 @@ export const DIZI_BASE = 'https://1001dizi.net';
 const SPORTS_CHANNELS = ['a spor', 'a para', 'trt spor', 'trt spor yildiz', 's sport', 's sports', 'bein sport', 'bein sports', 'sports tv', 'sport tv', 'tivibu spor', 'eurosport', 'fb tv', 'b spor'];
 export function isSportsChannel(name) {
   const value = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
-  return !!value && (/(^| )fb tv( |$)/.test(value) || SPORTS_CHANNELS.some((channel) => value === channel || value.startsWith(channel + ' ')));
+  return !!value && (/(^| )fb tv( |$)/.test(value) || SPORTS_CHANNELS.some((channel) => value === channel || value.startsWith(channel + ' ') || value.includes(' ' + channel + ' ' ) || value.endsWith(' ' + channel)));
 }
 
 // Pazartesi tabanlı hafta (1001dizi sayfaları böyle)
