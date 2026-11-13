@@ -23,26 +23,62 @@ export function parseMovieCatalogTitle(value) {
   const yearMatch = raw.match(/\s*\((19|20)\d{2}\)\s*$/);
   return { title: raw.replace(/\s*\((?:19|20)\d{2}\)\s*$/, '').trim(), year: yearMatch ? Number(yearMatch[0].match(/\d{4}/)[0]) : 0 };
 }
-const titleOf = (meta) => [meta && meta.name, ...(Array.isArray(meta && meta.aliases) ? meta.aliases : [])].filter(Boolean);
+
+const titleOf = (meta) => [
+  meta && meta.name,
+  meta && meta.original_name,
+  meta && meta.originalTitle,
+  meta && meta.title,
+  ...(Array.isArray(meta && meta.aliases) ? meta.aliases : []),
+  ...(Array.isArray(meta && meta.alternative_titles) ? meta.alternative_titles : []),
+].filter((x) => typeof x === 'string' && x.trim());
+const titleScore = (a, b) => {
+  const x = cleanTitle(a), y = cleanTitle(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  const tokens = (s) => new Set(s.split(/[^a-z0-9]+/).filter((v) => v.length > 1));
+  const A = tokens(x), B = tokens(y);
+  if (!A.size || !B.size) return 0;
+  const common = [...A].filter((v) => B.has(v)).length;
+  const overlap = common / Math.max(A.size, B.size);
+  const compact = (s) => s.replace(/[^a-z0-9]/g, '');
+  const cx = compact(x), cy = compact(y);
+  const containment = cx.length >= 5 && cy.length >= 5 && (cx.includes(cy) || cy.includes(cx)) ? Math.min(cx.length, cy.length) / Math.max(cx.length, cy.length) : 0;
+  return Math.max(overlap, containment);
+};
 
 export function matchMovieMetadata(results, title, year = 0) {
   const wanted = cleanTitle(title);
   if (!wanted || !Array.isArray(results)) return null;
-  const exact = results.filter((m) => titleOf(m).some((name) => cleanTitle(name) === wanted));
-  if (year) {
-    const sameYear = exact.filter((m) => yearOf(m.year) === Number(year));
-    return sameYear.length === 1 ? sameYear[0] : null;
-  }
-  return exact.length === 1 ? exact[0] : null;
+  const eligible = results.filter((m) => {
+    const y = yearOf(m && (m.year || m.releaseInfo));
+    return !year || !y || y === Number(year);
+  });
+  const exact = eligible.filter((m) => titleOf(m).some((name) => cleanTitle(name) === wanted));
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return null;
+  const scored = eligible.map((m) => ({ m, score: Math.max(0, ...titleOf(m).map((name) => titleScore(name, title))) }))
+    .filter((x) => x.score >= 0.86)
+    .sort((a, b) => b.score - a.score);
+  if (!scored.length || (scored[1] && scored[0].score - scored[1].score < 0.08)) return null;
+  return scored[0].m;
 }
 
 export async function loadMovieMetadata(net, item, vodInfo = null, store = null) {
   const rawTitle = String(item && (item.name || item.title) || '').trim();
   const parsed = parseMovieCatalogTitle(rawTitle);
   const alias = TITLE_ALIASES[cleanTitle(parsed.title)];
-  const title = alias ? alias.title : parsed.title;
+  const title = parsed.title;
   if (!title) return null;
-  const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || parsed.year || (alias && alias.year) || title);
+  const year = yearOf((vodInfo && (vodInfo.year || vodInfo.release_date)) || (item && (item.year || item.release_date)) || parsed.year || (alias && alias.year) || title);
+  const candidateTitles = [...new Set([
+    title,
+    item && (item.original_name || item.originalName || item.original_title || item.originalTitle),
+    item && (item.title || item.name),
+    vodInfo && (vodInfo.original_name || vodInfo.originalName || vodInfo.original_title || vodInfo.originalTitle),
+    vodInfo && (vodInfo.name || vodInfo.title),
+    alias && alias.title,
+  ].filter((v) => typeof v === 'string' && v.trim()).map((v) => parseMovieCatalogTitle(v).title))];
   const key = `${cleanTitle(title)}|${year || 0}`;
   const persistentKey = 'movie-metadata:v1:' + key;
   const cached = store && store.cache ? await store.cache.get(persistentKey).catch(() => null) : null;
@@ -57,9 +93,12 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
     let match = null;
     let id = alias && alias.imdbId || '';
     if (!id) {
-      const query = encodeURIComponent(title);
-      const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
-      match = matchMovieMetadata(catalog && catalog.metas, title, year);
+      for (const candidate of candidateTitles) {
+        const query = encodeURIComponent(candidate);
+        const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
+        match = matchMovieMetadata(catalog && catalog.metas, candidate, year);
+        if (match) break;
+      }
       id = match && String(match.imdb_id || match.id || '');
     }
     if (!/^tt\d+$/.test(id)) return null;
