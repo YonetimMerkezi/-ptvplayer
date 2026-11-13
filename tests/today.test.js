@@ -30,6 +30,12 @@ test('kindOf: kategori yoksa yalnız belirgin başlık kalıpları', () => {
   assert.equal(kindOf({ t: 'Spor Haberleri Maç Özeti Bülteni' }), '');
   assert.equal(kindOf({ t: 'Akşam Haberleri' }), '');
   assert.equal(kindOf({ t: 'Mac and Cheese Tarifi' }), '');
+  assert.equal(kindOf({ t: 'Adsız Uzun Metraj', s: 1000, e: 1000 + 110 * 60000 }), 'film');
+  assert.equal(kindOf({ t: 'Drama Filmi', c: 'Drama', s: 1000, e: 1000 + 110 * 60000 }), 'film');
+  assert.equal(kindOf({ t: 'Taşacak Bu Deniz', c: 'Dizi', s: 1000, e: 1000 + 255 * 60000 }), 'dizi');
+  assert.equal(kindOf({ t: 'Akşam Haberleri', s: 1000, e: 1000 + 90 * 60000 }), '');
+  assert.equal(kindOf({ t: 'Kısa Stüdyo Programı', s: 1000, e: 1000 + 45 * 60000 }), '');
+  assert.equal(kindOf({ t: 'Süper Lig Maçı', s: 1000, e: 1000 + 120 * 60000 }), 'spor');
   assert.equal(kindOf(null), '');
   assert.equal(kindOf({}), '');
 });
