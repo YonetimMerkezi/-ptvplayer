@@ -20,6 +20,14 @@ const RE_FILM_TITLE = /^(film|sinema)\s*[:\-–]/;
 const RE_EPISODE = /\b(\d{1,3}\s*\.?\s*bolum|sezon|s\d{1,2}\s*e\d{1,3})\b/;
 const RE_NON_FILM = /\b(haber|haberleri|bulten|news|talk show|sohbet|magazin|magazine|reality|yarismasi|yarisma|cocuk|cocuklar|cizgi film|muzik|music|konser|hava durumu|weather|vaaz|ibadet|egitim|education|game show)\b/;
 
+export function channelKind(name) {
+  const n = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!n) return '';
+  if (/\\b(bein series|beins series|bein series \\d+)\\b/.test(n)) return 'dizi';
+  if (/\\b(sinema|sinema tv|sinema 2|sinema aksiyon|sinema komedi|sinema yerli|sinema aile|bein movies?|bein movies stars?|moviesmart|movie smart|filmbox|film box|cine ?film|cine ?1)\\b/.test(n)) return 'film';
+  return '';
+}
+
 export function kindOf(p) {
   const c = fold(String((p && p.c) || ''));
   const t = fold(String((p && p.t) || ''));
@@ -64,9 +72,9 @@ export function todayRows({ entries, kind, now, day = 0, includePast = false, ma
   const seen = new Set();
   const counts = { spor: 0, film: 0, dizi: 0 };
   const rows = [];
-  for (const { id, p } of entries) {
+  for (const { id, p, channel } of entries) {
     if (!p || p.s < from || p.s >= to) continue;
-    const k = kindOf(p);
+    const k = channelKind(channel) || kindOf(p);
     if (!k) continue;
     const key = `${id}|${p.s}`;
     if (seen.has(key)) continue;
