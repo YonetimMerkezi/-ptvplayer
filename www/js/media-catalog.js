@@ -4,7 +4,7 @@ const ROOT = new URL('../data/media-catalog/', import.meta.url);
 const MANIFEST_URL = new URL('manifest.json', ROOT).href;
 const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/YonetimMerkezi/-ptvplayer/main/www/data/media-catalog/manifest.json';
 const CACHE_KEY = 'media-catalog:bundle:v1';
-const NORMALIZE = (v) => String(v || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
+const NORMALIZE = (v) => String(v || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 let memory = null;
 let loading = null;
 
@@ -19,7 +19,7 @@ async function readBundle() {
         if (!response.ok) continue;
         const manifest = await response.json();
         const file = manifest && manifest.file;
-        if (!file || !/^[a-zA-Z0-9._-]+\\.json$/.test(file)) continue;
+        if (!file || !/^[a-zA-Z0-9._-]+\.json$/.test(file)) continue;
         const base = new URL('.', manifestUrl);
         const body = await fetch(new URL(file, base).href, { cache: 'no-cache' });
         if (body.ok) { data = await body.json(); break; }
@@ -49,7 +49,7 @@ export async function findBundledMedia(title, year = 0, kind = '') {
   }
   if (hits.length !== 1) return null;
   const row = hits[0];
-  return { imdbId: /^tt\\d+$/.test(String(row.imdbId || '')) ? row.imdbId : '', title: row.title, originalTitle: row.originalTitle || '', aliases: row.aliases || [], year: Number(row.year) || Number(year) || 0, kind: row.kind || kind, advisories: Array.isArray(row.advisories) ? row.advisories : [], advisoryStatus: row.advisoryStatus || 'unknown' };
+  return { imdbId: /^tt\d+$/.test(String(row.imdbId || '')) ? row.imdbId : '', title: row.title, originalTitle: row.originalTitle || '', aliases: row.aliases || [], year: Number(row.year) || Number(year) || 0, kind: row.kind || kind, advisories: Array.isArray(row.advisories) ? row.advisories : [], advisoryStatus: row.advisoryStatus || 'unknown' };
 }
 
 export async function mediaCatalogStatus() {
