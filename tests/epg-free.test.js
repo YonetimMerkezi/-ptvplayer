@@ -427,3 +427,23 @@ test('probeFreeSources: her yol ayrı satır; sunucuya özel kaynak sınanmaz', 
   assert.equal(by.teleonline.ok, null);
   assert.equal(AGG_URLS.length, 2);
 });
+
+test('buildFreeData: Kanal D program saatlerinde EPGShare akışını tercih eder', () => {
+  const start = Date.UTC(2026, 10, 13, 0, 0);
+  const open = [
+    { s: start + 16 * 3600e3, e: start + 17 * 3600e3, t: 'Kanal D Ana Haber', c: 'Haber' },
+    { s: start + 17 * 3600e3, e: start + 23 * 3600e3, t: "Beyaz'la Joker", c: 'Yarışma' },
+  ];
+  const share = [
+    { s: start + 16 * 3600e3, e: start + 17 * 3600e3, t: 'Kanal D Ana Haber', c: 'Haber' },
+    { s: start + 17 * 3600e3, e: start + 20.25 * 3600e3, t: "Beyaz'la Joker", c: 'Yarışma' },
+    { s: start + 20.25 * 3600e3, e: start + 23 * 3600e3, t: 'Daha 17', c: 'Dizi' },
+  ];
+  const data = buildFreeData([
+    { id: 'openepg', ok: true, channels: [{ name: 'KANAL D', list: open }] },
+    { id: 'epgshare', ok: true, channels: [{ name: 'KANAL D HD', list: share }] },
+  ], start + 18 * 3600e3);
+  const rows = data.ch.kanald.p;
+  assert.equal(rows.find((x) => x[2] === "Beyaz'la Joker")[1] - rows.find((x) => x[2] === "Beyaz'la Joker")[0], 3.25 * 3600e3);
+  assert.ok(rows.some((x) => x[2] === 'Daha 17'));
+});
