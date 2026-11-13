@@ -1562,12 +1562,12 @@ function movieCtx(it) {
 // Film içerik uyarıları: kaynak toplayıcı sonuçları IndexedDB'de movie-advisory:<IMDb ID> anahtarıyla saklar.
 const advisoryLabel = (v) => ({ violence: 'Şiddet', fear: 'Korku', language: 'Ağır dil', sex: 'Cinsellik', nudity: 'Çıplaklık', drugs: 'Alkol / madde', self_harm: 'Kendine zarar', discrimination: 'Ayrımcılık', flashing: 'Yanıp sönen ışıklar' }[String(v || '').toLowerCase()] || String(v || '').trim());
 const advisoryLevel = (v) => ({ low: 'Düşük', moderate: 'Orta', high: 'Yüksek', severe: 'Çok yüksek' }[String(v || '').toLowerCase()] || '');
-async function paintMovieAdvisories(body, meta) {
+async async function paintMovieAdvisories(body, meta, failure = '') {
   const host = $('#mv-advisories', body);
   if (!host || !body.isConnected) return;
   let record = null;
   if (meta && meta.imdbId) {
-    try { record = await store.cache.get('movie-advisory:' + meta.imdbId); } catch { /* önbellek yok */ }
+    try { record = await store.cache.get('movie-advisory:v2:' + meta.imdbId); } catch { /* önbellek yok */ }
   }
   if (!body.isConnected || !host.isConnected) return;
   const warnings = Array.isArray(record && record.warnings) ? record.warnings.filter((w) => w && (w.category || w.type)) : [];
@@ -1581,7 +1581,7 @@ async function paintMovieAdvisories(body, meta) {
         const level = advisoryLevel(w.level || w.severity);
         return '<span class="mv-warning-chip">' + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
       }).join('')
-    : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : 'İçerik uyarıları kontrol ediliyor') + '</span>') +
+    : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : (failure || 'İçerik uyarıları kontrol ediliyor')) + '</span>') +
     '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
   host.hidden = false;
   $('#mv-warning-info', host).addEventListener('click', () => {
@@ -1647,12 +1647,13 @@ function openMovie(it) {
           }
           // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
           loadMovieMetadata(net, it, info || null, store).then((meta) => {
-            if (!meta || !body.isConnected) return;
+            if (!body.isConnected) return;
+            if (!meta) { await paintMovieAdvisories(body, null, 'IMDb eşleşmesi bulunamadı; uyarılar sorgulanamadı'); return; }
             loadMovieAdvisories(net, store, meta, it).then(() => paintMovieAdvisories(body, meta)).catch(() => {});
             if (!meta.imdbRating) return;
             const chips = [it.group, yearOf((info && info.year) || meta.year), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating)), `IMDb ★ ${meta.imdbRating}`];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
-          }).catch(() => {});
+          }).catch(() => { paintMovieAdvisories(body, null, 'Film bilgileri alınamadı; bağlantıyı kontrol edin'); });
           const picks = recommendMovies(it, info || {}, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
           const section = $('#mv-similar', body);
           const row = $('#mv-similar-row', body);
