@@ -2,6 +2,11 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 85,
+    title: 'Ana ekran kart görünümü düzeltmesi',
+    items: ['Bugün TV’de kartındaki başlık ve alt açıklama satırlarının kart dışına taşması düzeltildi; metin boyutu ve aralıklar ekrana göre ayarlandı'],
+  },
+  {
     id: 84,
     title: 'TV rehberi ve dizi akışı düzeltmeleri',
     items: [
