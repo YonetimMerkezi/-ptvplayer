@@ -107,3 +107,25 @@ test('ekran görüntüsündeki farklı İngilizce uyarı örnekleri çevrilir ve
   assert.equal(classifyScreenwiseWarning(examples[3]).category, 'romance');
   assert.equal(classifyScreenwiseWarning(examples[4]).category, 'ending');
 });
+
+test('IMDb kimliği yokken Screenwise başlık ve yıl ile aranır', async () => {
+  const calls = [];
+  const net = { json: async (url) => {
+    calls.push(url);
+    if (url.includes('/browse?search=')) return '<html>no matching classification</html>';
+    if (url.includes('/api/v1/media/search?')) return { results: [{ matchConfidence: 0.91, media: { slug: 'sample-film', type: 'movie' } }] };
+    if (url.endsWith('/api/v1/media/sample-film')) return {
+      title: 'Sample Film', url: 'https://screenwiseapp.com/media/sample-film',
+      wise: { overall: 76, oneLiner: 'A thoughtful film', parentCopy: { watchFor: ['Intense violence throughout'], ageFitNote: 'For older teens' } },
+      externalRatings: { imdb: { score: 7.2 } }
+    };
+    throw new Error('unexpected url ' + url);
+  }};
+  const cache = new Map();
+  const store = { cache: { get: async (k) => cache.get(k), set: async (k,v) => cache.set(k,v) } };
+  const record = await loadMovieAdvisories(net, store, { title: 'Sample Film', year: 2024 }, { name: 'Sample Film' });
+  assert.equal(record.sources.screenwise.status, 'found');
+  assert.equal(record.imdbRating, '7.2');
+  assert.equal(record.warnings.length, 1);
+  assert.ok(calls.some((url) => url.includes('q=Sample%20Film') && url.includes('year=2024')));
+});
