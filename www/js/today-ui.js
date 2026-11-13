@@ -37,7 +37,7 @@ export function openToday(env) {
       const channelIds = new Set();
       const base = new Date(now()); base.setHours(0, 0, 0, 0);
       for (const film of result.films) {
-        const match = /^(\\d{1,2}):(\\d{2})$/.exec(film.time);
+        const match = /^(\d{1,2}):(\d{2})$/.exec(film.time);
         if (!match) continue;
         const startDate = new Date(base);
         startDate.setHours(Number(match[1]), Number(match[2]), 0, 0);
