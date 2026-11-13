@@ -41,3 +41,16 @@ test('CSS sınıfları değiştiğinde saat ve kanal bağlantısından yedek ayr
     { time: '20:00', title: 'Buz Devri 4', channel: 'ATV', channelUrl: '/atv-yayin-akisi/' },
   ]);
 });
+
+test('kanal bağlantısı öncesindeki saat ve başlıktan HTML sınıfsız kayıtları çıkarır', () => {
+  const html = `<ul>
+    <li><span>00:05</span><b>Cinderella Man</b><a href="/tlc-yayin-akisi/">TLC</a></li>
+    <li><span>00:15</span><b>Turna Misali</b><a href="/sinema-yerli-2-yayin-akisi/">SİNEMA YERLİ 2</a></li>
+    <li><span>00:30</span><b>Dünya Evi</b><a href="/sinema-yerli-yayin-akisi/">SİNEMA YERLİ</a></li>
+  </ul>`;
+  assert.deepEqual(parseFilmSchedule(html), [
+    { time: '00:05', title: 'Cinderella Man', channel: 'TLC', channelUrl: '/tlc-yayin-akisi/' },
+    { time: '00:15', title: 'Turna Misali', channel: 'SİNEMA YERLİ 2', channelUrl: '/sinema-yerli-2-yayin-akisi/' },
+    { time: '00:30', title: 'Dünya Evi', channel: 'SİNEMA YERLİ', channelUrl: '/sinema-yerli-yayin-akisi/' },
+  ]);
+});
