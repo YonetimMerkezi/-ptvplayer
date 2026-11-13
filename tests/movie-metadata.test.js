@@ -73,12 +73,12 @@ test('ayrıştırılmış IPTV başlığıyla IMDb eşleşmesi yapar', async () 
   const calls = [];
   const net = { json: async (url) => {
     calls.push(url);
-    if (url.includes('/catalog/')) return { metas: [{ name: 'Fünye', year: '2025', imdb_id: 'tt9999999' }] };
-    return { meta: { id: 'tt9999999', imdb_id: 'tt9999999', imdbRating: '6.8', year: '2025', name: 'Fünye' } };
+    if (url.includes('/catalog/')) return { metas: [{ name: 'Dune', year: '2021', imdb_id: 'tt9999999' }] };
+    return { meta: { id: 'tt9999999', imdb_id: 'tt9999999', imdbRating: '6.8', year: '2021', name: 'Dune' } };
   }};
-  const meta = await loadMovieMetadata(net, { name: 'Fünye | 2025 | 6.3 | HMAX' });
+  const meta = await loadMovieMetadata(net, { name: 'Dune | 2021 | 6.3 | HMAX' });
   assert.equal(meta.imdbRating, '6.8');
-  assert.match(calls[0], /search=F%C3%BCnye/);
+  assert.match(calls[0], /search=Dune/);
 });
 
 test('Fünye yerel adı orijinal Fuze IMDb kimliğiyle eşleşir', async () => {
