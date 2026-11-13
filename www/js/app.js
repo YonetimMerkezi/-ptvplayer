@@ -437,7 +437,7 @@ async function refreshCatalog({ quiet = false } = {}) {
 async function maybeRefreshEpg(force = false) {
   if (!S.source || !S.cat.live.length) return;
   const have = S.epg.data && S.epg.data.fetchedAt;
-  if (!force && have && Date.now() - have < staleEpgMs()) return;
+  if (!force && have && S.epg.data.kanalDFixVersion === 2 && Date.now() - have < staleEpgMs()) return;
   const id = S.source.id;
   let data = null;
   let providerError = '';
@@ -454,7 +454,7 @@ async function maybeRefreshEpg(force = false) {
     const extra = matchFree(free, S.cat.live);
     data = mergeEpgData(data, extra);
     if (data) {
-      data = { ...data, fetchedAt: Date.now(), free: { via: free.via || 'harici', matched: extra.matched } };
+      data = { ...data, fetchedAt: Date.now(), kanalDFixVersion: 2, free: { via: free.via || 'harici', matched: extra.matched } };
     }
   } catch (e) {
     if (!data) throw new Error([providerError, e.message || String(e)].filter(Boolean).join(' · ') || 'EPG alınamadı');
