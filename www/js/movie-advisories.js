@@ -52,8 +52,40 @@ const screenwiseTranslations = [
   [/family movie/ig, 'ailece izlenecek film'],
 ];
 export function translateScreenwiseText(value) {
-  let text = String(value || '').trim();
+  let text = String(value || '').replace(/\\*\\*/g, '').trim();
   for (const [pattern, replacement] of screenwiseTranslations) text = text.replace(pattern, replacement);
+  const phrases = [
+    [/The R-rating is earned/ig, 'R yaş sınıfının nedeni'],
+    [/through heavy language/ig, 'yoğun argo ve küfür kullanımıdır'],
+    [/and the persistent, bone-deep anxiety of the situation/ig, 've olayların yarattığı sürekli, derin gerilimdir'],
+    [/Some scenes involving/ig, 'Bazı sahneler'],
+    [/the construction site accident that reveals the bomb/ig, 'bombanın ortaya çıktığı inşaat kazasını içeren'],
+    [/are physically intense/ig, 'fiziksel açıdan yoğun'],
+    [/and potentially triggering for those sensitive to workplace gore/ig, 've iş kazası/yaralanma görüntülerine duyarlı izleyiciler için rahatsız edici olabilir'],
+    [/Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle/ig, 'Fuze, gösterişten çok gerçekçiliğe odaklanan, orta tempolu bir gerilim filmidir'],
+    [/It’s the kind of movie that makes you look at every construction pit in the city a little differently/ig, 'Film, şehirdeki inşaat alanlarına bundan sonra farklı gözle bakmanıza neden olabilir'],
+    [/If you’re looking for a family movie, keep scrolling/ig, 'Ailece izlenecek bir film arıyorsanız başka bir seçeneğe yönelin'],
+    [/But if you have a 16-year-old who is into history or high-stakes procedural dramas/ig, 'Ancak tarih veya yüksek riskli operasyon dramalarını seven 16 yaşında bir genç için'],
+    [/this is a sharp, well-acted choice that avoids the typical Hollywood fluff/ig, 'bu, güçlü oyunculuklara sahip ve klişelerden uzak başarılı bir tercih olabilir'],
+    [/This is strictly for the older teen and adult crowd/ig, 'Bu film yalnızca daha büyük yaştaki gençlere ve yetişkinlere yöneliktir'],
+    [/The R-rating isn’t just for show/ig, 'R yaş sınıflandırması yalnızca biçimsel bir uyarı değildir'],
+    [/mature, stressful thriller/ig, 'yetişkinlere yönelik, stresli bir gerilim filmi'],
+    [/will likely bore younger viewers/ig, 'genç yaştaki izleyicileri sıkabilir'],
+    [/older teen and adult/ig, 'daha büyük yaştaki gençler ve yetişkinler'],
+    [/16-year-old/ig, '16 yaşındaki genç'],
+    [/family movie/ig, 'ailece izlenecek film'],
+    [/heavy language/ig, 'yoğun argo ve küfür'],
+    [/bone-deep anxiety/ig, 'derin kaygı'],
+    [/physically intense/ig, 'fiziksel açıdan yoğun'],
+    [/workplace gore/ig, 'iş kazası ve yaralanma görüntüleri'],
+    [/construction pit/ig, 'inşaat alanı'],
+    [/construction site/ig, 'inşaat alanı'],
+    [/mid-tier thriller/ig, 'orta tempolu gerilim filmi'],
+    [/rather than spectacle/ig, 'gösterişten çok gerçekçiliğe odaklanan'],
+    [/procedural dramas/ig, 'operasyon dramaları'],
+    [/well-acted/ig, 'başarılı oyunculuklara sahip'],
+  ];
+  for (const [pattern, translated] of phrases) text = text.replace(pattern, translated);
   return text;
 }
 export function classifyScreenwiseWarning(value, index = 0) {
