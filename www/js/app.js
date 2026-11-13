@@ -1601,6 +1601,12 @@ function openMovie(it) {
             $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
             $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
           }
+          // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
+          loadMovieMetadata(net, it, info || null).then((meta) => {
+            if (!meta || !body.isConnected || !meta.imdbRating) return;
+            const chips = [it.group, yearOf((info && info.year) || meta.year), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating)), `IMDb ★ ${meta.imdbRating}`];
+            $('#mv-meta', body).innerHTML = chipsOf(chips);
+          }).catch(() => {});
           const picks = recommendMovies(it, info || {}, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
           const section = $('#mv-similar', body);
           const row = $('#mv-similar-row', body);
