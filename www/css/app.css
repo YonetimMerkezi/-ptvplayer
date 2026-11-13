@@ -1148,3 +1148,9 @@ html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 3px var(--ring, #fff);
 .home .tile.t-today .ic { flex: none; }
 .home .tile.t-today b { font-size: clamp(0.95rem, 4.2vw, 1.12rem); line-height: 1.12; max-width: 100%; }
 .home .tile.t-today small { display: block; line-height: 1.15; font-size: 0.7rem; max-width: 100%; white-space: nowrap; }
+
+/* Spor ekranında puan durumu düğmesi: simge tek başına kalmasın, metinle birlikte gösterilsin. */
+.sp-top .sp-table-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:22px;background:var(--surface,rgba(20,24,45,.72));color:var(--text);font:inherit;font-size:.88rem;font-weight:600;white-space:nowrap}
+.sp-top .sp-table-btn svg{width:19px;height:19px;flex:none}
+.sp-top .sp-table-btn:active{background:var(--raised)}
+html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale(1.05);box-shadow:0 0 0 2px var(--ring-edge),0 0 0 5px var(--ring);outline:none}
