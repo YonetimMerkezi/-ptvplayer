@@ -67,7 +67,13 @@ export function openToday(env) {
   });
   const root = page.el;
   const q = (s) => $(s, root);
-  const byId = () => new Map(env.liveItems().map((it) => [it.id, it]));
+  const byId = () => {
+    const map = new Map(env.liveItems().map((it) => [String(it.id), it]));
+    for (const x of filmSource.entries) {
+      if (x.sourceOnly && !map.has(String(x.id))) map.set(String(x.id), { id: String(x.id), name: x.sourceChannel, logo: '' });
+    }
+    return map;
+  };
   function seriesEntries() {
     if (!seriesData || !Array.isArray(seriesData.days)) return [];
     const from = istDayStart(now(), day);
@@ -130,7 +136,7 @@ export function openToday(env) {
     const ready = env.epgReady() || !!seriesData || (kind === 'film' && day === 0 && filmSource.loaded);
     const allEntries = entries();
     const externalFilmDay = day === 0 && filmSource.loaded && filmSource.entries.length > 0;
-    const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => !sel.length || sel.includes(String(x.id))) : [];
+    const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id))) : [];
     const filmEntries = externalFilmDay
       ? sourceFilmEntries.filter((x) => filmSel == null || filmSel.includes(String(x.id)))
       : filmSel == null
@@ -279,7 +285,8 @@ export function openToday(env) {
       const row = (q('#td-list')._rows || [])[Number(r.dataset.i)];
       const it = row && byId().get(row.id);
       if (it && e.target.closest('[data-bell]')) return toggleReminder(it, row.p);
-      if (it) env.programSheet(it, row.p);
+      if (it && !String(it.id).startsWith('film-source:')) env.programSheet(it, row.p);
+      else if (it && env.toast) env.toast('Bu yayın akışındaki kanal canlı listenizde bulunmuyor.', 2500);
     }
   });
   root.addEventListener('keydown', (e) => {
