@@ -74,7 +74,13 @@ export function todayRows({ entries, kind, now, day = 0, includePast = false, ma
     if (!p || p.s < from || p.s >= to) continue;
     const byChannel = channelKind(channel);
     if (byChannel === 'ignore') continue;
-    const k = byChannel || kindOf(p);
+    const title = fold(String(p.t || '')).replace(/[^a-z0-9]+/g, '');
+    const channelKey = fold(String(channel || '')).replace(/[^a-z0-9]+/g, '').replace(/^tr/, '').replace(/(uhd|fhd|hd|hevc)$/g, '');
+    const kanalDSeries = channelKey === 'kanald' && [
+      'gullervegunahlar', 'daha17', 'uzaksehir', 'esrefruya', 'haysiyet',
+      'uckizkardes', 'kucukaga', 'yaprakdokumu', 'siyahbeyazask', 'ikizlermemocan',
+    ].some((name) => title === name || title.startsWith(name));
+    const k = byChannel || (kanalDSeries ? 'dizi' : kindOf(p));
     if (!k) continue;
     const key = `${id}|${p.s}`;
     if (seen.has(key)) continue;
