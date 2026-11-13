@@ -57,13 +57,13 @@ test('Screenwise ayrıntılı uyarılar ve aile rehberi özeti Türkçeleştiril
   assert.match(language, /yoğun argo/);
   assert.match(violence, /inşaat kazası/);
   assert.match(violence, /rahatsız edici olabilir/);
-  assert.match(guidance, /gerilim filmidir/);
+  assert.match(guidance, /gerilim filmi/);
   assert.doesNotMatch(language + violence + guidance, /heavy language|physically intense|construction site accident|mid-tier thriller/i);
 });
 
 test('Screenwise uzun rehber metnindeki kalan İngilizce ifadeler Türkçeleştirilir', () => {
   const text = translateScreenwiseText("This is strictly for the **older teen and adult** crowd. The R-rating isn't just for show—it is a mature, stressful thriller that will likely bore younger viewers.");
-  assert.match(text, /daha büyük yaştaki gençler ve yetişkinler/);
+  assert.match(text, /daha büyük yaştaki gençlere ve yetişkinlere/);
   assert.match(text, /yetişkinlere yönelik/);
   assert.match(text, /genç yaştaki izleyicileri sıkabilir/);
   assert.doesNotMatch(text, /older teen|younger viewers|mature, stressful thriller/i);
