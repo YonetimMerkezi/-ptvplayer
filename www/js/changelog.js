@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 100,
+    title: 'Eksik kanallar için harici EPG desteği',
+    items: [
+      'Kanal D gibi IPTV listesinde bulunan ancak sağlayıcının kendi rehberinde bulunmayan kanallar için harici XMLTV rehberi de alınır',
+      'Sağlayıcının EPG verisi önceliğini korur; harici kaynak yalnızca eksik kanal rehberlerini tamamlar',
+      'M3U listesinde EPG adresi olmasa bile ücretsiz birleşik rehberden eşleşen kanalların yayın akışı yüklenir'
+    ],
+  },
+
+  {
     id: 99,
     title: 'Film yayın akışı ayrıştırıcısı yeniden düzenlendi',
     items: [
