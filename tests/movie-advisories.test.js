@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning } from '../www/js/movie-advisories.js';
+import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning, translateAdvisoryText } from '../www/js/movie-advisories.js';
 
 test('KTB film kaydındaki yaş ve içerik işaretlerini çıkarır', () => {
   const html = '<article><h3>Örnek Film</h3><p>16 Yaş ve Üzeri İzleyici Kitlesi İçindir.</p><p>Şiddet veya Korku Unsurları İçerir.</p><p>Olumsuz Örnek Oluşturabilecek Davranışlar İçerir.</p></article>';
@@ -67,4 +67,20 @@ test('Screenwise uzun rehber metnindeki kalan İngilizce ifadeler Türkçeleşti
   assert.match(text, /yetişkinlere yönelik/);
   assert.match(text, /genç yaştaki izleyicileri sıkabilir/);
   assert.doesNotMatch(text, /older teen|younger viewers|mature, stressful thriller/i);
+});
+
+test('genel çeviri katmanı Screenwise İngilizce açıklamayı Türkçeye çevirir', async () => {
+  const net = { json: async (url) => {
+    assert.match(url, /translate\.googleapis\.com/);
+    return [[['Film boyunca yoğun şiddet', 'Intense violence throughout', null, null]]];
+  }};
+  const result = await translateAdvisoryText(net, 'Intense violence throughout');
+  assert.equal(result, 'Film boyunca yoğun şiddet');
+});
+test('çeviri servisi çalışmazsa yerel sözlük devreye girer', async () => {
+  const net = { json: async () => { throw new Error('offline'); } };
+  const result = await translateAdvisoryText(net, 'A disturbing scene involving a dog that may upset animal-loving kids');
+  assert.match(result, /rahatsız edici bir sahne/);
+  assert.match(result, /hayvanları seven çocukları üzebilir/);
+  assert.doesNotMatch(result, /disturbing scene|animal-loving kids/i);
 });
