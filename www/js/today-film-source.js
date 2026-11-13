@@ -1,4 +1,5 @@
 // tvyayinakisi.com film yayın akışı ayrıştırıcısı. Ağ isteği UI katmanından verilir.
+import { parseTvdebugunList, istDayStart } from './epg-free.js';
 export const FILM_SCHEDULE_URL = 'https://www.tvyayinakisi.com/film-yayin-akisi/';
 
 function decodeHtml(value) {
@@ -102,13 +103,36 @@ export function parseFilmSchedule(html) {
 
 export async function loadFilmSchedule({ net, url = FILM_SCHEDULE_URL } = {}) {
   if (!net || typeof net.text !== 'function') throw new Error('Ağ katmanı kullanılamıyor');
-  const html = await net.text(url, { fast: true, headers: { Accept: 'text/html' } });
-  const films = parseFilmSchedule(html);
+  let html = '';
+  let films = [];
+  let sourceUrl = url;
+  let primaryError = '';
+  try {
+    html = await net.text(url, { fast: true, headers: { Accept: 'text/html' } });
+    films = parseFilmSchedule(html);
+  } catch (e) { primaryError = e.message || String(e); }
+  // Ana sayfanın HTML sınıfları değişirse TV'de Bugün'ün ayrı film listesi yedek kaynaktır.
+  if (!films.length) {
+    const fallbackUrl = 'https://tvdebugun.net/bugun-hangi-film-var/';
+    try {
+      const fallbackHtml = await net.text(fallbackUrl, { fast: true, headers: { Accept: 'text/html' } });
+      const parsed = parseTvdebugunList(fallbackHtml, istDayStart(Date.now(), 0));
+      films = parsed.rows.map((r) => ({
+        time: new Date(r.s).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        title: r.t,
+        channel: r.ch,
+        channelUrl: '',
+      }));
+      if (films.length) sourceUrl = fallbackUrl;
+    } catch (e) {
+      primaryError = [primaryError, e.message || String(e)].filter(Boolean).join(' · ');
+    }
+  }
   if (!films.length) {
     const bytes = html.length;
     const times = (html.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g) || []).length;
     const channels = (html.match(/yayin-akisi/gi) || []).length;
-    throw new Error(`Film kaydı ayrıştırılamadı (HTML: ${bytes} karakter, saat: ${times}, kanal bağlantısı: ${channels}). Kaynak yanıtını kontrol edin.`);
+    throw new Error(`Film listesi boş. Ana kaynak: ${primaryError || `HTML ${bytes} karakter, saat ${times}, kanal bağlantısı ${channels}`}. Yedek film kaynağında da kayıt bulunamadı.`);
   }
-  return { films, fetchedAt: Date.now(), url };
+  return { films, fetchedAt: Date.now(), url: sourceUrl };
 }
