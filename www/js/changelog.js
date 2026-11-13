@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 86,
+    title: 'Dizi akışı listeleme düzeni',
+    items: [
+      'Bugünün dizi akışında süresi geçmiş programlar da listelenir',
+      'Dizi akışı ilk açıldığında liste şu anki yayına hizalanır; önceki yayınlar yukarı kaydırılarak görülebilir',
+      'Bugün TV’de ekranındaki alt Dizi akışı kısayolu kaldırıldı'
+    ],
+  },
+  {
     id: 85,
     title: 'Ana ekran kart görünümü düzeltmesi',
     items: ['Bugün TV’de kartındaki başlık ve alt açıklama satırlarının kart dışına taşması düzeltildi; metin boyutu ve aralıklar ekrana göre ayarlandı'],
