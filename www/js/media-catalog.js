@@ -2,6 +2,7 @@
 // Katalog dosyaları statiktir; özel API/sunucu veya kullanıcı hesabı gerektirmez.
 const ROOT = new URL('../data/media-catalog/', import.meta.url);
 const MANIFEST_URL = new URL('manifest.json', ROOT).href;
+const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/YonetimMerkezi/-ptvplayer/main/www/data/media-catalog/manifest.json';
 const CACHE_KEY = 'media-catalog:bundle:v1';
 const NORMALIZE = (v) => String(v || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 let memory = null;
@@ -12,17 +13,18 @@ async function readBundle() {
   if (loading) return loading;
   loading = (async () => {
     let data = null;
-    try {
-      const response = await fetch(MANIFEST_URL, { cache: 'no-cache' });
-      if (response.ok) {
+    for (const manifestUrl of [REMOTE_MANIFEST_URL, MANIFEST_URL]) {
+      try {
+        const response = await fetch(manifestUrl, { cache: 'no-cache' });
+        if (!response.ok) continue;
         const manifest = await response.json();
         const file = manifest && manifest.file;
-        if (file && /^[a-zA-Z0-9._-]+\\.json$/.test(file)) {
-          const body = await fetch(new URL(file, ROOT).href, { cache: 'force-cache' });
-          if (body.ok) data = await body.json();
-        }
-      }
-    } catch (_) { /* çevrimdışı durumda yerel önbelleğe dön */ }
+        if (!file || !/^[a-zA-Z0-9._-]+\\.json$/.test(file)) continue;
+        const base = new URL('.', manifestUrl);
+        const body = await fetch(new URL(file, base).href, { cache: 'no-cache' });
+        if (body.ok) { data = await body.json(); break; }
+      } catch (_) { /* sıradaki kaynak/önbellek denensin */ }
+    }
     if (!data) {
       try { data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (_) {}
     }
