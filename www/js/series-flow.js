@@ -9,6 +9,13 @@ import { kindOf } from './today.js';
 
 export const DIZI_BASE = 'https://1001dizi.net';
 
+// Spor yayıncılarının programları dizi akışına yanlışlıkla karışmasın.
+const SPORTS_CHANNEL = /(?:^|\\b)(?:a\\s*spor|trt\\s*spor(?:\\s*yildiz)?|s\\s*sport(?:\\s*\\d+)?|bein\\s*sports?(?:\\s*\\d+)?|beinsports?(?:\\s*\\d+)?|sports?\\s*tv|tivibu\\s*spor(?:\\s*\\d+)?|eurosport(?:\\s*\\d+)?|fb\\s*tv|b\\s*\\s*spor)(?:\\b|$)/i;
+export function isSportsChannel(name) {
+  const value = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
+  return !!value && SPORTS_CHANNEL.test(value);
+}
+
 // Pazartesi tabanlı hafta (1001dizi sayfaları böyle)
 export const WEEKDAYS = [
   ['pazartesi', 'Pazartesi'],
@@ -198,7 +205,7 @@ function freeDiziDays(free, nowMs) {
   const starts = [istDayStart(nowMs, 0), istDayStart(nowMs, 1)];
   for (const channel of Object.values((free && free.ch) || {})) {
     const channelName = String((channel && channel.n) || '').trim();
-    if (!channelName) continue;
+    if (!channelName || isSportsChannel(channelName)) continue;
     for (const p of (channel && channel.p) || []) {
       const startAt = p && p[0] != null ? Number(p[0]) : NaN;
       if (!Number.isFinite(startAt)) continue;
