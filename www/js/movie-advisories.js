@@ -34,7 +34,39 @@ export function parseKtbClassification(html, title, year = 0) {
   const age = ageRules.find(([re]) => re.test(excerpt));
   return { ageRating: age ? age[1] : '', warnings, source: 'T.C. Kültür ve Turizm Bakanlığı', url: KTB + '/browse', matchedTitle: title, year: Number(year) || 0 };
 }
-function asTextList(value) {
+
+const screenwiseTranslations = [
+  [/The \\*\\*R-rating is earned\\*\\* through heavy language and the persistent, bone-deep anxiety of the situation\\./i, 'R yaş sınıfı; yoğun argo ve filmin yarattığı sürekli, derin gerilimden kaynaklanıyor.'],
+  [/Some scenes involving the construction site accident that reveals the bomb are \\*\\*physically intense\\*\\* and potentially triggering for those sensitive to workplace gore\\./i, 'Bombanın ortaya çıktığı inşaat kazasını içeren bazı sahneler fiziksel açıdan yoğun ve iş kazası görüntülerine hassas izleyiciler için rahatsız edici olabilir.'],
+  [/Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle\\. It’s the kind of movie that makes you look at every construction pit in the city a little differently\\./i, 'Fuze, gösterişten çok gerçekçiliğe dayanan, orta tempolu başarılı bir gerilim filmi. Şehirdeki inşaat alanlarına bundan sonra farklı gözle bakmanıza neden olabilir.'],
+  [/If you’re looking for a family movie, keep scrolling\\. But if you have a 16-year-old who is into history or high-stakes procedural dramas, this is a sharp, well-acted choice that avoids the typical Hollywood fluff\\./i, 'Ailece izlenecek bir film arıyorsanız başka bir seçeneğe yönelin. Ancak tarih veya yüksek riskli operasyon dramalarını seven 16 yaşında bir genç için güçlü oyunculukları olan, nitelikli bir tercih olabilir.'],
+  [/This is strictly for the \\*\\*older teen and adult\\*\\* crowd\\./i, 'Bu film daha büyük yaştaki gençlere ve yetişkinlere yöneliktir.'],
+  [/The R-rating isn’t just for show[—-]it’s a/i, 'R yaş sınıfı yalnızca formalite değil; filmde'],
+  [/heavy language/ig, 'yoğun argo ve ağır dil'],
+  [/persistent, bone-deep anxiety/ig, 'sürekli ve derin gerilim'],
+  [/physically intense/ig, 'fiziksel açıdan yoğun'],
+  [/workplace gore/ig, 'iş kazası ve yaralanma görüntüleri'],
+  [/construction site accident/ig, 'inşaat alanındaki kaza'],
+  [/older teen and adult/ig, 'ileri yaştaki gençler ve yetişkinler'],
+  [/mid-tier thriller/ig, 'orta tempolu gerilim filmi'],
+  [/family movie/ig, 'ailece izlenecek film'],
+];
+export function translateScreenwiseText(value) {
+  let text = String(value || '').trim();
+  for (const [pattern, replacement] of screenwiseTranslations) text = text.replace(pattern, replacement);
+  return text;
+}
+export function classifyScreenwiseWarning(value, index = 0) {
+  const s = String(value || '').toLowerCase();
+  if (/language|profan|swear|heavy language|argo|küfür/.test(s)) return { category: 'language', label: 'Ağır dil ve argo', icon: 'message-circle-warning' };
+  if (/violence|gore|blood|injur|physically intense|accident|şiddet|yaralan|kaza/.test(s)) return { category: 'violence', label: 'Şiddet ve yaralanma', icon: 'shield-alert' };
+  if (/anxiety|fear|scary|disturb|tension|gerilim|korku|rahatsız/.test(s)) return { category: 'fear', label: 'Korku ve yoğun gerilim', icon: 'brain' };
+  if (/sex|sexual|nudity|cinsellik|çıplak/.test(s)) return { category: 'sex', label: 'Cinsellik ve çıplaklık', icon: 'eye-off' };
+  if (/drug|alcohol|substance|madde|alkol/.test(s)) return { category: 'drugs', label: 'Alkol ve madde kullanımı', icon: 'flask-conical' };
+  if (/discriminat|racis|ayrımcılık|ırkç/.test(s)) return { category: 'discrimination', label: 'Ayrımcılık', icon: 'users' };
+  return { category: 'general', label: 'İçerik uyarısı ' + (index + 1), icon: 'info' };
+}
+\nfunction asTextList(value) {
   if (!Array.isArray(value)) return [];
   return value.map((x) => typeof x === 'string' ? x : x && (x.text || x.title || x.description)).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
 }
@@ -42,11 +74,10 @@ export function parseScreenwiseMedia(media, sourceUrl = SCREENWISE) {
   if (!media || typeof media !== 'object') return null;
   const copy = media.wise && media.wise.parentCopy || {};
   const watchFor = asTextList(copy.watchFor);
-  const warnings = watchFor.map((details, i) => ({
-    category: 'family_guidance_' + (i + 1),
-    label: details.length > 72 ? details.slice(0, 69).trimEnd() + '…' : details,
-    details, source: 'Screenwise aile rehberi', url: media.url || sourceUrl,
-  }));
+  const warnings = watchFor.map((rawDetails, i) => {
+    const kind = classifyScreenwiseWarning(rawDetails, i);
+    return { ...kind, details: translateScreenwiseText(rawDetails), originalDetails: rawDetails, source: 'Screenwise aile rehberi', url: media.url || sourceUrl };
+  });
   return {
     title: media.title || '', url: media.url || sourceUrl,
     wise: media.wise ? {
