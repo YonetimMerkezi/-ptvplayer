@@ -207,7 +207,10 @@ export async function translateAdvisoryText(net, value) {
 }
 
 async function loadScreenwise(net, meta, title, record) {
-  const searchUrl = SCREENWISE + '/api/v1/media/search?imdb_id=' + encodeURIComponent(meta.imdbId) + '&type=movie';
+  const query = meta && meta.imdbId
+    ? 'imdb_id=' + encodeURIComponent(meta.imdbId)
+    : 'q=' + encodeURIComponent(title) + (Number(meta && meta.year) ? '&year=' + encodeURIComponent(meta.year) : '');
+  const searchUrl = SCREENWISE + '/api/v1/media/search?' + query + '&type=movie';
   const search = await net.json(searchUrl, { fast: true });
   const candidates = Array.isArray(search && search.results) ? search.results : [];
   const match = candidates.find((x) => x && x.media && x.media.slug && Number(x.matchConfidence) >= 0.75 && (!x.media.type || x.media.type === 'movie'));
@@ -225,17 +228,20 @@ async function loadScreenwise(net, meta, title, record) {
   for (const warning of parsed.warnings) warning.details = await translateAdvisoryText(net, warning.originalDetails || warning.details);
   record.warnings.push(...parsed.warnings);
   if (parsed.wise) record.guidance = { source: 'Screenwise', url: parsed.url, score: parsed.wise.overall, summary: await translateAdvisoryText(net, parsed.wise.oneLiner), ageFit: await translateAdvisoryText(net, parsed.wise.ageFit) };
+  const imdbScore = Number(media && media.externalRatings && media.externalRatings.imdb && media.externalRatings.imdb.score);
+  if (Number.isFinite(imdbScore) && imdbScore > 0 && imdbScore <= 10) record.imdbRating = imdbScore.toFixed(1);
 }
 export async function loadMovieAdvisories(net, store, meta, item) {
-  if (!meta || !/^tt\d+$/.test(String(meta.imdbId || ''))) return null;
-  const key = 'movie-advisory:v3:' + meta.imdbId;
+  if (!meta) return null;
+  const title = String(meta.title || (item && item.name) || '').trim();
+  const year = Number(meta.year) || 0;
+  if (!title) return null;
+  const key = 'movie-advisory:v3:' + (meta.imdbId || foldText(title) + ':' + year);
   const cached = await store.cache.get(key).catch(() => null);
   const hasUsefulData = (r) => !!(r && ((r.warnings && r.warnings.length) || (r.ratings && r.ratings.length) || r.guidance));
   const ttl = hasUsefulData(cached) ? TTL_FOUND : TTL_EMPTY;
   if (cached && cached.checkedAt && Date.now() - cached.checkedAt < ttl) return cached;
-  const title = String(meta.title || (item && item.name) || '').trim();
-  if (!title) return cached || null;
-  const record = { imdbId: meta.imdbId, title, year: Number(meta.year) || 0, checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
+  const record = { imdbId: meta.imdbId || '', title, year, checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
   try {
     const url = KTB + '/browse?search=' + encodeURIComponent(title);
     const html = await net.text(url, { fast: true });
