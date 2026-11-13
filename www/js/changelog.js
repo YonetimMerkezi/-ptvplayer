@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 93,
+    title: 'Bugün TV’de tür ve kanal filtreleri düzeltildi',
+    items: [
+      'Program süresi artık tek başına Film sayılmasına neden olmaz; yalnız EPG’de açıkça film/sinema olarak işaretlenen yayınlar veya tanımlı sinema kanallarının yayınları Film listesine girer',
+      'S Sport, beIN Sports, A Spor, TRT Spor ve Sports TV yayınları kanal adına göre Spor olarak sabitlenir; A Para Film ve Dizi listelerinden çıkarılır',
+      'beIN Series dizi kanalı olarak, Sinema TV ve beIN Movies gibi kanallar film kanalı olarak önceliklendirilir'
+    ],
+  },
+  {
     id: 92,
     title: 'Bugün TV’de sinema kanalları ve dizi kanalı filtresi',
     items: [
