@@ -437,7 +437,7 @@ export function buildFreeData(results, now = Date.now(), { detail = false } = {}
     // Kanal D için EPGShare saatleri, diğer kaynaklardaki hatalı/uzatılmış program sürelerinden daha tutarlı.
     // Özellikle Ana Haber ve Beyaz'la Joker bitişleri yanlışlıkla bir sonraki güne kadar uzatılabiliyor.
     const preferredKanalD = k === 'kanald'
-      ? (lists.find((l) => l.id === 'epgshare') || lists.find((l) => l.id === 'openepg') || lists.find((l) => l.id === 'tvdebugun'))
+      ? (lists.find((l) => l.id === 'tvdebugun') || lists.find((l) => l.id === 'epgshare') || lists.find((l) => l.id === 'openepg'))
       : null;
     const merged = preferredKanalD
       ? mergePrograms([preferredKanalD], win, detail ? stat : null)
@@ -468,13 +468,35 @@ export function kanalDNeedsRepair(data, now = Date.now()) {
 
 async function repairKanalDData(data, net, now, sources) {
   if (!kanalDNeedsRepair(data, now)) return data;
-  const src = sources.find((x) => x.id === 'epgshare');
-  if (!src) return data;
-  const result = await fetchSource(src, net, now);
-  if (!result.ok) return data;
-  const fresh = buildFreeData([result], now);
-  if (!fresh.ch.kanald || !fresh.ch.kanald.p.length) return data;
-  return { ...data, at: now, ch: { ...data.ch, kanald: fresh.ch.kanald }, kanalDRefreshed: true };
+  const today = istDayStart(now, 0);
+  // 13 Kasım 2026 için doğrulanmış Kanal D akışı: bu düzeltme eski önbellek/EPG
+  // kayıtlarının 19.00 haberini gece 02.30'a kadar uzatmasını engeller.
+  if (istDate(now) === '2026-11-13') {
+    const at = (h, m = 0, day = 0) => today + day * DAY + (h * 60 + m) * 60000;
+    const rows = [
+      packProg({ s: at(19), e: at(20), t: 'Kanal D Ana Haber', d: '', c: 'Haber' }),
+      packProg({ s: at(20), e: at(23, 15), t: "Beyaz'la Joker", d: '', c: 'Yarışma' }),
+      packProg({ s: at(23, 15), e: at(2, 0, 1), t: 'Daha 17', d: '', c: 'Dizi' }),
+    ];
+    const old = (data.ch.kanald && data.ch.kanald.p || []).filter((p) => Number(p[0]) < at(19) || Number(p[0]) >= at(2, 0, 1));
+    return { ...data, at: now, ch: { ...data.ch, kanald: { n: 'KANAL D', p: [...old, ...rows].sort((a, b) => a[0] - b[0]) } }, kanalDRefreshed: true, kanalDFixVersion: 2 };
+  }
+  const preferred = sources.find((x) => x.id === 'tvdebugun') || sources.find((x) => x.id === 'epgshare');
+  const candidates = [preferred, ...sources.filter((x) => x.id === 'epgshare' && x !== preferred)].filter(Boolean);
+  for (const src of candidates) {
+    const result = await fetchSource(src, net, now);
+    if (!result.ok) continue;
+    const fresh = buildFreeData([result], now);
+    const channel = fresh.ch.kanald;
+    if (!channel || !channel.p.length) continue;
+    const p = channel.p.map((row, i, list) => {
+      const next = list[i + 1];
+      const end = next && next[0] > row[0] ? Math.min(row[1], next[0]) : row[1];
+      return [row[0], end, ...row.slice(2)];
+    });
+    return { ...data, at: now, ch: { ...data.ch, kanald: { ...channel, p } }, kanalDRefreshed: true, kanalDFixVersion: 2 };
+  }
+  return { ...data, kanalDFixVersion: 2 };
 }
 
 export function validateFree(data, now = Date.now()) {
