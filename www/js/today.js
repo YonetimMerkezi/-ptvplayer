@@ -42,8 +42,8 @@ export function kindOf(p) {
   if (RE_SPORT_TITLE.test(t) && !RE_NEWS.test(t)) return 'spor';
   if (RE_NEWS.test(c) || RE_NEWS.test(t)) return '';
 
-  if (/\\b(film|filmi|movie|movies|sinema|cinema)\\b/.test(c) || RE_FILM_TITLE.test(t)) return 'film';
   if (['film', 'filmi', 'movie', 'movies', 'sinema', 'cinema'].some((word) => c.includes(word)) || RE_FILM_TITLE.test(t)) return 'film';
+  const sharedFilmGenre = RE_FILM_CAT.test(c) || RE_FILM_CAT.test(d);
   if (sharedFilmGenre && RE_EPISODE.test(t)) return 'dizi';
   if (RE_NON_FILM.test(c) || RE_NON_FILM.test(t)) return '';
 
