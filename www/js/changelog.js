@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 97,
+    title: 'Film yayın akışı saatleri düzeltildi',
+    items: [
+      'Film kaynağından gelen HH:MM yayın saatleri artık doğru ayrıştırılır ve kanal eşleştirmesine aktarılır; bu nedenle harici film listesinin boş kalmasına yol açan hata giderildi'
+    ],
+  },
+  {
     id: 96,
     title: 'Film listesi ve FB TV sınıflandırması düzeltildi',
     items: [
