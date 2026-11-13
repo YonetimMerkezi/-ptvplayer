@@ -64,10 +64,10 @@ test('todayRows: bugünün programları tür ve zamana göre; biten gizli, şimd
     { id: 'a', p: { s: H(26), e: H(27), t: 'Yarın dizi', d: '', c: 'Dizi' } },
   ];
   const r = todayRows({ entries, kind: 'dizi', now: NOW });
-  assert.deepEqual(r.rows.map((x) => [x.p.t, x.state]), [['Şimdi Dizi', 'now'], ['Akşam Dizi', 'next']]);
+  assert.deepEqual(r.rows.map((x) => [x.p.t, x.state]), [['Şimdi Dizi', 'now'], ['Dizi yayını', 'next'], ['Akşam Dizi', 'next']]);
   assert.deepEqual(r.counts, { spor: 1, film: 2, dizi: 3 });
   const all = todayRows({ entries, kind: 'dizi', now: NOW, includePast: true });
-  assert.deepEqual(all.rows.map((x) => [x.p.t, x.state]), [['Biten Dizi', 'past'], ['Şimdi Dizi', 'now'], ['Akşam Dizi', 'next']]);
+  assert.deepEqual(all.rows.map((x) => [x.p.t, x.state]), [['Biten Dizi', 'past'], ['Şimdi Dizi', 'now'], ['Dizi yayını', 'next'], ['Akşam Dizi', 'next']]);
   const tomorrow = todayRows({ entries, kind: 'dizi', now: NOW, day: 1 });
   assert.deepEqual(tomorrow.rows.map((x) => x.p.t), ['Yarın dizi']);
   assert.deepEqual(todayRows({ entries, kind: 'film', now: NOW }).rows.map((x) => x.p.t), ['Özel Gösterim', 'Film X']);
