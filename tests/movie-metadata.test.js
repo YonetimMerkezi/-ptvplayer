@@ -48,3 +48,19 @@ test('kimlik uyuşmazlığında puan döndürmez', async () => {
     : { meta: { id: 'tt1375666', imdb_id: 'tt1375666', imdbRating: '8.8' } } };
   assert.equal(await loadMovieMetadata(net, { name: 'The Shawshank Redemption' }, { year: '1994' }), null);
 });
+
+test('film kimliği ve IMDb puanı kalıcı önbelleğe yazılır', async () => {
+  let saved = null;
+  const store = { cache: {
+    get: async () => null,
+    set: async (key, value) => { saved = { key, value }; },
+  } };
+  const net = { json: async (url) => url.includes('/catalog/')
+    ? { metas: [{ name: 'The Matrix', year: '1999', imdb_id: 'tt0133093' }] }
+    : { meta: { id: 'tt0133093', imdb_id: 'tt0133093', imdbRating: '8.7', year: '1999', name: 'The Matrix' } } };
+  const meta = await loadMovieMetadata(net, { name: 'The Matrix' }, { year: '1999' }, store);
+  assert.equal(meta.imdbId, 'tt0133093');
+  assert.match(saved.key, /^movie-metadata:v1:/);
+  assert.equal(saved.value.value.imdbRating, '8.7');
+  assert.ok(saved.value.savedAt > 0);
+});
