@@ -7,6 +7,7 @@ test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
   for (const n of ['Sinema TV', 'Sinema 2', 'beIN Movies', 'beIN Movies Stars', 'MovieSmart Action', 'FilmBox Premium']) assert.equal(channelKind(n), 'film', n);
   for (const n of ['beIN Series', 'beIN Series 1']) assert.equal(channelKind(n), 'dizi', n);
   assert.equal(channelKind('A Para'), 'ignore');
+  assert.equal(channelKind('FB TV HD'), 'spor');
   assert.equal(channelKind('S Sport 2'), 'spor');
   assert.equal(channelKind('A Spor HEVC'), 'spor');
   assert.equal(channelKind('beIN Sports 2 Premium'), 'spor');
@@ -64,6 +65,7 @@ test('todayRows: bugünün programları tür ve zamana göre; biten gizli, şimd
     { id: 'series-channel', channel: 'beIN Series 1', p: prog(17, 18, 'Dizi yayını', 'Drama') },
     { id: 'sport-channel', channel: 'beIN Sports 2 Premium', p: prog(16, 18, 'Antalyaspor - Bodrum FK', 'Dizi') },
     { id: 'economy-channel', channel: 'A Para', p: prog(16, 18, 'Gün Ortası', 'Film') },
+    { id: 'fb-channel', channel: 'FB TV HD', p: prog(17, 19, 'Hazırlık Maçları', 'Dizi') },
     { id: 'c', p: prog(17, 19, 'Maç', 'Spor') },
     { id: 'c', p: prog(19, 20, 'Belgesel', 'Belgesel') },
     { id: 'a', p: { s: H(26), e: H(27), t: 'Yarın dizi', d: '', c: 'Dizi' } },
@@ -77,7 +79,7 @@ test('todayRows: bugünün programları tür ve zamana göre; biten gizli, şimd
   assert.deepEqual(tomorrow.rows.map((x) => x.p.t), ['Yarın dizi']);
   assert.deepEqual(todayRows({ entries, kind: 'film', now: NOW }).rows.map((x) => x.p.t), ['Özel Gösterim', 'Film X']);
   assert.equal(todayRows({ entries, kind: 'dizi', now: NOW }).rows.some((x) => x.id === 'series-channel'), true);
-  assert.equal(todayRows({ entries, kind: 'dizi', now: NOW }).rows.some((x) => x.id === 'sport-channel'), false);
+  assert.equal(todayRows({ entries, kind: 'dizi', now: NOW }).rows.some((x) => x.id === 'sport-channel' || x.id === 'fb-channel'), false);
   assert.equal(todayRows({ entries, kind: 'film', now: NOW }).rows.some((x) => x.id === 'sport-channel' || x.id === 'economy-channel'), false);
 });
 
