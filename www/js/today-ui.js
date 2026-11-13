@@ -155,6 +155,14 @@ export function openToday(env) {
       el.innerHTML = '<div class="empty"><h3>Film yayın akışı yükleniyor…</h3><p>TV yayın akışı kaynağından bugünün filmleri alınıyor.</p></div>';
       return;
     }
+    if (kind === 'film' && day === 0 && filmSource.error && !filmSource.loaded) {
+      el.innerHTML = `<div class="empty"><h3>Film yayın akışı alınamadı</h3><p>${esc(filmSource.error)}</p><button class="btn sm" data-film-refresh>Tekrar dene</button></div>`;
+      return;
+    }
+    if (kind === 'film' && day === 0 && filmSource.loaded && filmSource.films.length && !filmSource.entries.length) {
+      el.innerHTML = `<div class="empty"><h3>${filmSource.films.length} film bulundu, kanal eşleşmedi</h3><p>Yayın akışı alındı ancak listedeki kanal adları canlı kanal listenizle eşleşmedi. Film kanalları listesini ve kanal adlarını kontrol edin.</p><button class="btn sm" data-film-refresh>Yenile</button></div>`;
+      return;
+    }
     if (!ready) {
       el.innerHTML = '<div class="empty"><h3>TV rehberi yok</h3><p>Programlar TV rehberinden gelir. Ayarlar &gt; TV rehberi bölümünden rehber adresi ekleyin ya da listenizin rehberini yenileyin.</p></div>';
       return;
