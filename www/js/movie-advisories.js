@@ -92,11 +92,13 @@ export function translateScreenwiseText(value) {
 export function classifyScreenwiseWarning(value, index = 0) {
   const s = String(value || '').toLowerCase();
   if (/language|profan|swear|heavy language|argo|küfür/.test(s)) return { category: 'language', label: 'Ağır dil ve argo', icon: 'message-circle-warning' };
-  if (/violence|gore|blood|injur|physically intense|accident|şiddet|yaralan|kaza/.test(s)) return { category: 'violence', label: 'Şiddet ve yaralanma', icon: 'shield-alert' };
-  if (/anxiety|fear|scary|disturb|tension|gerilim|korku|rahatsız/.test(s)) return { category: 'fear', label: 'Korku ve yoğun gerilim', icon: 'brain' };
+  if (/violence|gore|blood|injur|physically intense|accident|cyborg|limb|sever|brutal|şiddet|yaralan|kaza/.test(s)) return { category: 'violence', label: 'Şiddet ve yaralanma', icon: 'shield-alert' };
+  if (/anxiety|fear|scary|disturb|upset|animal|dog|gerilim|korku|rahatsız|üzebilir/.test(s)) return { category: 'fear', label: 'Korku ve yoğun gerilim', icon: 'brain' };
   if (/sex|sexual|nudity|cinsellik|çıplak/.test(s)) return { category: 'sex', label: 'Cinsellik ve çıplaklık', icon: 'eye-off' };
   if (/drug|alcohol|substance|madde|alkol/.test(s)) return { category: 'drugs', label: 'Alkol ve madde kullanımı', icon: 'flask-conical' };
-  if (/discriminat|racis|ayrımcılık|ırkç/.test(s)) return { category: 'discrimination', label: 'Ayrımcılık', icon: 'users' };
+  if (/discriminat|racis|class inequality|exploitation|sınıf eşitsizliği|sömürü|ayrımcılık|ırkç/.test(s)) return { category: 'social', label: 'Toplumsal temalar', icon: 'users' };
+  if (/romance subplot|romance|romantic|romantik/.test(s)) return { category: 'romance', label: 'Romantik içerik', icon: 'heart' };
+  if (/cliffhanger|sequel|final|devam fil/i.test(s)) return { category: 'ending', label: 'Final ve devam hikâyesi', icon: 'flag' };
   return { category: 'general', label: 'İçerik uyarısı ' + (index + 1), icon: 'info' };
 }
 
@@ -147,6 +149,39 @@ function fallbackTranslate(value) {
     [/severed/ig, 'koparılmış'],
     [/crushed/ig, 'ezilmiş'],
     [/disturbing scene/ig, 'rahatsız edici sahne'],
+    [/Intense violence throughout[—-]?/ig, 'Film boyunca yoğun şiddet: '],
+    [/cyborg bodies/ig, 'sibernetik bedenler'],
+    [/are torn apart/ig, 'parçalara ayrılıyor'],
+    [/limbs severed/ig, 'uzuvlar koparılıyor'],
+    [/faces crushed/ig, 'yüzler eziliyor'],
+    [/minimal blood but maximum brutality/ig, 'kan az olsa da şiddet son derece sert'],
+    [/A disturbing scene involving a dog/ig, 'Bir köpeğin yer aldığı rahatsız edici bir sahne'],
+    [/that may upset animal-loving kids/ig, 'hayvanları seven çocukları üzebilir'],
+    [/Dark dystopian themes of class inequality and exploitation/ig, 'Sınıf eşitsizliği ve sömürü üzerine karanlık distopik temalar'],
+    [/The romance subplot feels a bit forced and may make teens roll their eyes/ig, 'Romantik yan hikâye biraz zorlama hissettirebilir ve gençlere yapay gelebilir'],
+    [/Ends on a cliffhanger that never got resolved/ig, 'Film, çözüme kavuşmayan ucu açık bir finalle sona eriyor'],
+    [/sequel unlikely at this point/ig, 'bu aşamada devam filminin gelmesi beklenmiyor'],
+    [/Intense violence/ig, 'Yoğun şiddet'],
+    [/throughout/ig, 'film boyunca'],
+    [/cyborg/ig, 'sibernetik'],
+    [/bodies/ig, 'bedenler'],
+    [/torn apart/ig, 'parçalara ayrılmış'],
+    [/limbs/ig, 'uzuvlar'],
+    [/faces/ig, 'yüzler'],
+    [/brutality/ig, 'acımasızlık'],
+    [/A disturbing scene/ig, 'Rahatsız edici bir sahne'],
+    [/involving a dog/ig, 'bir köpeğin yer aldığı'],
+    [/may upset/ig, 'üzebilir'],
+    [/animal-loving kids/ig, 'hayvanları seven çocuklar'],
+    [/Dark dystopian themes/ig, 'Karanlık distopik temalar'],
+    [/class inequality/ig, 'sınıf eşitsizliği'],
+    [/romance subplot/ig, 'romantik yan hikâye'],
+    [/feels a bit forced/ig, 'biraz zorlama hissettiriyor'],
+    [/may make teens roll their eyes/ig, 'gençlere yapay gelebilir'],
+    [/Ends on a cliffhanger/ig, 'Ucu açık bir finalle sona eriyor'],
+    [/that never got resolved/ig, 'çözüme kavuşmayan'],
+    [/sequel unlikely at this point/ig, 'bu aşamada devam filminin gelmesi beklenmiyor'],
+
   ];
   for (const [re, tr] of rules) s = s.replace(re, tr);
   return s;
@@ -193,7 +228,7 @@ async function loadScreenwise(net, meta, title, record) {
 }
 export async function loadMovieAdvisories(net, store, meta, item) {
   if (!meta || !/^tt\d+$/.test(String(meta.imdbId || ''))) return null;
-  const key = 'movie-advisory:v2:' + meta.imdbId;
+  const key = 'movie-advisory:v3:' + meta.imdbId;
   const cached = await store.cache.get(key).catch(() => null);
   const hasUsefulData = (r) => !!(r && ((r.warnings && r.warnings.length) || (r.ratings && r.ratings.length) || r.guidance));
   const ttl = hasUsefulData(cached) ? TTL_FOUND : TTL_EMPTY;
