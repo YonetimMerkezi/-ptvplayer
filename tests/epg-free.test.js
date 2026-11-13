@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { createNet } from '../www/js/net.js';
 import {
   istDate, istDayStart, freeWindow, chanKey, parseTvdebugun, parseTvdebugunList, fetchSource, sameSlot, mergePrograms, buildFreeData, validateFree,
-  matchFree, mergeEpgData, loadFreeData, probeFreeSources, FREE_SOURCES, AGG_URLS, MIN_CHANNELS,
+  matchFree, mergeEpgData, loadFreeData, probeFreeSources, FREE_SOURCES, AGG_URLS, MIN_CHANNELS, kanalDNeedsRepair,
 } from '../www/js/epg-free.js';
 import { EpgView } from '../www/js/catalog.js';
 
@@ -446,4 +446,21 @@ test('buildFreeData: Kanal D program saatlerinde EPGShare akışını tercih ede
   const rows = data.ch.kanald.p;
   assert.equal(rows.find((x) => x[2] === "Beyaz'la Joker")[1] - rows.find((x) => x[2] === "Beyaz'la Joker")[0], 3.25 * 3600e3);
   assert.ok(rows.some((x) => x[2] === 'Daha 17'));
+});
+
+test('kanalDNeedsRepair: uzun haber/yarışma bloklarını yakalar, doğru süreleri kabul eder', () => {
+  const now = Date.UTC(2026, 10, 13, 15, 0); // 18.00 İstanbul
+  const news = Date.UTC(2026, 10, 13, 16, 0); // 19.00 İstanbul
+  const joker = Date.UTC(2026, 10, 13, 17, 0); // 20.00 İstanbul
+  const bad = { ch: { kanald: { p: [
+    [news, joker, 'Kanal D Ana Haber', '', 'Haber'],
+    [joker, joker + 6 * 3600e3, "Beyaz'la Joker", '', 'Yarışma'],
+  ] } } };
+  const good = { ch: { kanald: { p: [
+    [news, joker, 'Kanal D Ana Haber', '', 'Haber'],
+    [joker, joker + 3.25 * 3600e3, "Beyaz'la Joker", '', 'Yarışma'],
+    [joker + 3.25 * 3600e3, joker + 6 * 3600e3, 'Daha 17', '', 'Dizi'],
+  ] } } };
+  assert.equal(kanalDNeedsRepair(bad, now), true);
+  assert.equal(kanalDNeedsRepair(good, now), false);
 });
