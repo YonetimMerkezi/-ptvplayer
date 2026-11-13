@@ -14,6 +14,13 @@ test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
   assert.equal(channelKind('beIN Sports 2 Premium'), 'spor');
 });
 
+
+test('ülke öneki eklenmiş spor kanalları dizi türüne karışmaz', () => {
+  for (const name of ['TR: SPORTS TV HD', 'TR: S SPORT 2 HD', 'TR: beIN SPORTS 2 Premium', 'TR: A SPOR HD']) {
+    assert.equal(channelKind(name), 'spor', name);
+  }
+});
+
 test('kindOf: rehber kategorisi önceliklidir (Türkçe/İngilizce)', () => {
   assert.equal(kindOf({ t: 'X', c: 'Dizi' }), 'dizi');
   assert.equal(kindOf({ t: 'X', c: 'Drama / Series' }), 'dizi');
