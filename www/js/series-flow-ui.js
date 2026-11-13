@@ -6,6 +6,7 @@ import { WEEKDAYS, dayIndex, loadSeriesWeek, isSportsChannel } from './series-fl
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 import { MATCH_LEAD_DEFAULT, leadLabel } from './plan.js';
+import { normalizeFollowed, toggleFollowed, isFollowed, buildNewEpisodePlans, followKey } from './series-follow.js';
 
 const CACHE_KEY = 'series-flow:v1';
 const FRESH_MS = 3 * 3600e3;
@@ -35,6 +36,9 @@ export function openSeriesFlow(env) {
   let alignToNow = true;
   let chan = ''; // kanal süzgeci ('' = hepsi)
   let showDiag = false; // kaynak ayrıntısı (neden yedek kaynak, ayrıştırıcının gördüğü ham kartlar)
+  const FOLLOW_KEY = 'series.followed.v1';
+  let followed = normalizeFollowed(store.pref(FOLLOW_KEY, []));
+  const saveFollowed = () => store.setPref(FOLLOW_KEY, followed);
 
   const page = openPage({
     title: 'Dizi akışı',
@@ -64,6 +68,13 @@ export function openSeriesFlow(env) {
       return new Set();
     }
   };
+
+  function syncFollowReminders() {
+    if (!data || !env.reminders) return;
+    const existing = env.reminders.list() || [];
+    const plans = buildNewEpisodePlans(data.days || [], followed, env.liveItems ? env.liveItems() : [], existing, now());
+    for (const plan of plans) env.reminders.set(plan);
+  }
 
   function rowsOfDay() {
     if (!data) return [];
@@ -122,12 +133,13 @@ export function openSeriesFlow(env) {
         const state = pos !== 0 || s == null ? '' : t >= endAt ? 'past' : t >= s ? 'now' : '';
         const canBell = env.reminders && s != null && s > t && !r.off;
         const on = ids.has(REM_PREFIX + s + ':' + r.slug);
+        const following = isFollowed(followed, r.title);
         const sub = [r.ep, r.status].filter(Boolean).join(' · ');
         const channelItem = channelsByName(env.liveItems ? env.liveItems() : [], [r.channel])[0];
         const channelMark = channelItem ? `<span class="sf-channel">${channelItem.logo ? `<img src="${esc(channelItem.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span>${esc(r.channel)}</span></span>` : `<span>${esc(r.channel)}</span>`;
         return `<div class="td-r sf-r ${state}${r.off ? ' off' : ''}" role="button" tabindex="0" data-i="${i}">
           <div class="td-t"><time>${esc(r.time || '—')}</time>${state === 'now' ? '<b class="td-now">ŞİMDİ</b>' : ''}</div>
-          <div class="td-m"><b>${esc(r.title)}</b><span>${channelMark}${sub ? ` · ${esc(sub)}` : ''}</span></div>${canBell ? `<button class="sp-bell${on ? ' on' : ''}" tabindex="0" data-bell aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}">${icon('bell')}</button>` : ''}</div>`;
+          <div class="td-m"><b>${esc(r.title)}</b><span>${channelMark}${sub ? ` · ${esc(sub)}` : ''}</span></div><button class="sp-bell sf-follow${following ? ' on' : ''}" tabindex="0" data-follow aria-pressed="${following}" aria-label="${following ? 'Dizi takibini bırak' : 'Diziyi takip et'}" title="${following ? 'Takip ediliyor' : 'Diziyi takip et'}">${icon(following ? 'star-on' : 'star')}</button>${canBell ? `<button class="sp-bell${on ? ' on' : ''}" tabindex="0" data-bell aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}">${icon('bell')}</button>` : ''}</div>`;
       })
       .join('');
     el._rows = rows;
@@ -163,12 +175,26 @@ export function openSeriesFlow(env) {
       data = { at: now(), weekKey: weekKey(now()), ...r };
       err = null;
       persist();
+      syncFollowReminders();
     } catch (e) {
       err = e;
       if (force && env.toast) env.toast('Dizi akışı güncellenemedi', 2200);
     } finally {
       busy = false;
     }
+    draw();
+  }
+
+  function toggleFollow(r) {
+    const before = isFollowed(followed, r.title);
+    followed = toggleFollowed(followed, r);
+    saveFollowed();
+    if (before && env.reminders) {
+      const key = followKey(r.title);
+      const stale = (env.reminders.list() || []).filter((p) => p && p.followKey === key);
+      for (const p of stale) env.reminders.remove(p.id);
+    } else syncFollowReminders();
+    env.toast && env.toast(before ? r.title + ' takibi bırakıldı' : r.title + ' takipte · yeni bölüm bildirimi açık', 2200);
     draw();
   }
 
@@ -214,6 +240,7 @@ export function openSeriesFlow(env) {
     if (!row) return;
     const r = (q('#sf-list')._rows || [])[Number(row.dataset.i)];
     if (!r) return;
+    if (e.target.closest('[data-follow]')) return toggleFollow(r);
     if (e.target.closest('[data-bell]')) return toggleBell(r, dayOf(pos).from);
     const items = channelsByName(env.liveItems ? env.liveItems() : [], [r.channel]);
     if (!items.length) return env.toast && env.toast(`${r.channel || 'Kanal'} listenizde bulunamadı`, 2400);
@@ -239,6 +266,7 @@ export function openSeriesFlow(env) {
       /* kayıtlı veri yok */
     }
     draw();
+    syncFollowReminders();
     if (!data || now() - data.at > FRESH_MS) refresh();
   })();
 
