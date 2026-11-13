@@ -1882,6 +1882,7 @@ async function openToday() {
   try {
     const m = await import('./today-ui.js');
     m.openToday({
+      net,
       liveItems: () => visibleAll('live'),
       epgReady: () => S.epg.ready,
       listFor: (it) => S.epg.listFor(it),
