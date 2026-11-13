@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 101,
+    title: 'Kanal D yayın akışı düzeltildi',
+    items: [
+      'Kanal D için harici EPG birleştirmesinde EPGShare program saatleri önceliklendirildi',
+      'Kanal D Ana Haber ve Beyaz’la Joker programlarının hatalı uzayan bitiş süreleri düzeltildi',
+      'Güller ve Günahlar, Daha 17 ve diğer bilinen Kanal D dizileri Bugün TV’de Dizi alanında gösterilir; haber ve yarışmalar dizi sayılmaz'
+    ],
+  },
+
+  {
     id: 100,
     title: 'Eksik kanallar için harici EPG desteği',
     items: [
