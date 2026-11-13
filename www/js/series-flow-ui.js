@@ -67,7 +67,13 @@ export function openSeriesFlow(env) {
   function rowsOfDay() {
     if (!data) return [];
     const { idx } = dayOf(pos);
-    return (data.days[idx] || []).filter((r) => !chan || r.channel === chan);
+    return (data.days[idx] || []).filter((r) => {
+      if (chan && r.channel !== chan) return false;
+      if (pos !== 0) return true;
+      const s = r.startAt || startOf(istDayStart(now(), 0), r.time);
+      const e = r.endAt || (s == null ? null : s + SHOW_MS);
+      return e == null || e > now();
+    });
   }
 
   function draw() {
@@ -121,10 +127,12 @@ export function openSeriesFlow(env) {
         const state = pos !== 0 || s == null ? '' : t >= endAt ? 'past' : t >= s ? 'now' : '';
         const canBell = env.reminders && s != null && s > t && !r.off;
         const on = ids.has(REM_PREFIX + s + ':' + r.slug);
-        const sub = [r.channel, r.ep, r.status].filter(Boolean).join(' · ');
+        const sub = [r.ep, r.status].filter(Boolean).join(' · ');
+        const channelItem = channelsByName(env.liveItems ? env.liveItems() : [], [r.channel])[0];
+        const channelMark = channelItem ? `<span class="sf-channel">${channelItem.logo ? `<img src="${esc(channelItem.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span>${esc(r.channel)}</span></span>` : `<span>${esc(r.channel)}</span>`;
         return `<div class="td-r sf-r ${state}${r.off ? ' off' : ''}" role="button" tabindex="0" data-i="${i}">
           <div class="td-t"><time>${esc(r.time || '—')}</time>${state === 'now' ? '<b class="td-now">ŞİMDİ</b>' : ''}</div>
-          <div class="td-m"><b>${esc(r.title)}</b><span>${esc(sub)}</span></div>${canBell ? `<button class="sp-bell${on ? ' on' : ''}" tabindex="-1" data-bell aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}">${icon('bell')}</button>` : ''}</div>`;
+          <div class="td-m"><b>${esc(r.title)}</b><span>${channelMark}${sub ? ` · ${esc(sub)}` : ''}</span></div>${canBell ? `<button class="sp-bell${on ? ' on' : ''}" tabindex="0" data-bell aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Dizi için hatırlat'}">${icon('bell')}</button>` : ''}</div>`;
       })
       .join('');
     el._rows = rows;
