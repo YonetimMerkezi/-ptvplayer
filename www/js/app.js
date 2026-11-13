@@ -1607,8 +1607,9 @@ async function paintMovieAdvisories(body, meta, failure = '') {
   const hasRecord = !!(warnings.length || ratings.length);
   host.innerHTML = (hasRecord
     ? ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
-        const label = advisoryLabel(w.category || w.type);
-        const level = advisoryLevel(w.level || w.severity);
+        const smart = advisorySmart(w);
+        const label = smart.label;
+        const level = advisoryLevel(w.level || w.severity) || smart.level;
         return '<span class="mv-warning-chip">' + icon(w.icon || advisorySmart(w).icon) + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
       }).join('')
     : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : (failure || 'İçerik uyarıları kontrol ediliyor')) + '</span>') +
@@ -1617,9 +1618,10 @@ async function paintMovieAdvisories(body, meta, failure = '') {
   $('#mv-warning-info', host).addEventListener('click', () => {
     const ratingRows = ratings.map((r) => '<article class="mv-warning-detail"><div><b>Türkiye yaş sınıflandırması</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
     const rows = ratingRows + warnings.map((w) => {
-      const label = w.label || advisoryLabel(w.category || w.type);
-      const level = advisoryLevel(w.level || w.severity);
-      const detail = w.details || w.description || w.summary || '';
+      const smart = advisorySmart(w);
+      const label = smart.label;
+      const level = advisoryLevel(w.level || w.severity) || smart.level;
+      const detail = advisoryTr(w.details || w.description || w.summary || '');
       const source = w.source || 'Kaynak belirtilmemiş';
       const glyph = icon(w.icon || smart.icon);
       return '<article class="mv-warning-detail"><div><b>' + glyph + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + (w.url ? ' · <a href="' + esc(w.url) + '" target="_blank" rel="noopener">Kaynağı aç</a>' : '') + '</small></article>';
