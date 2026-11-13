@@ -1578,14 +1578,12 @@ function openMovie(it) {
       const plot = $('#mv-plot', body);
       loadVodInfo(S.source, net, it)
         .then((info) => {
-          if (!info) {
-            plot.textContent = it.plot || 'Bu kaynak film özeti sağlamıyor.';
-            return;
+          plot.textContent = (info && info.plot) || it.plot || 'Bu kaynak film özeti sağlamıyor.';
+          if (info) {
+            $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
+            $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
           }
-          plot.textContent = info.plot || it.plot || 'Bu film için özet bulunamadı.';
-          $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
-          $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
-          const picks = recommendMovies(it, info, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
+          const picks = recommendMovies(it, info || {}, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
           const section = $('#mv-similar', body);
           const row = $('#mv-similar-row', body);
           if (picks.length) {
