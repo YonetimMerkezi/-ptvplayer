@@ -122,6 +122,55 @@ export function parseScreenwiseMedia(media, sourceUrl = SCREENWISE) {
     warnings,
   };
 }
+
+const translationCache = new Map();
+function fallbackTranslate(value) {
+  let s = translateScreenwiseText(value);
+  const rules = [
+    [/Intense violence throughout/ig, 'Film boyunca yoğun şiddet'],
+    [/cyborg bodies are torn apart/ig, 'sibernetik bedenler parçalanıyor'],
+    [/limbs severed/ig, 'uzuvlar koparılıyor'],
+    [/faces crushed/ig, 'yüzler eziliyor'],
+    [/minimal blood but maximum brutality/ig, 'kan az olsa da şiddet son derece sert'],
+    [/A disturbing scene involving a dog/ig, 'Bir köpeğin yer aldığı rahatsız edici bir sahne'],
+    [/may upset animal-loving kids/ig, 'hayvanları seven çocukları üzebilir'],
+    [/Dark dystopian themes of class inequality and exploitation/ig, 'Sınıf eşitsizliği ve sömürü üzerine karanlık distopik temalar'],
+    [/The romance subplot feels a bit forced and may make teens roll their eyes/ig, 'Romantik yan hikâye biraz zorlama hissettirebilir ve gençlere yapay gelebilir'],
+    [/Ends on a cliffhanger that never got resolved/ig, 'Film, devamı gelmeyen ve çözüme kavuşmayan bir finalle sona eriyor'],
+    [/sequel unlikely at this point/ig, 'bu aşamada devam filminin gelmesi beklenmiyor'],
+    [/violence throughout/ig, 'film boyunca şiddet'],
+    [/animal-loving kids/ig, 'hayvanları seven çocuklar'],
+    [/class inequality/ig, 'sınıf eşitsizliği'],
+    [/exploitation/ig, 'sömürü'],
+    [/romance subplot/ig, 'romantik yan hikâye'],
+    [/cliffhanger/ig, 'ucu açık final'],
+    [/severed/ig, 'koparılmış'],
+    [/crushed/ig, 'ezilmiş'],
+    [/disturbing scene/ig, 'rahatsız edici sahne'],
+  ];
+  for (const [re, tr] of rules) s = s.replace(re, tr);
+  return s;
+}
+async function translateAdvisoryText(net, value) {
+  const original = String(value || '').trim();
+  if (!original || !/[a-z]{3}/i.test(original)) return original;
+  if (translationCache.has(original)) return translationCache.get(original);
+  try {
+    const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=' + encodeURIComponent(original.slice(0, 1800));
+    const data = await net.json(url, { fast: true });
+    const translated = Array.isArray(data) && Array.isArray(data[0])
+      ? data[0].map((part) => Array.isArray(part) ? part[0] : '').join('').trim()
+      : '';
+    if (translated && translated.length > 2) {
+      translationCache.set(original, translated);
+      return translated;
+    }
+  } catch (_) { /* çevrimdışı veya servis hatasında yerel sözlük devreye girer */ }
+  const translated = fallbackTranslate(original);
+  translationCache.set(original, translated);
+  return translated;
+}
+
 async function loadScreenwise(net, meta, title, record) {
   const searchUrl = SCREENWISE + '/api/v1/media/search?imdb_id=' + encodeURIComponent(meta.imdbId) + '&type=movie';
   const search = await net.json(searchUrl, { fast: true });
@@ -138,8 +187,9 @@ async function loadScreenwise(net, meta, title, record) {
     return;
   }
   record.sources.screenwise = { status: 'found', checkedAt: Date.now(), url: parsed.url, matchConfidence: Number(match.matchConfidence), title: parsed.title || title };
+  for (const warning of parsed.warnings) warning.details = await translateAdvisoryText(net, warning.originalDetails || warning.details);
   record.warnings.push(...parsed.warnings);
-  if (parsed.wise) record.guidance = { source: 'Screenwise', url: parsed.url, score: parsed.wise.overall, summary: parsed.wise.oneLiner, ageFit: parsed.wise.ageFit };
+  if (parsed.wise) record.guidance = { source: 'Screenwise', url: parsed.url, score: parsed.wise.overall, summary: await translateAdvisoryText(net, parsed.wise.oneLiner), ageFit: await translateAdvisoryText(net, parsed.wise.ageFit) };
 }
 export async function loadMovieAdvisories(net, store, meta, item) {
   if (!meta || !/^tt\d+$/.test(String(meta.imdbId || ''))) return null;
