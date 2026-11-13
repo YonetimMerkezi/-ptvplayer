@@ -134,6 +134,12 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
       }
       id = match && String(match.imdb_id || match.id || '');
     }
+    if (!/^tt\d+$/.test(id)) {
+      for (const candidate of candidateTitles) {
+        const resolved = await resolveMovieWithWikidata(net, candidate, year);
+        if (resolved) { id = resolved.imdbId; break; }
+      }
+    }
     if (!/^tt\d+$/.test(id)) return null;
 
     const detail = await net.json(`${BASE}/meta/movie/${encodeURIComponent(id)}.json`);
