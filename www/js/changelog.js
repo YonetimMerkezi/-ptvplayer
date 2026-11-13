@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 96,
+    title: 'Film listesi ve FB TV sınıflandırması düzeltildi',
+    items: [
+      'Boş veya sıfır uzunlukta kayıtlı Film kanalı tercihi artık otomatik kanal seçimi olarak değerlendirilir; Film sayacının yanlışlıkla sıfır kalması önlenir',
+      'TR: gibi ülke ön ekleri bulunan FB TV kanal adları da Spor olarak tanınır ve Dizi listesinden çıkarılır'
+    ],
+  },
+  {
     id: 95,
     title: 'Film yayın akışı kaynağı eklendi',
     items: [
