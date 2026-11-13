@@ -7,6 +7,7 @@ import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 import { makePlan, planId } from './plan.js';
+import { loadFilmSchedule } from './today-film-source.js';
 
 const KIND_EMPTY = { spor: 'spor', film: 'film', dizi: 'dizi' };
 
@@ -21,6 +22,40 @@ export function openToday(env) {
   const savedFilmChannels = env.filmChannels ? env.filmChannels() : null;
   let filmSel = savedFilmChannels == null ? null : normalizeChannels(savedFilmChannels);
   let seriesData = null;
+  let filmSource = { loaded: false, loading: false, films: [], entries: [], channels: [], error: '' };
+  let filmLoadToken = 0;
+
+  async function refreshFilmSource() {
+    if (!env.net || filmSource.loading) return;
+    const token = ++filmLoadToken;
+    filmSource = { ...filmSource, loading: true, error: '' };
+    if (root.isConnected) draw();
+    try {
+      const result = await loadFilmSchedule({ net: env.net });
+      const live = env.liveItems() || [];
+      const mapped = [];
+      const channelIds = new Set();
+      const base = new Date(now()); base.setHours(0, 0, 0, 0);
+      for (const film of result.films) {
+        const match = /^(\\d{1,2}):(\\d{2})$/.exec(film.time);
+        if (!match) continue;
+        const startDate = new Date(base);
+        startDate.setHours(Number(match[1]), Number(match[2]), 0, 0);
+        const start = startDate.getTime();
+        const channels = channelsByName(live, [film.channel], 14);
+        for (const it of channels) {
+          channelIds.add(String(it.id));
+          mapped.push({ id: it.id, channel: it.name, p: { s: start, e: start + 120 * 60000, t: film.title, d: '', c: 'Film', u: true }, sourceChannel: film.channel });
+        }
+      }
+      if (token !== filmLoadToken) return;
+      filmSource = { loaded: true, loading: false, films: result.films, entries: mapped, channels: [...channelIds], fetchedAt: result.fetchedAt, error: '' };
+    } catch (e) {
+      if (token !== filmLoadToken) return;
+      filmSource = { ...filmSource, loading: false, error: String((e && e.message) || e || 'Kaynak alınamadı') };
+    }
+    if (root.isConnected) draw();
+  }
 
   const page = openPage({
     title: 'Bugün TV’de',
@@ -92,11 +127,15 @@ export function openToday(env) {
 
   function draw() {
     const t = now();
-    const ready = env.epgReady() || !!seriesData;
+    const ready = env.epgReady() || !!seriesData || (kind === 'film' && day === 0 && filmSource.loaded);
     const allEntries = entries();
-    const filmEntries = filmSel == null
-      ? allEntries.filter((x) => channelKind(x.channel) === 'film' && kindOf(x.p) === 'film')
-      : allEntries.filter((x) => filmSel.includes(String(x.id)) && kindOf(x.p) === 'film');
+    const externalFilmDay = day === 0 && filmSource.loaded;
+    const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => !sel.length || sel.includes(String(x.id))) : [];
+    const filmEntries = externalFilmDay
+      ? sourceFilmEntries.filter((x) => filmSel == null || filmSel.includes(String(x.id)))
+      : filmSel == null
+        ? allEntries.filter((x) => channelKind(x.channel) === 'film' && kindOf(x.p) === 'film')
+        : allEntries.filter((x) => filmSel.includes(String(x.id)) && kindOf(x.p) === 'film');
     const resAll = ready ? todayRows({ entries: allEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const resFilm = ready ? todayRows({ entries: filmEntries, kind: 'film', now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const res = {
@@ -112,6 +151,10 @@ export function openToday(env) {
       (kind === 'film' ? `<button class="chip" data-film-pick>Film kanalları<small>${filmSel == null ? 'Otomatik' : filmSel.length}</small></button>` : '');
     page.setTitle(`${day ? 'Yarın' : 'Bugün'} TV’de · ${new Date(dayStart(t, day)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`);
     const el = q('#td-list');
+    if (kind === 'film' && day === 0 && filmSource.loading && !filmSource.loaded) {
+      el.innerHTML = '<div class="empty"><h3>Film yayın akışı yükleniyor…</h3><p>TV yayın akışı kaynağından bugünün filmleri alınıyor.</p></div>';
+      return;
+    }
     if (!ready) {
       el.innerHTML = '<div class="empty"><h3>TV rehberi yok</h3><p>Programlar TV rehberinden gelir. Ayarlar &gt; TV rehberi bölümünden rehber adresi ekleyin ya da listenizin rehberini yenileyin.</p></div>';
       return;
@@ -123,17 +166,20 @@ export function openToday(env) {
     }
     const map = byId();
     const reminders = reminderIds();
+    const sourceNote = kind === 'film' && day === 0 && externalFilmDay
+      ? '<p class="hint" style="padding:0 12px 8px">Kaynak: TV Yayın Akışı · ' + filmSource.films.length + ' yayın / ' + filmSource.channels.length + ' eşleşen kanal</p>'
+      : '';
     const html = res.rows
       .map(({ id, p, state }, i) => {
         const it = map.get(id);
         if (!it) return '';
         const mins = Math.max(1, Math.round((p.e - p.s) / 60000));
         return `<div class="td-r ${state}" role="button" tabindex="0" data-i="${i}">
-          <div class="td-t"><time>${fmtClock(p.s)}</time>${state === 'now' ? '<b class="td-now">ŞİMDİ</b>' : `<small>${mins} dk</small>`}</div>
+          <div class="td-t"><time>${fmtClock(p.s)}</time>${state === 'now' ? '<b class="td-now">ŞİMDİ</b>' : `<small>${p.u ? '' : `${mins} dk`}</small>`}</div>
           <div class="td-m"><b>${esc(p.t || 'Program')}</b><span>${esc(it.name)}${p.c ? ` · ${esc(p.c.split(' / ')[0])}` : ''}</span></div>${logo(it.logo, it.name)}</div>`;
       })
       .join('');
-    el.innerHTML = html + (res.truncated ? '<p class="hint td-more">Çok program var; ilk 400 gösteriliyor. Kanalları seçerek daraltın.</p>' : '');
+    el.innerHTML = sourceNote + html + (res.truncated ? '<p class="hint td-more">Çok program var; ilk 400 gösteriliyor. Kanalları seçerek daraltın.</p>' : '');
     el._rows = res.rows;
   }
 
@@ -151,8 +197,11 @@ export function openToday(env) {
     const render = () => {
       const t = fold(term);
       const items = all();
+      const pickItems = filmOnly && filmSource.loaded
+        ? [...new Map([...items, ...env.liveItems().filter((it) => filmSource.channels.includes(String(it.id)))].map((it) => [String(it.id), it])).values()]
+        : items;
       const chosen = new Set(filmOnly ? (filmSel || []) : sel);
-      const shown = items.filter((it) => !t || fold(it.name).includes(t)).sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id))).slice(0, 150);
+      const shown = pickItems.filter((it) => !t || fold(it.name).includes(t)).sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id))).slice(0, 150);
       pq('#td-ph').textContent = filmOnly ? 'Yalnız seçtiğiniz kanallardaki EPG tarafından açıkça Film/Sinema olarak tanımlanan programlar gösterilir. Tür bilgisi olmayan yayınlar tahminle eklenmez.' : (sel.length ? `${sel.length} kanal seçili. Yalnız bu kanalların programları gösterilir.` : 'Hiçbiri seçili değil: bütün rehber kanalları gösterilir. Rehberi olan kanallar listelenir.');
       pq('#td-pl').innerHTML = shown.length
         ? shown.map((it) => `<div class="td-c${chosen.has(it.id) ? ' on' : ''}" role="button" tabindex="0" data-id="${esc(it.id)}" aria-pressed="${chosen.has(it.id)}">${logo(it.logo, it.name)}<div class="td-m"><b>${esc(it.name)}</b><span>${esc(it.group || '')}</span></div><i class="td-ck">${chosen.has(it.id) ? icon('check') : ''}</i></div>`).join('')
@@ -215,6 +264,7 @@ export function openToday(env) {
       return draw();
     }
     if (e.target.closest('[data-pick]')) return pick(false);
+    if (e.target.closest('[data-film-refresh]')) return refreshFilmSource();
     if (e.target.closest('[data-film-pick]')) return pick(true);
     const r = e.target.closest('.td-r');
     if (r) {
@@ -232,6 +282,7 @@ export function openToday(env) {
   });
 
   draw();
+  if (env.net) refreshFilmSource();
   if (env.net) loadSeriesWeek({ net: env.net, nowMs: now() }).then((r) => {
     seriesData = r;
     if (root.isConnected) draw();
