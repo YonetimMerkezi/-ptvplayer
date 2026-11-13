@@ -73,8 +73,8 @@ export function parseFilmSchedule(html) {
   }
   // Sınıf adları değişse bile yayıncı kanal bağlantılarını esas al.
   if (!out.length) {
-    const anchors = [...source.matchAll(/<a\\b([^>]*href=["'][^"']*yayin-akisi[^"']*["'][^>]*)>([\\s\\S]*?)<\\/a>/gi)];
-    const timeRe = /\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b/g;
+    const anchors = [...source.matchAll(/<a\b([^>]*href=["'][^"']*yayin-akisi[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi)];
+    const timeRe = /\b([01]?\d|2[0-3]):([0-5]\d)\b/g;
     for (const a of anchors) {
       const before = source.slice(Math.max(0, a.index - 1400), a.index);
       const times = [...before.matchAll(timeRe)];
@@ -83,12 +83,12 @@ export function parseFilmSchedule(html) {
       const timeEnd = Math.max(0, a.index - 1400) + tm.index + tm[0].length;
       const rawTitle = source.slice(timeEnd, a.index);
       const title = decodeHtml(rawTitle)
-        .replace(/^(?:bugünün filmleri|yarının filmleri|filtre|değiştir)\\s*/i, '')
-        .replace(/\\s+/g, ' ').trim();
+        .replace(/^(?:bugünün filmleri|yarının filmleri|filtre|değiştir)\s*/i, '')
+        .replace(/\s+/g, ' ').trim();
       const channel = decodeHtml(a[2]);
       if (!title || !channel || title.length > 180 || channel.length > 90) continue;
       // Aradaki alan başka bir program kartını içeriyorsa yanlış eşleşmeyi atla.
-      if (/<a\\b/i.test(rawTitle) || /\\b(?:filtre|menü|kanallar)\\b/i.test(title)) continue;
+      if (/<a\b/i.test(rawTitle) || /\b(?:filtre|menü|kanallar)\b/i.test(title)) continue;
       const time = tm[0];
       const key = time + '|' + title.toLocaleLowerCase('tr-TR') + '|' + channel.toLocaleLowerCase('tr-TR');
       if (seen.has(key)) continue;
@@ -106,7 +106,7 @@ export async function loadFilmSchedule({ net, url = FILM_SCHEDULE_URL } = {}) {
   const films = parseFilmSchedule(html);
   if (!films.length) {
     const bytes = html.length;
-    const times = (html.match(/\\b(?:[01]?\\d|2[0-3]):[0-5]\\d\\b/g) || []).length;
+    const times = (html.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g) || []).length;
     const channels = (html.match(/yayin-akisi/gi) || []).length;
     throw new Error(`Film kaydı ayrıştırılamadı (HTML: ${bytes} karakter, saat: ${times}, kanal bağlantısı: ${channels}). Kaynak yanıtını kontrol edin.`);
   }
