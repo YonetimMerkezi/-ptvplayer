@@ -1,6 +1,18 @@
 // Yenilikler: en yeni üstte. id her sürümde bir artar; güncellemeden sonra görülmemiş kayıtlar bir kez gösterilir.
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
+// Yenilikler: en yeni üstte. id her sürümde bir artar; güncellemeden sonra görülmemiş kayıtlar bir kez gösterilir.
+// CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
+  {
+    id: 98,
+    title: 'Bugün TV’de film listesi eşleştirme sorunu giderildi',
+    items: [
+      'Film yayınları artık IPTV listenizde ilgili kanal bulunmasa bile saat, film adı ve yayıncı kanal adıyla listelenir',
+      'Kaynak sayfasındaki HTML yapısı değişse bile saat ve kanal bağlantılarından yedek ayrıştırma yapılır',
+      'Film sayacı kanal eşleşmesine bağlı olmadan gerçek yayın kayıtlarını sayar; eşleşen kanal varsa oynatma için kullanılır'
+    ],
+  },
+
   {
     id: 97,
     title: 'Film yayın akışı saatleri düzeltildi',
