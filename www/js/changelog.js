@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 92,
+    title: 'Bugün TV’de sinema kanalları ve dizi kanalı filtresi',
+    items: [
+      'Film sayacı için hatalı EPG kategori eşleşmesi düzeltildi; Sinema TV, beIN Movies, MovieSmart ve FilmBox gibi mevcut kanalların yayınları Film listesine eklenir',
+      'beIN Series kanalları varsa Dizi listesine alınır; S Sport, A Para ve diğer spor kanalları Dizi akışından çıkarılır'
+    ],
+  },
+  {
     id: 91,
     title: 'Bugün TV’de film sınıflandırması ve dizi takibi',
     items: [
