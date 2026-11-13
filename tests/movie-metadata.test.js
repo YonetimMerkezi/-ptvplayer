@@ -80,3 +80,17 @@ test('ayrıştırılmış IPTV başlığıyla IMDb eşleşmesi yapar', async () 
   assert.equal(meta.imdbRating, '6.8');
   assert.match(calls[0], /search=F%C3%BCnye/);
 });
+
+test('Fünye yerel adı orijinal Fuze IMDb kimliğiyle eşleşir', async () => {
+  const calls = [];
+  const net = { json: async (url) => {
+    calls.push(url);
+    return { meta: { id: 'tt31189814', imdb_id: 'tt31189814', imdbRating: '6.3', year: '2025', name: 'Fuze' } };
+  }};
+  const meta = await loadMovieMetadata(net, { name: 'Fünye | 2025 | 6.3 | HMAX' });
+  assert.equal(meta.imdbId, 'tt31189814');
+  assert.equal(meta.imdbRating, '6.3');
+  assert.equal(meta.title, 'Fuze');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /tt31189814/);
+});
