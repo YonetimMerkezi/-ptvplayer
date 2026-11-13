@@ -3,6 +3,9 @@
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels } from './today.js';
+import { loadSeriesWeek, dayIndex } from './series-flow.js';
+import { istDayStart } from './epg-free.js';
+import { channelsByName } from './sports-tv.js';
 
 const KIND_EMPTY = { spor: 'spor', film: 'film', dizi: 'dizi' };
 
@@ -14,6 +17,7 @@ export function openToday(env) {
   let day = 0;
   let past = false;
   let sel = normalizeChannels(env.channels());
+  let seriesData = null;
 
   const page = openPage({
     title: 'Bugün TV’de',
@@ -26,6 +30,25 @@ export function openToday(env) {
   const root = page.el;
   const q = (s) => $(s, root);
   const byId = () => new Map(env.liveItems().map((it) => [it.id, it]));
+  function seriesEntries() {
+    if (!seriesData || !Array.isArray(seriesData.days)) return [];
+    const from = istDayStart(now(), day);
+    const idx = dayIndex(from);
+    const items = env.liveItems() || [];
+    const out = [];
+    for (const r of seriesData.days[idx] || []) {
+      const it = channelsByName(items, [r.channel])[0];
+      if (!it || (sel.length && !sel.includes(it.id))) continue;
+      const m = /^(\\d{1,2}):(\\d{2})$/.exec(r.time || '');
+      const start = Number.isFinite(Number(r.startAt)) && r.startAt != null ? Number(r.startAt) : m
+        ? (() => { const d = new Date(from + 3 * 3600e3); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), Number(m[1]), Number(m[2])) - 3 * 3600e3; })()
+        : NaN;
+      if (!Number.isFinite(start)) continue;
+      const end = r.endAt != null && Number.isFinite(Number(r.endAt)) ? Number(r.endAt) : start + 150 * 60000;
+      out.push({ id: it.id, p: { s: start, e: end, t: r.title, d: [r.ep, r.status].filter(Boolean).join(' · '), c: 'Dizi' } });
+    }
+    return out;
+  }
 
   function entries() {
     const t = now();
@@ -35,11 +58,12 @@ export function openToday(env) {
       for (const id of sel) {
         const it = map.get(id);
         if (it) for (const p of env.listFor(it)) out.push({ id: it.id, p });
+        out.push(...seriesEntries().filter((x) => x.id === id));
       }
       return out;
     }
     const from = dayStart(t, 0);
-    return env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, p: h.p }));
+    return env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, p: h.p })).concat(seriesEntries());
   }
 
   function draw() {
@@ -160,6 +184,10 @@ export function openToday(env) {
   });
 
   draw();
+  if (env.net) loadSeriesWeek({ net: env.net, nowMs: now() }).then((r) => {
+    seriesData = r;
+    if (root.isConnected) draw();
+  }).catch(() => {});
   // şimdi/biten durumu dakikada bir yenilenir
   const timer = setInterval(() => {
     if (!root.isConnected) return clearInterval(timer);
