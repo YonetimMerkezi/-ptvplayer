@@ -3,7 +3,41 @@
 const ROOT = new URL('../data/media-catalog/', import.meta.url);
 const MANIFEST_URL = new URL('manifest.json', ROOT).href;
 const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/YonetimMerkezi/-ptvplayer/main/www/data/media-catalog/manifest.json';
-const CACHE_KEY = 'media-catalog:bundle:v1';
+const DB_NAME = 'iptv-media-catalog';
+const DB_STORE = 'bundles';
+function cachedBundle() {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const get = tx.objectStore(DB_STORE).get('current');
+        get.onsuccess = () => resolve(get.result || null);
+        get.onerror = () => resolve(null);
+        tx.oncomplete = () => db.close();
+      };
+      req.onerror = () => resolve(null);
+    } catch (_) { resolve(null); }
+  });
+}
+function saveBundle(value) {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(value, 'current');
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); resolve(); };
+      };
+      req.onerror = () => resolve();
+    } catch (_) { resolve(); }
+  });
+}
 const NORMALIZE = (v) => String(v || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 let memory = null;
 let loading = null;
@@ -25,11 +59,9 @@ async function readBundle() {
         if (body.ok) { data = await body.json(); break; }
       } catch (_) { /* sıradaki kaynak/önbellek denensin */ }
     }
-    if (!data) {
-      try { data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (_) {}
-    }
+    if (!data) data = await cachedBundle();
     memory = data && Array.isArray(data.records) ? data : { version: 0, records: [] };
-    if (data && data.records) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch (_) {} }
+    if (data && data.records) await saveBundle(data);
     return memory;
   })().finally(() => { loading = null; });
   return loading;
