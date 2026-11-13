@@ -83,7 +83,7 @@ export async function resolveMovieWithWikidata(net, title, year = 0) {
   const searchUrl = WIKIDATA + '?action=wbsearchentities&search=' + encodeURIComponent(query) + '&language=tr&uselang=tr&format=json&origin=*';
   const search = await net.json(searchUrl, { fast: true });
   const ids = (Array.isArray(search && search.search) ? search.search : [])
-    .filter((x) => x && /^Q\\d+$/.test(x.id) && /film|movie|sinema|motion picture/i.test(String(x.description || '')))
+    .filter((x) => x && /^Q\d+$/.test(x.id) && /film|movie|sinema|motion picture/i.test(String(x.description || '')))
     .slice(0, 8).map((x) => x.id);
   if (!ids.length) return null;
   const detailUrl = WIKIDATA + '?action=wbgetentities&ids=' + ids.join('|') + '&props=labels|aliases|claims&languages=tr|en&format=json&origin=*';
@@ -95,7 +95,7 @@ export async function resolveMovieWithWikidata(net, title, year = 0) {
     const names = entityTitles(entity);
     const exact = names.some((name) => cleanTitle(name) === cleanTitle(query));
     return { imdbId: typeof imdb === 'string' ? imdb : '', year: entityYear, names, exact };
-  }).filter((x) => /^tt\\d+$/.test(x.imdbId) && (!year || x.year === Number(year)) && x.exact);
+  }).filter((x) => /^tt\d+$/.test(x.imdbId) && (!year || x.year === Number(year)) && x.exact);
   return candidates.length === 1 ? candidates[0] : null;
 }
 
