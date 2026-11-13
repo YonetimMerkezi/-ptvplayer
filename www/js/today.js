@@ -23,8 +23,8 @@ const RE_NON_FILM = /\b(haber|haberleri|bulten|news|talk show|sohbet|magazin|mag
 export function channelKind(name) {
   const n = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
   if (!n) return '';
-  if (/\\b(bein series|beins series|bein series \\d+)\\b/.test(n)) return 'dizi';
-  if (/\\b(sinema|sinema tv|sinema 2|sinema aksiyon|sinema komedi|sinema yerli|sinema aile|bein movies?|bein movies stars?|moviesmart|movie smart|filmbox|film box|cine ?film|cine ?1)\\b/.test(n)) return 'film';
+  if (n === 'bein series' || n.startsWith('bein series ')) return 'dizi';
+  if (n.includes('sinema') || n.includes('bein movies') || n.includes('moviesmart') || n.includes('movie smart') || n.includes('filmbox') || n.includes('film box') || n.includes('cinefilm') || n.startsWith('cine 1')) return 'film';
   return '';
 }
 
