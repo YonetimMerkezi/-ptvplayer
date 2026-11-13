@@ -66,7 +66,8 @@ export function classifyScreenwiseWarning(value, index = 0) {
   if (/discriminat|racis|ayrımcılık|ırkç/.test(s)) return { category: 'discrimination', label: 'Ayrımcılık', icon: 'users' };
   return { category: 'general', label: 'İçerik uyarısı ' + (index + 1), icon: 'info' };
 }
-\nfunction asTextList(value) {
+
+function asTextList(value) {
   if (!Array.isArray(value)) return [];
   return value.map((x) => typeof x === 'string' ? x : x && (x.text || x.title || x.description)).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
 }
