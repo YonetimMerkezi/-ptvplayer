@@ -10,6 +10,15 @@ const yearOf = (value) => {
   const m = String(value || '').match(/(?:19|20)\d{2}/);
   return m ? Number(m[0]) : 0;
 };
+export function parseMovieCatalogTitle(value) {
+  const raw = String(value || '').trim();
+  const parts = raw.split(/\\s*\\|\\s*/).map((x) => x.trim()).filter(Boolean);
+  if (parts.length > 1 && /^(?:19|20)\\d{2}$/.test(parts[1])) {
+    return { title: parts[0], year: Number(parts[1]) };
+  }
+  const yearMatch = raw.match(/\\s*\\((19|20)\\d{2}\\)\\s*$/);
+  return { title: raw.replace(/\\s*\\((?:19|20)\\d{2}\\)\\s*$/, '').trim(), year: yearMatch ? Number(yearMatch[0].match(/\\d{4}/)[0]) : 0 };
+}
 const titleOf = (meta) => [meta && meta.name, ...(Array.isArray(meta && meta.aliases) ? meta.aliases : [])].filter(Boolean);
 
 export function matchMovieMetadata(results, title, year = 0) {
