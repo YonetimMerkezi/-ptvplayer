@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 99,
+    title: 'Film yayın akışı ayrıştırıcısı yeniden düzenlendi',
+    items: [
+      'Film kayıtları artık kanal yayın akışı bağlantıları ile hemen öncesindeki saat ve program adından da okunur',
+      'Kaynak yanıtında saat ve kanal bağlantısı sayıları gösterilerek hata teşhisi kolaylaştırıldı',
+      'Film saatlerinin ekrana aktarılmasını engelleyen zaman ayrıştırma ifadesi düzeltildi'
+    ],
+  },
+
+  {
     id: 98,
     title: 'Bugün TV’de film listesi eşleştirme sorunu giderildi',
     items: [
