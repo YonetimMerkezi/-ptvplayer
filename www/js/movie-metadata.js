@@ -5,9 +5,9 @@ const BASE = 'https://v3-cinemeta.strem.io';
 const CACHE_TTL = 30 * 86400000;
 const done = new Map();
 const busy = new Map();
-const cleanTitle = (value) => fold(String(value || '').replace(/\\s*\\(\\d{4}\\)\\s*$/, '').replace(/[._:]+/g, ' ').replace(/\\s+/g, ' ').trim());
+const cleanTitle = (value) => fold(String(value || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/[._:]+/g, ' ').replace(/\s+/g, ' ').trim());
 const yearOf = (value) => {
-  const m = String(value || '').match(/(?:19|20)\\d{2}/);
+  const m = String(value || '').match(/(?:19|20)\d{2}/);
   return m ? Number(m[0]) : 0;
 };
 const titleOf = (meta) => [meta && meta.name, ...(Array.isArray(meta && meta.aliases) ? meta.aliases : [])].filter(Boolean);
@@ -38,11 +38,11 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
   if (busy.has(key)) return busy.get(key);
 
   const task = (async () => {
-    const query = encodeURIComponent(title.replace(/\\s*\\(\\d{4}\\)\\s*$/, '').trim());
+    const query = encodeURIComponent(title.replace(/\s*\(\d{4}\)\s*$/, '').trim());
     const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
     const match = matchMovieMetadata(catalog && catalog.metas, title, year);
     const id = match && String(match.imdb_id || match.id || '');
-    if (!/^tt\\d+$/.test(id)) return null;
+    if (!/^tt\d+$/.test(id)) return null;
 
     const detail = await net.json(`${BASE}/meta/movie/${encodeURIComponent(id)}.json`);
     const meta = detail && detail.meta;
