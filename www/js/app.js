@@ -1562,6 +1562,36 @@ function movieCtx(it) {
 // Film içerik uyarıları: kaynak toplayıcı sonuçları IndexedDB'de movie-advisory:<IMDb ID> anahtarıyla saklar.
 const advisoryLabel = (v) => ({ violence: 'Şiddet', fear: 'Korku', language: 'Ağır dil', sex: 'Cinsellik', nudity: 'Çıplaklık', drugs: 'Alkol / madde', self_harm: 'Kendine zarar', discrimination: 'Ayrımcılık', flashing: 'Yanıp sönen ışıklar' }[String(v || '').toLowerCase()] || String(v || '').trim());
 const advisoryLevel = (v) => ({ low: 'Düşük', moderate: 'Orta', high: 'Yüksek', severe: 'Çok yüksek' }[String(v || '').toLowerCase()] || '');
+const advisorySmart = (warning) => {
+  const raw = String([warning && warning.category, warning && warning.label, warning && warning.details, warning && warning.description].filter(Boolean).join(' ')).toLowerCase();
+  if (/language|strong language|profan|swear|r-rating|heavy language|argo|küfür/.test(raw)) return { label: 'Ağır dil ve küfür', icon: 'message-circle-warning', level: 'Orta' };
+  if (/physically intense|gore|injur|accident|violence|violent|şiddet|kanlı|yaralanma/.test(raw)) return { label: 'Şiddet ve rahatsız edici sahneler', icon: 'shield-alert', level: 'Yüksek' };
+  if (/anxiety|anxious|fear|scary|terror|gerilim|kaygı|korku/.test(raw)) return { label: 'Yoğun kaygı ve korku', icon: 'brain', level: 'Orta' };
+  if (/sex|sexual|nudity|cinsellik|çıplak/.test(raw)) return { label: 'Cinsellik ve çıplaklık', icon: 'eye-off', level: 'Orta' };
+  if (/drug|alcohol|substance|madde|alkol/.test(raw)) return { label: 'Alkol ve madde kullanımı', icon: 'flask-conical', level: 'Orta' };
+  if (/self.harm|suicide|kendine zarar|intihar/.test(raw)) return { label: 'Kendine zarar verme', icon: 'heart-crack', level: 'Yüksek' };
+  if (/discriminat|racis|ayrımcılık|ırkçılık/.test(raw)) return { label: 'Ayrımcılık', icon: 'users', level: 'Orta' };
+  if (/negative.example|harmful.behavio|olumsuz örnek/.test(raw)) return { label: 'Olumsuz davranış örnekleri', icon: 'alert-triangle', level: 'Orta' };
+  return { label: 'İçerik hassasiyeti', icon: 'info', level: '' };
+};
+const advisoryTr = (value) => {
+  const s = String(value || '').replace(/\\*\\*/g, '').trim();
+  if (!s) return '';
+  const known = [
+    [/The R-rating is earned through heavy language and the persistent, bone-deep anxiety of the situation\\.?/i, 'R yaş sınıflandırmasının nedeni yoğun argo ve küfür kullanımı ile olayların sürekli ve derin bir kaygı yaratmasıdır.'],
+    [/Some scenes involving the construction site accident that reveals the bomb are physically intense and potentially triggering for those sensitive to workplace gore\\.?/i, 'Bombanın ortaya çıktığı inşaat alanı kazasını içeren bazı sahneler fiziksel açıdan yoğun ve iş kazası görüntülerine duyarlı kişiler için rahatsız edici olabilir.'],
+    [/Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle\\./i, 'Fuze, gösterişten çok gerçekçiliğe odaklanan, orta tempolu bir gerilim filmidir.'],
+    [/It’s the kind of movie that makes you look at every construction pit in the city a little differently\\./i, 'Film, şehirdeki inşaat alanlarına farklı gözle bakmanıza neden olabilir.'],
+    [/If you’re looking for a family movie, keep scrolling\\./i, 'Ailece izlenecek bir film arıyorsanız bu yapım uygun bir tercih olmayabilir.'],
+    [/But if you have a 16-year-old who is into history or high-stakes procedural dramas, this is a sharp, well-acted choice that avoids the typical Hollywood fluff\\./i, 'Ancak tarih veya yüksek gerilimli polisiye dramaları seven 16 yaşındaki gençler için güçlü oyunculuklara sahip, başarılı bir seçenek olabilir.'],
+    [/This is strictly for the older teen and adult crowd\\./i, 'Bu film daha büyük yaştaki gençlere ve yetişkinlere yöneliktir.'],
+    [/The R-rating isn’t just for show/i, 'R sınıflandırması yalnızca biçimsel bir uyarı değildir.'],
+  ];
+  let out = s;
+  for (const [re, tr] of known) out = out.replace(re, tr);
+  return out === s ? s.replace(/\\bR-rating\\b/gi, 'R yaş sınıflandırması').replace(/\\bheavy language\\b/gi, 'yoğun argo ve küfür').replace(/\\bphysically intense\\b/gi, 'fiziksel açıdan yoğun').replace(/\\bconstruction site\\b/gi, 'inşaat alanı').replace(/\\bworkplace gore\\b/gi, 'iş kazası görüntüleri') : out;
+};
+
 async function paintMovieAdvisories(body, meta, failure = '') {
   const host = $('#mv-advisories', body);
   if (!host || !body.isConnected) return;
@@ -1579,7 +1609,7 @@ async function paintMovieAdvisories(body, meta, failure = '') {
     ? ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
         const label = advisoryLabel(w.category || w.type);
         const level = advisoryLevel(w.level || w.severity);
-        return '<span class="mv-warning-chip">' + icon(w.icon || ({ violence: 'shield-alert', fear: 'brain', language: 'message-circle-warning', sex: 'eye-off', drugs: 'flask-conical', discrimination: 'users', negative_examples: 'alert-triangle' }[w.category] || 'info')) + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
+        return '<span class="mv-warning-chip">' + icon(w.icon || advisorySmart(w).icon) + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
       }).join('')
     : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : (failure || 'İçerik uyarıları kontrol ediliyor')) + '</span>') +
     '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
@@ -1591,12 +1621,12 @@ async function paintMovieAdvisories(body, meta, failure = '') {
       const level = advisoryLevel(w.level || w.severity);
       const detail = w.details || w.description || w.summary || '';
       const source = w.source || 'Kaynak belirtilmemiş';
-      const glyph = icon(w.icon || ({ violence: 'shield-alert', fear: 'brain', language: 'message-circle-warning', sex: 'eye-off', drugs: 'flask-conical', discrimination: 'users', negative_examples: 'alert-triangle' }[w.category] || 'info'));
+      const glyph = icon(w.icon || smart.icon);
       return '<article class="mv-warning-detail"><div><b>' + glyph + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + (w.url ? ' · <a href="' + esc(w.url) + '" target="_blank" rel="noopener">Kaynağı aç</a>' : '') + '</small></article>';
     }).join('');
     const sourceRows = Object.entries(record && record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(sourceNames[k] || k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : v.status === 'unavailable' ? 'Kaynak sayfası veri sunmadı' : 'Kontrol edilemedi') + (v.message ? ' (' + esc(v.message) + ')' : '') + '</p>').join('');
     const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
-    const guidance = record && record.guidance ? '<article class="mv-warning-detail"><b>Screenwise aile rehberi</b>' + (record.guidance.summary ? '<p>' + esc(record.guidance.summary) + '</p>' : '') + (record.guidance.ageFit ? '<p>' + esc(record.guidance.ageFit) + '</p>' : '') + (record.guidance.score != null ? '<small>Rehber puanı: ' + esc(record.guidance.score) + '/100</small>' : '') + '</article>' : '';
+    const guidance = record && record.guidance ? '<article class="mv-warning-detail"><b>Screenwise aile rehberi</b>' + (record.guidance.summary ? '<p>' + esc(advisoryTr(record.guidance.summary)) + '</p>' : '') + (record.guidance.ageFit ? '<p>' + esc(advisoryTr(record.guidance.ageFit)) + '</p>' : '') + (record.guidance.score != null ? '<small>Rehber puanı: ' + esc(record.guidance.score) + '/100</small>' : '') + '</article>' : '';
     const empty = !rows && !guidance ? '<p>Bu film için doğrulanmış bir sınıflandırma veya içerik uyarısı henüz alınamadı. Bu, filmde sakıncalı içerik bulunmadığı anlamına gelmez.</p>' : '';
     openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + guidance + empty + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
   });
