@@ -1,5 +1,6 @@
-// Harici film kimliği ve IMDb puanı eşleştirmesi. Yalnız kesin başlık/yıl eşleşmesi gösterilir.
+// Film ve dizi kimlik eşleştirmesi. IMDb puanı özellikle kullanılmaz.
 import { fold } from './util.js';
+import { findBundledMedia } from './media-catalog.js';
 
 const BASE = 'https://v3-cinemeta.strem.io';
 const CACHE_TTL = 30 * 86400000;
@@ -115,6 +116,12 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
   ].filter((v) => typeof v === 'string' && v.trim()).map((v) => parseMovieCatalogTitle(v).title))];
   const key = `${cleanTitle(title)}|${year || 0}`;
   const persistentKey = 'movie-metadata:v1:' + key;
+  const bundled = await findBundledMedia(title, year, 'movie').catch(() => null);
+  if (bundled) {
+    const value = { ...bundled, kind: 'movie', source: 'Yerel katalog' };
+    if (store && store.cache) await store.cache.set(persistentKey, { savedAt: Date.now(), value }).catch(() => {});
+    return value;
+  }
   const cached = store && store.cache ? await store.cache.get(persistentKey).catch(() => null) : null;
   if (cached && cached.savedAt && Date.now() - cached.savedAt < (cached.value ? CACHE_TTL : CACHE_MISS_TTL)) {
     if (cached.value) done.set(key, cached.value);
@@ -146,10 +153,8 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
     const detail = await net.json(`${BASE}/meta/movie/${encodeURIComponent(id)}.json`);
     const meta = detail && detail.meta;
     if (!meta || String(meta.imdb_id || meta.id || '') !== id) return null;
-    const rating = Number(meta.imdbRating);
     return {
       imdbId: id,
-      imdbRating: Number.isFinite(rating) && rating > 0 && rating <= 10 ? rating.toFixed(1) : '',
       year: yearOf(meta.year) || year,
       title: meta.name || (match && match.name) || title,
       source: 'Cinemeta',
