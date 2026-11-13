@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 87,
+    title: 'Dizi akışında spor kanalı filtresi',
+    items: [
+      'Sports TV, S Sport, beIN SPORTS, TRT Spor, A Spor, Tivibu Spor ve Eurosport gibi spor kanallarının programları dizi listelerinden çıkarıldı',
+      'Filtre hem haftalık dizi kaynağına hem ücretsiz EPG tamamlamasına hem de önbellekten gelen eski kayıtlara uygulanır'
+    ],
+  },
+  {
     id: 86,
     title: 'Dizi akışı listeleme düzeni',
     items: [
