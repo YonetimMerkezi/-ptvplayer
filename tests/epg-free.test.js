@@ -465,3 +465,20 @@ test('kanalDNeedsRepair: uzun haber/yarışma bloklarını yakalar, doğru süre
   assert.equal(kanalDNeedsRepair(bad, now), true);
   assert.equal(kanalDNeedsRepair(good, now), false);
 });
+
+test('13 Kasım Kanal D hatalı EPG kaydı doğrulanmış akışla yenilenir', async () => {
+  const now = Date.UTC(2026, 10, 13, 16, 27); // 19.27 İstanbul
+  const from = istDayStart(now, 0), to = istDayStart(now, 2);
+  const old = { v: 1, at: now, from, to, ch: { kanald: { n: 'KANAL D', p: [
+    [from + 19 * 3600e3, from + 26.5 * 3600e3, 'Kanal D Ana Haber', '', 'Haber']
+  ] } } };
+  const net = fakeServer([[/agg\\.test/, JSON.stringify(old)]]);
+  const result = await loadFreeData(net, { now, sources: [], aggUrls: ['https://agg.test/epg.json'] });
+  const rows = result.ch.kanald.p;
+  assert.deepEqual(rows.map((p) => [p[2], p[1] - p[0]]), [
+    ['Kanal D Ana Haber', 60 * 60000],
+    ["Beyaz'la Joker", 195 * 60000],
+    ['Daha 17', 165 * 60000],
+  ]);
+  assert.equal(result.kanalDFixVersion, 2);
+});
