@@ -18,23 +18,33 @@ const RE_SPORT_TITLE = /\b(maci|macin|maclar|maclari|canli mac|mac ozeti|super l
 const RE_SERIES_TITLE = /(\b\d{1,3}\s*\.?\s*bolum\b|\bsezon\b|\bs\d{1,2}\s*e\d{1,3}\b)/;
 const RE_FILM_TITLE = /^(film|sinema)\s*[:\-–]/;
 const RE_EPISODE = /\b(\d{1,3}\s*\.?\s*bolum|sezon|s\d{1,2}\s*e\d{1,3})\b/;
+const RE_NON_FILM = /\b(haber|haberleri|bulten|news|talk show|sohbet|magazin|magazine|reality|yarismasi|yarisma|cocuk|cocuklar|cizgi film|muzik|music|konser|hava durumu|weather|vaaz|ibadet|egitim|education|game show)\b/;
 
 export function kindOf(p) {
   const c = fold(String((p && p.c) || ''));
   const t = fold(String((p && p.t) || ''));
-  if (c) {
-    if (RE_SERIES_CAT.test(c)) return 'dizi';
-    if (RE_SPORT_CAT.test(c)) return RE_NEWS.test(c) || RE_NEWS.test(t) ? '' : 'spor';
-    if (RE_FILM_CAT.test(c)) {
-      // Genel tür adları (Drama/Komedi vb.) film ve dizide ortak kullanılır.
-      if (RE_EPISODE.test(t)) return 'dizi';
-      if (/\b(film|filmi|movie|movies|sinema|cinema)\b/.test(c) || Number(p.e) - Number(p.s) >= 65 * 60000) return 'film';
-    }
-    return '';
-  }
-  if (RE_SERIES_TITLE.test(t)) return 'dizi';
-  if (RE_FILM_TITLE.test(t)) return 'film';
+  const d = fold(String((p && p.d) || ''));
+  const duration = Number(p && p.e) - Number(p && p.s);
+  const minutes = Number.isFinite(duration) && duration > 0 ? duration / 60000 : 0;
+
+  // Kesin tür bilgileri önce gelir.
+  if (RE_SERIES_CAT.test(c)) return 'dizi';
+  if (RE_SPORT_CAT.test(c)) return RE_NEWS.test(c) || RE_NEWS.test(t) ? '' : 'spor';
+  if (RE_SERIES_TITLE.test(t) || RE_EPISODE.test(d)) return 'dizi';
   if (RE_SPORT_TITLE.test(t) && !RE_NEWS.test(t)) return 'spor';
+  if (RE_NEWS.test(c) || RE_NEWS.test(t)) return '';
+
+  if (/\\b(film|filmi|movie|movies|sinema|cinema)\\b/.test(c) || RE_FILM_TITLE.test(t)) return 'film';
+  const sharedFilmGenre = RE_FILM_CAT.test(c) || RE_FILM_CAT.test(d);
+  if (sharedFilmGenre && RE_EPISODE.test(t)) return 'dizi';
+  if (RE_NON_FILM.test(c) || RE_NON_FILM.test(t)) return '';
+
+  // Bazı EPG sağlayıcıları kategori alanını boş gönderiyor. Uzun metraj
+  // süresini yedek sinyal olarak kullan; aşırı uzun yayınları ve kısa programları alma.
+  if (minutes >= 75 && minutes <= 210) {
+    if (RE_SERIES_TITLE.test(t) || RE_SPORT_TITLE.test(t)) return '';
+    return 'film';
+  }
   return '';
 }
 
