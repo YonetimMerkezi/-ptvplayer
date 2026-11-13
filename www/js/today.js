@@ -11,20 +11,25 @@ const DAY_MS = 24 * 3600e3;
 
 // Rehberin <category> bilgisi (p.c) en güvenilir kaynaktır; yoksa (eski önbellek, kategorisiz rehber) başlık ve açıklamadan yalnız çok belirgin kalıplar.
 const RE_SERIES_CAT = /\b(dizi|series|serial|soap|sitcom|telenovela|tv show)\b/;
-const RE_FILM_CAT = /\b(film|filmi|movie|movies|sinema|cinema)\b/;
+const RE_FILM_CAT = /\b(film|filmi|movie|movies|sinema|cinema|drama|dramatic|comedy|komedi|action|aksiyon|adventure|macera|romance|romantik|thriller|gerilim|horror|korku|western|science fiction|sci-fi|bilim kurgu|animation|animasyon|documentary|belgesel)\b/;
 const RE_SPORT_CAT = /\b(spor|sport|sports|futbol|football|soccer|basket|basketbol|basketball|voleybol|volleyball|tenis|tennis|formula|motorsport|boks|boxing|gures|golf|rugby|hentbol)\b/;
 const RE_NEWS = /\b(haber|haberleri|bulten|magazin|news)\b/;
 const RE_SPORT_TITLE = /\b(maci|macin|maclar|maclari|canli mac|mac ozeti|super lig|premier lig|sampiyonlar ligi|uefa|euroleague|nba|formula 1|f1|la liga|bundesliga|serie a|tff|1\. lig|avrupa ligi|konferans ligi|dunya kupasi|avrupa sampiyonasi)\b/;
 const RE_SERIES_TITLE = /(\b\d{1,3}\s*\.?\s*bolum\b|\bsezon\b|\bs\d{1,2}\s*e\d{1,3}\b)/;
 const RE_FILM_TITLE = /^(film|sinema)\s*[:\-–]/;
+const RE_EPISODE = /\b(\d{1,3}\s*\.?\s*bolum|sezon|s\d{1,2}\s*e\d{1,3})\b/;
 
 export function kindOf(p) {
   const c = fold(String((p && p.c) || ''));
   const t = fold(String((p && p.t) || ''));
   if (c) {
     if (RE_SERIES_CAT.test(c)) return 'dizi';
-    if (RE_FILM_CAT.test(c)) return 'film';
     if (RE_SPORT_CAT.test(c)) return RE_NEWS.test(c) || RE_NEWS.test(t) ? '' : 'spor';
+    if (RE_FILM_CAT.test(c)) {
+      // Genel tür adları (Drama/Komedi vb.) film ve dizide ortak kullanılır.
+      if (RE_EPISODE.test(t)) return 'dizi';
+      if (/\b(film|filmi|movie|movies|sinema|cinema)\b/.test(c) || Number(p.e) - Number(p.s) >= 65 * 60000) return 'film';
+    }
     return '';
   }
   if (RE_SERIES_TITLE.test(t)) return 'dizi';
