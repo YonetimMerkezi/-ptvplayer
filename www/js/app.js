@@ -3,6 +3,7 @@ import { esc, fmtDuration, fmtClock, debounce, fold, maskUrl } from './util.js';
 import { guideBlocks } from './guide.js';
 import { createStore } from './store.js';
 import { createNet } from './net.js';
+import { loadFreeData, matchFree, mergeEpgData } from './epg-free.js';
 import {
   loadCatalog, catalogToStorable, catalogFromStorable, emptyCatalog, search, groupList, inGroup,
   playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, peekVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
@@ -434,22 +435,37 @@ async function refreshCatalog({ quiet = false } = {}) {
 }
 
 async function maybeRefreshEpg(force = false) {
-  if (!S.source || !S.cat.live.length || !epgSourceUrls(S.source, S.cat).length) return;
+  if (!S.source || !S.cat.live.length) return;
   const have = S.epg.data && S.epg.data.fetchedAt;
   if (!force && have && Date.now() - have < staleEpgMs()) return;
   const id = S.source.id;
-  try {
-    const data = await loadEpg(S.source, S.cat, net);
-    if (!S.source || S.source.id !== id || !data) return;
-    await store.cache.set('epg:' + id, data);
-    S.epg = new EpgView(data);
-    S.epgInfo = { matched: data.matched, at: data.fetchedAt };
-    if (S.list && S.tab === 'live') S.list.refreshRows();
-    renderSpInfo();
-    pui.refresh();
-  } catch (e) {
-    S.epgInfo = { error: e.message };
+  let data = null;
+  let providerError = '';
+  // Önce kullanıcının kendi EPG kaynağı; ardından eksik kanallar için harici ücretsiz XMLTV havuzu.
+  if (epgSourceUrls(S.source, S.cat).length) {
+    try {
+      data = await loadEpg(S.source, S.cat, net);
+    } catch (e) {
+      providerError = e.message || String(e);
+    }
   }
+  try {
+    const free = await loadFreeData(net);
+    const extra = matchFree(free, S.cat.live);
+    data = mergeEpgData(data, extra);
+    if (data) {
+      data = { ...data, fetchedAt: Date.now(), free: { via: free.via || 'harici', matched: extra.matched } };
+    }
+  } catch (e) {
+    if (!data) throw new Error([providerError, e.message || String(e)].filter(Boolean).join(' · ') || 'EPG alınamadı');
+  }
+  if (!S.source || S.source.id !== id || !data) return;
+  await store.cache.set('epg:' + id, data);
+  S.epg = new EpgView(data);
+  S.epgInfo = { matched: data.matched, at: data.fetchedAt, freeMatched: data.free && data.free.matched };
+  if (S.list && S.tab === 'live') S.list.refreshRows();
+  renderSpInfo();
+  pui.refresh();
 }
 
 // ------------------------------------------------------------------ üst çubuk ve sekmeler
