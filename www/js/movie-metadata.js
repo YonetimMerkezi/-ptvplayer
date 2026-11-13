@@ -36,9 +36,10 @@ export function matchMovieMetadata(results, title, year = 0) {
 export async function loadMovieMetadata(net, item, vodInfo = null, store = null) {
   const rawTitle = String(item && (item.name || item.title) || '').trim();
   const parsed = parseMovieCatalogTitle(rawTitle);
-  const title = parsed.title;
+  const alias = TITLE_ALIASES[cleanTitle(parsed.title)];
+  const title = alias ? alias.title : parsed.title;
   if (!title) return null;
-  const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || parsed.year || title);
+  const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || parsed.year || (alias && alias.year) || title);
   const key = `${cleanTitle(title)}|${year || 0}`;
   const persistentKey = 'movie-metadata:v1:' + key;
   const cached = store && store.cache ? await store.cache.get(persistentKey).catch(() => null) : null;
@@ -50,10 +51,14 @@ export async function loadMovieMetadata(net, item, vodInfo = null, store = null)
   if (busy.has(key)) return busy.get(key);
 
   const task = (async () => {
-    const query = encodeURIComponent(title);
-    const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
-    const match = matchMovieMetadata(catalog && catalog.metas, title, year);
-    const id = match && String(match.imdb_id || match.id || '');
+    let match = null;
+    let id = alias && alias.imdbId || '';
+    if (!id) {
+      const query = encodeURIComponent(title);
+      const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
+      match = matchMovieMetadata(catalog && catalog.metas, title, year);
+      id = match && String(match.imdb_id || match.id || '');
+    }
     if (!/^tt\d+$/.test(id)) return null;
 
     const detail = await net.json(`${BASE}/meta/movie/${encodeURIComponent(id)}.json`);
