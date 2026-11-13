@@ -129,7 +129,7 @@ export function openToday(env) {
     const t = now();
     const ready = env.epgReady() || !!seriesData || (kind === 'film' && day === 0 && filmSource.loaded);
     const allEntries = entries();
-    const externalFilmDay = day === 0 && filmSource.loaded;
+    const externalFilmDay = day === 0 && filmSource.loaded && filmSource.entries.length > 0;
     const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => !sel.length || sel.includes(String(x.id))) : [];
     const filmEntries = externalFilmDay
       ? sourceFilmEntries.filter((x) => filmSel == null || filmSel.includes(String(x.id)))
@@ -185,7 +185,7 @@ export function openToday(env) {
 
   function pick(filmOnly = false) {
     let term = '';
-    if (filmOnly && filmSel == null) filmSel = normalizeChannels(env.liveItems().filter((it) => channelKind(it.name) === 'film').map((it) => it.id));
+    if (filmOnly && filmSel == null) filmSel = normalizeChannels(filmSource.loaded && filmSource.channels.length ? filmSource.channels : env.liveItems().filter((it) => channelKind(it.name) === 'film').map((it) => it.id));
     const all = () => env.liveItems().filter((it) => env.listFor(it).length > 0);
     const pg = openPage({
       title: filmOnly ? 'Film kanallarını seç' : 'Kanalları seç',
