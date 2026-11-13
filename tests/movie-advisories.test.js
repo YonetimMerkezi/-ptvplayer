@@ -84,3 +84,26 @@ test('çeviri servisi çalışmazsa yerel sözlük devreye girer', async () => {
   assert.match(result, /hayvanları seven çocukları üzebilir/);
   assert.doesNotMatch(result, /disturbing scene|animal-loving kids/i);
 });
+
+test('ekran görüntüsündeki farklı İngilizce uyarı örnekleri çevrilir ve sınıflandırılır', async () => {
+  const net = { json: async () => { throw new Error('offline'); } };
+  const examples = [
+    'Intense violence throughout—cyborg bodies are torn apart, limbs severed, faces crushed (minimal blood but maximum brutality)',
+    'A disturbing scene involving a dog that may upset animal-loving kids',
+    'Dark dystopian themes of class inequality and exploitation',
+    'The romance subplot feels a bit forced and may make teens roll their eyes',
+    'Ends on a cliffhanger that never got resolved (sequel unlikely at this point)',
+  ];
+  const translated = await Promise.all(examples.map((x) => translateAdvisoryText(net, x)));
+  assert.match(translated[0], /yoğun şiddet|şiddet/i);
+  assert.match(translated[1], /köpek|hayvan/i);
+  assert.match(translated[2], /sınıf eşitsizliği|sömürü/i);
+  assert.match(translated[3], /romantik yan hikâye/i);
+  assert.match(translated[4], /ucu açık final|devam filmi/i);
+  assert.doesNotMatch(translated.join(' '), /cyborg bodies|class inequality|romance subplot|cliffhanger|animal-loving kids/i);
+  assert.equal(classifyScreenwiseWarning(examples[0]).category, 'violence');
+  assert.equal(classifyScreenwiseWarning(examples[1]).category, 'fear');
+  assert.equal(classifyScreenwiseWarning(examples[2]).category, 'social');
+  assert.equal(classifyScreenwiseWarning(examples[3]).category, 'romance');
+  assert.equal(classifyScreenwiseWarning(examples[4]).category, 'ending');
+});
