@@ -1141,3 +1141,10 @@ html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 3px var(--ring, #fff);
 
 /* Dizi akışı kanal logosu: TV satırlarında kanal adıyla hizalı küçük logo. */
 .sf-channel{display:inline-flex;align-items:center;gap:7px;vertical-align:middle}.sf-channel img{width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle}
+
+
+/* Ana ekran: Bugün TV kartındaki iki satırlı başlık ve alt açıklama taşmasını önle. */
+.home .tile.t-today { gap: 5px; padding: 10px 8px; }
+.home .tile.t-today .ic { flex: none; }
+.home .tile.t-today b { font-size: clamp(0.95rem, 4.2vw, 1.12rem); line-height: 1.12; max-width: 100%; }
+.home .tile.t-today small { display: block; line-height: 1.15; font-size: 0.7rem; max-width: 100%; white-space: nowrap; }
