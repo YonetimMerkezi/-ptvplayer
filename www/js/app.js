@@ -1921,6 +1921,7 @@ async function openToday() {
       net,
       liveItems: () => visibleAll('live'),
       epgReady: () => S.epg.ready,
+      ensureEpg: () => maybeRefreshEpg(),
       listFor: (it) => S.epg.listFor(it),
       epgBetween: (from, to) => S.epg.between(from, to),
       programSheet: (it, p) => guideProgramSheet(it, p, [it], 0),
