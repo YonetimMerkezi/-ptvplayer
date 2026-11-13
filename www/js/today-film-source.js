@@ -71,6 +71,28 @@ export function parseFilmSchedule(html) {
     seen.add(key);
     out.push({ time, title, channel, channelUrl: hrefMatch ? hrefMatch[1] : '' });
   }
+  // HTML sınıfları değişirse sayfanın görünür metin sırasından yedek ayrıştırma yap.
+  if (!out.length) {
+    const timeRe = /\b(\d{1,2}:\d{2})\b/g;
+    const anchors = [...source.matchAll(/<a\b([^>]*href=["'][^"']*yayin-akisi[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi)];
+    let tm;
+    while ((tm = timeRe.exec(source))) {
+      const nextTime = timeRe.lastIndex;
+      const next = anchors.find((a) => a.index >= nextTime && a.index - nextTime < 1800 &&
+        !/\b\d{1,2}:\d{2}\b/.test(source.slice(nextTime, a.index)));
+      if (!next) continue;
+      const chunk = source.slice(nextTime, next.index);
+      const title = decodeHtml(chunk).replace(/\s+/g, ' ').trim();
+      const channel = decodeHtml(next[2]);
+      const time = tm[1];
+      if (!title || !channel || title.length > 180 || channel.length > 90) continue;
+      const key = time + '|' + title.toLocaleLowerCase('tr-TR') + '|' + channel.toLocaleLowerCase('tr-TR');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const href = /href=["']([^"']+)["']/i.exec(next[1]);
+      out.push({ time, title, channel, channelUrl: href ? href[1] : '' });
+    }
+  }
   return out;
 }
 
