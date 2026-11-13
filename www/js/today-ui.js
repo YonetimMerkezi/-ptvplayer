@@ -6,6 +6,7 @@ import { KINDS, todayRows, dayStart, normalizeChannels } from './today.js';
 import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
+import { makePlan, planId } from './plan.js';
 
 const KIND_EMPTY = { spor: 'spor', film: 'film', dizi: 'dizi' };
 
@@ -67,6 +68,25 @@ export function openToday(env) {
     return env.epgBetween(from, from + 3 * 24 * 3600e3).map((h) => ({ id: h.id, p: h.p })).concat(seriesEntries());
   }
 
+  function reminderIds() {
+    try { return new Set(((env.reminders && env.reminders.list()) || []).filter((x) => x && x.kind === 'rem').map((x) => x.id)); }
+    catch { return new Set(); }
+  }
+
+  function toggleReminder(it, p) {
+    if (!env.reminders || !p || !Number.isFinite(p.s) || p.s <= now()) return;
+    const id = planId('rem', it.id, p.s, env.sourceId ? env.sourceId() : 'today');
+    if (reminderIds().has(id)) {
+      env.reminders.remove(id);
+      env.toast && env.toast('Hatırlatıcı kaldırıldı', 1800);
+    } else {
+      const plan = makePlan('rem', it, p, { src: env.sourceId ? env.sourceId() : 'today' });
+      env.reminders.set(plan);
+      env.toast && env.toast('Film hatırlatıcısı kuruldu', 2000);
+    }
+    draw();
+  }
+
   function draw() {
     const t = now();
     const ready = env.epgReady() || !!seriesData;
@@ -88,6 +108,7 @@ export function openToday(env) {
       return;
     }
     const map = byId();
+    const reminders = reminderIds();
     const html = res.rows
       .map(({ id, p, state }, i) => {
         const it = map.get(id);
@@ -172,6 +193,7 @@ export function openToday(env) {
     if (r) {
       const row = (q('#td-list')._rows || [])[Number(r.dataset.i)];
       const it = row && byId().get(row.id);
+      if (it && e.target.closest('[data-bell]')) return toggleReminder(it, row.p);
       if (it) env.programSheet(it, row.p);
     }
   });
