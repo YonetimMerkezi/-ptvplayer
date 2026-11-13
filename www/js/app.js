@@ -62,6 +62,7 @@ import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from 
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
+import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -2826,12 +2827,16 @@ function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null
   const canArchive = live && it.archive && S.source.type === 'xtream' && p.s < now && p.archive !== false;
   const canRemind = live && p.s > now;
   const canRecord = live && !!engine.rec && p.e > now;
+  const isSeries = /\b(dizi|series|serial|soap|sitcom|telenovela|tv show)\b/i.test(String(p.c || '')) || /\b(\d{1,3}\s*\.?\s*bolum|sezon|s\d{1,2}\s*e\d{1,3})\b/i.test(String(p.t || ''));
+  const followKey = 'series.followed.v1';
+  let followed = normalizeFollowed(store.pref(followKey, []));
+  const following = isSeries && isFollowed(followed, p.t);
   const has = (kind) => hasPlan(readPlans(), planIdOf(kind, it, p));
   const label = (kind) => (kind === 'rem' ? (has('rem') ? 'Hatırlatıcıyı kaldır' : 'Hatırlat') : has('rec') ? 'Kaydı kaldır' : p.s < now ? 'Şimdi kaydet' : 'Kaydet');
   const btn = (a, ic, kind, cls = 'ghost') => `<button class="btn ${cls}" data-a="${a}">${icon(ic)}<span>${label(kind)}</span></button>`;
   const sh = openSheet({
     title: p.t || 'Program',
-    html: `<div class="gp"><div class="gp-meta"><b>${esc(it.name)}</b><span>${fmtClock(p.s)} – ${fmtClock(p.e)} · ${mins} dk · ${state}</span></div>${p.d ? `<p class="gp-desc">${esc(p.d)}</p>` : '<p class="gp-desc muted">Bu program için açıklama yok.</p>'}<div class="gp-btns"><button class="btn" data-a="watch">${icon('play')}Kanalı izle</button>${canArchive ? `<button class="btn ghost" data-a="arc">${icon('history')}${p.e > now ? 'Baştan izle' : 'Arşivden izle'}</button>` : ''}${canRemind ? btn('rem', 'bell', 'rem') : ''}${canRecord ? btn('rec', 'rec', 'rec') : ''}${noDay ? '' : '<button class="btn ghost" data-a="day">Günlük akış</button>'}</div></div>`,
+    html: `<div class="gp"><div class="gp-meta"><b>${esc(it.name)}</b><span>${fmtClock(p.s)} – ${fmtClock(p.e)} · ${mins} dk · ${state}</span></div>${p.d ? `<p class="gp-desc">${esc(p.d)}</p>` : '<p class="gp-desc muted">Bu program için açıklama yok.</p>'}<div class="gp-btns"><button class="btn" data-a="watch">${icon('play')}Kanalı izle</button>${canArchive ? `<button class="btn ghost" data-a="arc">${icon('history')}${p.e > now ? 'Baştan izle' : 'Arşivden izle'}</button>` : ''}${canRemind ? btn('rem', 'bell', 'rem') : ''}${canRecord ? btn('rec', 'rec', 'rec') : ''}${isSeries ? `<button class="btn ghost" data-a="follow" aria-pressed="${following}">${icon(following ? 'star-on' : 'star')}<span>${following ? 'Dizi takibini bırak' : 'Diziyi takip et'}</span></button>` : ''}${noDay ? '' : '<button class="btn ghost" data-a="day">Günlük akış</button>'}</div></div>`,
   });
   sh.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-a]');
@@ -2841,6 +2846,15 @@ function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null
       togglePlan(a, it, p);
       b.querySelector('span').textContent = label(a);
       if (onChange) onChange();
+      return;
+    }
+    if (a === 'follow') {
+      followed = toggleFollowed(followed, { title: p.t || 'Dizi', channel: it.name });
+      store.setPref(followKey, followed);
+      const on = isFollowed(followed, p.t);
+      b.setAttribute('aria-pressed', String(on));
+      b.innerHTML = icon(on ? 'star-on' : 'star') + '<span>' + (on ? 'Dizi takibini bırak' : 'Diziyi takip et') + '</span>';
+      toast(on ? 'Dizi takibe alındı · yeni bölüm bildirimi açık' : 'Dizi takibi bırakıldı', 2200);
       return;
     }
     closeThen(sh, () => (a === 'day' ? epgSheet(it) : a === 'arc' ? playArchive(it, p) : playLive(items, index)));
