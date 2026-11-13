@@ -140,11 +140,18 @@ export function openToday(env) {
     const allEntries = entries();
     const externalFilmDay = day === 0 && filmSource.loaded && filmSource.entries.length > 0;
     const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id))) : [];
-    const filmEntries = externalFilmDay
-      ? sourceFilmEntries.filter((x) => filmSel == null || filmSel.includes(String(x.id)))
-      : filmSel == null
-        ? allEntries.filter((x) => channelKind(x.channel) === 'film' && kindOf(x.p) === 'film')
-        : allEntries.filter((x) => filmSel.includes(String(x.id)) && kindOf(x.p) === 'film');
+    // Tüm EPG kanallarını tara: ulusal kanalların yanında Sinema TV, beIN Movies,
+    // Movies Smart, FilmBox ve benzeri tematik film kanalları da listeye girer.
+    const epgFilmEntries = allEntries.filter((x) => channelKind(x.channel) === 'film' || kindOf(x.p) === 'film');
+    const selectedEpgFilms = filmSel == null
+      ? epgFilmEntries
+      : epgFilmEntries.filter((x) => filmSel.includes(String(x.id)));
+    const selectedExternalFilms = externalFilmDay
+      ? sourceFilmEntries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id)))
+        .filter((x) => filmSel == null || filmSel.includes(String(x.id)))
+      : [];
+    const filmKey = (x) => `${String(x.id)}|${Number(x.p && x.p.s)}|${fold(String(x.p && x.p.t || ''))}`;
+    const filmEntries = [...new Map([...selectedEpgFilms, ...selectedExternalFilms].map((x) => [filmKey(x), x])).values()];
     const resAll = ready ? todayRows({ entries: allEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const resFilm = ready ? todayRows({ entries: filmEntries, kind: 'film', now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const res = {
@@ -160,18 +167,6 @@ export function openToday(env) {
       (kind === 'film' ? `<button class="chip" data-film-pick>Film kanalları<small>${filmSel == null ? 'Otomatik' : filmSel.length}</small></button>` : '');
     page.setTitle(`${day ? 'Yarın' : 'Bugün'} TV’de · ${new Date(dayStart(t, day)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`);
     const el = q('#td-list');
-    if (kind === 'film' && day === 0 && filmSource.loading && !filmSource.loaded) {
-      el.innerHTML = '<div class="empty"><h3>Film yayın akışı yükleniyor…</h3><p>TV yayın akışı kaynağından bugünün filmleri alınıyor.</p></div>';
-      return;
-    }
-    if (kind === 'film' && day === 0 && filmSource.error && !filmSource.loaded) {
-      el.innerHTML = `<div class="empty"><h3>Film yayın akışı alınamadı</h3><p>${esc(filmSource.error)}</p><button class="btn sm" data-film-refresh>Tekrar dene</button></div>`;
-      return;
-    }
-    if (kind === 'film' && day === 0 && filmSource.loaded && filmSource.films.length && !filmSource.entries.length) {
-      el.innerHTML = `<div class="empty"><h3>${filmSource.films.length} film bulundu, kanal eşleşmedi</h3><p>Yayın akışı alındı ancak listedeki kanal adları canlı kanal listenizle eşleşmedi. Film kanalları listesini ve kanal adlarını kontrol edin.</p><button class="btn sm" data-film-refresh>Yenile</button></div>`;
-      return;
-    }
     if (!ready) {
       el.innerHTML = epgLoading
         ? '<div class="empty"><h3>Programlar yükleniyor…</h3><p>Spor yayınları, TV rehberi ve diğer içerikler hazırlanıyor.</p></div>'
