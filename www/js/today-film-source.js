@@ -71,25 +71,29 @@ export function parseFilmSchedule(html) {
     seen.add(key);
     out.push({ time, title, channel, channelUrl: hrefMatch ? hrefMatch[1] : '' });
   }
-  // HTML sınıfları değişirse sayfanın görünür metin sırasından yedek ayrıştırma yap.
+  // Sınıf adları değişse bile yayıncı kanal bağlantılarını esas al.
   if (!out.length) {
-    const timeRe = /\b(\d{1,2}:\d{2})\b/g;
-    const anchors = [...source.matchAll(/<a\b([^>]*href=["'][^"']*yayin-akisi[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi)];
-    let tm;
-    while ((tm = timeRe.exec(source))) {
-      const nextTime = timeRe.lastIndex;
-      const next = anchors.find((a) => a.index >= nextTime && a.index - nextTime < 1800 &&
-        !/\b\d{1,2}:\d{2}\b/.test(source.slice(nextTime, a.index)));
-      if (!next) continue;
-      const chunk = source.slice(nextTime, next.index);
-      const title = decodeHtml(chunk).replace(/\s+/g, ' ').trim();
-      const channel = decodeHtml(next[2]);
-      const time = tm[1];
+    const anchors = [...source.matchAll(/<a\\b([^>]*href=["'][^"']*yayin-akisi[^"']*["'][^>]*)>([\\s\\S]*?)<\\/a>/gi)];
+    const timeRe = /\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b/g;
+    for (const a of anchors) {
+      const before = source.slice(Math.max(0, a.index - 1400), a.index);
+      const times = [...before.matchAll(timeRe)];
+      const tm = times[times.length - 1];
+      if (!tm) continue;
+      const timeEnd = Math.max(0, a.index - 1400) + tm.index + tm[0].length;
+      const rawTitle = source.slice(timeEnd, a.index);
+      const title = decodeHtml(rawTitle)
+        .replace(/^(?:bugünün filmleri|yarının filmleri|filtre|değiştir)\\s*/i, '')
+        .replace(/\\s+/g, ' ').trim();
+      const channel = decodeHtml(a[2]);
       if (!title || !channel || title.length > 180 || channel.length > 90) continue;
+      // Aradaki alan başka bir program kartını içeriyorsa yanlış eşleşmeyi atla.
+      if (/<a\\b/i.test(rawTitle) || /\\b(?:filtre|menü|kanallar)\\b/i.test(title)) continue;
+      const time = tm[0];
       const key = time + '|' + title.toLocaleLowerCase('tr-TR') + '|' + channel.toLocaleLowerCase('tr-TR');
       if (seen.has(key)) continue;
       seen.add(key);
-      const href = /href=["']([^"']+)["']/i.exec(next[1]);
+      const href = /href=["']([^"']+)["']/i.exec(a[1]);
       out.push({ time, title, channel, channelUrl: href ? href[1] : '' });
     }
   }
@@ -100,6 +104,11 @@ export async function loadFilmSchedule({ net, url = FILM_SCHEDULE_URL } = {}) {
   if (!net || typeof net.text !== 'function') throw new Error('Ağ katmanı kullanılamıyor');
   const html = await net.text(url, { fast: true, headers: { Accept: 'text/html' } });
   const films = parseFilmSchedule(html);
-  if (!films.length) throw new Error('Film yayın akışında kayıt bulunamadı veya sayfa yapısı değişti');
+  if (!films.length) {
+    const bytes = html.length;
+    const times = (html.match(/\\b(?:[01]?\\d|2[0-3]):[0-5]\\d\\b/g) || []).length;
+    const channels = (html.match(/yayin-akisi/gi) || []).length;
+    throw new Error(`Film kaydı ayrıştırılamadı (HTML: ${bytes} karakter, saat: ${times}, kanal bağlantısı: ${channels}). Kaynak yanıtını kontrol edin.`);
+  }
   return { films, fetchedAt: Date.now(), url };
 }
