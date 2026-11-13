@@ -10,7 +10,7 @@ import { kindOf } from './today.js';
 export const DIZI_BASE = 'https://1001dizi.net';
 
 // Spor yayıncılarının programları dizi akışına yanlışlıkla karışmasın.
-const SPORTS_CHANNEL = /(?:^| )(?:a spor|a para|trt spor(?: yildiz)?|s sport(?: \\d+)?|bein sports?(?: \\d+)?|sports? tv|tivibu spor(?: \\d+)?|eurosport(?: \\d+)?|fb tv|b spor)(?: |$)/i;
+const SPORTS_CHANNEL = /(?:^| )(?:a spor|a para|trt spor(?: yildiz)?|s sports?(?: \\d+)?|bein sports?(?: \\d+)?|sports? tv|tivibu spor(?: \\d+)?|eurosport(?: \\d+)?|fb tv|b spor)(?: |$)/i;
 export function isSportsChannel(name) {
   const value = fold(String(name || '')).replace(/[^a-z0-9]+/g, ' ').trim();
   return !!value && SPORTS_CHANNEL.test(value);
