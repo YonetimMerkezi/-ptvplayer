@@ -29,7 +29,7 @@ export function channelKind(name) {
   // Bazı IPTV listeleri kanal adının başına ülke/kalite etiketi ekliyor: "TR: SPORTS TV HD".
   if (/(^| )(a spor|trt spor|trt spor yildiz|s sport|s sports|bein sport|bein sports|sports tv|sport tv|tivibu spor|eurosport|b spor)( |$)/.test(n) || n.includes('b n sp rts') || n.includes('b n sports')) return 'spor';
   if (n === 'bein series' || n.startsWith('bein series ')) return 'dizi';
-  if (n.includes('sinema') || n.includes('bein movies') || n.includes('moviesmart') || n.includes('movie smart') || n.includes('filmbox') || n.includes('film box') || n.includes('cinefilm') || n.startsWith('cine 1')) return 'film';
+  if (n.includes('sinema') || n.includes('cinema') || n.includes('bein movies') || n.includes('moviesmart') || n.includes('movie smart') || n.includes('movie channel') || n.includes('filmbox') || n.includes('film box') || n.includes('film club') || n.includes('cinefilm') || n.startsWith('cine ') || n.startsWith('cine 1')) return 'film';
   return '';
 }
 
