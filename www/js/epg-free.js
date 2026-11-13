@@ -451,6 +451,32 @@ export function buildFreeData(results, now = Date.now(), { detail = false } = {}
 }
 
 // Birleşik veri kullanılabilir mi? (biçim, kanal sayısı, yaş, pencere şimdiyi kapsıyor mu)
+// EPG birleşik JSON'u eskiyse veya Kanal D programı hatalı biçimde uzatılmışsa EPGShare'den yalnızca düzeltme amacıyla tekrar al.
+export function kanalDNeedsRepair(data, now = Date.now()) {
+  const ch = data && data.ch && data.ch.kanald;
+  if (!ch || !Array.isArray(ch.p)) return true;
+  const from = istDayStart(now, 0);
+  const to = istDayStart(now, 1);
+  const today = ch.p.filter((p) => Number(p[0]) >= from && Number(p[0]) < to);
+  if (!today.length) return true;
+  return today.some((p) => {
+    const title = fold(String(p[2] || ''));
+    const duration = Number(p[1]) - Number(p[0]);
+    return (title.includes('kanal d ana haber') && duration > 2 * 3600e3) || duration > 4 * 3600e3;
+  });
+}
+
+async function repairKanalDData(data, net, now, sources) {
+  if (!kanalDNeedsRepair(data, now)) return data;
+  const src = sources.find((x) => x.id === 'epgshare');
+  if (!src) return data;
+  const result = await fetchSource(src, net, now);
+  if (!result.ok) return data;
+  const fresh = buildFreeData([result], now);
+  if (!fresh.ch.kanald || !fresh.ch.kanald.p.length) return data;
+  return { ...data, at: now, ch: { ...data.ch, kanald: fresh.ch.kanald }, kanalDRefreshed: true };
+}
+
 export function validateFree(data, now = Date.now()) {
   if (!data || typeof data !== 'object' || data.v !== 1 || !data.ch || typeof data.ch !== 'object') return { ok: false, error: 'Beklenmeyen biçim' };
   const n = Object.keys(data.ch).length;
@@ -515,7 +541,10 @@ export async function loadFreeData(net, { now = Date.now(), sources = FREE_SOURC
     try {
       const data = await net.json(`${url}?t=${Math.floor(now / 600e3)}`, { fast: true });
       const v = validateFree(data, now);
-      if (v.ok) return { ...data, via: 'sunucu' };
+      if (v.ok) {
+        const ready = await repairKanalDData(data, net, now, sources).catch(() => data);
+        return { ...ready, via: 'sunucu' };
+      }
       why.push(`${new URL(url).hostname}: ${v.error}`);
     } catch (e) {
       why.push(`${new URL(url).hostname}: ${e.message || e}`);
