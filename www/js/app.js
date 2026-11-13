@@ -1890,6 +1890,18 @@ async function openToday() {
       programSheet: (it, p) => guideProgramSheet(it, p, [it], 0),
       channels: () => store.pref('today.ch.' + sid(), []),
       setChannels: (ids) => store.setPref('today.ch.' + sid(), ids),
+      sourceId: () => sid(),
+      toast,
+      reminders: {
+        list: () => readPlans(),
+        set: (plan) => {
+          const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) };
+          setPlans(addPlan(readPlans(), p));
+          ensurePlanPermissions();
+          return p;
+        },
+        remove: (id) => setPlans(removePlan(readPlans(), id)),
+      },
       openFlow: openSeriesFlow,
     });
   } catch (e) {
