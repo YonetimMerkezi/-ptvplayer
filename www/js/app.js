@@ -1903,6 +1903,8 @@ async function openToday() {
       programSheet: (it, p) => guideProgramSheet(it, p, [it], 0),
       channels: () => store.pref('today.ch.' + sid(), []),
       setChannels: (ids) => store.setPref('today.ch.' + sid(), ids),
+      filmChannels: () => store.pref('today.film.ch.' + sid(), null),
+      setFilmChannels: (ids) => store.setPref('today.film.ch.' + sid(), ids),
       sourceId: () => sid(),
       toast,
       reminders: {
