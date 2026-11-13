@@ -594,6 +594,15 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .dt-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0 0 16px; font-size: 0.9375rem; line-height: 1.45; }
 .dt-facts dt { color: var(--muted); }
 .dt-facts dd { margin: 0; overflow-wrap: anywhere; }
+.mv-similar { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); min-width: 0; }
+.mv-similar h2 { margin: 0 0 12px; font-size: 1.0625rem; color: var(--accent); }
+.mv-similar-row { display: flex; gap: 12px; overflow-x: auto; padding: 2px 2px 14px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.mv-similar-card { flex: 0 0 112px; min-width: 112px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: var(--text); text-align: left; scroll-snap-align: start; cursor: pointer; }
+.mv-similar-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mv-similar-poster { display: block; width: 100%; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 8px; background: var(--surface); }
+.mv-similar-poster .poster, .mv-similar-poster img { width: 100%; height: 100%; object-fit: cover; }
+.mv-similar-card b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .8125rem; line-height: 1.3; }
+.mv-similar-card small { color: var(--muted); font-size: .7rem; }
 .dt-load { color: var(--muted); }
 .dt-eps .chips { padding-left: 0; padding-right: 0; }
 .dt-eps-h, .epi-th { display: none; }
