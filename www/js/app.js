@@ -1648,12 +1648,12 @@ function openMovie(it) {
           // IMDb puanı: katalog başlığı + yıl kesin eşleşirse eklenir; sağlayıcı puanıyla karıştırılmaz.
           loadMovieMetadata(net, it, info || null, store).then((meta) => {
             if (!body.isConnected) return;
-            if (!meta) { await paintMovieAdvisories(body, null, 'IMDb eşleşmesi bulunamadı; uyarılar sorgulanamadı'); return; }
-            loadMovieAdvisories(net, store, meta, it).then(() => paintMovieAdvisories(body, meta)).catch(() => {});
+            if (!meta) { paintMovieAdvisories(body, null, 'IMDb eşleşmesi bulunamadı; içerik uyarıları kontrol edilemedi.'); return; }
+            loadMovieAdvisories(net, store, meta, it).then(() => paintMovieAdvisories(body, meta)).catch(() => paintMovieAdvisories(body, meta, 'İçerik uyarısı kaynağına erişilemedi.'));
             if (!meta.imdbRating) return;
             const chips = [it.group, yearOf((info && info.year) || meta.year), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating)), `IMDb ★ ${meta.imdbRating}`];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
-          }).catch(() => { paintMovieAdvisories(body, null, 'Film bilgileri alınamadı; bağlantıyı kontrol edin'); });
+          }).catch(() => { if (body.isConnected) paintMovieAdvisories(body, null, 'Film bilgileri alınamadı; internet bağlantısını veya veri kaynağını kontrol edin.'); });
           const picks = recommendMovies(it, info || {}, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
           const section = $('#mv-similar', body);
           const row = $('#mv-similar-row', body);
