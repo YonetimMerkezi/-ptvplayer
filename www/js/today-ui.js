@@ -74,7 +74,6 @@ export function openToday(env) {
     q('#td-opts').innerHTML =
       `<button class="chip${day === 0 ? ' on' : ''}" data-day="0">Bugün</button><button class="chip${day === 1 ? ' on' : ''}" data-day="1">Yarın</button>` +
       (day === 0 ? `<button class="chip${past ? ' on' : ''}" data-past aria-pressed="${past}">Bitenler</button>` : '') +
-      (env.openFlow ? `<button class="chip" data-flow>${icon('series')} Dizi akışı</button>` : '') +
       `<button class="chip" data-pick>${icon('tv')} Kanallar<small>${sel.length ? sel.length : 'Tümü'}</small></button>`;
     page.setTitle(`${day ? 'Yarın' : 'Bugün'} TV’de · ${new Date(dayStart(t, day)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`);
     const el = q('#td-list');
@@ -167,7 +166,6 @@ export function openToday(env) {
       past = !past;
       return draw();
     }
-    if (e.target.closest('[data-flow]')) return env.openFlow();
     if (e.target.closest('[data-pick]')) return pick();
     const r = e.target.closest('.td-r');
     if (r) {
