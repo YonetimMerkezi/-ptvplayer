@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 84,
+    title: 'TV rehberi ve dizi akışı düzeltmeleri',
+    items: [
+      'Bugün TV’de ekranındaki dizi sayısı ve listesi, haftalık dizi akışı ile ücretsiz EPG kayıtları birleştirilerek tamamlanır',
+      'Dizi akışında geçmiş programlar bugünün listesinden çıkarılır; devam eden ve sıradaki programlar gösterilir',
+      'Dizi hatırlatıcı düğmeleri Android TV kumandasıyla odaklanabilir ve seçilebilir; kanal logosu varsa kanal adının yanında gösterilir'
+    ],
+  },
+  {
     id: 83,
     title: 'Android TV için alternatif görüntü çözücü tercihleri',
     items: [
