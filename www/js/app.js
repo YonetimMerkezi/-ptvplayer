@@ -1589,7 +1589,7 @@ async function paintMovieAdvisories(body, meta, failure = '') {
   const ratings = Array.isArray(record && record.ratings) ? record.ratings : [];
   const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
   const sourceNames = { ktb: 'T.C. Kültür ve Turizm Bakanlığı', screenwise: 'Screenwise aile rehberi' };
-  const hasRecord = !!(warnings.length || ratings.length || (record && record.guidance));
+  const hasRecord = !!(warnings.length || ratings.length || (record && (record.guidance || record.imdbRating)));
   host.innerHTML = (hasRecord
     ? ((record && record.imdbRating) ? '<span class="mv-warning-chip mv-rating-chip">IMDb ★ ' + esc(record.imdbRating) + '</span>' : '') + ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">TR sınıflandırma · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
         const smart = advisorySmart(w);
