@@ -395,7 +395,7 @@ async function activate(id, { force = false } = {}) {
   const cached = catalogFromStorable(raw);
   resetGroups();
   setCatalog(cached || emptyCatalog());
-  if (cached) startMediaScan({ source: src, catalog: cached, net, store, onProgress: (p) => banner(`Film ve dizi bilgileri taranıyor… ${p.done}/${p.total} · ${p.matched} eşleşme`, { spin: p.done < p.total }) });
+  if (cached) startMediaScan({ source: src, catalog: cached, net, store, onProgress: (p) => banner(`Film ve dizi bilgileri taranıyor… ${p.done}/${p.total} · ${p.matched} eşleşme`, { spin: p.done < p.total }) }).then(() => { if (S.source && S.source.id === src.id) banner(null); }).catch(() => {});
   S.epg = new EpgView(await store.cache.get('epg:' + id));
   renderTop();
   renderTab();
