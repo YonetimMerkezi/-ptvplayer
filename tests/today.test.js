@@ -8,6 +8,9 @@ test('kindOf: rehber kategorisi önceliklidir (Türkçe/İngilizce)', () => {
   assert.equal(kindOf({ t: 'X', c: 'Drama / Series' }), 'dizi');
   assert.equal(kindOf({ t: 'X', c: 'Sinema' }), 'film');
   assert.equal(kindOf({ t: 'X', c: 'Movie / Drama' }), 'film');
+  assert.equal(kindOf({ t: 'Akşam Filmi', c: 'Drama', s: 1000, e: 1000 + 120 * 60000 }), 'film');
+  assert.equal(kindOf({ t: 'Dizi 12. Bölüm', c: 'Drama', s: 1000, e: 1000 + 120 * 60000 }), 'dizi');
+  assert.equal(kindOf({ t: 'Kısa Komedi', c: 'Comedy', s: 1000, e: 1000 + 45 * 60000 }), '');
   assert.equal(kindOf({ t: 'X', c: 'Spor / Futbol' }), 'spor');
   assert.equal(kindOf({ t: 'X', c: 'Sports' }), 'spor');
   assert.equal(kindOf({ t: 'X', c: 'Basketbol' }), 'spor');
