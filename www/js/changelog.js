@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 91,
+    title: 'Bugün TV’de film sınıflandırması ve dizi takibi',
+    items: [
+      'TV rehberinde Drama, Komedi, Aksiyon, Gerilim gibi tür etiketleri bulunan uzun metraj programlar Film sayımına katılır; bölüm/sezon bilgisi bulunanlar dizi olarak kalır',
+      'Bugün TV’de dizi programının ayrıntı ekranına Diziyi takip et / Dizi takibini bırak düğmesi eklendi; takip tercihi Dizi akışı ile ortak kullanılır'
+    ],
+  },
+  {
     id: 90,
     title: 'Benzer filmler ve kumandayla kanal geçişi',
     items: [
