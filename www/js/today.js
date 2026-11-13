@@ -38,6 +38,7 @@ export function kindOf(p) {
   // Kesin tür bilgileri önce gelir.
   if (RE_SERIES_CAT.test(c)) return 'dizi';
   if (RE_SPORT_CAT.test(c)) return RE_NEWS.test(c) || RE_NEWS.test(t) ? '' : 'spor';
+  if (RE_NON_FILM.test(c)) return '';
   if (RE_SERIES_TITLE.test(t) || RE_EPISODE.test(d)) return 'dizi';
   if (RE_SPORT_TITLE.test(t) && !RE_NEWS.test(t)) return 'spor';
   if (RE_NEWS.test(c) || RE_NEWS.test(t)) return '';
