@@ -6,7 +6,7 @@ import { loadMovieAdvisories } from './movie-advisories.js';
 const BASE = 'https://v3-cinemeta.strem.io';
 const active = new Map();
 const clean = (s) => String(s || '').trim();
-const yearOf = (s) => { const m = String(s || '').match(/(?:19|20)\\d{2}/); return m ? Number(m[0]) : 0; };
+const yearOf = (s) => { const m = String(s || '').match(/(?:19|20)\d{2}/); return m ? Number(m[0]) : 0; };
 const keyOf = (item) => clean(item && (item.name || item.title)).toLocaleLowerCase('tr');
 
 // Küçük kuyruk: aynı anda en fazla limit ağ işi yürütür.
@@ -43,7 +43,7 @@ async function loadSeriesMetadata(net, item, store) {
   const catalog = await net.json(url, { fast: true });
   const match = matchMovieMetadata(catalog && catalog.metas, parsed.title, year);
   const id = String(match && (match.imdb_id || match.id) || '');
-  if (!/^tt\\d+$/.test(id)) {
+  if (!/^tt\d+$/.test(id)) {
     await store.cache.set(key, { savedAt: Date.now(), value: null }).catch(() => {});
     return null;
   }
