@@ -25,7 +25,7 @@ export function channelKind(name) {
   if (!n) return '';
   // Kanal türü EPG başlığından/kategorisinden üstündür.
   if (n === 'a para' || n.startsWith('a para ')) return 'ignore';
-  if (n === 'fb tv' || n.startsWith('fb tv ')) return 'spor';
+  if (/(^| )fb tv( |$)/.test(n)) return 'spor';
   if (/^(a spor|trt spor|trt spor yildiz|s sport|s sports|bein sport|bein sports|sports tv|sport tv|tivibu spor|eurosport|fb tv|b spor)( |$)/.test(n) || n.includes('b n sp rts') || n.includes('b n sports')) return 'spor';
   if (n === 'bein series' || n.startsWith('bein series ')) return 'dizi';
   if (n.includes('sinema') || n.includes('bein movies') || n.includes('moviesmart') || n.includes('movie smart') || n.includes('filmbox') || n.includes('film box') || n.includes('cinefilm') || n.startsWith('cine 1')) return 'film';
