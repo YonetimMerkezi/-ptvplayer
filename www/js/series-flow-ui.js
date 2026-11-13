@@ -2,7 +2,7 @@
 // Satıra dokununca kanal kullanıcının listesinde bulunursa açılır; zil dizi başlamadan önce hatırlatıcı kurar (Planlananlar'da görünür).
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
-import { WEEKDAYS, dayIndex, loadSeriesWeek } from './series-flow.js';
+import { WEEKDAYS, dayIndex, loadSeriesWeek, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 import { MATCH_LEAD_DEFAULT, leadLabel } from './plan.js';
@@ -68,7 +68,7 @@ export function openSeriesFlow(env) {
   function rowsOfDay() {
     if (!data) return [];
     const { idx } = dayOf(pos);
-    return (data.days[idx] || []).filter((r) => !chan || r.channel === chan);
+    return (data.days[idx] || []).filter((r) => !isSportsChannel(r.channel) && (!chan || r.channel === chan));
   }
 
   function draw() {
@@ -83,7 +83,7 @@ export function openSeriesFlow(env) {
       }).join('') + `<button class="chip" data-refresh aria-label="Yenile"${busy ? ' disabled' : ''}>${icon('refresh')}${busy ? 'Yükleniyor…' : 'Yenile'}</button>`;
 
     const { idx, from } = dayOf(pos);
-    const all = data ? data.days[idx] || [] : [];
+    const all = data ? (data.days[idx] || []).filter((r) => !isSportsChannel(r.channel)) : [];
     const chs = [...new Set(all.map((r) => r.channel).filter(Boolean))].sort((a, b) => all.filter((r) => r.channel === b).length - all.filter((r) => r.channel === a).length || a.localeCompare(b, 'tr')).slice(0, 14);
     if (chan && !chs.includes(chan)) chan = '';
     q('#sf-chs').innerHTML = chs.length > 1 ? `<button class="chip${chan ? '' : ' on'}" data-chan="">Tümü</button>` + chs.map((c) => `<button class="chip${c === chan ? ' on' : ''}" data-chan="${esc(c)}">${esc(c)}</button>`).join('') : '';
