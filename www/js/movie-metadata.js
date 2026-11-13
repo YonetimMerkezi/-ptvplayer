@@ -2,6 +2,8 @@
 import { fold } from './util.js';
 
 const BASE = 'https://v3-cinemeta.strem.io';
+const done = new Map();
+const busy = new Map();
 const cleanTitle = (value) => fold(String(value || '').replace(/\s*\(\d{4}\)\s*$/, '').replace(/[._:]+/g, ' ').replace(/\s+/g, ' ').trim());
 const yearOf = (value) => {
   const m = String(value || '').match(/(?:19|20)\d{2}/);
@@ -22,9 +24,9 @@ export function matchMovieMetadata(results, title, year = 0) {
   return exact.length === 1 ? exact[0] : null;
 }
 
-export async function loadMovieMetadata(net, item, vodInfo = null) {
+export function loadMovieMetadata(net, item, vodInfo = null) {
   const title = String(item && (item.name || item.title) || '').trim();
-  if (!title) return null;
+  if (!title) return Promise.resolve(null);
   const year = yearOf((vodInfo && vodInfo.year) || (item && item.year) || title);
   const query = encodeURIComponent(title.replace(/\s*\(\d{4}\)\s*$/, '').trim());
   const catalog = await net.json(`${BASE}/catalog/movie/top/search=${query}.json`);
@@ -43,4 +45,11 @@ export async function loadMovieMetadata(net, item, vodInfo = null) {
     title: meta.name || match.name || title,
     source: 'Cinemeta',
   };
+  })();
+  busy.set(key, task);
+  return task.then((value) => {
+    done.set(key, value);
+    while (done.size > 500) done.delete(done.keys().next().value);
+    return value;
+  }).finally(() => busy.delete(key));
 }
