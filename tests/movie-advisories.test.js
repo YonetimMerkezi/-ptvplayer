@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKtbClassification, parseScreenwiseMedia } from '../www/js/movie-advisories.js';
+import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning } from '../www/js/movie-advisories.js';
 
 test('KTB film kaydındaki yaş ve içerik işaretlerini çıkarır', () => {
   const html = '<article><h3>Örnek Film</h3><p>16 Yaş ve Üzeri İzleyici Kitlesi İçindir.</p><p>Şiddet veya Korku Unsurları İçerir.</p><p>Olumsuz Örnek Oluşturabilecek Davranışlar İçerir.</p></article>';
@@ -30,4 +30,21 @@ test('Screenwise rehberindeki watchFor maddelerini kaynaklı uyarıya dönüşt�
 test('uyarı maddesi yoksa Screenwise uyarısı uydurmaz', () => {
   const result = parseScreenwiseMedia({ title: 'Example', wise: { overall: 90, parentCopy: { watchFor: [] } } });
   assert.deepEqual(result.warnings, []);
+});
+
+test('Screenwise İngilizce uyarıları Türkçeye çevrilir', () => {
+  const translated = translateScreenwiseText('The **R-rating is earned** through heavy language and the persistent, bone-deep anxiety of the situation.');
+  assert.match(translated, /yoğun argo/);
+  assert.match(translated, /gerilim/);
+  assert.doesNotMatch(translated, /The |R-rating|heavy language/);
+});
+test('Screenwise açıklamasından anlamlı uyarı kategorisi ve simgesi seçilir', () => {
+  assert.equal(classifyScreenwiseWarning('heavy language and persistent anxiety').category, 'language');
+  assert.equal(classifyScreenwiseWarning('physically intense workplace gore').category, 'violence');
+  assert.equal(classifyScreenwiseWarning('persistent anxiety and fear').category, 'fear');
+});
+test('Screenwise watchFor artık family_guidance teknik etiketi üretmez', () => {
+  const result = parseScreenwiseMedia({ title: 'Fuze', wise: { parentCopy: { watchFor: ['heavy language', 'physically intense workplace gore'] } } });
+  assert.deepEqual(result.warnings.map((w) => w.category), ['language', 'violence']);
+  assert.ok(result.warnings.every((w) => w.label && w.icon));
 });
