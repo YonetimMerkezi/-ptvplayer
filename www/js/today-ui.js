@@ -20,7 +20,7 @@ export function openToday(env) {
   let past = false;
   let sel = normalizeChannels(env.channels());
   const savedFilmChannels = env.filmChannels ? env.filmChannels() : null;
-  let filmSel = savedFilmChannels == null ? null : normalizeChannels(savedFilmChannels);
+  let filmSel = savedFilmChannels == null || (Array.isArray(savedFilmChannels) && savedFilmChannels.length === 0) ? null : normalizeChannels(savedFilmChannels);
   let seriesData = null;
   let filmSource = { loaded: false, loading: false, films: [], entries: [], channels: [], error: '' };
   let filmLoadToken = 0;
