@@ -53,10 +53,18 @@ test('Screenwise ayrıntılı uyarılar ve aile rehberi özeti Türkçeleştiril
   const language = translateScreenwiseText('The **R-rating is earned** through heavy language and the persistent, bone-deep anxiety of the situation.');
   const violence = translateScreenwiseText('Some scenes involving the construction site accident that reveals the bomb are **physically intense** and potentially triggering for those sensitive to workplace gore.');
   const guidance = translateScreenwiseText('Fuze is a solid, mid-tier thriller that trades in realism rather than spectacle. It’s the kind of movie that makes you look at every construction pit in the city a little differently.');
-  assert.match(language, /R yaş sınıfının nedeni/);
-  assert.match(language, /yoğun argo ve küfür/);
+  assert.match(language, /R yaş sınıfı/);
+  assert.match(language, /yoğun argo/);
   assert.match(violence, /inşaat kazası/);
   assert.match(violence, /rahatsız edici olabilir/);
   assert.match(guidance, /gerilim filmidir/);
   assert.doesNotMatch(language + violence + guidance, /heavy language|physically intense|construction site accident|mid-tier thriller/i);
+});
+
+test('Screenwise uzun rehber metnindeki kalan İngilizce ifadeler Türkçeleştirilir', () => {
+  const text = translateScreenwiseText("This is strictly for the **older teen and adult** crowd. The R-rating isn't just for show—it is a mature, stressful thriller that will likely bore younger viewers.");
+  assert.match(text, /daha büyük yaştaki gençler ve yetişkinler/);
+  assert.match(text, /yetişkinlere yönelik/);
+  assert.match(text, /genç yaştaki izleyicileri sıkabilir/);
+  assert.doesNotMatch(text, /older teen|younger viewers|mature, stressful thriller/i);
 });
