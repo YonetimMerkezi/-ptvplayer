@@ -1433,6 +1433,8 @@ function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto' }] : targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   if (item.kind !== 'series' && !isRec) store.pushRecent(sid(), item);
+  // Film nereden açılırsa açılsın (son izlenenler, bağlantı, indirilenler) oynatıcının altında önerilen filmler listesi olsun
+  if (!ctx && item.kind === 'movie' && !isRec) ctx = movieCtx(item);
   let at = startAt;
   if (isRec) at = 0;
   else if (at == null) {

@@ -57,7 +57,7 @@ export function createPlayerUI({ engine, player, env }) {
   const setPlayerLocked = (on) => {
     playerLocked = !!on;
     root.classList.toggle('locked', playerLocked);
-    q('#pl-lock').innerHTML = icon(playerLocked ? 'lock' : 'unlock');
+    q('#pl-lock').innerHTML = icon(playerLocked ? 'lock-open' : 'lock') + '<span>' + (playerLocked ? 'Kilidi aç' : 'Kilitle') + '</span>';
     q('#pl-lock').setAttribute('aria-label', playerLocked ? 'Oynatıcı kilidini aç' : 'Oynatıcıyı kilitle');
     q('#pl-unlock').hidden = !playerLocked;
     q('#pl-epg-panel').hidden = playerLocked || !window.matchMedia('(orientation: portrait)').matches || player.state().item?.kind !== 'live';
@@ -358,6 +358,8 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   let shelfSig = '';
+  let shelfSeason = null; // listede gösterilen sezon (kullanıcı seçer; oynayan bölümün sezonu değişince ona geçer)
+  let shelfCurSeason = null;
   function renderVodShelf(st) {
     const shelf = q('#pl-vod-shelf');
     const title = q('#pl-vod-shelf-title');
@@ -374,11 +376,23 @@ export function createPlayerUI({ engine, player, env }) {
     title.textContent = isSeries ? 'Bölümler' : 'Önerilen filmler';
     // Durum her güncellendiğinde (saniyede birkaç kez) yeniden çizilirse liste kaydırma konumunu yitirir; yalnız içerik değişince çizilir.
     const currentId = st.ep && st.ep.id || st.item.id;
-    const sig = (isSeries ? 's' : 'm') + '|' + currentId + '|' + items.map((x) => x.id).join(',');
+    const seasons = isSeries ? [...new Set(items.map((e) => e.season).filter((x) => x != null))] : [];
+    const curEp = isSeries ? items.find((e) => e.id === currentId) : null;
+    const curSeason = curEp && curEp.season != null ? curEp.season : seasons[0];
+    if (isSeries && curSeason !== shelfCurSeason) {
+      shelfCurSeason = curSeason;
+      shelfSeason = curSeason; // başka sezondan bölüm açılınca liste o sezona geçer
+    }
+    const shown = seasons.length > 1 ? (seasons.includes(shelfSeason) ? shelfSeason : curSeason) : null;
+    const seasonBtn = q('#pl-season');
+    seasonBtn.hidden = shown == null;
+    if (shown != null) seasonBtn.innerHTML = 'Sezon ' + esc(shown) + icon('down');
+    const sig = (isSeries ? 's' : 'm') + '|' + currentId + '|' + shown + '|' + items.map((x) => x.id).join(',');
     if (sig === shelfSig) return;
     shelfSig = sig;
     row.innerHTML = items.map((item, i) => {
       const current = item.id === currentId;
+      if (shown != null && item.season !== shown) return ''; // yalnız seçili sezonun bölümleri (dizin özgün sırayı korur)
       if (!isSeries && current) return ''; // Önerilen filmler: oynayan film listede yinelenmez (dizin özgün sırayı korur)
       const label = isSeries ? (item.label || item.title || item.name || 'Bölüm') : (item.name || 'Film');
       const sub = isSeries ? (item.durationSec ? Math.round(item.durationSec / 60) + ' dk' : '') : (item.group || '');
@@ -837,6 +851,8 @@ export function createPlayerUI({ engine, player, env }) {
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
     shelfSig = '';
+    shelfSeason = null;
+    shelfCurSeason = null;
     setPlayerLocked(false);
     lastStatus = '';
     shortEpgFor = null;
@@ -1030,6 +1046,24 @@ export function createPlayerUI({ engine, player, env }) {
 
   // ---- olaylar ----
   player.on(render);
+  q('#pl-season').addEventListener('click', () => {
+    const items = ctx && Array.isArray(ctx.items) ? ctx.items : [];
+    const seasons = [...new Set(items.map((e) => e.season).filter((x) => x != null))];
+    if (seasons.length < 2) return;
+    const shown = seasons.includes(shelfSeason) ? shelfSeason : seasons[0];
+    const sh = openSheet({
+      title: 'Sezon seç',
+      html: seasons.map((n) => `<button class="list-item" data-season="${esc(n)}"><span class="t">Sezon ${esc(n)}<small>${items.filter((e) => e.season === n).length} bölüm</small></span>${n === shown ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`).join(''),
+      mount: (body) => body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-season]');
+        if (!b) return;
+        shelfSeason = seasons.find((n) => String(n) === b.dataset.season);
+        shelfSig = '';
+        sh.close();
+        renderVodShelf(player.state());
+      }),
+    });
+  });
   q('#pl-vod-shelf-row').addEventListener('click', (e) => {
     const b = e.target.closest('[data-vod-index]');
     if (!b || !ctx || !Array.isArray(ctx.items)) return;
