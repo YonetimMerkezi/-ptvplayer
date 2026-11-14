@@ -5,7 +5,7 @@ import { cleanTitle, cacheKey, isEpisodeLike } from './titleclean.js';
 
 export const META_WORKER_URL = 'https://ptv-meta.karagozyazilim12.workers.dev';
 // Cloudflare'deki APP_TOKEN değerini buraya yapıştır (ADMIN_TOKEN ve TMDB_KEY buraya ASLA girmez).
-export const META_APP_TOKEN = 'BURAYA_APP_TOKEN_YAPISTIR';
+export const META_APP_TOKEN = 'sedonet23';
 
 const TTL_OK = 3 * 86400000;     // eşleşmiş kayıt
 const TTL_MANUAL = 86400000;     // elle düzeltilen uyarılar daha çabuk yenilensin
