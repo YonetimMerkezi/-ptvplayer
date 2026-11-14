@@ -1734,7 +1734,7 @@ function openMovie(it) {
         Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), lookupMeta(net, store, it, info || null).catch(() => null)]).then(([meta, wk]) => {
           if (!body.isConnected) return;
           const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
-          const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '' } : baseMeta;
+          const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '', originalTitle: wk.ot || '' } : baseMeta;
           loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk));
           if (info) {
             const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
