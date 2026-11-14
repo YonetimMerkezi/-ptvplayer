@@ -2401,7 +2401,7 @@ function renderHome(v) {
       <button class="tile t-today" data-go="today">${icon('cal')}<b>Bugün TV’de</b><small>Spor · Film · Dizi</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
-      ${nativePlugin ? '<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Cihazdan oynat</b></button>' : ''}
+      ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Cihazdan oynat</b></button>` : ''}
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
