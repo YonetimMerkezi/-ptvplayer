@@ -256,8 +256,8 @@ export function createPlayerUI({ engine, player, env }) {
     splitVideo = next;
     if (engine.kind === 'native') {
       if (next) {
-        const r = root.getBoundingClientRect();
-        engine.setRect({ x: r.left, y: r.top, w: r.width, h: Math.round(r.height * 0.58) }).catch(() => {});
+        const v = q('#vid').getBoundingClientRect();
+        engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
       } else {
         engine.clearRect().catch(() => {});
       }
