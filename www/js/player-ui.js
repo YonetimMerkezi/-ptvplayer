@@ -329,6 +329,27 @@ export function createPlayerUI({ engine, player, env }) {
     }
   }
 
+  function renderVodShelf(st) {
+    const shelf = q('#pl-vod-shelf');
+    const title = q('#pl-vod-shelf-title');
+    const row = q('#pl-vod-shelf-row');
+    const isSeries = st.item && st.item.kind === 'series';
+    const items = ctx && Array.isArray(ctx.items) ? ctx.items : [];
+    if (!st.item || st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast || !items.length) {
+      shelf.hidden = true;
+      row.innerHTML = '';
+      return;
+    }
+    shelf.hidden = false;
+    title.textContent = isSeries ? 'Bölümler' : 'Önerilen filmler';
+    row.innerHTML = items.map((item, i) => {
+      const current = item.id === (st.ep && st.ep.id || st.item.id);
+      const label = isSeries ? (item.label || item.title || item.name || 'Bölüm') : (item.name || 'Film');
+      const sub = isSeries ? (item.durationSec ? Math.round(item.durationSec / 60) + ' dk' : '') : (item.group || '');
+      return '<button class="pl-vod-card' + (current ? ' active' : '') + '" data-vod-index="' + i + '"><span class="pl-vod-thumb">' + (item.logo ? '<img src="' + esc(item.logo) + '" alt="" loading="lazy">' : '<span>' + esc(label.slice(0,2).toUpperCase()) + '</span>') + '</span><b>' + esc(label) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>';
+    }).join('');
+  }
+
   function render(st) {
     if (!open || !st.item) return;
     const prev = lastStatus;
@@ -339,6 +360,14 @@ export function createPlayerUI({ engine, player, env }) {
     const live = st.live;
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
+    const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && window.matchMedia('(orientation: portrait)').matches;
+    root.classList.toggle('vod-portrait', vodPortrait);
+    if (vodPortrait && env.native) requestAnimationFrame(() => {
+      if (!open || !root.classList.contains('vod-portrait')) return;
+      const v = q('#vid').getBoundingClientRect();
+      engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
+    });
+    renderVodShelf(st);
     q('#pl-prog').classList.toggle('live', live);
     const pausing = st.status === 'playing' || st.status === 'buffering' || st.status === 'loading';
     q('#pl-play').innerHTML = icon(pausing ? 'pause' : 'play');
@@ -754,8 +783,10 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
-  function enterFullscreen() {
+  function enterFullscreen(item) {
     open = true;
+    const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast;
+    root.classList.toggle('vod-portrait', vodPortrait);
     setPlayerLocked(false);
     lastStatus = '';
     shortEpgFor = null;
@@ -771,7 +802,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-pip').hidden = engine.kind !== 'native' || onTv(); // TV'de resim içinde resim yok
     applyResize(resizeIdx);
     loadLevels();
-    const landscape = onTv() || !env.pref || env.pref('set.playerOrientation', 'landscape') !== 'portrait';
+    const landscape = onTv() || (!vodPortrait && (!env.pref || env.pref('set.playerOrientation', 'landscape') !== 'portrait'));
     engine.setImmersive(true, landscape).catch(() => {});
     showUi(true);
   }
@@ -779,7 +810,7 @@ export function createPlayerUI({ engine, player, env }) {
   function openUi(item, targets, opts) {
     ctx = opts.ctx || null;
     leavePreview();
-    enterFullscreen();
+    enterFullscreen(item);
     player.open(item, targets, { ep: opts.ep || null, startAt: opts.startAt || 0 });
   }
 
@@ -913,6 +944,7 @@ export function createPlayerUI({ engine, player, env }) {
     sleep.cancel();
     renderSleepLabel();
     root.hidden = true;
+    root.classList.remove('vod-portrait');
     setPortraitSplit(false);
     document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
@@ -947,6 +979,13 @@ export function createPlayerUI({ engine, player, env }) {
 
   // ---- olaylar ----
   player.on(render);
+  q('#pl-vod-shelf-row').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vod-index]');
+    if (!b || !ctx || !Array.isArray(ctx.items)) return;
+    const index = Number(b.dataset.vodIndex);
+    const item = ctx.items[index];
+    if (item && ctx.play) ctx.play(item, index);
+  });
   root.addEventListener('pointerdown', pinchDown);
   root.addEventListener('pointerdown', gestureStart);
   root.addEventListener('pointermove', pinchMove);
