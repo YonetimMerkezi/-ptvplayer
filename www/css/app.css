@@ -1362,3 +1362,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.portrait-split .pl-intro, #player.vod-portrait .pl-intro { top: calc(var(--yt-top) + 52px); right: 8px; }
   #player.portrait-split .pl-stats, #player.vod-portrait .pl-stats { top: calc(var(--yt-top) + 52px); left: 8px; max-width: 70vw; }
 }
+
+/* Cihazdan medya kısayolu */
+.tile.mini.t-local { border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); }
+.tile.mini.t-local .ic { color:var(--accent); }
