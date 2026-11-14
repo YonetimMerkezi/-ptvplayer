@@ -102,14 +102,26 @@
       </div>
     </div>
   </div>
-  <section id="pl-vod-shelf" class="pl-vod-shelf" hidden aria-label="Film önerileri ve dizi bölümleri">
+  <!-- Dikey kip (YouTube düzeni): video üstte; altta başlık + araç düğmeleri ve canlıda yayın akışı / filmde öneri-bölüm listesi.
+       Araç düğmeleri ve yayın satırı dikey kipte buraya taşınır (player-ui.js syncDock). -->
+  <div id="pl-below" class="pl-below">
+    <section id="pl-info" class="pl-info" aria-label="Oynatılan">
+      <div class="pl-info-head">
+        <div class="pl-info-text"><b id="pl-info-name"></b><span id="pl-info-sub"></span></div>
+        <button id="pl-info-fav" class="icon-btn" aria-label="Favori"><svg class="ic"><use href="#i-star"/></svg></button>
+      </div>
+      <div id="pl-info-line" class="pl-info-line"></div>
+      <div id="pl-info-tools" class="pl-info-tools"></div>
+    </section>
+    <section id="pl-vod-shelf" class="pl-vod-shelf" hidden aria-label="Film önerileri ve dizi bölümleri">
     <h3 id="pl-vod-shelf-title">Önerilen filmler</h3>
     <div id="pl-vod-shelf-row" class="pl-vod-shelf-row"></div>
-  </section>
-  <section id="pl-epg-panel" class="pl-epg-panel" hidden aria-label="Yayın akışı">
+    </section>
+    <section id="pl-epg-panel" class="pl-epg-panel" hidden aria-label="Yayın akışı">
     <div class="pl-epg-head"><div><b>Yayın akışı</b><small id="pl-epg-channel"></small></div><button id="pl-epg-remind" class="btn sm"><svg class="ic"><use href="#i-bell"/></svg> Hatırlat</button></div>
     <div id="pl-epg-programs" class="pl-epg-programs"><p class="hint">Program bilgisi yükleniyor…</p></div>
-  </section>
+    </section>
+  </div>
   <div id="pl-num" class="pl-num" hidden aria-live="polite"></div>
   <div id="pl-nextup" class="pl-nextup" hidden><div class="nu-t"><span id="nu-h">Sonraki bölüm</span><b id="nu-name"></b></div><div class="nu-btns"><button id="nu-now" class="btn sm"><svg class="ic"><use href="#i-next"/></svg><span id="nu-l">Şimdi oynat · </span><span id="nu-s"></span></button><button id="nu-no" class="btn sm ghost">İptal</button></div></div>
   <button id="pl-intro" class="btn pl-intro" hidden><svg class="ic"><use href="#i-fwd"/></svg>Intro atla</button>
