@@ -1250,13 +1250,17 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 /* Kategori düzenleme ızgarasında ad her zaman görünür; sayımın üstünde, işlem düğmelerinin dışında kalır. */
 .cat-tile.editing > b { display:block; visibility:visible; opacity:1; color:var(--text); width:100%; min-height:1.2em; line-height:1.2; position:relative; z-index:1; }
 
-/* Dikey canlı oynatıcı: video üstte, EPG altta ayrı alan; EPG artık görüntünün üzerine binmez. */
-#player.portrait-split #vid { inset:0 0 auto; width:100%; height:58%; }
-#player.portrait-split #pl-ui { bottom:42%; }
+/* Dikey canlı oynatıcı: 16:9 video üstte, EPG kalan alanda altta. */
+#player.portrait-split #vid {
+  inset:0 0 auto; width:100%; height:min(56.25vw,42vh); max-height: min(56.25vw,42vh);
+  object-fit:contain; background:#000;
+}
+#player.portrait-split #pl-ui { bottom:calc(100% - min(56.25vw,42vh)); }
 #player.portrait-split .pl-mid { margin-top:auto; margin-bottom:8px; }
 #player.portrait-split .pl-bot { margin-bottom:0; padding-bottom:8px; background:linear-gradient(#0000,#000b); }
 #player.portrait-split .pl-epg-panel {
-  display:flex; flex-direction:column; left:0; right:0; bottom:0; height:42%; max-height:42%;
+  display:flex; flex-direction:column; left:0; right:0; top:min(56.25vw,42vh); bottom:0;
+  height:auto; max-height:none; overflow:hidden;
   padding:10px max(14px,var(--safe-r)) max(8px,var(--safe-b)) max(14px,var(--safe-l));
   border:0; border-top:1px solid #ffffff2b; border-radius:16px 16px 0 0;
   background:rgba(5,12,18,.96); backdrop-filter:blur(14px);
