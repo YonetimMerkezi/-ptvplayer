@@ -29,7 +29,7 @@ test('belirsiz eşleşmede film seçmez', () => {
   assert.equal(matchMovieMetadata(rows, 'Crash'), null);
 });
 
-test('IMDb puanını yalnız kimlik doğrulandıktan sonra döndürür', async () => {
+test('IMDb kimliğini doğrular; puan alanını uygulama metaverisine taşımaz', async () => {
   const calls = [];
   const net = { json: async (url) => {
     calls.push(url);
@@ -38,7 +38,7 @@ test('IMDb puanını yalnız kimlik doğrulandıktan sonra döndürür', async (
   }};
   const meta = await loadMovieMetadata(net, { name: 'Esaretin Bedeli' }, { year: '1994' });
   assert.equal(meta.imdbId, 'tt0111161');
-  assert.equal(meta.imdbRating, '9.3');
+  assert.equal(Object.hasOwn(meta, 'imdbRating'), false);
   assert.equal(calls.length, 2);
 });
 
@@ -49,7 +49,7 @@ test('kimlik uyuşmazlığında puan döndürmez', async () => {
   assert.equal(await loadMovieMetadata(net, { name: 'The Shawshank Redemption' }, { year: '1994' }), null);
 });
 
-test('film kimliği ve IMDb puanı kalıcı önbelleğe yazılır', async () => {
+test('film kimliği ve puansız metaveri kalıcı önbelleğe yazılır', async () => {
   let saved = null;
   const store = { cache: {
     get: async () => null,
@@ -61,7 +61,8 @@ test('film kimliği ve IMDb puanı kalıcı önbelleğe yazılır', async () => 
   const meta = await loadMovieMetadata(net, { name: 'The Matrix' }, { year: '1999' }, store);
   assert.equal(meta.imdbId, 'tt0133093');
   assert.match(saved.key, /^movie-metadata:v1:/);
-  assert.equal(saved.value.value.imdbRating, '8.7');
+  assert.equal(saved.value.value.imdbId, 'tt0133093');
+  assert.equal(Object.hasOwn(saved.value.value, 'imdbRating'), false);
   assert.ok(saved.value.savedAt > 0);
 });
 
@@ -77,29 +78,22 @@ test('ayrıştırılmış IPTV başlığıyla IMDb eşleşmesi yapar', async () 
     return { meta: { id: 'tt9999999', imdb_id: 'tt9999999', imdbRating: '6.8', year: '2021', name: 'Dune' } };
   }};
   const meta = await loadMovieMetadata(net, { name: 'Dune | 2021 | 6.3 | HMAX' });
-  assert.equal(meta.imdbRating, '6.8');
+  assert.equal(meta.imdbId, 'tt9999999');
+  assert.equal(Object.hasOwn(meta, 'imdbRating'), false);
   assert.match(calls[0], /search=Dune/);
 });
 
-test('Cinemeta sonucu yoksa Türkçe Wikidata adıyla otomatik IMDb kimliği bulur', async () => {
+test('Cinemeta sonucu yoksa otomatik Wikidata taraması yapmaz', async () => {
   const calls = [];
   const net = { json: async (url) => {
     calls.push(url);
     if (url.includes('/catalog/')) return { metas: [] };
-    if (url.includes('wbsearchentities')) return { search: [{ id: 'Q123', description: '2025 yapımı film' }] };
-    if (url.includes('wbgetentities')) return { entities: { Q123: {
-      labels: { tr: { value: 'Örnek Yerel Film' }, en: { value: 'Original Movie' } },
-      aliases: { tr: [{ value: 'Başka Yerel Ad' }] },
-      claims: { P345: [{ mainsnak: { datavalue: { value: 'tt1234567' } } }], P577: [{ mainsnak: { datavalue: { value: { time: '+2025-01-01T00:00:00Z' } } } }] }
-    } } };
-    return { meta: { id: 'tt1234567', imdb_id: 'tt1234567', imdbRating: '7.4', year: '2025', name: 'Original Movie' } };
+    throw new Error('Beklenmeyen dış katalog isteği');
   }};
-  const meta = await loadMovieMetadata(net, { name: 'Örnek Yerel Film | 2025' });
-  assert.equal(meta.imdbId, 'tt1234567');
-  assert.equal(meta.imdbRating, '7.4');
-  assert.ok(calls.some((url) => url.includes('wbsearchentities')));
-  assert.ok(calls.some((url) => url.includes('wbgetentities')));
+  assert.equal(await loadMovieMetadata(net, { name: 'Örnek Yerel Film | 2025' }), null);
+  assert.ok(calls.every((url) => !url.includes('wikidata.org')));
 });
+
 test('Wikidata eşleştirmesi yıl uyuşmazlığında IMDb kimliği döndürmez', async () => {
   const net = { json: async (url) => url.includes('wbsearchentities')
     ? { search: [{ id: 'Q123', description: 'film' }] }
@@ -133,6 +127,6 @@ test('alternatif orijinal ad varsa sırayla arayıp doğru IMDb kaydını bulur'
   }};
   const meta = await loadMovieMetadata(net, { name: 'Yerel Film | 2024', original_title: 'Original Film' });
   assert.equal(meta.imdbId, 'tt4444444');
-  assert.equal(meta.imdbRating, '7.2');
+  assert.equal(Object.hasOwn(meta, 'imdbRating'), false);
   assert.equal(calls.length, 3);
 });
