@@ -246,9 +246,25 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   let panelEpgFor = '';
+  let splitVideo = false;
+  function setPortraitSplit(enabled) {
+    const next = !!enabled && !playerLocked;
+    root.classList.toggle('portrait-split', next);
+    if (splitVideo === next) return;
+    splitVideo = next;
+    if (engine.kind === 'native') {
+      if (next) {
+        const r = root.getBoundingClientRect();
+        engine.setRect({ x: r.left, y: r.top, w: r.width, h: Math.round(r.height * 0.58) }).catch(() => {});
+      } else {
+        engine.clearRect().catch(() => {});
+      }
+    }
+  }
   function renderPortraitEpg(st) {
     const panel = q('#pl-epg-panel');
     const enabled = !!st.item && st.item.kind === 'live' && !st.item.cast && window.matchMedia('(orientation: portrait)').matches;
+    setPortraitSplit(enabled);
     panel.hidden = !enabled || playerLocked;
     if (!enabled) { panelEpgFor = ''; return; }
     q('#pl-epg-channel').textContent = st.item.name || '';
@@ -895,6 +911,7 @@ export function createPlayerUI({ engine, player, env }) {
     sleep.cancel();
     renderSleepLabel();
     root.hidden = true;
+    setPortraitSplit(false);
     document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
     q('#pl-hud').hidden = true;
@@ -977,10 +994,17 @@ export function createPlayerUI({ engine, player, env }) {
     const st = player.state();
     if (st.item && st.item.kind === 'live') env.onEpgSheet(st.item);
   });
-  window.matchMedia('(orientation: portrait)').addEventListener?.('change', () => {
+  const portraitQuery = window.matchMedia('(orientation: portrait)');
+  portraitQuery.addEventListener?.('change', () => {
     panelEpgFor = '';
     const st = player.state();
     if (open && st.item) renderPortraitEpg(st);
+    else setPortraitSplit(false);
+  });
+  window.addEventListener('resize', () => {
+    if (!open) return;
+    const st = player.state();
+    if (st.item) renderPortraitEpg(st);
   });
   q('#pl-lock').addEventListener('click', () => setPlayerLocked(true));
   q('#pl-unlock').addEventListener('click', () => {
