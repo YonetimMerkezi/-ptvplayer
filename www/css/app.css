@@ -1429,3 +1429,28 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.vod-portrait #pl-ui { height:56.25vw; max-height:56.25vw; min-height:0; }
   #player.vod-portrait .pl-vod-shelf { top:56.25vw; }
 }
+
+/* Native video slot: Android PlayerView is positioned from this visible box, not the hidden HTML video. */
+#pl-video-frame { display:none; }
+#player.portrait-split #pl-video-frame,
+#player.vod-portrait #pl-video-frame {
+  display:block; position:absolute; z-index:0; left:0; right:0; top:0;
+  width:100%; height:46vh; max-height:46vh; background:#000;
+}
+#player.portrait-split #vid,
+#player.vod-portrait #vid { display:none; }
+#player.portrait-split #pl-epg-panel { top:46vh; }
+#player.portrait-split #vid { height:46vh; max-height:46vh; }
+#player.vod-portrait #pl-video-frame { height:46vh; max-height:46vh; }
+#player.vod-portrait #vid { height:46vh; max-height:46vh; }
+#player.vod-portrait #pl-ui { height:46vh; max-height:46vh; }
+#player.vod-portrait .pl-vod-shelf { top:46vh; }
+@media (max-height:700px) {
+  #player.portrait-split #pl-video-frame,
+  #player.vod-portrait #pl-video-frame,
+  #player.portrait-split #vid,
+  #player.vod-portrait #vid,
+  #player.vod-portrait #pl-ui { height:46vh; max-height:46vh; }
+  #player.portrait-split .pl-epg-panel { top:46vh; }
+  #player.vod-portrait .pl-vod-shelf { top:46vh; }
+}
