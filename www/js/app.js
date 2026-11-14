@@ -1422,6 +1422,30 @@ qEl.addEventListener(
   }, 120),
 );
 
+
+async function playLocalMedia() {
+  if (!nativePlugin || typeof nativePlugin.pickLocalMedia !== 'function') {
+    toast('Cihazdan medya seçimi Android uygulamasında kullanılabilir');
+    return;
+  }
+  try {
+    const picked = await nativePlugin.pickLocalMedia();
+    if (!picked || !picked.uri) return;
+    const item = {
+      id: 'local-' + Date.now(),
+      name: picked.name || 'Cihaz medyası',
+      kind: 'movie',
+      mime: picked.mime || 'auto',
+      url: picked.uri,
+      localMedia: true,
+    };
+    startPlay(item, { local: picked.uri, ctx: { items: [], index: 0 } });
+  } catch (e) {
+    const message = String(e && (e.message || e) || '');
+    if (!/cancel|iptal|dosya seçilmedi/i.test(message)) toast('Medya açılamadı: ' + message);
+  }
+}
+
 // ------------------------------------------------------------------ oynatma
 
 function playLive(items, index) {
@@ -2377,6 +2401,7 @@ function renderHome(v) {
       <button class="tile t-today" data-go="today">${icon('cal')}<b>Bugün TV’de</b><small>Spor · Film · Dizi</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
+      ${nativePlugin ? '<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Cihazdan oynat</b></button>' : ''}
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
@@ -2408,6 +2433,7 @@ function goTo(go) {
     return showRecent();
   }
   if (kidActive() && (go === 'rec' || go === 'multi' || go === 'dl')) return; // çocuk modunda kayıtlar, indirilenler ve çoklu ekran yok
+  if (go === 'local') return playLocalMedia();
   if (go === 'rec') return recordingsSheet();
   if (go === 'dl') return downloadsSheet();
   if (go === 'guide') return guidePage();
