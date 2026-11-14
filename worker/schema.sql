@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS matches (
   tid INTEGER,
   tp TEXT,
   ttl TEXT,
+  ot TEXT,
+  imdb TEXT,
   yr INTEGER,
   cert TEXT,
   csrc TEXT,

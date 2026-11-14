@@ -110,19 +110,21 @@ async function resolve(env, it) {
   }
   const cands = [...seen.values()].sort((a, b) => b.conf - a.conf);
   const best = cands[0];
-  const base = { k: it.k, tid: null, tp: null, ttl: null, yr: null, cert: null, csrc: null, gen: [], w: {}, conf: best ? +best.conf.toFixed(3) : 0, cands: cands.slice(0, 3).map((c) => ({ id: c.id, tp: c.tp, ttl: c.ttl, yr: c.cy, conf: +c.conf.toFixed(2) })) };
+  const base = { k: it.k, tid: null, tp: null, ttl: null, ot: null, imdb: null, yr: null, cert: null, csrc: null, gen: [], w: {}, conf: best ? +best.conf.toFixed(3) : 0, cands: cands.slice(0, 3).map((c) => ({ id: c.id, tp: c.tp, ttl: c.ttl, yr: c.cy, conf: +c.conf.toFixed(2) })) };
   if (!best || best.conf < PENDING) return { ...base, st: 'none' };
   if (best.conf < AUTO) return { ...base, st: 'pending' };
-  const d = await tmdb(env, `/${best.tp}/${best.id}`, { language: 'tr-TR', append_to_response: best.tp === 'movie' ? 'release_dates' : 'content_ratings' });
+  const d = await tmdb(env, `/${best.tp}/${best.id}`, { language: 'tr-TR', append_to_response: best.tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
   const c = pickCert(d, best.tp);
-  return { ...base, st: 'ok', tid: best.id, tp: best.tp, ttl: d.title || d.name, yr: best.cy, cert: c.cert, csrc: c.csrc, gen: (d.genres || []).map((g) => g.name) };
+  return { ...base, st: 'ok', tid: best.id, tp: best.tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: best.cy, cert: c.cert, csrc: c.csrc, gen: (d.genres || []).map((g) => g.name) };
 }
 
+const imdbOf = (d) => { const v = d.external_ids?.imdb_id || d.imdb_id; return /^tt\d+$/.test(v || '') ? v : null; };
+
 // ---------- D1 ----------
-const COLS = 'k,st,tid,tp,ttl,yr,cert,csrc,gen,w,conf,cands,updated';
-const toArgs = (r) => [r.k, r.st, r.tid, r.tp, r.ttl, r.yr, r.cert, r.csrc, JSON.stringify(r.gen || []), JSON.stringify(r.w || {}), r.conf ?? 0, JSON.stringify(r.cands || []), Date.now()];
+const COLS = 'k,st,tid,tp,ttl,ot,imdb,yr,cert,csrc,gen,w,conf,cands,updated';
+const toArgs = (r) => [r.k, r.st, r.tid, r.tp, r.ttl, r.ot ?? null, r.imdb ?? null, r.yr, r.cert, r.csrc, JSON.stringify(r.gen || []), JSON.stringify(r.w || {}), r.conf ?? 0, JSON.stringify(r.cands || []), Date.now()];
 const SET = COLS.split(',').slice(1).map((c) => `${c}=excluded.${c}`).join(',');
-const UPSERT = `INSERT INTO matches (${COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET ${SET}`;
+const UPSERT = `INSERT INTO matches (${COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET ${SET}`;
 const UPSERT_SAFE = UPSERT + " WHERE matches.st != 'manual'";
 const fromRow = (r) => ({ ...r, gen: JSON.parse(r.gen || '[]'), w: JSON.parse(r.w || '{}'), cands: JSON.parse(r.cands || '[]') });
 async function getRows(env, keys) {
@@ -131,7 +133,7 @@ async function getRows(env, keys) {
   return (results || []).map(fromRow);
 }
 // uygulamaya dönen alanlar (cands ve ayrıntı dönmez)
-const pub = (r) => ({ k: r.k, st: r.st, tid: r.tid, tp: r.tp, ttl: r.ttl, yr: r.yr, cert: r.cert, csrc: r.csrc, gen: r.gen, w: r.w, conf: r.conf });
+const pub = (r) => ({ k: r.k, st: r.st, tid: r.tid, tp: r.tp, ttl: r.ttl, ot: r.ot ?? null, imdb: r.imdb ?? null, yr: r.yr, cert: r.cert, csrc: r.csrc, gen: r.gen, w: r.w, conf: r.conf });
 
 // ---------- yetki ----------
 function same(a, b) {
@@ -148,8 +150,7 @@ function cleanW(w) {
 }
 
 // ---------- uçlar ----------
-async function lookup(env, req) {
-  let body; try { body = await req.json(); } catch { return json({ error: 'json' }, 400); }
+async function lookup(env, body) {
   const items = (Array.isArray(body.items) ? body.items : []).slice(0, MAX_ITEMS)
     .filter((i) => i && typeof i.k === 'string' && i.k.length <= 160 && typeof i.t === 'string' && i.t.length >= 1 && i.t.length <= 120 && /^(movie|tv)\|/.test(i.k))
     .map((i) => ({ k: i.k, t: i.t, a: typeof i.a === 'string' ? i.a.slice(0, 120) : null, y: Number.isInteger(i.y) && i.y > 1900 && i.y < 2100 ? i.y : null }));
@@ -173,13 +174,13 @@ async function lookup(env, req) {
 async function adminSet(env, req) {
   let b; try { b = await req.json(); } catch { return json({ error: 'json' }, 400); }
   if (typeof b.k !== 'string' || !/^(movie|tv)\|/.test(b.k)) return json({ error: 'k' }, 400);
-  const cur = (await getRows(env, [b.k]))[0] || { k: b.k, st: 'none', tid: null, tp: null, ttl: null, yr: null, cert: null, csrc: null, gen: [], w: {}, conf: 0, cands: [] };
+  const cur = (await getRows(env, [b.k]))[0] || { k: b.k, st: 'none', tid: null, tp: null, ttl: null, ot: null, imdb: null, yr: null, cert: null, csrc: null, gen: [], w: {}, conf: 0, cands: [] };
   let r = { ...cur };
   if (b.tid) {
     const tp = b.tp === 'tv' ? 'tv' : parseKind(b.k);
-    const d = await tmdb(env, `/${tp}/${+b.tid}`, { language: 'tr-TR', append_to_response: tp === 'movie' ? 'release_dates' : 'content_ratings' });
+    const d = await tmdb(env, `/${tp}/${+b.tid}`, { language: 'tr-TR', append_to_response: tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
     const c = pickCert(d, tp);
-    r = { ...r, st: 'manual', tid: d.id, tp, ttl: d.title || d.name, yr: +(d.release_date || d.first_air_date || '').slice(0, 4) || null, cert: c.cert, csrc: c.csrc, gen: (d.genres || []).map((g) => g.name), conf: 1 };
+    r = { ...r, st: 'manual', tid: d.id, tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: +(d.release_date || d.first_air_date || '').slice(0, 4) || null, cert: c.cert, csrc: c.csrc, gen: (d.genres || []).map((g) => g.name), conf: 1 };
   }
   if (b.cert) { if (!['Genel', '7+', '13+', '15+', '18+'].includes(b.cert)) return json({ error: 'cert' }, 400); r.cert = b.cert; r.csrc = 'MAN'; r.st = 'manual'; }
   if (b.w) { r.w = cleanW(b.w); if (r.st !== 'ok') r.st = 'manual'; }
@@ -200,9 +201,16 @@ export default {
     const url = new URL(req.url);
     try {
       if (url.pathname === '/health') return json({ ok: true, db: !!env.DB, tmdb: !!env.TMDB_KEY });
-      if (url.pathname === '/lookup' && req.method === 'POST') {
+      if (url.pathname === '/lookup' && (req.method === 'POST' || req.method === 'GET')) {
         if (!same(req.headers.get('x-app-token'), env.APP_TOKEN)) return json({ error: 'auth' }, 401);
-        return await lookup(env, req);
+        let body;
+        if (req.method === 'GET') {   // tek kayıt: /lookup?k=...&t=...&y=...&a=...
+          const q = url.searchParams;
+          body = { items: [{ k: q.get('k') || '', t: q.get('t') || '', a: q.get('a') || null, y: +q.get('y') || null }] };
+        } else {
+          try { body = await req.json(); } catch { return json({ error: 'json' }, 400); }
+        }
+        return await lookup(env, body);
       }
       if (url.pathname.startsWith('/admin/')) {
         if (!same(req.headers.get('x-admin-token'), env.ADMIN_TOKEN)) return json({ error: 'auth' }, 401);
