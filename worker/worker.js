@@ -94,7 +94,7 @@ export function pickCert(d, tp) {
     const normalized = normCert(cc, raw);
     if (normalized) { cert = normalized; csrc = cc; break; }
   }
-  return { cert, csrc, w: warnings, warningCountry: Object.keys(warnings).length ? country : null };
+  return { cert, csrc: csrc || (Object.keys(warnings).length ? country : null), w: warnings, warningCountry: Object.keys(warnings).length ? country : null };
 }
 
 // ---------- TMDB ----------
@@ -217,7 +217,7 @@ async function adminSet(env, req) {
     const tp = b.tp === 'tv' ? 'tv' : parseKind(b.k);
     const d = await tmdb(env, `/${tp}/${+b.tid}`, { language: 'tr-TR', append_to_response: tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
     const c = pickCert(d, tp);
-    r = { ...r, st: 'manual', tid: d.id, tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: +(d.release_date || d.first_air_date || '').slice(0, 4) || null, cert: c.cert, csrc: c.csrc, gen: (d.genres || []).map((g) => g.name), conf: 1 };
+    r = { ...r, st: 'manual', tid: d.id, tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: +(d.release_date || d.first_air_date || '').slice(0, 4) || null, cert: c.cert, csrc: c.csrc, w: c.w || {}, gen: (d.genres || []).map((g) => g.name), conf: 1 };
   }
   if (b.cert) { if (!['Genel', '7+', '13+', '15+', '18+'].includes(b.cert)) return json({ error: 'cert' }, 400); r.cert = b.cert; r.csrc = 'MAN'; r.st = 'manual'; }
   if (b.w) { r.w = cleanW(b.w); if (r.st !== 'ok') r.st = 'manual'; }
