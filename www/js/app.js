@@ -1671,7 +1671,8 @@ async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 
   host.hidden = false;
   $('#mv-warning-info', host).addEventListener('click', () => {
     const ratingRows = allRatings.map((r) => '<article class="mv-warning-detail"><div><b>' + (r.est ? 'Tahmini yaş sınırı' : 'Türkiye yaş sınıflandırması') + '</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
-    const manualRows = manual.map((m) => '<article class="mv-warning-detail"><div><b>' + icon(m.icon) + esc(m.label) + '</b>' + (m.level ? '<span>' + esc(m.level) + '</span>' : '') + '</div><small>Elle doğrulanmış kayıt</small></article>').join('');
+    const workerWarningSource = wk && wk.st === 'manual' ? 'Elle doğrulanmış kayıt' : 'TMDB içerik tanımlayıcıları (' + esc((wk && wk.csrc) || 'bölgesel sınıflandırma') + ')';
+  const manualRows = manual.map((m) => '<article class="mv-warning-detail"><div><b>' + icon(m.icon) + esc(m.label) + '</b>' + (m.level ? '<span>' + esc(m.level) + '</span>' : '') + '</div><small>' + workerWarningSource + '</small></article>').join('');
     const rows = ratingRows + manualRows + warnings.map((w) => {
       const smart = advisorySmart(w);
       const label = smart.label;
