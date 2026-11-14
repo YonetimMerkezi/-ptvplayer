@@ -243,9 +243,10 @@ export async function loadMovieAdvisories(net, store, meta, item) {
   if (cached && cached.checkedAt && Date.now() - cached.checkedAt < ttl) return cached;
   const record = { imdbId: meta.imdbId || '', title, year, checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
   try {
-    const url = KTB + '/browse?search=' + encodeURIComponent(title);
+    const ktbTitle = String(meta.trTitle || title).trim();   // KTB Türkçe adla arar
+    const url = KTB + '/browse?search=' + encodeURIComponent(ktbTitle);
     const html = await net.text(url, { fast: true });
-    const found = parseKtbClassification(html, title, meta.year);
+    const found = parseKtbClassification(html, ktbTitle, meta.year);
     if (found) {
       record.sources.ktb = { status: 'found', checkedAt: record.checkedAt, url: found.url };
       record.warnings.push(...found.warnings);
