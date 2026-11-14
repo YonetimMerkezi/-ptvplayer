@@ -73,6 +73,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     seek: (ms) => plugin.seekTo({ ms: Math.max(0, Math.floor(ms)) }),
     stop: () => plugin.stop(),
     setResize: (mode) => plugin.setResizeMode({ mode }),
+    setAutoFrameRate: (on_) => plugin.setAutoFrameRate({ on: !!on_ }),
     setImmersive: (on_, landscape = on_) => plugin.setImmersive({ on: on_, landscape }),
     // önizleme: yerel görüntüyü CSS piksel cinsinden bir dikdörtgene sığdırır / tam ekrana döndürür
     setRect: async (r) => plugin.setRect({ x: r.x, y: r.y, w: r.w, h: r.h }),
