@@ -4,7 +4,7 @@
 const KTB = 'https://filmsiniflandirma.ktb.gov.tr';
 const SCREENWISE = 'https://screenwiseapp.com';
 const TTL_FOUND = 30 * 86400000;
-const TTL_EMPTY = 24 * 3600000;
+const TTL_EMPTY = 6 * 3600000; // eşleşmeyen içerikleri alternatif kaynak güncellemeleri için daha sık yeniden tara
 const TTL_ERROR = 5 * 60000;   // kaynak hata verdiyse "uyarı yok" diye günlerce saklama; kısa süre sonra yeniden dene
 const foldText = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 // Önbellek anahtarı: arayüz (app.js) ile toplayıcı aynı anahtarı kullanır.
@@ -212,27 +212,59 @@ export async function translateAdvisoryText(net, value) {
   return translated;
 }
 
+const advisoryTitleScore = (a, b) => {
+  const x = foldText(a), y = foldText(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  const compact = (v) => v.replace(/\\s/g, '');
+  const cx = compact(x), cy = compact(y);
+  if (cx.length >= 5 && cy.length >= 5 && (cx.includes(cy) || cy.includes(cx))) return Math.min(cx.length, cy.length) / Math.max(cx.length, cy.length);
+  const A = new Set(x.split(' ').filter((v) => v.length > 1)), B = new Set(y.split(' ').filter((v) => v.length > 1));
+  return A.size && B.size ? [...A].filter((v) => B.has(v)).length / Math.max(A.size, B.size) : 0;
+};
+
 async function loadScreenwise(net, meta, title, record, series = false) {
   const wantedType = series ? 'show' : 'movie';
-  const typeOk = (t) => !t || (series ? /^(show|series|tv)$/i.test(String(t)) : t === 'movie');
-  const query = meta && meta.imdbId
-    ? 'imdb_id=' + encodeURIComponent(meta.imdbId)
-    : 'q=' + encodeURIComponent(title) + (Number(meta && meta.year) ? '&year=' + encodeURIComponent(meta.year) : '');
-  const searchUrl = SCREENWISE + '/api/v1/media/search?' + query + '&type=' + wantedType;
-  const search = await net.json(searchUrl, { fast: true });
-  const candidates = Array.isArray(search && search.results) ? search.results : [];
-  const match = candidates.find((x) => x && x.media && x.media.slug && Number(x.matchConfidence) >= 0.75 && typeOk(x.media.type));
+  const typeOk = (t) => !t || (series ? /^(show|series|tv)$/i.test(String(t)) : /^movie$/i.test(String(t)));
+  const titles = [...new Set([title, meta && meta.trTitle, meta && meta.originalTitle, meta && meta.original_title,
+    meta && meta.originalName, meta && meta.original_name, meta && meta.altTitle]
+    .filter((v) => typeof v === 'string' && v.trim()).map((v) => v.trim()))];
+  const year = Number(meta && meta.year) || 0;
+  const queries = [];
+  if (meta && meta.imdbId) queries.push('imdb_id=' + encodeURIComponent(meta.imdbId));
+  for (const candidate of titles) {
+    queries.push('q=' + encodeURIComponent(candidate) + (year ? '&year=' + year : ''));
+    queries.push('q=' + encodeURIComponent(candidate));
+  }
+  const tried = new Set();
+  let match = null, matchedQuery = '';
+  for (const query of queries) {
+    if (tried.has(query) || tried.size >= 8) continue;
+    tried.add(query);
+    const search = await net.json(SCREENWISE + '/api/v1/media/search?' + query + '&type=' + wantedType, { fast: true });
+    const candidates = Array.isArray(search && search.results) ? search.results.filter((x) =>
+      x && x.media && x.media.slug && typeOk(x.media.type)) : [];
+    const ranked = candidates.map((x) => {
+      const nameScore = Math.max(0, ...[x.media.title, x.media.name, x.title].filter(Boolean)
+        .flatMap((name) => titles.map((wanted) => advisoryTitleScore(name, wanted))));
+      return { item: x, confidence: Number(x.matchConfidence) || 0, nameScore };
+    }).sort((a, b) => (b.confidence * 0.65 + b.nameScore * 0.35) - (a.confidence * 0.65 + a.nameScore * 0.35));
+    const best = ranked[0];
+    if (best && (best.confidence >= 0.75 || (best.confidence >= 0.6 && best.nameScore >= 0.85))) {
+      match = best.item; matchedQuery = query; break;
+    }
+  }
   if (!match) {
-    record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers' };
+    record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers', attempts: tried.size };
     return;
   }
   const media = await net.json(SCREENWISE + '/api/v1/media/' + encodeURIComponent(match.media.slug), { fast: true });
   const parsed = parseScreenwiseMedia(media);
   if (!parsed) {
-    record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers' };
+    record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers', attempts: tried.size };
     return;
   }
-  record.sources.screenwise = { status: 'found', checkedAt: Date.now(), url: parsed.url, matchConfidence: Number(match.matchConfidence), title: parsed.title || title };
+  record.sources.screenwise = { status: 'found', checkedAt: Date.now(), url: parsed.url, matchConfidence: Number(match.matchConfidence), title: parsed.title || title, matchedQuery };
   for (const warning of parsed.warnings) warning.details = await translateAdvisoryText(net, warning.originalDetails || warning.details);
   record.warnings.push(...parsed.warnings);
   if (parsed.wise) record.guidance = { source: 'Screenwise', url: parsed.url, score: parsed.wise.overall, summary: await translateAdvisoryText(net, parsed.wise.oneLiner), ageFit: await translateAdvisoryText(net, parsed.wise.ageFit) };
@@ -255,17 +287,23 @@ export async function loadMovieAdvisories(net, store, meta, item, kind = '') {
   // KTB film sınıflandırma sitesi yalnız filmleri kapsar; diziler için Screenwise ve TMDB kullanılır.
   if (!series) {
     try {
-      const ktbTitle = String(meta.trTitle || title).trim();   // KTB Türkçe adla arar
-      const url = KTB + '/browse?search=' + encodeURIComponent(ktbTitle);
-      const html = await net.text(url, { fast: true });
-      const found = parseKtbClassification(html, ktbTitle, meta.year);
+      const ktbTitles = [...new Set([meta.trTitle, title, meta.originalTitle, meta.original_title, meta.originalName]
+        .filter((v) => typeof v === 'string' && v.trim()).map((v) => v.trim()))];
+      let found = null, lastHtml = '', searched = [];
+      for (const ktbTitle of ktbTitles.slice(0, 5)) {
+        searched.push(ktbTitle);
+        const url = KTB + '/browse?search=' + encodeURIComponent(ktbTitle);
+        lastHtml = await net.text(url, { fast: true });
+        found = parseKtbClassification(lastHtml, ktbTitle, meta.year);
+        if (found) break;
+      }
       if (found) {
-        record.sources.ktb = { status: 'found', checkedAt: record.checkedAt, url: found.url };
+        record.sources.ktb = { status: 'found', checkedAt: record.checkedAt, url: found.url, matchedTitle: found.matchedTitle, searched };
         record.warnings.push(...found.warnings);
         if (found.ageRating) record.ratings.push({ value: found.ageRating, source: found.source, country: 'TR' });
       } else record.sources.ktb = {
-        status: /sayfa yukleniyor|page loading/i.test(foldText(html)) ? 'unavailable' : 'no_data',
-        checkedAt: record.checkedAt, url: KTB + '/browse',
+        status: /sayfa yukleniyor|page loading/i.test(foldText(lastHtml)) ? 'unavailable' : 'no_data',
+        checkedAt: record.checkedAt, url: KTB + '/browse', searched,
       };
     } catch (e) {
       record.sources.ktb = { status: 'error', message: String(e && e.message || e), checkedAt: Date.now() };
