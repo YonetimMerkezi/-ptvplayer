@@ -38,8 +38,10 @@ export function createPlayerUI({ engine, player, env }) {
     root.classList.toggle('locked', playerLocked);
     q('#pl-lock').innerHTML = icon(playerLocked ? 'lock' : 'unlock');
     q('#pl-lock').setAttribute('aria-label', playerLocked ? 'Oynatıcı kilidini aç' : 'Oynatıcıyı kilitle');
-    q('#pl-unlock').hidden = !playerLocked; 
+    q('#pl-unlock').hidden = !playerLocked;
     q('#pl-epg-panel').hidden = playerLocked || !window.matchMedia('(orientation: portrait)').matches || player.state().item?.kind !== 'live';
+    if (playerLocked) setPortraitSplit(false);
+    else if (open && player.state().item) renderPortraitEpg(player.state());
     clearTimeout(hideTimer);
   };
   let resizeIdx = Math.max(0, RESIZE.findIndex(([id]) => id === (env.pref ? env.pref('resize', 'fit') : 'fit')));
