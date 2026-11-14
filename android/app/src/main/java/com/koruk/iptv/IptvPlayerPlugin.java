@@ -2555,6 +2555,54 @@ public class IptvPlayerPlugin extends Plugin {
         }, "tv-watchnext").start();
     }
 
+
+    // Cihazdaki video/ses dosyalarını Android'in sistem dosya seçicisiyle açar.
+    // SAF URI izni kalıcı alınır; dosya uygulama deposuna kopyalanmaz.
+    @PluginMethod
+    public void pickLocalMedia(final PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "video/*", "audio/*" });
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(call, intent, "localMediaResult");
+    }
+
+    @ActivityCallback
+    private void localMediaResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
+            call.reject("Dosya seçilmedi");
+            return;
+        }
+        Intent data = result.getData();
+        Uri uri = data.getData();
+        try {
+            final int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            if (flags != 0) getContext().getContentResolver().takePersistableUriPermission(uri, flags);
+        } catch (Exception ignored) {
+            // Bazı sağlayıcılar kalıcı izin vermez; geçerli oturumdaki URI yine kullanılabilir.
+        }
+        String mime = getContext().getContentResolver().getType(uri);
+        String name = "Cihaz medyası";
+        android.database.Cursor cursor = null;
+        try {
+            cursor = getContext().getContentResolver().query(uri, new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int col = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (col >= 0) name = cursor.getString(col);
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+        JSObject out = new JSObject();
+        out.put("uri", uri.toString());
+        out.put("name", name);
+        out.put("mime", mime == null ? "" : mime);
+        call.resolve(out);
+    }
+
     // Sesli arama: Android konuşma tanıma ekranı açılır, söylenen metin {text} olarak döner (boş: iptal).
     @PluginMethod
     public void voiceSearch(final PluginCall call) {
