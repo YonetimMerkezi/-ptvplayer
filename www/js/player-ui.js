@@ -416,7 +416,7 @@ export function createPlayerUI({ engine, player, env }) {
     const live = st.live;
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
-    const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && window.matchMedia('(orientation: portrait)').matches;
+    const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && !!env.pref && env.pref('set.playerOrientation', 'landscape') === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
     if (vodPortrait && env.native) requestAnimationFrame(() => {
@@ -855,7 +855,7 @@ export function createPlayerUI({ engine, player, env }) {
   // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
   function enterFullscreen(item) {
     open = true;
-    const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast;
+    const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast && !!env.pref && env.pref('set.playerOrientation', 'landscape') === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
     shelfSig = '';
