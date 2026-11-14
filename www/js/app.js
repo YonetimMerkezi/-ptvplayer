@@ -1610,7 +1610,6 @@ const starsOf = (r) => (r ? `★ ${r}` : '');
 
 // Film bitince (ya da son 15 sn'de) aynı kategoriden bir sonraki izlenmemiş film önerilir; kendiliğinden başlamaz.
 function movieCtx(it) {
-  if (!setting('movieNext')) return null;
   const done = (x) => S.prog[x.id] || null;
   const picks = recommendMovies(it, { genre: it.genre || '', cast: it.cast || '', director: it.director || '' }, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0).concat([it.id]) }).filter((x) => !isBad(x.id));
   const sug = pickNextMovie(it, visibleAll('movie'), done, (x) => isBad(x.id));
