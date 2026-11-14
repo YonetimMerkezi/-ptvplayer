@@ -346,7 +346,7 @@ export function createPlayerUI({ engine, player, env }) {
       const current = item.id === (st.ep && st.ep.id || st.item.id);
       const label = isSeries ? (item.label || item.title || item.name || 'Bölüm') : (item.name || 'Film');
       const sub = isSeries ? (item.durationSec ? Math.round(item.durationSec / 60) + ' dk' : '') : (item.group || '');
-      return '<button class="pl-vod-card' + (current ? ' active' : '') + '" data-vod-index="' + i + '"><span class="pl-vod-thumb">' + (item.logo ? '<img src="' + esc(item.logo) + '" alt="" loading="lazy">' : '<span>' + esc(label.slice(0,2).toUpperCase()) + '</span>') + '</span><b>' + esc(label) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>';
+      return '<button class="pl-vod-card' + (isSeries ? ' is-episode' : ' is-movie') + (current ? ' active' : '') + '" data-vod-index="' + i + '"><span class="pl-vod-thumb">' + (item.logo ? '<img src="' + esc(item.logo) + '" alt="" loading="lazy">' : '<span>' + esc(label.slice(0,2).toUpperCase()) + '</span>') + '</span><span class="pl-vod-copy"><b>' + esc(label) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><span class="pl-vod-action">' + icon('play') + '</span></button>';
     }).join('');
   }
 
