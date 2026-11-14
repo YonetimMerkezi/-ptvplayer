@@ -7,6 +7,7 @@ export const CHANGELOG = [
     items: [
       'Ana ekrana Cihazdan oynat kısayolu eklendi',
       'Android sistem dosya seçicisinden cihazdaki video ve ses dosyaları seçilebilir',
+      'Dosya seçici çağrısı yerel Android köprüsüne bağlandı',
       'Seçilen dosya uygulamanın yerel oynatıcısında açılır; dosya uygulama deposuna kopyalanmaz',
     ],
   },
