@@ -1246,3 +1246,6 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 .cat-tile-actions { position:absolute; left:6px; right:6px; bottom:5px; display:flex; justify-content:space-around; gap:2px; }
 .cat-tile-act { width:30px; height:30px; flex:none; display:grid; place-items:center; border-radius:8px; color:var(--muted); background:var(--raised); }
 .cat-tile-act .ic { width:16px; height:16px; }
+
+/* Kategori düzenleme ızgarasında ad her zaman görünür; sayımın üstünde, işlem düğmelerinin dışında kalır. */
+.cat-tile.editing > b { display:block; visibility:visible; opacity:1; color:var(--text); width:100%; min-height:1.2em; line-height:1.2; position:relative; z-index:1; }
