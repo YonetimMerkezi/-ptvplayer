@@ -194,3 +194,30 @@ test('kaynak hatası "uyarı yok" diye günlerce saklanmaz; kısa süre sonra ye
   assert.equal(again.sources.screenwise.status, 'found');
   assert.equal(again.warnings.length, 1);
 });
+
+
+test('Screenwise eşleşmesi Türkçe/orijinal alternatif adlarla ve yıl olmadan yeniden denenir', async () => {
+  const calls = [];
+  const net = {
+    text: async (url) => { calls.push(url); return '<html></html>'; },
+    json: async (url) => {
+      calls.push(url);
+      if (url.includes('/api/v1/media/search?')) {
+        if (url.includes('q=Turkce%20Ad&year=2021')) return { results: [] };
+        if (url.includes('q=Orijinal%20Ad')) return { results: [{ matchConfidence: 0.68, media: { slug: 'alternate-title', type: 'movie', title: 'Orijinal Ad' } }] };
+      }
+      if (url.endsWith('/api/v1/media/alternate-title')) return {
+        title: 'Orijinal Ad', url: 'https://screenwiseapp.com/media/alternate-title',
+        wise: { parentCopy: { watchFor: ['Intense violence throughout'] } },
+      };
+      throw new Error('unexpected url ' + url);
+    },
+  };
+  const record = await loadMovieAdvisories(net, memStore(), {
+    title: 'Turkce Ad', trTitle: 'Türkçe Ad', originalTitle: 'Orijinal Ad', year: 2021,
+  }, { name: 'Turkce Ad' });
+  assert.equal(record.sources.screenwise.status, 'found');
+  assert.equal(record.sources.screenwise.title, 'Orijinal Ad');
+  assert.equal(record.warnings.length, 1);
+  assert.ok(calls.some((url) => url.includes('q=Orijinal%20Ad')));
+});
