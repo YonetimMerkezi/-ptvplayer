@@ -2401,14 +2401,13 @@ function renderHome(v) {
       <button class="tile t-today" data-go="today">${icon('cal')}<b>Bugün TV’de</b><small>Spor · Film · Dizi</small></button>
     </div>
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
-      ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Cihazdan oynat</b></button>` : ''}
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
       <button class="tile mini t-sport" data-go="sport">${miniIc('ball')}<b>Spor</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
-      <button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>
+      ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Cihazdan oynat</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
