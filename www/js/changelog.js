@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 109,
+    title: 'Dikey oynatma: YouTube düzeni',
+    items: [
+      'Telefon dik tutulurken video üstte (16:9), altında başlık, favori ve araç düğmeleri; canlıda yayın akışı, film/dizide öneri ve bölüm listesi',
+      'Kontroller yalnız videonun üstünde görünür ve kendiliğinden gizlenir; alttaki düğmeler ve liste hep erişilebilir',
+      'Dikeyde parlaklık, ses ve sarma kaydırmaları video alanında çalışır; alt listeye dokunmak kontrolleri açıp kapatmaz',
+    ],
+  },
+  {
     id: 108,
     title: 'Dikey oynatıcı görüntü alanı düzeltildi',
     items: [

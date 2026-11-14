@@ -33,6 +33,27 @@ export function createPlayerUI({ engine, player, env }) {
   let ctx = null; // { list, index } | { eps: [...], index }
   let open = false;
   let playerLocked = false;
+  const dockQuery = window.matchMedia('(orientation: portrait)');
+  // Dikey kip (YouTube düzeni): video üstte, altta başlık + araç düğmeleri + içerik. Araç düğmeleri ve yayın satırı bu kipte
+  // videonun altındaki bilgi alanına taşınır (kontrol katmanı gizlense de görünür kalır); aksi halde kendi yerlerine döner.
+  // Öğeler taşınır, kopyalanmaz: kimlikleri ve dinleyicileri korunur.
+  function syncDock() {
+    const bot = root.querySelector('.pl-bot');
+    const tools = root.querySelector('.pl-tools') || document.querySelector('.pl-tools');
+    const line = $('#pl-epgline');
+    const toolsHost = $('#pl-info-tools');
+    const lineHost = $('#pl-info-line');
+    if (!bot || !tools || !line || !toolsHost || !lineHost) return;
+    const on = open && dockQuery.matches && (root.classList.contains('portrait-split') || root.classList.contains('vod-portrait'));
+    if (on) {
+      if (tools.parentNode !== toolsHost) {
+        lineHost.append(line);
+        toolsHost.append(tools);
+      }
+    } else if (tools.parentNode !== bot) {
+      bot.append(line, tools); // özgün sıra: ilerleme çubuğu, yayın satırı, araçlar
+    }
+  }
   const setPlayerLocked = (on) => {
     playerLocked = !!on;
     root.classList.toggle('locked', playerLocked);
@@ -131,7 +152,9 @@ export function createPlayerUI({ engine, player, env }) {
 
   function gestureStart(e) {
     gest.swallow = false;
-    const videoRect = q('#vid').getBoundingClientRect();
+    const stacked = dockQuery.matches && (root.classList.contains('portrait-split') || root.classList.contains('vod-portrait'));
+    // Dikey kipte yerel görüntü #pl-video-frame kutusundadır (#vid gizli); kaydırma hareketleri yalnız bu kutuda çalışır
+    const videoRect = (stacked ? q('#pl-video-frame') : q('#vid')).getBoundingClientRect();
     if (playerLocked || pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn') ||
         e.clientX < videoRect.left || e.clientX > videoRect.right || e.clientY < videoRect.top || e.clientY > videoRect.bottom) {
       gest.id = null;
@@ -254,6 +277,7 @@ export function createPlayerUI({ engine, player, env }) {
   function setPortraitSplit(enabled) {
     const next = !!enabled && !playerLocked;
     root.classList.toggle('portrait-split', next);
+    syncDock();
     if (splitVideo === next) return;
     splitVideo = next;
     if (engine.kind === 'native') {
@@ -333,6 +357,7 @@ export function createPlayerUI({ engine, player, env }) {
     }
   }
 
+  let shelfSig = '';
   function renderVodShelf(st) {
     const shelf = q('#pl-vod-shelf');
     const title = q('#pl-vod-shelf-title');
@@ -342,16 +367,27 @@ export function createPlayerUI({ engine, player, env }) {
     if (!st.item || st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast || !items.length) {
       shelf.hidden = true;
       row.innerHTML = '';
+      shelfSig = '';
       return;
     }
     shelf.hidden = false;
     title.textContent = isSeries ? 'Bölümler' : 'Önerilen filmler';
+    // Durum her güncellendiğinde (saniyede birkaç kez) yeniden çizilirse liste kaydırma konumunu yitirir; yalnız içerik değişince çizilir.
+    const currentId = st.ep && st.ep.id || st.item.id;
+    const sig = (isSeries ? 's' : 'm') + '|' + currentId + '|' + items.map((x) => x.id).join(',');
+    if (sig === shelfSig) return;
+    shelfSig = sig;
     row.innerHTML = items.map((item, i) => {
-      const current = item.id === (st.ep && st.ep.id || st.item.id);
+      const current = item.id === currentId;
+      if (!isSeries && current) return ''; // Önerilen filmler: oynayan film listede yinelenmez (dizin özgün sırayı korur)
       const label = isSeries ? (item.label || item.title || item.name || 'Bölüm') : (item.name || 'Film');
       const sub = isSeries ? (item.durationSec ? Math.round(item.durationSec / 60) + ' dk' : '') : (item.group || '');
       return '<button class="pl-vod-card' + (isSeries ? ' is-episode' : ' is-movie') + (current ? ' active' : '') + '" data-vod-index="' + i + '"><span class="pl-vod-thumb">' + (item.logo ? '<img src="' + esc(item.logo) + '" alt="" loading="lazy">' : '<span>' + esc(label.slice(0,2).toUpperCase()) + '</span>') + '</span><span class="pl-vod-copy"><b>' + esc(label) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><span class="pl-vod-action">' + icon('play') + '</span></button>';
     }).join('');
+    // Dizide oynayan bölüm listede görünür alana getirilir
+    const act = isSeries ? row.querySelector('.pl-vod-card.active') : null;
+    if (act) requestAnimationFrame(() => act.scrollIntoView({ block: 'center' }));
+    else row.scrollTop = 0;
   }
 
   function render(st) {
@@ -361,11 +397,14 @@ export function createPlayerUI({ engine, player, env }) {
     const t = title(st);
     q('#pl-name').textContent = t.name;
     q('#pl-sub').textContent = t.sub;
+    q('#pl-info-name').textContent = t.name;
+    q('#pl-info-sub').textContent = t.sub;
     const live = st.live;
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
     const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && window.matchMedia('(orientation: portrait)').matches;
     root.classList.toggle('vod-portrait', vodPortrait);
+    syncDock();
     if (vodPortrait && env.native) requestAnimationFrame(() => {
       if (!open || !root.classList.contains('vod-portrait')) return;
       const v = q('#pl-video-frame').getBoundingClientRect();
@@ -379,6 +418,10 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-fav').innerHTML = icon(env.isFav(st.item) ? 'star-on' : 'star');
     q('#pl-fav').setAttribute('aria-label', env.isFav(st.item) ? 'Favoriden çıkar' : 'Favoriye ekle');
     q('#pl-fav').style.color = env.isFav(st.item) ? 'var(--gold)' : '';
+    // Dikey kipte favori düğmesi videonun altındaki başlık satırındadır; aynı durumu gösterir
+    q('#pl-info-fav').innerHTML = q('#pl-fav').innerHTML;
+    q('#pl-info-fav').setAttribute('aria-label', q('#pl-fav').getAttribute('aria-label'));
+    q('#pl-info-fav').style.color = q('#pl-fav').style.color;
     q('#pl-epg').hidden = st.item.kind !== 'live' || !!st.item.cast;
     if (!live && !seeking) {
       q('#pl-pos').textContent = fmtDuration(st.pos);
@@ -391,6 +434,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-next').hidden = !hasNav;
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
     q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
+    q('#pl-info-fav').hidden = q('#pl-fav').hidden;
     q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-dl').hidden = !(env.canDownload && env.canDownload(st));
     renderSyncLabel();
@@ -791,6 +835,8 @@ export function createPlayerUI({ engine, player, env }) {
     open = true;
     const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast;
     root.classList.toggle('vod-portrait', vodPortrait);
+    syncDock();
+    shelfSig = '';
     setPlayerLocked(false);
     lastStatus = '';
     shortEpgFor = null;
@@ -950,6 +996,7 @@ export function createPlayerUI({ engine, player, env }) {
     root.hidden = true;
     root.classList.remove('vod-portrait');
     setPortraitSplit(false);
+    syncDock(); // open artık false: araç düğmeleri kendi yerine döner
     document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
     q('#pl-hud').hidden = true;
@@ -1001,7 +1048,7 @@ export function createPlayerUI({ engine, player, env }) {
   root.addEventListener('click', (e) => {
     // Düğme tıklamaları (geri oku, kapat vb.) kök dinleyiciye de ulaşır; düğme oynatıcıyı bölmeli ekran önizlemesine
     // döndürmüşse, aynı tıklama önizlemeyi hemen yeniden tam ekran yapmasın.
-    if (playerLocked || e.target.closest('button, input, #pl-status .btn')) return;
+    if (playerLocked || e.target.closest('button, input, #pl-status .btn, #pl-below')) return;
     if (previewing) return expand();
     if (gest.swallow) {
       gest.swallow = false; // kaydırmadan sonra gelen tıklama arayüzü açıp kapatmasın
@@ -1034,6 +1081,7 @@ export function createPlayerUI({ engine, player, env }) {
     env.toggleFav(st.item);
     render(st);
   });
+  q('#pl-info-fav').addEventListener('click', () => q('#pl-fav').click());
   q('#pl-epg').addEventListener('click', () => env.onEpgSheet(player.state().item));
   q('#pl-epg-remind').addEventListener('click', () => {
     const st = player.state();
@@ -1045,6 +1093,7 @@ export function createPlayerUI({ engine, player, env }) {
     const st = player.state();
     if (open && st.item) renderPortraitEpg(st);
     else setPortraitSplit(false);
+    syncDock();
   });
   window.addEventListener('resize', () => {
     if (!open) return;
