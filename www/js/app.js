@@ -3445,6 +3445,8 @@ function playerSheet() {
       `<div class="sel-row"><span>Canlı yayın biçimi<small>Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır</small></span><select id="g-lfmt">${optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)))}</select></div>` +
       chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
       chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
+      `<div class="sel-row"><span>Telefon oynatıcı yönü<small>Dikey: telefon dik tutulurken oynatıcı açılır. TV modu her zaman yatay kalır</small></span><select id="g-porient">${optionsHtml([['portrait','Dikey'],['landscape','Yatay']], store.pref('set.playerOrientation','landscape'))}</select></div>` +
+      (nativePlugin ? chkRow('autoFrameRate', 'Otomatik kare hızı (AFR)', 'Destekleyen Android cihaz ve ekranlarda yayın kare hızına uyum sağlar') : '') +
       chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +
       `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
       (nativePlugin
@@ -3476,6 +3478,10 @@ function playerSheet() {
         }
       });
       $('#g-rm', body).addEventListener('click', () => remoteSheet());
+      const orient = $('#g-porient', body);
+      if (orient) orient.addEventListener('change', (e) => {
+        store.setPref('set.playerOrientation', e.target.value === 'portrait' ? 'portrait' : 'landscape');
+      });
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
       const galang = $('#g-alang', body);
       if (galang) galang.addEventListener('change', (e) => store.setPref('set.audioLang', normalizeAudioLang(e.target.value)));
