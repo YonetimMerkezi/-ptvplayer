@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 103,
+    title: 'Kategori düzenleme görünümü düzeltmesi',
+    items: [
+      'Izgara görünümünde kategori düzenlerken kategori adları yeniden görünür; gizle, kilitle ve taşıma düğmeleri korunur',
+    ],
+  },
+  {
     id: 102,
     title: 'Kanal D rehberi ve film listesi için ek kaynak düzeltmesi',
     items: [
@@ -860,13 +867,6 @@ export const CHANGELOG = [
   },
 ];
 
-  {
-    id: 103,
-    title: 'Kategori düzenleme görünümü düzeltmesi',
-    items: [
-      'Izgara görünümünde kategori düzenlerken kategori adları yeniden görünür; gizle, kilitle ve taşıma düğmeleri korunur',
-    ],
-  },
 
 export const LATEST_ID = CHANGELOG[0].id;
 
