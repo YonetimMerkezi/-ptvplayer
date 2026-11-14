@@ -1612,9 +1612,11 @@ const starsOf = (r) => (r ? `★ ${r}` : '');
 function movieCtx(it) {
   if (!setting('movieNext')) return null;
   const done = (x) => S.prog[x.id] || null;
+  const picks = recommendMovies(it, { genre: it.genre || '', cast: it.cast || '', director: it.director || '' }, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0).concat([it.id]) }).filter((x) => !isBad(x.id));
   const sug = pickNextMovie(it, visibleAll('movie'), done, (x) => isBad(x.id));
-  if (!sug) return null;
-  return { items: [it, sug], index: 0, movie: true, autoNext: false, play: (m) => startPlay(m, { ctx: movieCtx(m) }) };
+  const items = picks.length ? [it, ...picks] : [it, ...(sug ? [sug] : [])];
+  if (items.length < 2) return null;
+  return { items, index: 0, movie: true, autoNext: false, play: (m) => startPlay(m, { ctx: movieCtx(m) }) };
 }
 
 // Film içerik uyarıları: kaynak toplayıcı sonuçları IndexedDB'de movie-advisory:<IMDb ID> anahtarıyla saklar.
