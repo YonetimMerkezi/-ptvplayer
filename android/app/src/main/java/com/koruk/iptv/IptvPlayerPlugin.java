@@ -30,6 +30,8 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.Surface;
+import android.view.SurfaceView;
 import android.webkit.WebView;
 
 import androidx.activity.result.ActivityResult;
@@ -167,6 +169,7 @@ public class IptvPlayerPlugin extends Plugin {
     private boolean ticking = false;
     private static volatile IptvPlayerPlugin activePlugin;
     private volatile boolean pipMode = false;
+    private volatile boolean autoFrameRate = false;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -347,6 +350,7 @@ public class IptvPlayerPlugin extends Plugin {
             @Override
             public void onVideoSizeChanged(VideoSize size) {
                 updatePipParams(); // PiP penceresi yayının en-boy oranına uysun
+                applyAutoFrameRate();
             }
 
             // Ses/altyazı parçaları yayın çözüldükçe sonradan da ortaya çıkabilir (özellikle TS yayınlarda).
@@ -688,6 +692,30 @@ public class IptvPlayerPlugin extends Plugin {
         final long ms = call.getData().optLong("ms", 0L);
         main.post(() -> {
             if (player != null) player.seekTo(Math.max(0L, ms));
+            call.resolve();
+        });
+    }
+
+    // Android 11+: destekleyen ekranlarda kaynağın kare hızını yüzey üzerinden bildirir.
+    private void applyAutoFrameRate() {
+        if (Build.VERSION.SDK_INT < 30 || playerView == null) return;
+        View surfaceView = playerView.getVideoSurfaceView();
+        if (!(surfaceView instanceof SurfaceView)) return;
+        Surface surface = ((SurfaceView) surfaceView).getHolder().getSurface();
+        if (surface == null || !surface.isValid()) return;
+        float fps = 0f;
+        if (autoFrameRate && player != null && player.getVideoFormat() != null) {
+            fps = player.getVideoFormat().frameRate;
+            if (!(fps > 0f) || fps > 120f) fps = 0f;
+        }
+        surface.setFrameRate(fps, fps > 0f ? Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE : Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+    }
+
+    @PluginMethod
+    public void setAutoFrameRate(final PluginCall call) {
+        autoFrameRate = call.getData().optBoolean("on", false);
+        main.post(() -> {
+            applyAutoFrameRate();
             call.resolve();
         });
     }
