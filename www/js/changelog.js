@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 114,
+    title: 'Cihazdaki medya dosyalarını uygulamada oynatma',
+    items: [
+      'Ana ekrana Cihazdan oynat kısayolu eklendi',
+      'Android sistem dosya seçicisinden cihazdaki video ve ses dosyaları seçilebilir',
+      'Seçilen dosya uygulamanın yerel oynatıcısında açılır; dosya uygulama deposuna kopyalanmaz',
+    ],
+  },
+  {
     id: 113,
     title: 'Film ve dizi uyarıları çoklu kaynaklardan tamamlanıyor',
     items: [
