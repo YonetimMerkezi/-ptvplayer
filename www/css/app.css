@@ -1291,3 +1291,42 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 #player.portrait-split .pl-tools { gap:4px; padding:3px 3px; margin:0; overflow-x:auto; justify-content:flex-start; }
 #player.portrait-split .pl-tools::before, #player.portrait-split .pl-tools::after { display:none; }
 #player.portrait-split .tool { min-height:32px; padding:0 7px; }
+
+/* Film/dizi dikey oynatıcı: kaynak en-boy oranı korunur, video kırpılmadan ekran genişliğine sığar. */
+#player.vod-portrait { background:#000; }
+#player.vod-portrait #vid {
+  position:absolute; left:0; right:0; top:0; width:100%;
+  height:min(56.25vw, 38vh); max-height:min(56.25vw, 38vh);
+  object-fit:contain; object-position:center center; background:#000;
+}
+#player.vod-portrait #pl-ui {
+  top:0; bottom:auto; height:min(56.25vw, 38vh); max-height:min(56.25vw, 38vh);
+  padding:var(--safe-t) var(--safe-r) 2px var(--safe-l);
+}
+#player.vod-portrait .pl-top { flex:none; padding:2px 4px; background:linear-gradient(#000b,#0000); }
+#player.vod-portrait .pl-mid { flex:none; margin:auto 0; gap:clamp(4px,1.5vw,12px); }
+#player.vod-portrait .pl-bot { flex:none; padding:2px 6px 4px; }
+#player.vod-portrait .pl-epgline { display:none; }
+#player.vod-portrait .pl-tools { gap:4px; padding:3px 2px; margin:0; overflow-x:auto; }
+#player.vod-portrait .pl-tools::before,#player.vod-portrait .pl-tools::after { display:none; }
+#player.vod-portrait .tool { min-height:32px; padding:0 7px; }
+#player.vod-portrait .big-btn { width:clamp(34px,9vw,44px); height:clamp(34px,9vw,44px); }
+#player.vod-portrait .big-btn.lg { width:clamp(46px,12vw,58px); height:clamp(46px,12vw,58px); }
+#player.vod-portrait .pl-vod-shelf {
+  display:flex; flex-direction:column; position:absolute; left:0; right:0; top:min(56.25vw,38vh); bottom:0;
+  min-height:0; padding:12px max(12px,var(--safe-r)) max(10px,var(--safe-b)) max(12px,var(--safe-l));
+  background:#080b10; border-top:1px solid #ffffff22; overflow:hidden;
+}
+#player.vod-portrait .pl-vod-shelf[hidden] { display:none !important; }
+#player.vod-portrait #pl-epg-panel { display:none !important; }
+.pl-vod-shelf h3 { margin:0 0 10px; font-size:1rem; }
+.pl-vod-shelf-row { display:flex; gap:10px; overflow-x:auto; overflow-y:hidden; padding-bottom:8px; }
+.pl-vod-card { display:flex; flex-direction:column; flex:0 0 112px; min-width:0; gap:5px; text-align:left; color:#fff; background:#151b25; border:1px solid #ffffff18; border-radius:10px; padding:7px; }
+.pl-vod-card.active { border-color:var(--accent); }
+.pl-vod-thumb { display:grid; place-items:center; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:6px; background:#242c39; color:#cbd5e1; }
+.pl-vod-thumb img { width:100%; height:100%; object-fit:cover; }
+.pl-vod-card b { font-size:.78rem; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.pl-vod-card small { color:#aab4c4; font-size:.68rem; }
+@media (orientation:landscape) {
+  #player.vod-portrait #pl-vod-shelf { display:none; }
+}
