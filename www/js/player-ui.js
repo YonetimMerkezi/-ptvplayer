@@ -514,9 +514,9 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   // Son okunan ses/altyazı izleri (telefon kumandasına bildirilir; her okumada yerel eklentiye sorulmaz)
-  const noTracks = () => ({ audio: [], text: [], textOn: false });
+  const noTracks = () => ({ audio: [], audioBad: [], text: [], textOn: false });
   let trackCache = noTracks();
-  const cacheTracks = (t) => (trackCache = { audio: (t && t.audio) || [], text: (t && t.text) || [], textOn: !!(t && t.textOn) });
+  const cacheTracks = (t) => (trackCache = { audio: (t && t.audio) || [], audioBad: (t && t.audioBad) || [], text: (t && t.text) || [], textOn: !!(t && t.textOn) });
 
   // Tercih edilen ses/altyazı dili (Oynatıcı ayarları): her yayın/bölüm için ses ve altyazı ayrı ayrı bir kez uygulanır;
   // sonrasında kullanıcı elle değiştirirse bozulmaz. Döner: izlerden biri değiştirildi mi.
@@ -557,7 +557,11 @@ export function createPlayerUI({ engine, player, env }) {
         t = await engine.tracks();
         cacheTracks(t);
       }
-      q('#pl-audio').hidden = !(t.audio && t.audio.length > 1);
+      // KÖK NEDEN DÜZELTMESİ: Cihazın çözemediği ses izleri de sayılır; yoksa tek izi AC3/DTS olan yayında düğme hiç çıkmaz, ses de nedensiz yoktu.
+      const good = (t.audio || []).length;
+      const bad = (t.audioBad || []).length;
+      q('#pl-audio').hidden = !(good > 1 || bad > 0);
+      if (good === 0 && bad > 0) toast('Bu cihaz yayının ses biçimini (AC3/DTS vb.) çözemiyor; ses gelmeyebilir. “Ses dili” bölümüne bakın.', 5000);
       q('#pl-text').hidden = !(t.text && t.text.length > 0);
     } catch {
       /* iz bilgisi yoksa düğmeler gizli kalır */
@@ -567,6 +571,9 @@ export function createPlayerUI({ engine, player, env }) {
   async function trackSheet(type) {
     const t = await engine.tracks();
     const list = type === 'audio' ? t.audio : t.text;
+    // Çözülemeyen ses izleri soluk ve seçilemez gösterilir (seçilirse sessiz kalırdı); nedeni satırda yazar.
+    const bad = type === 'audio' ? (t.audioBad || []) : [];
+    const badRows = bad.map((x) => `<button class="list-item" data-bad="1" aria-disabled="true" style="opacity:.55"><span class="t">${esc(x.label)}<small>Bu cihaz çözemiyor${x.codec ? ' (' + esc(x.codec.replace(/^audio\//, '')) + ')' : ''}</small></span></button>`).join('');
     const rows = list
       .map((x) => `<button class="list-item" data-id="${esc(x.id)}"><span class="t">${esc(x.label)}</span>${x.selected ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`)
       .join('');
@@ -574,13 +581,14 @@ export function createPlayerUI({ engine, player, env }) {
     const look = type === 'text' && engine.setSubtitleStyle ? '<button class="list-item" data-look><span class="t">Altyazı görünümü<small>Boyut, renk, arka plan, konum</small></span></button>' : '';
     const sh = openSheet({
       title: type === 'audio' ? 'Ses dili' : 'Altyazı',
-      html: off + rows + look,
+      html: off + rows + badRows + look,
       mount: (body) =>
         body.addEventListener('click', async (e) => {
           if (e.target.closest('[data-look]')) {
             sh.close();
             return subtitleSheet();
           }
+          if (e.target.closest('[data-bad]')) return toast('Bu ses biçimi bu cihazda çözülemiyor', 2500);
           const b = e.target.closest('[data-id]');
           if (!b) return;
           await engine.selectTrack(type, b.dataset.id);
@@ -1413,7 +1421,7 @@ export function createPlayerUI({ engine, player, env }) {
         last: st.item.kind === 'live' && lastIndex() >= 0,
         golive: !q('#pl-golive').hidden,
         fav: !q('#pl-fav').hidden,
-        audio: trackCache.audio.length > 1,
+        audio: trackCache.audio.length > 1 || trackCache.audioBad.length > 0,
         text: trackCache.text.length > 0,
         night: !!engine.setNightMode,
         sleep: true,

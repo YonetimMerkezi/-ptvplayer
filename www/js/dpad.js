@@ -259,6 +259,22 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     // yoksa satırdaki göster/gizle düğmesinden sağa basınca kilit düğmesi atlanıp satırın kendisine dönülürdü.
     const notAncestor = (e) => e !== cur && !e.contains(cur);
     target = target || pass(list.filter((e) => notAncestor(e) && reachable(e, scope))) || pass(list.filter(notAncestor)) || pass(list.filter((e) => e !== cur && reachable(e, scope))) || pass(list.filter((e) => e !== cur));
+    // KÖK NEDEN DÜZELTMESİ: Alt satıra kırılan düğme sıralarında (ör. Tema rengi) satır sonunda sağ/sol okun gideceği aynı satırda aday kalmaz;
+    // pickNext o zaman satır dışındaki en yakın adayı seçiyordu ve imleç sağa yaslı üstteki seçiciye (g-rcap) sıçrıyordu. Kardeş düğmeler
+    // arasında satır sonunda bir sonraki (sol okta bir önceki) satıra sarılır; böylece alt satırdaki temalara da kumandayla ulaşılır.
+    if (dir === 'left' || dir === 'right') {
+      const sameRow = (e) => e !== cur && Math.min(rectOf(e).b, curRect.b) - Math.max(rectOf(e).t, curRect.t) > 2;
+      if (!target || !sameRow(target)) {
+        const sibs = list.filter((e) => e.parentElement === cur.parentElement);
+        const at = sibs.indexOf(cur);
+        const nb = at < 0 ? null : sibs[at + (dir === 'right' ? 1 : -1)];
+        if (nb) {
+          const nr = rectOf(nb);
+          const lower = dir === 'right' ? nr.t >= curRect.b - 2 : nr.b <= curRect.t + 2;
+          if (lower) target = nb;
+        }
+      }
+    }
     // Dikey harekette odağı taşıyacak yer yoksa (içerik uzun bir yazı ise) ya da hedef kaydırma alanının dışındaysa, alan hâlâ o yöne kayabiliyorsa alan kaydırılır;
     // odak aynı kalır. Böylece film konusu gibi uzun metin kumandayla aşağı okunabilir ve yukarı basınca en üste dönülür.
     if (dir === 'up' || dir === 'down') {
