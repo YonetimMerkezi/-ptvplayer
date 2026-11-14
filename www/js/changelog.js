@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 110,
+    title: 'Dizilerde içerik uyarıları',
+    items: [
+      'Dizi ayrıntı sayfasında yaş sınırı ve içerik uyarıları artık film sayfasındaki gibi gösterilir',
+      'Kaynak geçici hata verirse "uyarı yok" sonucu günlerce saklanmaz; birkaç dakika sonra yeniden denenir',
+      'Film bilgisi alınamasa bile içerik uyarıları başlık üzerinden aranır',
+    ],
+  },
+  {
     id: 109,
     title: 'Dikey oynatma: YouTube düzeni',
     items: [

@@ -16,14 +16,16 @@ const year4 = (v) => { const m = String(v || '').match(/(?:19|20)\d{2}/); return
 const configured = () => !!META_APP_TOKEN && !/BURAYA/.test(META_APP_TOKEN);
 const hasManual = (r) => !!(r && r.w && Object.keys(r.w).length) || (r && r.st === 'manual');
 
-export async function lookupMeta(net, store, item, info = null) {
+// kind: 'movie' (varsayılan) ya da 'tv' (dizi). Worker anahtarı "movie|…" / "tv|…" biçimindedir.
+export async function lookupMeta(net, store, item, info = null, kind = 'movie') {
   if (!configured()) return null;
+  const tv = kind === 'tv';
   const raw = String(item && (item.name || item.title) || '').trim();
-  if (!raw || isEpisodeLike(raw, item && item.group)) return null;
+  if (!raw || (!tv && isEpisodeLike(raw, item && item.group))) return null;
   const hint = year4(info && (info.year || info.release_date)) || year4(item && (item.year || item.release_date));
   const c = cleanTitle(raw, hint);
   if (!c.title || c.title.length < 2) return null;
-  const k = cacheKey(c, 'movie');
+  const k = cacheKey(c, tv ? 'tv' : 'movie');
   const ck = 'meta-worker:v1:' + k;
   const cached = store && store.cache ? await store.cache.get(ck).catch(() => null) : null;
   if (cached && cached.at && cached.row) {

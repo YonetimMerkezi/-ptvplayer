@@ -5,7 +5,13 @@ const KTB = 'https://filmsiniflandirma.ktb.gov.tr';
 const SCREENWISE = 'https://screenwiseapp.com';
 const TTL_FOUND = 30 * 86400000;
 const TTL_EMPTY = 24 * 3600000;
+const TTL_ERROR = 5 * 60000;   // kaynak hata verdiyse "uyarı yok" diye günlerce saklama; kısa süre sonra yeniden dene
 const foldText = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
+// Önbellek anahtarı: arayüz (app.js) ile toplayıcı aynı anahtarı kullanır.
+export function advisoryKey(meta, kind = 'movie') {
+  const m = meta || {};
+  return 'movie-advisory:v4:' + (kind === 'series' ? 'series:' : '') + (m.imdbId || foldText(m.title) + ':' + (Number(m.year) || 0));
+}
 const warningRules = [
   ['violence', /siddet|korku unsurlar/i, 'Şiddet veya korku'],
   ['sex', /cinsellik|ciplaklik/i, 'Cinsellik veya çıplaklık'],
@@ -206,14 +212,16 @@ export async function translateAdvisoryText(net, value) {
   return translated;
 }
 
-async function loadScreenwise(net, meta, title, record) {
+async function loadScreenwise(net, meta, title, record, series = false) {
+  const wantedType = series ? 'show' : 'movie';
+  const typeOk = (t) => !t || (series ? /^(show|series|tv)$/i.test(String(t)) : t === 'movie');
   const query = meta && meta.imdbId
     ? 'imdb_id=' + encodeURIComponent(meta.imdbId)
     : 'q=' + encodeURIComponent(title) + (Number(meta && meta.year) ? '&year=' + encodeURIComponent(meta.year) : '');
-  const searchUrl = SCREENWISE + '/api/v1/media/search?' + query + '&type=movie';
+  const searchUrl = SCREENWISE + '/api/v1/media/search?' + query + '&type=' + wantedType;
   const search = await net.json(searchUrl, { fast: true });
   const candidates = Array.isArray(search && search.results) ? search.results : [];
-  const match = candidates.find((x) => x && x.media && x.media.slug && Number(x.matchConfidence) >= 0.75 && (!x.media.type || x.media.type === 'movie'));
+  const match = candidates.find((x) => x && x.media && x.media.slug && Number(x.matchConfidence) >= 0.75 && typeOk(x.media.type));
   if (!match) {
     record.sources.screenwise = { status: 'no_data', checkedAt: Date.now(), url: SCREENWISE + '/developers' };
     return;
@@ -231,34 +239,39 @@ async function loadScreenwise(net, meta, title, record) {
   const imdbScore = Number(media && media.externalRatings && media.externalRatings.imdb && media.externalRatings.imdb.score);
   if (Number.isFinite(imdbScore) && imdbScore > 0 && imdbScore <= 10) record.imdbRating = imdbScore.toFixed(1);
 }
-export async function loadMovieAdvisories(net, store, meta, item) {
+export async function loadMovieAdvisories(net, store, meta, item, kind = '') {
   if (!meta) return null;
+  const series = kind === 'series' || meta.kind === 'series';
   const title = String(meta.title || (item && item.name) || '').trim();
   const year = Number(meta.year) || 0;
   if (!title) return null;
-  const key = 'movie-advisory:v3:' + (meta.imdbId || foldText(title) + ':' + year);
+  const key = advisoryKey({ ...meta, title }, series ? 'series' : 'movie');
   const cached = await store.cache.get(key).catch(() => null);
   const hasUsefulData = (r) => !!(r && ((r.warnings && r.warnings.length) || (r.ratings && r.ratings.length) || r.guidance || r.imdbRating));
-  const ttl = hasUsefulData(cached) ? TTL_FOUND : TTL_EMPTY;
+  const hasError = (r) => !!(r && r.sources && Object.values(r.sources).some((s) => s && s.status === 'error'));
+  const ttl = hasError(cached) ? TTL_ERROR : hasUsefulData(cached) ? TTL_FOUND : TTL_EMPTY;
   if (cached && cached.checkedAt && Date.now() - cached.checkedAt < ttl) return cached;
-  const record = { imdbId: meta.imdbId || '', title, year, checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
-  try {
-    const ktbTitle = String(meta.trTitle || title).trim();   // KTB Türkçe adla arar
-    const url = KTB + '/browse?search=' + encodeURIComponent(ktbTitle);
-    const html = await net.text(url, { fast: true });
-    const found = parseKtbClassification(html, ktbTitle, meta.year);
-    if (found) {
-      record.sources.ktb = { status: 'found', checkedAt: record.checkedAt, url: found.url };
-      record.warnings.push(...found.warnings);
-      if (found.ageRating) record.ratings.push({ value: found.ageRating, source: found.source, country: 'TR' });
-    } else record.sources.ktb = {
-      status: /sayfa yukleniyor|page loading/i.test(foldText(html)) ? 'unavailable' : 'no_data',
-      checkedAt: record.checkedAt, url: KTB + '/browse',
-    };
-  } catch (e) {
-    record.sources.ktb = { status: 'error', message: String(e && e.message || e), checkedAt: Date.now() };
+  const record = { imdbId: meta.imdbId || '', title, year, kind: series ? 'series' : 'movie', checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
+  // KTB film sınıflandırma sitesi yalnız filmleri kapsar; diziler için Screenwise ve TMDB kullanılır.
+  if (!series) {
+    try {
+      const ktbTitle = String(meta.trTitle || title).trim();   // KTB Türkçe adla arar
+      const url = KTB + '/browse?search=' + encodeURIComponent(ktbTitle);
+      const html = await net.text(url, { fast: true });
+      const found = parseKtbClassification(html, ktbTitle, meta.year);
+      if (found) {
+        record.sources.ktb = { status: 'found', checkedAt: record.checkedAt, url: found.url };
+        record.warnings.push(...found.warnings);
+        if (found.ageRating) record.ratings.push({ value: found.ageRating, source: found.source, country: 'TR' });
+      } else record.sources.ktb = {
+        status: /sayfa yukleniyor|page loading/i.test(foldText(html)) ? 'unavailable' : 'no_data',
+        checkedAt: record.checkedAt, url: KTB + '/browse',
+      };
+    } catch (e) {
+      record.sources.ktb = { status: 'error', message: String(e && e.message || e), checkedAt: Date.now() };
+    }
   }
-  try { await loadScreenwise(net, meta, title, record); }
+  try { await loadScreenwise(net, meta, title, record, series); }
   catch (e) { record.sources.screenwise = { status: 'error', message: String(e && e.message || e), checkedAt: Date.now(), url: SCREENWISE + '/developers' }; }
   await store.cache.set(key, record).catch(() => {});
   return record;

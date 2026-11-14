@@ -63,9 +63,10 @@ import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from 
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
-import { loadMovieMetadata } from './movie-metadata.js';
+import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
+import { loadSeriesMetadata } from './media-scan.js';
 import { lookupMeta } from './meta-worker.js';
-import { loadMovieAdvisories, translateScreenwiseText } from './movie-advisories.js';
+import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
 const Cap = window.Capacitor;
@@ -1638,12 +1639,12 @@ const advisorySmart = (warning) => {
 };
 const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
 
-async function paintMovieAdvisories(body, meta, failure = '', wk = null) {
+async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 'movie') {
   const host = $('#mv-advisories', body);
   if (!host || !body.isConnected) return;
   let record = null;
   if (meta) {
-    const key = 'movie-advisory:v3:' + (meta.imdbId || String(meta.title || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim() + ':' + (Number(meta.year) || 0));
+    const key = advisoryKey(meta, kind);
     try { record = await store.cache.get(key); } catch { /* önbellek yok */ }
   }
   if (!body.isConnected || !host.isConnected) return;
@@ -1683,7 +1684,7 @@ async function paintMovieAdvisories(body, meta, failure = '', wk = null) {
     const sourceRows = Object.entries(record && record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(sourceNames[k] || k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : v.status === 'unavailable' ? 'Kaynak sayfası veri sunmadı' : 'Kontrol edilemedi') + (v.message ? ' (' + esc(v.message) + ')' : '') + '</p>').join('');
     const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
     const guidance = record && record.guidance ? '<article class="mv-warning-detail"><b>Screenwise aile rehberi</b>' + (record.guidance.summary ? '<p>' + esc(advisoryTr(record.guidance.summary)) + '</p>' : '') + (record.guidance.ageFit ? '<p>' + esc(advisoryTr(record.guidance.ageFit)) + '</p>' : '') + (record.guidance.score != null ? '<small>Rehber puanı: ' + esc(record.guidance.score) + '/100</small>' : '') + '</article>' : '';
-    const empty = !rows && !guidance ? '<p>Bu film için doğrulanmış bir sınıflandırma veya içerik uyarısı henüz alınamadı. Bu, filmde sakıncalı içerik bulunmadığı anlamına gelmez.</p>' : '';
+    const empty = !rows && !guidance ? '<p>Bu içerik için doğrulanmış bir sınıflandırma veya içerik uyarısı henüz alınamadı. Bu, filmde sakıncalı içerik bulunmadığı anlamına gelmez.</p>' : '';
     openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + guidance + empty + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
   });
 }
@@ -1724,6 +1725,23 @@ function openMovie(it) {
         watchDl(body, paintDl);
         $('#mv-dl', body).addEventListener('click', () => dlToggle(it, null));
       }
+      // İçerik uyarıları: film bilgisi alınamasa bile başlıkla aranır (bir kez başlatılır).
+      let advStarted = false;
+      const startAdvisories = (info) => {
+        if (advStarted) return;
+        advStarted = true;
+        // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
+        Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), lookupMeta(net, store, it, info || null).catch(() => null)]).then(([meta, wk]) => {
+          if (!body.isConnected) return;
+          const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
+          const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '' } : baseMeta;
+          loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk));
+          if (info) {
+            const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
+            $('#mv-meta', body).innerHTML = chipsOf(chips);
+          }
+        }).catch(() => { if (body.isConnected) paintMovieAdvisories(body, null, 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.'); });
+      };
       const plot = $('#mv-plot', body);
       loadVodInfo(S.source, net, it)
         .then((info) => {
@@ -1732,15 +1750,7 @@ function openMovie(it) {
             $('#mv-meta', body).innerHTML = chipsOf([it.group, yearOf(info.year), info.genre, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
             $('#mv-facts', body).innerHTML = factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast], ['Ülke', info.country], ['Yayın tarihi', info.year]]);
           }
-          // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
-          Promise.all([loadMovieMetadata(net, it, info || null, store), lookupMeta(net, store, it, info || null).catch(() => null)]).then(([meta, wk]) => {
-            if (!body.isConnected) return;
-            const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
-            const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '' } : baseMeta;
-            loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk));
-            const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
-            $('#mv-meta', body).innerHTML = chipsOf(chips);
-          }).catch(() => { if (body.isConnected) paintMovieAdvisories(body, null, 'Film bilgileri alınamadı; internet bağlantısını veya veri kaynağını kontrol edin.'); });
+          startAdvisories(info);
           const picks = recommendMovies(it, info || {}, visibleAll('movie'), { limit: 12, excludeIds: Object.keys(S.prog).filter((id) => S.prog[id] && S.prog[id].pos > 0) });
           const section = $('#mv-similar', body);
           const row = $('#mv-similar-row', body);
@@ -1751,6 +1761,7 @@ function openMovie(it) {
         })
         .catch(() => {
           plot.textContent = 'Özet alınamadı.';
+          startAdvisories(null);
         });
     },
   });
@@ -1813,6 +1824,9 @@ function openSeries(it) {
         sb.innerHTML = done === eps.length ? `${icon('check')}Sezon ${season} indirildi` : done || eps.some((x) => isActive(dlJobOf(it, x))) ? `${icon('dl')}Sezon ${season} · ${done}/${eps.length} indirildi` : `${icon('dl')}Sezonu indir`;
       };
       if (dlUi) watchDl(body, paintDl);
+      // İçerik uyarıları (dizi): sayfa her yeniden çizildiğinde (sezon/favori) son durum yeniden boyanır.
+      let adv = { meta: null, failure: '', wk: null };
+      const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, adv.wk, 'series');
       const draw = () => {
         const p = progressOf(it);
         const cont = p ? all.find((x) => x.id === p.id) : null;
@@ -1828,8 +1842,9 @@ function openSeries(it) {
           })
           .join('');
         const scroll = body.scrollTop;
-        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
+        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
         body.scrollTop = scroll;
+        paintAdv();
         if (dlUi) paintDl();
         const c = $('#sr-cont', body);
         if (c) c.addEventListener('click', () => play(cont));
@@ -1854,6 +1869,15 @@ function openSeries(it) {
         if (b) play(all.find((x) => x.id === b.dataset.ep));
       });
       draw();
+      // Cinemeta (IMDb kimliği) + TMDB Worker + Screenwise; KTB film sitesi diziler için kullanılmaz.
+      Promise.all([loadSeriesMetadata(net, it, store).catch(() => null), lookupMeta(net, store, it, info, 'tv').catch(() => null)]).then(([meta, wk]) => {
+        if (!body.isConnected) return;
+        const parsed = parseMovieCatalogTitle(it.name || '');
+        const base = meta || { title: parsed.title || it.name, year: yearOf(info.year || it.year) || parsed.year || 0 };
+        const advisoryMeta = { ...base, kind: 'series', ...(wk ? { title: meta ? base.title : (wk.ot || wk.ttl || base.title), year: base.year || wk.yr || 0, imdbId: base.imdbId || wk.imdb || '', trTitle: wk.ttl || '' } : {}) };
+        adv = { meta: advisoryMeta, failure: (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk };
+        return loadMovieAdvisories(net, store, advisoryMeta, it, 'series').catch(() => { adv.failure = 'İçerik uyarısı kaynağına erişilemedi.'; }).then(() => { if (body.isConnected) paintAdv(); });
+      }).catch(() => { adv = { ...adv, failure: 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.' }; if (body.isConnected) paintAdv(); });
     },
   });
 }

@@ -32,7 +32,7 @@ function createTaskPool(limit) {
   };
 }
 
-async function loadSeriesMetadata(net, item, store) {
+export async function loadSeriesMetadata(net, item, store) {
   const parsed = parseMovieCatalogTitle(item.name || item.title || '');
   if (!parsed.title) return null;
   const year = yearOf(item.year || item.release_date) || parsed.year;
