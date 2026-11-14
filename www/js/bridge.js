@@ -58,6 +58,7 @@ export function nativePlugin(name, win = globalThis.window) {
     setAudioDelay: call('setAudioDelay'),
     setNightMode: call('setNightMode'),
     setDecoder: call('setDecoder'),
+    setAutoFrameRate: call('setAutoFrameRate'),
     setSubtitleStyle: call('setSubtitleStyle'),
     tvSyncWatchNext: call('tvSyncWatchNext'),
     voiceSearch: call('voiceSearch'),
