@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 113,
+    title: 'Film ve dizi uyarıları çoklu kaynaklardan tamamlanıyor',
+    items: [
+      'TMDB film yayın sınıflandırmalarındaki ve dizi içerik derecelendirmelerindeki açıklayıcı tanımlayıcılar da okunur',
+      'Şiddet, korku, cinsellik, çıplaklık ve ağır dil gibi işaretler kaynak verisine dayanarak gösterilir',
+      'Yaş sınıfı ve içerik uyarıları ayrı değerlendirilir; tanımlayıcı yoksa uyarı tahmin edilmez',
+      'Ayrıntılı uyarılarda TMDB bölgesel kaynağı belirtilir',
+    ],
+  },
+  {
     id: 112,
     title: 'TMDB içerik tanımlayıcılarından ek uyarılar',
     items: [
