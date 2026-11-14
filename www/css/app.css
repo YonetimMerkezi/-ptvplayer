@@ -1268,3 +1268,26 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 #player.portrait-split .pl-epg-head { flex:none; }
 #player.portrait-split .pl-epg-programs { flex:1; min-height:0; max-height:none; overflow-y:auto; }
 #player.portrait-split #pl-epg-remind { flex:none; }
+
+/* Dikey canlı oynatıcı: video ve medya denetimleri 16:9 üst alana sığar, EPG kalan alanı kullanır. */
+#player.portrait-split #vid {
+  inset:0 0 auto; width:100%; height:min(56.25vw,34vh); max-height:min(56.25vw,34vh);
+  object-fit:contain; background:#000;
+}
+#player.portrait-split #pl-ui { bottom:calc(100% - min(56.25vw,34vh)); }
+#player.portrait-split .pl-epg-panel { top:min(56.25vw,34vh); }
+#player.portrait-split .pl-top { flex:none; min-height:40px; padding:2px 3px; gap:2px; }
+#player.portrait-split .pl-top .icon-btn { width:36px; height:36px; flex:none; }
+#player.portrait-split .pl-title b { font-size:.88rem; }
+#player.portrait-split .pl-title span { font-size:.68rem; }
+#player.portrait-split .pl-mid { flex:none; gap:clamp(4px,1.5vw,9px); }
+#player.portrait-split .big-btn { width:clamp(36px,10vw,44px); height:clamp(36px,10vw,44px); border-radius:50%; }
+#player.portrait-split .big-btn.sm { width:clamp(32px,8.5vw,38px); height:clamp(32px,8.5vw,38px); }
+#player.portrait-split .big-btn.lg { width:clamp(46px,13vw,56px); height:clamp(46px,13vw,56px); }
+#player.portrait-split .big-btn .ic { width:21px; height:21px; }
+#player.portrait-split .big-btn.lg .ic { width:29px; height:29px; }
+#player.portrait-split .pl-bot { flex:none; padding:2px 7px 3px; }
+#player.portrait-split .pl-epgline { display:none; }
+#player.portrait-split .pl-tools { gap:4px; padding:3px 3px; margin:0; overflow-x:auto; justify-content:flex-start; }
+#player.portrait-split .pl-tools::before, #player.portrait-split .pl-tools::after { display:none; }
+#player.portrait-split .tool { min-height:32px; padding:0 7px; }
