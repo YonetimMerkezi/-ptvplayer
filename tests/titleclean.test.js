@@ -28,9 +28,10 @@ test('bölüm kayıtları elenir, "Bölüm" içeren filmler elenmez', () => {
   assert.equal(isEpisodeLike('Alaycı Kuş Bölüm 1 | 2014'), false);
 });
 
-test('APP_TOKEN girilmemişse ağ isteği yapılmaz', async () => {
-  let calls = 0;
-  const net = { json: async () => { calls++; return {}; } };
+test('yapılandırılmış APP_TOKEN ile Worker isteği doğrulama başlığıyla gönderilir', async () => {
+  let calls = 0, headers = null;
+  const net = { json: async (_url, options) => { calls++; headers = options.headers; return { items: [{ st: 'none' }] }; } };
   assert.equal(await lookupMeta(net, { cache: { get: async () => null, set: async () => {} } }, { name: 'Alita' }), null);
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
+  assert.equal(headers['x-app-token'], 'sedonet23');
 });
