@@ -367,7 +367,7 @@ html.native-playing #vid { display: none; }
 .big-btn.lg { width: 76px; height: 76px; border-radius: 38px; background: #000a; }
 .big-btn.lg .ic { width: 42px; height: 42px; }
 .big-btn.sm { width: 48px; height: 48px; }
-.big-btn i { position: absolute; font-style: normal; font-size: 0.625rem; font-weight: 700; bottom: 7px; }
+.big-btn.sm .ic { width: 34px; height: 34px; } /* sarmal ok + içinde 10 */
 .pl-bot { padding: 6px 14px 10px; background: linear-gradient(#0000, #000c); }
 .pl-prog { display: flex; align-items: center; gap: 10px; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 .pl-prog input { flex: 1; accent-color: var(--accent); height: 28px; }
@@ -1255,12 +1255,13 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   html #player.portrait-split, html #player.vod-portrait {
     --yt-top: var(--safe-t);
     --yt-h: min(56.25vw, 46vh);
-    background: #000;
+    overflow: clip; /* sayfa yatayda kaymasın */
   }
 
   /* Video kutusu: yerel görünüm (Android) bu kutunun ölçüsüne yerleşir; tarayıcıda <video> aynı kutuya oturur */
   #player.portrait-split #pl-video-frame, #player.vod-portrait #pl-video-frame {
-    display: block; position: absolute; z-index: 0; left: 0; right: 0; top: var(--yt-top); height: var(--yt-h); background: #000;
+    display: block; position: absolute; z-index: 0; left: 0; right: 0; top: var(--yt-top); height: var(--yt-h);
+    /* saydam: yerel video WebView'in arkasında çizilir; opak olursa görüntü örtülür (ses var, görüntü yok) */
   }
   #player.portrait-split #vid, #player.vod-portrait #vid {
     inset: var(--yt-top) 0 auto 0; width: 100%; height: var(--yt-h); object-fit: contain;
@@ -1280,6 +1281,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.portrait-split .big-btn.sm, #player.vod-portrait .big-btn.sm { width: 38px; height: 38px; }
   #player.portrait-split .big-btn.lg, #player.vod-portrait .big-btn.lg { width: 54px; height: 54px; }
   #player.portrait-split .big-btn .ic, #player.vod-portrait .big-btn .ic { width: 22px; height: 22px; }
+  #player.portrait-split .big-btn.sm .ic, #player.vod-portrait .big-btn.sm .ic { width: 30px; height: 30px; }
   #player.portrait-split .big-btn.lg .ic, #player.vod-portrait .big-btn.lg .ic { width: 30px; height: 30px; }
   #player.portrait-split .pl-bot, #player.vod-portrait .pl-bot { flex: none; margin: 0; padding: 0 8px 2px; background: none; }
   #player.portrait-split .pl-prog, #player.vod-portrait .pl-prog { gap: 6px; font-size: .72rem; }
@@ -1289,7 +1291,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.portrait-split #pl-below, #player.vod-portrait #pl-below {
     display: flex; flex-direction: column; position: absolute; z-index: 2; left: 0; right: 0; bottom: 0;
     top: calc(var(--yt-top) + var(--yt-h)); min-height: 0; overflow: hidden; background: #0a0e14; color: #fff;
-    padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);
+    padding: 0 var(--safe-r) var(--safe-b) var(--safe-l); overflow: clip;
   }
   #player.locked #pl-info { display: none; }
   .pl-info { flex: none; padding: 10px 12px 2px; }
@@ -1332,7 +1334,11 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
     padding: 10px 12px 0; background: none; border-top: 1px solid #ffffff1f; overflow: hidden;
   }
   #pl-below .pl-vod-shelf[hidden] { display: none !important; }
-  #pl-below .pl-vod-shelf h3 { flex: none; margin: 0 0 8px; font-size: .95rem; }
+  #pl-below .pl-vod-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; }
+  #pl-below .pl-vod-shelf h3 { margin: 0; font-size: .95rem; }
+  .pl-season { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 8px 0 14px; border-radius: 18px; background: #1a2230; color: #fff; font-size: .85rem; font-weight: 650; white-space: nowrap; }
+  .pl-season[hidden] { display: none; }
+  .pl-season .ic { width: 20px; height: 20px; }
   #pl-below .pl-vod-shelf-row {
     flex: 1 1 auto; min-height: 0; flex-direction: column; gap: 9px; overflow-x: hidden; overflow-y: auto;
     overscroll-behavior: contain; padding: 0 0 12px;
