@@ -1103,6 +1103,11 @@ public class IptvPlayerPlugin extends Plugin {
             JSObject out = new JSObject();
             JSArray audio = new JSArray();
             JSArray text = new JSArray();
+            // KÖK NEDEN DÜZELTMESİ: Desteklenmeyen (cihazda çözücüsü olmayan) ses izleri eskiden listeden tamamen siliniyordu.
+            // Projeksiyon/TV cihazlarında AC3/E-AC3/DTS çözücüsü sık yoktur: tek ses izi bu biçimdeyse liste boş kalır,
+            // "Ses dili" düğmesi gizlenir ve kullanıcı neden ses olmadığını göremezdi. Artık ayrı "audioBad" listesinde bildirilir;
+            // "audio" yalnız çalınabilir izleri taşır (dil tercihi ve telefon kumandası bozulmasın).
+            JSArray audioBad = new JSArray();
             boolean textOn = false;
             if (player != null) {
                 Tracks tracks = player.getCurrentTracks();
@@ -1111,8 +1116,17 @@ public class IptvPlayerPlugin extends Plugin {
                     int type = group.getType();
                     if (type != C.TRACK_TYPE_AUDIO && type != C.TRACK_TYPE_TEXT) continue;
                     for (int t = 0; t < group.length; t++) {
-                        if (!group.isTrackSupported(t)) continue;
                         Format f = group.getTrackFormat(t);
+                        if (!group.isTrackSupported(t)) {
+                            if (type == C.TRACK_TYPE_AUDIO) {
+                                JSObject bad = new JSObject();
+                                bad.put("id", g + ":" + t);
+                                bad.put("label", trackLabel(f, "Ses", t + 1));
+                                bad.put("codec", f.sampleMimeType == null ? "" : f.sampleMimeType);
+                                audioBad.put(bad);
+                            }
+                            continue;
+                        }
                         JSObject o = new JSObject();
                         o.put("id", g + ":" + t);
                         o.put("label", trackLabel(f, type == C.TRACK_TYPE_AUDIO ? "Ses" : "Altyazı", t + 1));
@@ -1127,6 +1141,7 @@ public class IptvPlayerPlugin extends Plugin {
                 }
             }
             out.put("audio", audio);
+            out.put("audioBad", audioBad);
             out.put("text", text);
             out.put("textOn", textOn);
             call.resolve(out);
