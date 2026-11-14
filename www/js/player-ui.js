@@ -258,8 +258,10 @@ export function createPlayerUI({ engine, player, env }) {
     splitVideo = next;
     if (engine.kind === 'native') {
       if (next) {
-        const v = q('#vid').getBoundingClientRect();
-        engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
+        requestAnimationFrame(() => {
+          const v = q('#pl-video-frame').getBoundingClientRect();
+          if (v.width > 0 && v.height > 0) engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
+        });
       } else {
         engine.clearRect().catch(() => {});
       }
@@ -366,8 +368,8 @@ export function createPlayerUI({ engine, player, env }) {
     root.classList.toggle('vod-portrait', vodPortrait);
     if (vodPortrait && env.native) requestAnimationFrame(() => {
       if (!open || !root.classList.contains('vod-portrait')) return;
-      const v = q('#vid').getBoundingClientRect();
-      engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
+      const v = q('#pl-video-frame').getBoundingClientRect();
+      if (v.width > 0 && v.height > 0) engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
     });
     renderVodShelf(st);
     q('#pl-prog').classList.toggle('live', live);
