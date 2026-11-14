@@ -203,7 +203,7 @@ test('Screenwise eşleşmesi Türkçe/orijinal alternatif adlarla ve yıl olmada
     json: async (url) => {
       calls.push(url);
       if (url.includes('/api/v1/media/search?')) {
-        if (url.includes('q=Turkce%20Ad&year=2021')) return { results: [] };
+        if (!url.includes('q=Orijinal%20Ad')) return { results: [] };
         if (url.includes('q=Orijinal%20Ad')) return { results: [{ matchConfidence: 0.68, media: { slug: 'alternate-title', type: 'movie', title: 'Orijinal Ad' } }] };
       }
       if (url.endsWith('/api/v1/media/alternate-title')) return {
