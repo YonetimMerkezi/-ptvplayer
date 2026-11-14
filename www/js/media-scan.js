@@ -37,6 +37,12 @@ async function loadSeriesMetadata(net, item, store) {
   if (!parsed.title) return null;
   const year = yearOf(item.year || item.release_date) || parsed.year;
   const key = 'series-metadata:v1:' + keyOf({ name: parsed.title }) + ':' + year;
+  const bundled = await (await import('./media-catalog.js')).findBundledMedia(parsed.title, year, 'series').catch(() => null);
+  if (bundled) {
+    const value = { ...bundled, kind: 'series', source: 'Yerel katalog' };
+    await store.cache.set(key, { savedAt: Date.now(), value }).catch(() => {});
+    return value;
+  }
   const cached = await store.cache.get(key).catch(() => null);
   if (cached && cached.savedAt && Date.now() - cached.savedAt < (cached.value ? 30 : 1) * 86400000) return cached.value || null;
   const url = BASE + '/catalog/series/top/search=' + encodeURIComponent(parsed.title) + '.json';
@@ -64,8 +70,9 @@ export function startMediaScan({ source, catalog, net, store, onProgress = () =>
   if (!items.length) return Promise.resolve({ total: 0, metadataDone: 0, advisoryDone: 0, matched: 0, failed: 0 });
   const task = (async () => {
     let cursor = 0, metadataDone = 0, advisoryDone = 0, matched = 0, failed = 0, advisoryQueued = 0;
-    const metadataWorkers = 4;
-    const advisoryPool = createTaskPool(2);
+    // Çok sayıda IPTV kaynağında bekleme süresini azalt; dış servislere kontrollü paralellik.
+    const metadataWorkers = 8;
+    const advisoryPool = createTaskPool(4);
     const progress = () => onProgress({
       total: items.length, done: metadataDone, matched, failed,
       metadataDone, metadataTotal: items.length,
