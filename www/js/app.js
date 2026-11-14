@@ -642,10 +642,20 @@ function groupTitle(kind, g) {
   return { __all: 'Tümü', __recent: 'Son izlenen', __cont: 'Devam et', __new: 'Yeni eklenenler', __top: 'En çok puan alanlar' }[g] || g;
 }
 
+function displayMode(kind) {
+  const fallback = kind === 'live' ? 'list' : 'grid';
+  const value = store.pref('set.view.' + kind, fallback);
+  return value === 'list' || value === 'grid' ? value : fallback;
+}
+function setDisplayMode(kind, value) {
+  if (value !== 'list' && value !== 'grid') return;
+  store.setPref('set.view.' + kind, value);
+  if (S.list) { S.list.destroy(); S.list = null; }
+  refreshList(true);
+}
 function browseMode(kind) {
   if (S.query || S.group[kind] != null) return 'items';
-  // Netflix gibi görünüm: kategoriler satırdır; düzenleme ve kategori süzgeci klasik listeyi açar
-  return isMv(kind) && !S.catEdit && !S.catFilter && mvView() === 'rows' ? 'rows' : 'cats';
+  return 'cats';
 }
 
 // Satırlar: "Tümü" satır olmaz (tüm listenin tek satırı anlamsız; klasik görünümde ve aramada durur), en üst satır "Devam et"tir.
@@ -816,7 +826,7 @@ function drawCrumb(kind) {
   qEl.placeholder = g != null ? 'Bu kategoride ara…' : `${label} ara…`;
 }
 
-const catbarHtml = () => `<div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div>`;
+const catbarHtml = () => `<div class="catbar" id="catbar" hidden><label class="field catq" id="catq" hidden><input id="cat-q" type="search" placeholder="Kategori ara…" autocomplete="off"></label><button class="btn sm ghost" id="cat-view" type="button" aria-label="Görünümü değiştir"></button><button class="btn sm ghost" id="cat-new" hidden>${icon('plus')}Klasör</button><button class="btn sm ghost" id="cat-reset" hidden>Sıfırla</button><button class="btn sm ghost" id="cat-edit">Düzenle</button></div>`;
 
 // Kategori çubuğu (ara, klasör, sırala/gizle): dikey sayfada ve bölmeli ekranın sol bölmesinde aynı.
 function wireCatbar(kind) {
@@ -832,14 +842,21 @@ function wireCatbar(kind) {
     S.catEdit = !S.catEdit;
     refreshList(true);
   });
+  $('#cat-view').addEventListener('click', () => setDisplayMode(kind, displayMode(kind) === 'grid' ? 'list' : 'grid'));
   $('#cat-new').addEventListener('click', () => nameSheet(kind));
   $('#cat-reset').addEventListener('click', () => resetSheet(kind));
 }
 
 function drawCatbar(kind, mode, all) {
-  $('#catbar').hidden = !((mode === 'cats' || (mode === 'rows' && !isTvUi())) && all);
-  $('#catq').hidden = !(S.groups[kind].length > 8 || S.catFilter);
-  $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit;
+  const visible = (mode === 'cats' || mode === 'items') && all;
+  $('#catbar').hidden = !visible;
+  $('#catq').hidden = !(mode === 'cats' && (S.groups[kind].length > 8 || S.catFilter));
+  $('#cat-view').hidden = !visible;
+  const view = displayMode(kind);
+  $('#cat-view').textContent = view === 'grid' ? '☷ Liste' : '▦ Izgara';
+  $('#cat-view').setAttribute('aria-label', view === 'grid' ? 'Liste görünümüne geç' : 'Izgara görünümüne geç');
+  $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit || mode !== 'cats';
+  $('#cat-edit').hidden = mode !== 'cats';
   $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
 }
 
@@ -1017,15 +1034,31 @@ function mountList(kind, mode = 'items') {
       onLongPress: (it) => folderSheet(kind, it),
     });
   } else if (mode === 'cats') {
+    const grid = displayMode(kind) === 'grid';
+    const gap = 10;
     S.list = new VirtualList(el, {
-      rowH: scaled(56),
-      render: (c, i) => catRow(c, i),
+      ...(grid ? {
+        minCellW: 132, gap,
+        cellH: (w, cols) => Math.max(86, Math.min(124, (w - 24 - gap * (cols - 1)) / cols * 0.72)),
+        render: (c, i) => categoryTile(c, i),
+      } : {
+        rowH: scaled(56),
+        render: (c, i) => catRow(c, i),
+      }),
       onTap: (i, ev) => onCatTap(kind, i, ev),
     });
   } else if (kind === 'live') {
+    const grid = displayMode(kind) === 'grid';
+    const gap = 10;
     S.list = new VirtualList(el, {
-      rowH: scaled(64),
-      render: (it, i) => liveRow(it, i),
+      ...(grid ? {
+        minCellW: 116, gap,
+        cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 0.92,
+        render: (it, i) => liveTile(it, i),
+      } : {
+        rowH: scaled(64),
+        render: (it, i) => liveRow(it, i),
+      }),
       onTap: (i, ev) => {
         const it = S.items[i];
         if (ev.target.closest('[data-fav]')) return toggleFav(it);
@@ -1036,12 +1069,18 @@ function mountList(kind, mode = 'items') {
       onLongPress: longPress,
     });
   } else {
+    const grid = displayMode(kind) === 'grid';
     const gap = 10;
     S.list = new VirtualList(el, {
-      minCellW: isTvUi() && heroActive(kind, mode) ? heroCellW(window.innerWidth) : 104, // TV vitrini açıkken kutular büyük, altta 1-2 satır görünür
-      gap,
-      cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(store.pref('set.caption', DEFAULT_CAPTION), fontScale()), // ad alanı: Ayarlar > Kutudaki ad (varsayılan 3 satır = 66 px)
-      render: (it, i) => card(it, i),
+      ...(grid ? {
+        minCellW: isTvUi() && heroActive(kind, mode) ? heroCellW(window.innerWidth) : 104,
+        gap,
+        cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(store.pref('set.caption', DEFAULT_CAPTION), fontScale()),
+        render: (it, i) => card(it, i),
+      } : {
+        rowH: scaled(68),
+        render: (it, i) => mediaRow(it, i),
+      }),
       onTap: (i) => (kind === 'movie' ? openMovie(S.items[i]) : openSeries(S.items[i])),
       onLongPress: longPress,
     });
@@ -1291,6 +1330,21 @@ function liveRow(it, i) {
   return `<div class="row${sel ? ' sel' : ''}${bad ? ' bad' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
 }
 
+function categoryTile(c, i) {
+  const folderIc = c.folder ? icon('folder') : c.locked ? icon('lock') : icon('layers');
+  return `<div class="cat-tile${c.hidden ? ' hidden' : ''}" role="button" tabindex="0" data-i="${i}"><span class="cat-tile-ic">${folderIc}</span><b>${esc(c.name)}</b><small>${c.count} öğe</small>${c.locked ? '<span class="cat-tile-lock">Kilitli</span>' : ''}</div>`;
+}
+function liveTile(it, i) {
+  const fav = isFav(it);
+  const logoHtml = it.logo ? `<img src="${esc(it.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : `<span>${esc(it.name.slice(0, 2).toUpperCase())}</span>`;
+  return `<div class="live-tile" role="button" tabindex="0" data-i="${i}"><div class="live-tile-logo">${logoHtml}</div><b>${esc(it.name)}</b><button class="live-tile-fav${fav ? ' on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button></div>`;
+}
+function mediaRow(it, i) {
+  const img = it.logo ? `<img src="${esc(it.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : `<span>${esc(it.name.slice(0, 2).toUpperCase())}</span>`;
+  const p = progressOf(it);
+  const pct = p && p.dur > 0 ? Math.round((p.pos / p.dur) * 100) : 0;
+  return `<div class="media-row" role="button" tabindex="0" data-i="${i}"><span class="media-row-img">${img}</span><span class="media-row-text"><b>${esc(it.name)}</b>${pct ? `<i><u style="width:${pct}%"></u></i>` : ''}</span><span class="media-row-go">›</span></div>`;
+}
 function card(it, i, attrs = `data-i="${i}"`) {
   const p = progressOf(it);
   const pct = p && p.dur > 0 ? Math.round((p.pos / p.dur) * 100) : 0;
