@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 111,
+    title: 'İçerik uyarılarında alternatif eşleştirme',
+    items: [
+      'Film ve diziler Screenwise üzerinde IMDb kimliği, Türkçe ad, katalog adı ve orijinal adla alternatif sorgularla aranır',
+      'Yıl bilgisi eşleşmeyi engellediğinde yıl olmadan da arama yapılır; sonuçlar tür ve başlık benzerliğiyle doğrulanır',
+      'KTB film sınıflandırması Türkçe, katalog ve orijinal adlarla ayrı ayrı aranır',
+      'Uyarı bulunamayan kayıtların yeniden tarama süresi 24 saatten 6 saate indirildi',
+      'Kaynakta doğrulanmayan içerik uyarıları tahmin edilerek gösterilmez',
+    ],
+  },
+
+  {
     id: 110,
     title: 'Dizilerde içerik uyarıları',
     items: [
