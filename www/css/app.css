@@ -1196,3 +1196,22 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player:not(.preview) .pl-top { padding-top: max(10px,var(--safe-t)); }
   #player:not(.preview) .pl-bot { padding-bottom: max(16px,var(--safe-b)); }
 }
+
+
+/* Dikey telefon oynatıcısı: yayın akışı, kontrollerin altında kaydırılabilir panel olarak görünür. */
+.pl-epg-panel { position:absolute; z-index:5; left: max(12px,var(--safe-l)); right:max(12px,var(--safe-r)); bottom:calc(var(--safe-b) + 8px); max-height:34vh; overflow:hidden; padding:12px; border:1px solid #ffffff2b; border-radius:16px; background:rgba(5,12,18,.88); color:#fff; backdrop-filter:blur(12px); }
+.pl-epg-panel[hidden] { display:none !important; }
+.pl-epg-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+.pl-epg-head small { display:block; color:#cbd5e1; margin-top:2px; }
+.pl-epg-programs { max-height:calc(34vh - 62px); overflow-y:auto; overscroll-behavior:contain; }
+.pl-epg-row { display:grid; grid-template-columns:52px minmax(0,1fr) 48px; gap:8px; align-items:center; padding:9px 4px; border-top:1px solid #ffffff20; font-size:.84rem; }
+.pl-epg-row.active { color:#86efac; background:#16a34a20; }
+.pl-epg-time,.pl-epg-state { color:#cbd5e1; font-variant-numeric:tabular-nums; font-size:.76rem; }
+.pl-epg-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (orientation:portrait) {
+  #player:not(.preview) .pl-epg-panel { display:block; }
+  #player:not(.preview) #pl-ui { justify-content:flex-start; }
+  #player:not(.preview) .pl-mid { margin-top:auto; margin-bottom:8px; }
+  #player:not(.preview) .pl-bot { margin-bottom:calc(34vh + 12px); background:linear-gradient(#0000,#000b); }
+  #player:not(.preview) .pl-tools { max-width:100%; }
+}
