@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 106,
+    title: 'Film ve dizi oynatıcı dikey düzene geçirildi',
+    items: [
+      'Film ve dizi oynatımında video üst alanda kaynak en-boy oranı korunarak, kırpılmadan ekran genişliğine sığdırılır',
+      'Medya kontrolleri ve görüntü boyutlandırma seçeneği video alanında kalır',
+      'Film oynatımında altta önerilen filmler, dizi oynatımında bölümler yatay kaydırmalı listede gösterilir',
+    ],
+  },
+  {
     id: 105,
     title: 'Dikey oynatıcı görüntü oranı düzeltildi',
     items: [
