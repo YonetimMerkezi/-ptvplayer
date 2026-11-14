@@ -1185,3 +1185,14 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 .mv-warning-chip .ic { width:15px; height:15px; margin-right:5px; flex:0 0 auto; }
 .mv-warning-detail > div b { display:inline-flex; align-items:center; gap:7px; }
 .mv-warning-detail > div b .ic { width:19px; height:19px; color:var(--accent); flex:0 0 auto; }
+
+
+/* Oynatıcı kilidi: dokunmatik/kumanda hareketleri kilitliyken çalışmaz; yalnız merkezdeki kilit açma düğmesi etkindir. */
+#player.locked #pl-ui { opacity: 0 !important; pointer-events: none !important; }
+#player.locked .pl-unlock { display: flex !important; }
+.pl-unlock { position: absolute; z-index: 12; left: 50%; top: 50%; transform: translate(-50%,-50%); align-items: center; gap: 10px; padding: 14px 20px; border-radius: 28px; color: #fff; background: rgba(15,23,42,.82); border: 1px solid rgba(255,255,255,.28); box-shadow: 0 8px 28px #0008; }
+.pl-unlock .ic { width: 24px; height: 24px; }
+@media (orientation: portrait) {
+  #player:not(.preview) .pl-top { padding-top: max(10px,var(--safe-t)); }
+  #player:not(.preview) .pl-bot { padding-bottom: max(16px,var(--safe-b)); }
+}
