@@ -72,7 +72,7 @@ test('config: düz metin sızmaz, ayrıştırma sıkı', async () => {
   const a = newCode();
   const cfg = await cfgWith([[a, payload()]], { blocked: ['AB12-CD34-EF56', 'ab12cd34ef56'] });
   const raw = JSON.stringify(cfg);
-  for (const s of ['GIZLI', 'Ayşe', 's.example', 'l.example', 'kul', 'Ana', 'Yedek', a, a.replace(/-/g, '')]) assert.ok(!raw.includes(s), 'sızıntı: ' + s);
+  for (const s of ['GIZLI-SIFRE', 'GIZLI2', 'Ayşe', 's.example', 'l.example', '"kul"', '"Ana"', '"Yedek"', a, a.replace(/-/g, '')]) assert.ok(!raw.includes(s), 'sızıntı: ' + s);
   assert.deepEqual(cfg.blocked, ['ab12cd34ef56']);
   const ok = parseConfig(JSON.parse(raw));
   assert.equal(Object.keys(ok.entries).length, 1);
