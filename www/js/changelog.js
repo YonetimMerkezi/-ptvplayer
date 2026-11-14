@@ -860,6 +860,14 @@ export const CHANGELOG = [
   },
 ];
 
+  {
+    id: 103,
+    title: 'Kategori düzenleme görünümü düzeltmesi',
+    items: [
+      'Izgara görünümünde kategori düzenlerken kategori adları yeniden görünür; gizle, kilitle ve taşıma düğmeleri korunur',
+    ],
+  },
+
 export const LATEST_ID = CHANGELOG[0].id;
 
 // Görülmemiş kayıtlar. seen: son gösterilen id (yoksa null). Kurulu kullanıcı (kaynağı var) ilk kez güncelliyorsa hepsi sayılır; temiz kurulumda hiçbiri.
