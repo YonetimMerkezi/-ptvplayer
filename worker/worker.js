@@ -94,7 +94,7 @@ export function pickCert(d, tp) {
     const normalized = normCert(cc, raw);
     if (normalized) { cert = normalized; csrc = cc; break; }
   }
-  return { cert, csrc: csrc || (Object.keys(warnings).length ? country : null), w: warnings, warningCountry: Object.keys(warnings).length ? country : null };
+  return { cert, csrc: csrc || (Object.keys(warnings).length ? country : null), w: { ...warnings, _v: 1 }, warningCountry: Object.keys(warnings).length ? country : null };
 }
 
 // ---------- TMDB ----------
@@ -147,7 +147,7 @@ async function resolve(env, it) {
   }
   const cands = [...seen.values()].sort((a, b) => b.conf - a.conf);
   const best = cands[0];
-  const base = { k: it.k, tid: null, tp: null, ttl: null, ot: null, imdb: null, yr: null, cert: null, csrc: null, gen: [], w: {}, conf: best ? +best.conf.toFixed(3) : 0, cands: cands.slice(0, 3).map((c) => ({ id: c.id, tp: c.tp, ttl: c.ttl, yr: c.cy, conf: +c.conf.toFixed(2) })) };
+  const base = { k: it.k, tid: null, tp: null, ttl: null, ot: null, imdb: null, yr: null, cert: null, csrc: null, gen: [], w: { _v: 1 }, conf: best ? +best.conf.toFixed(3) : 0, cands: cands.slice(0, 3).map((c) => ({ id: c.id, tp: c.tp, ttl: c.ttl, yr: c.cy, conf: +c.conf.toFixed(2) })) };
   if (!best || best.conf < PENDING) return { ...base, st: 'none' };
   if (best.conf < AUTO) return { ...base, st: 'pending' };
   const d = await tmdb(env, `/${best.tp}/${best.id}`, { language: 'tr-TR', append_to_response: best.tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
@@ -183,6 +183,7 @@ const WKEYS = ['siddet', 'korku', 'cinsellik', 'ciplaklik', 'olumsuz'];
 function cleanW(w) {
   const o = {};
   for (const k of WKEYS) { const v = +w?.[k]; if (Number.isFinite(v) && v > 0) o[k] = Math.min(3, Math.round(v)); }
+  if (Number(w?._v) === 1) o._v = 1;
   return o;
 }
 
@@ -195,7 +196,7 @@ async function lookup(env, body) {
   const out = [], writes = [];
   for (const it of items) {
     const row = have.get(it.k);
-    if (row && !(row.st === 'none' && Date.now() - row.updated > RETRY_NONE_MS)) { out.push(pub(row)); continue; }
+    if (row && (row.st === 'manual' || Number(row.w?._v) === 1 || (row.st === 'none' && Date.now() - row.updated <= RETRY_NONE_MS))) { out.push(pub(row)); continue; }
     try {
       const r = await resolve(env, it);
       writes.push(env.DB.prepare(UPSERT_SAFE).bind(...toArgs(r)));
