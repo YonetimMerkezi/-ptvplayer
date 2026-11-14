@@ -32,6 +32,15 @@ export function createPlayerUI({ engine, player, env }) {
   let hideTimer = 0;
   let ctx = null; // { list, index } | { eps: [...], index }
   let open = false;
+  let playerLocked = false;
+  const setPlayerLocked = (on) => {
+    playerLocked = !!on;
+    root.classList.toggle('locked', playerLocked);
+    q('#pl-lock').innerHTML = icon(playerLocked ? 'lock' : 'unlock');
+    q('#pl-lock').setAttribute('aria-label', playerLocked ? 'Oynatıcı kilidini aç' : 'Oynatıcıyı kilitle');
+    q('#pl-unlock').hidden = !playerLocked;
+    clearTimeout(hideTimer);
+  };
   let resizeIdx = Math.max(0, RESIZE.findIndex(([id]) => id === (env.pref ? env.pref('resize', 'fit') : 'fit')));
   let seeking = false;
   let shortEpgFor = null;
@@ -119,7 +128,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   function gestureStart(e) {
     gest.swallow = false;
-    if (pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn')) {
+    if (playerLocked || pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn')) {
       gest.id = null;
       return;
     }
@@ -221,6 +230,7 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   function showUi(stick) {
+    if (playerLocked) return;
     ui.classList.add('show');
     clearTimeout(hideTimer);
     if (!stick && player.state().status === 'playing') scheduleHide();
@@ -704,6 +714,7 @@ export function createPlayerUI({ engine, player, env }) {
   // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
   function enterFullscreen() {
     open = true;
+    setPlayerLocked(false);
     lastStatus = '';
     shortEpgFor = null;
     tracksLoadedFor = null;
@@ -718,7 +729,8 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-pip').hidden = engine.kind !== 'native' || onTv(); // TV'de resim içinde resim yok
     applyResize(resizeIdx);
     loadLevels();
-    engine.setImmersive(true, true).catch(() => {});
+    const landscape = onTv() || !env.pref || env.pref('set.playerOrientation', 'landscape') !== 'portrait';
+    engine.setImmersive(true, landscape).catch(() => {});
     showUi(true);
   }
 
@@ -850,6 +862,7 @@ export function createPlayerUI({ engine, player, env }) {
     stopRequested = false;
     if (!open) return;
     open = false;
+    setPlayerLocked(false);
     layerOpen = false;
     hideTip();
     setStats(false);
@@ -902,7 +915,7 @@ export function createPlayerUI({ engine, player, env }) {
   root.addEventListener('click', (e) => {
     // Düğme tıklamaları (geri oku, kapat vb.) kök dinleyiciye de ulaşır; düğme oynatıcıyı bölmeli ekran önizlemesine
     // döndürmüşse, aynı tıklama önizlemeyi hemen yeniden tam ekran yapmasın.
-    if (e.target.closest('button, input, #pl-status .btn')) return;
+    if (playerLocked || e.target.closest('button, input, #pl-status .btn')) return;
     if (previewing) return expand();
     if (gest.swallow) {
       gest.swallow = false; // kaydırmadan sonra gelen tıklama arayüzü açıp kapatmasın
@@ -936,6 +949,11 @@ export function createPlayerUI({ engine, player, env }) {
     render(st);
   });
   q('#pl-epg').addEventListener('click', () => env.onEpgSheet(player.state().item));
+  q('#pl-lock').addEventListener('click', () => setPlayerLocked(true));
+  q('#pl-unlock').addEventListener('click', () => {
+    setPlayerLocked(false);
+    showUi(true);
+  });
   q('#pl-last').addEventListener('click', () => {
     lastChannel();
     showUi(false);
