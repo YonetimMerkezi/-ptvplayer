@@ -64,7 +64,6 @@ import { buildReport, encodeReport, describeReport, pushError } from './report.j
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
 import { loadMovieMetadata } from './movie-metadata.js';
-import { startMediaScan } from './media-scan.js';
 import { loadMovieAdvisories, translateScreenwiseText } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
@@ -395,7 +394,6 @@ async function activate(id, { force = false } = {}) {
   const cached = catalogFromStorable(raw);
   resetGroups();
   setCatalog(cached || emptyCatalog());
-  if (cached) startMediaScan({ source: src, catalog: cached, net, store, onProgress: (p) => banner(`IMDb: ${p.metadataDone}/${p.metadataTotal} · ${p.matched} eşleşme | Uyarı: ${p.advisoryDone}/${p.advisoryTotal}`, { spin: p.metadataDone < p.metadataTotal || p.advisoryDone < p.advisoryTotal }) }).then(() => { if (S.source && S.source.id === src.id) banner(null); }).catch(() => {});
   S.epg = new EpgView(await store.cache.get('epg:' + id));
   renderTop();
   renderTab();
@@ -426,7 +424,6 @@ async function refreshCatalog({ quiet = false } = {}) {
     if (!S.source || S.source.id !== id) return;
     await store.cache.set('cat:' + id, catalogToStorable(cat));
     setCatalog(cat);
-    startMediaScan({ source: S.source, catalog: cat, net, store, onProgress: (p) => banner(`IMDb: ${p.metadataDone}/${p.metadataTotal} · ${p.matched} eşleşme | Uyarı: ${p.advisoryDone}/${p.advisoryTotal}`, { spin: p.metadataDone < p.metadataTotal || p.advisoryDone < p.advisoryTotal }) }).then((r) => { if (S.source && S.source.id === id) banner(null); }).catch(() => {});
     if (S.tab !== 'multi') rerenderKeepingList(); // çoklu ekranda yayınlar kesilmesin
     banner(cat.warnings.length ? cat.warnings[0] : null, { err: cat.warnings.length > 0 });
     if (!quiet) toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi`);
