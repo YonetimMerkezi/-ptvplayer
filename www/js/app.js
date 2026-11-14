@@ -3475,6 +3475,7 @@ function playerSheet() {
           const on = !setting(c.dataset.k);
           store.setPref('set.' + c.dataset.k, on);
           c.classList.toggle('on', on);
+          if (c.dataset.k === 'autoFrameRate') applyAutoFrameRate();
         }
       });
       $('#g-rm', body).addEventListener('click', () => remoteSheet());
@@ -5191,6 +5192,12 @@ function applyDecoder() {
   if (nativePlugin) nativePlugin.setDecoder({ mode: normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)) }).catch(() => toast('Görüntü çözücü uygulanamadı', 2500));
 }
 applyDecoder();
+function applyAutoFrameRate() {
+  if (nativePlugin && nativePlugin.setAutoFrameRate) {
+    nativePlugin.setAutoFrameRate({ on: !!store.pref('set.autoFrameRate', false) }).catch(() => toast('Otomatik kare hızı uygulanamadı', 2500));
+  }
+}
+applyAutoFrameRate();
 if (nativePlugin) {
   nativePlugin.isTv().then((r) => {
     tvDetected = tvDetected || !!(r && r.tv);
