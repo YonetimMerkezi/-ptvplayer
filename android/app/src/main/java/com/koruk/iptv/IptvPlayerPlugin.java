@@ -735,9 +735,9 @@ public class IptvPlayerPlugin extends Plugin {
         final boolean on = call.getData().optBoolean("on", false);
         final boolean landscape = call.getData().optBoolean("landscape", on);
         main.post(() -> {
-            getActivity().setRequestedOrientation((on && landscape) || tvMode
-                    ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            getActivity().setRequestedOrientation(on
+                    ? (landscape ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT)
+                    : (tvMode ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED));
             call.resolve();
         });
     }
