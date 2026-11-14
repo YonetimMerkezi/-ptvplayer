@@ -38,7 +38,8 @@ export function createPlayerUI({ engine, player, env }) {
     root.classList.toggle('locked', playerLocked);
     q('#pl-lock').innerHTML = icon(playerLocked ? 'lock' : 'unlock');
     q('#pl-lock').setAttribute('aria-label', playerLocked ? 'Oynatıcı kilidini aç' : 'Oynatıcıyı kilitle');
-    q('#pl-unlock').hidden = !playerLocked;
+    q('#pl-unlock').hidden = !playerLocked; 
+    q('#pl-epg-panel').hidden = playerLocked || !window.matchMedia('(orientation: portrait)').matches || player.state().item?.kind !== 'live';
     clearTimeout(hideTimer);
   };
   let resizeIdx = Math.max(0, RESIZE.findIndex(([id]) => id === (env.pref ? env.pref('resize', 'fit') : 'fit')));
@@ -244,6 +245,28 @@ export function createPlayerUI({ engine, player, env }) {
     return { name: st.item.name, sub: '' };
   }
 
+  let panelEpgFor = '';
+  function renderPortraitEpg(st) {
+    const panel = q('#pl-epg-panel');
+    const enabled = !!st.item && st.item.kind === 'live' && !st.item.cast && window.matchMedia('(orientation: portrait)').matches;
+    panel.hidden = !enabled || playerLocked;
+    if (!enabled) { panelEpgFor = ''; return; }
+    q('#pl-epg-channel').textContent = st.item.name || '';
+    if (panelEpgFor === st.item.id) return;
+    panelEpgFor = st.item.id;
+    q('#pl-epg-programs').innerHTML = '<p class="hint">Program bilgisi yükleniyor…</p>';
+    env.shortEpg(st.item).then((list) => {
+      const cur = player.state();
+      if (!open || !cur.item || cur.item.id !== st.item.id || !window.matchMedia('(orientation: portrait)').matches) return;
+      const now = Date.now();
+      const rows = (list || []).filter((p) => p.e > now - 60 * 60 * 1000).slice(0, 8);
+      q('#pl-epg-programs').innerHTML = rows.length ? rows.map((p) => {
+        const active = p.s <= now && p.e > now;
+        return `<div class="pl-epg-row${active ? ' active' : ''}"><span class="pl-epg-time">${fmtClock(p.s)}</span><span class="pl-epg-name">${esc(p.t || 'Program')}</span><span class="pl-epg-state">${active ? 'Şimdi' : fmtClock(p.e)}</span></div>`;
+      }).join('') : '<p class="hint">Bu kanal için yayın akışı bulunamadı.</p>';
+    }).catch(() => { q('#pl-epg-programs').innerHTML = '<p class="hint">Yayın akışı alınamadı.</p>'; });
+  }
+
   function renderEpgLine(st) {
     const el = q('#pl-epgline');
     if (!st.item || st.item.kind !== 'live') {
@@ -343,6 +366,7 @@ export function createPlayerUI({ engine, player, env }) {
       if (altKey && altShown !== altKey) toast('Yedek kaynak kullanılıyor: ' + tg.alt, 3000);
       altShown = altKey;
       renderEpgLine(st);
+    renderPortraitEpg(st);
       loadTrackButtons(st);
       // Gizleme sayacı her zaman güncellemesinde (saniyede birkaç kez) değil, yalnız oynatma başlayınca kurulur;
       // yoksa sayaç hiç dolmaz ve denetimler ekranda kalır. Yeniden arabelleğe almada denetimler tekrar açılmaz.
@@ -949,6 +973,15 @@ export function createPlayerUI({ engine, player, env }) {
     render(st);
   });
   q('#pl-epg').addEventListener('click', () => env.onEpgSheet(player.state().item));
+  q('#pl-epg-remind').addEventListener('click', () => {
+    const st = player.state();
+    if (st.item && st.item.kind === 'live') env.onEpgSheet(st.item);
+  });
+  window.matchMedia('(orientation: portrait)').addEventListener?.('change', () => {
+    panelEpgFor = '';
+    const st = player.state();
+    if (open && st.item) renderPortraitEpg(st);
+  });
   q('#pl-lock').addEventListener('click', () => setPlayerLocked(true));
   q('#pl-unlock').addEventListener('click', () => {
     setPlayerLocked(false);
