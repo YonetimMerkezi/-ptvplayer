@@ -61,6 +61,7 @@ export function nativePlugin(name, win = globalThis.window) {
     setAutoFrameRate: call('setAutoFrameRate'),
     setSubtitleStyle: call('setSubtitleStyle'),
     tvSyncWatchNext: call('tvSyncWatchNext'),
+    pickLocalMedia: call('pickLocalMedia'),
     voiceSearch: call('voiceSearch'),
     castSyncReply: call('castSyncReply'),
     castStart: call('castStart'),
