@@ -1332,6 +1332,10 @@ function liveRow(it, i) {
 
 function categoryTile(c, i) {
   const folderIc = c.folder ? icon('folder') : c.locked ? icon('lock') : icon('layers');
+  if (S.catEdit && !c.special) {
+    const move_ = S.catFilter ? '' : `<button class="cat-tile-act" data-act="top" aria-label="En üste al">${icon('top')}</button><button class="cat-tile-act" data-act="up" aria-label="Yukarı">${icon('up')}</button><button class="cat-tile-act" data-act="down" aria-label="Aşağı">${icon('down')}</button>`;
+    return `<div class="cat-tile editing${c.hidden ? ' hidden' : ''}" role="button" tabindex="0" data-i="${i}"><span class="cat-tile-ic">${folderIc}</span><b>${esc(c.name)}</b><small>${c.count} öğe</small><div class="cat-tile-actions"><button class="cat-tile-act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><button class="cat-tile-act" data-act="lock" aria-label="${c.lockSet ? 'Kilidi kaldır' : 'Şifreyle kilitle'}">${icon(c.lockSet ? 'lock' : 'lock-open')}</button>${move_}</div></div>`;
+  }
   return `<div class="cat-tile${c.hidden ? ' hidden' : ''}" role="button" tabindex="0" data-i="${i}"><span class="cat-tile-ic">${folderIc}</span><b>${esc(c.name)}</b><small>${c.count} öğe</small>${c.locked ? '<span class="cat-tile-lock">Kilitli</span>' : ''}</div>`;
 }
 function liveTile(it, i) {
