@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 104,
+    title: 'Dikey oynatıcı ve EPG ekranı düzenlendi',
+    items: [
+      'Dikey canlı TV görünümünde video üst bölümde, yayın akışı alt bölümde ayrı alanlarda gösterilir',
+      'EPG listesi kendi alanında kaydırılır; oynatma kontrolleri video bölümünde kalır',
+      'Android yerel oynatıcı görüntüsü de dikey bölünmüş düzene göre yeniden boyutlandırılır',
+    ],
+  },
+  {
     id: 103,
     title: 'Kategori düzenleme görünümü düzeltmesi',
     items: [
