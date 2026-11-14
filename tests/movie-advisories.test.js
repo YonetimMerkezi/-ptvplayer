@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning, translateAdvisoryText, loadMovieAdvisories } from '../www/js/movie-advisories.js';
+import { parseKtbClassification, parseScreenwiseMedia, translateScreenwiseText, classifyScreenwiseWarning, translateAdvisoryText, loadMovieAdvisories, advisoryKey } from '../www/js/movie-advisories.js';
 
 test('KTB film kaydındaki yaş ve içerik işaretlerini çıkarır', () => {
   const html = '<article><h3>Örnek Film</h3><p>16 Yaş ve Üzeri İzleyici Kitlesi İçindir.</p><p>Şiddet veya Korku Unsurları İçerir.</p><p>Olumsuz Örnek Oluşturabilecek Davranışlar İçerir.</p></article>';
@@ -128,4 +128,69 @@ test('IMDb kimliği yokken Screenwise başlık ve yıl ile aranır', async () =>
   assert.equal(record.imdbRating, '7.2');
   assert.equal(record.warnings.length, 1);
   assert.ok(calls.some((url) => url.includes('q=Sample%20Film') && url.includes('year=2024')));
+});
+
+const memStore = () => { const cache = new Map(); return { cache: { get: async (k) => cache.get(k), set: async (k, v) => cache.set(k, v) }, raw: cache }; };
+
+test('dizi için Screenwise type=show ile aranır, KTB film sitesi çağrılmaz', async () => {
+  const calls = [];
+  const net = {
+    text: async (url) => { calls.push(url); return ''; },
+    json: async (url) => {
+      calls.push(url);
+      if (url.includes('/api/v1/media/search?')) return { results: [{ matchConfidence: 0.95, media: { slug: 'sample-show', type: 'show' } }] };
+      if (url.endsWith('/api/v1/media/sample-show')) return { title: 'Sample Show', url: 'https://screenwiseapp.com/media/sample-show', wise: { overall: 70, parentCopy: { watchFor: ['Intense violence throughout'] } } };
+      throw new Error('unexpected url ' + url);
+    },
+  };
+  const store = memStore();
+  const record = await loadMovieAdvisories(net, store, { title: 'Sample Show', year: 2020, imdbId: 'tt1234567' }, { name: 'Sample Show' }, 'series');
+  assert.equal(record.kind, 'series');
+  assert.equal(record.sources.screenwise.status, 'found');
+  assert.equal(record.sources.ktb, undefined);
+  assert.equal(record.warnings.length, 1);
+  assert.ok(calls.some((u) => u.includes('imdb_id=tt1234567') && u.includes('type=show')));
+  assert.ok(!calls.some((u) => u.includes('ktb.gov.tr')));
+  assert.ok(store.raw.has(advisoryKey({ title: 'Sample Show', year: 2020, imdbId: 'tt1234567' }, 'series')));
+});
+
+test('dizi araması film türündeki sonucu kabul etmez', async () => {
+  const net = { text: async () => '', json: async () => ({ results: [{ matchConfidence: 1, media: { slug: 'same-name-movie', type: 'movie' } }] }) };
+  const record = await loadMovieAdvisories(net, memStore(), { title: 'Same Name', year: 2020 }, { name: 'Same Name' }, 'series');
+  assert.equal(record.sources.screenwise.status, 'no_data');
+  assert.deepEqual(record.warnings, []);
+});
+
+test('film ve dizi önbellek anahtarları çakışmaz', () => {
+  const meta = { title: 'Aynı Ad', year: 2020 };
+  assert.notEqual(advisoryKey(meta, 'movie'), advisoryKey(meta, 'series'));
+  assert.equal(advisoryKey({ imdbId: 'tt1' }, 'movie'), 'movie-advisory:v4:tt1');
+});
+
+test('kaynak hatası "uyarı yok" diye günlerce saklanmaz; kısa süre sonra yeniden denenir', async () => {
+  let fail = true, n = 0;
+  const net = {
+    text: async () => '<html></html>',
+    json: async (url) => {
+      n++;
+      if (fail) throw new Error('HTTP 429');
+      if (url.includes('/media/search?')) return { results: [{ matchConfidence: 1, media: { slug: 'x', type: 'movie' } }] };
+      return { title: 'X', url: 'https://screenwiseapp.com/media/x', wise: { overall: 60, parentCopy: { watchFor: ['heavy language'] } } };
+    },
+  };
+  const store = memStore();
+  const meta = { title: 'Hata Filmi', year: 2022 };
+  const first = await loadMovieAdvisories(net, store, meta, { name: 'Hata Filmi' });
+  assert.equal(first.sources.screenwise.status, 'error');
+  // hemen tekrar: kısa süre içinde önbellekten döner
+  const calls = n;
+  await loadMovieAdvisories(net, store, meta, { name: 'Hata Filmi' });
+  assert.equal(n, calls);
+  // 6 dakika sonra: hata kaydı geçersiz, yeniden istenir ve uyarı bulunur
+  const key = advisoryKey(meta, 'movie');
+  store.raw.set(key, { ...store.raw.get(key), checkedAt: Date.now() - 6 * 60000 });
+  fail = false;
+  const again = await loadMovieAdvisories(net, store, meta, { name: 'Hata Filmi' });
+  assert.equal(again.sources.screenwise.status, 'found');
+  assert.equal(again.warnings.length, 1);
 });
