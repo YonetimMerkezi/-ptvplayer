@@ -131,11 +131,13 @@ export function createPlayerUI({ engine, player, env }) {
 
   function gestureStart(e) {
     gest.swallow = false;
-    if (playerLocked || pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn')) {
+    const videoRect = q('#vid').getBoundingClientRect();
+    if (playerLocked || pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn') ||
+        e.clientX < videoRect.left || e.clientX > videoRect.right || e.clientY < videoRect.top || e.clientY > videoRect.bottom) {
       gest.id = null;
       return;
     }
-    Object.assign(gest, { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: Date.now(), mode: null, target: null });
+    Object.assign(gest, { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: Date.now(), mode: null, target: null, videoRect });
   }
 
   function gestureMove(e) {
@@ -161,18 +163,18 @@ export function createPlayerUI({ engine, player, env }) {
         gest.base = st.pos;
       } else {
         gest.mode = 'v';
-        gest.kind = gest.x0 < root.clientWidth / 2 ? 'brightness' : 'volume';
+        gest.kind = gest.x0 < gest.videoRect.left + gest.videoRect.width / 2 ? 'brightness' : 'volume';
         gest.start = levels[gest.kind];
       }
     }
     if (gest.mode === 'h') {
       const st = player.state();
-      const sec = seekDelta(dx, root.clientWidth);
+      const sec = seekDelta(dx, gest.videoRect.width);
       gest.target = seekTarget(gest.base, sec, st.dur);
       const real = (gest.target - gest.base) / 1000;
       hud(real >= 0 ? 'fwd' : 'rew', `${fmtDelta(real)} · ${fmtDuration(gest.target / 1000)}`);
     } else if (gest.mode === 'v') {
-      const v = levelFrom(gest.start, dy, root.clientHeight);
+      const v = levelFrom(gest.start, dy, gest.videoRect.height);
       levels[gest.kind] = v;
       const now = Date.now();
       if (now - gest.applied > 40) {
