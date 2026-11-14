@@ -44,20 +44,57 @@ function normCert(cc, raw) {
   const m = r.match(/\d+/);           // TR ve DE: rakamlı değerler
   return m ? tier(+m[0]) : null;
 }
-function pickCert(d, tp) {
+// TMDB sertifika kayıtlarındaki descriptors alanı, yaş sınıfından bağımsız
+// içerik işaretleri sağlar. Yalnız açıkça belirtilen tanımlayıcılar kullanılır.
+export function classifyTmdbDescriptors(values) {
+  const out = {};
+  const list = (Array.isArray(values) ? values : []).map((v) =>
+    typeof v === 'string' ? v : v && (v.name || v.description || v.value) || ''
+  ).join(' ').toLowerCase();
+  const mark = (key) => { out[key] = Math.max(out[key] || 0, 2); };
+  if (/violence|violent|graphic violence|blood|gore|şiddet/.test(list)) mark('siddet');
+  if (/fear|frightening|horror|scary|terror|korku/.test(list)) mark('korku');
+  if (/sex|sexual|sexual content|sex references|cinsellik/.test(list)) mark('cinsellik');
+  if (/nudity|nude|partial nudity|çıplak/.test(list)) mark('ciplaklik');
+  if (/language|profanity|strong language|drug|alcohol|smoking|discriminat|harmful behaviour|harmful behavior|olumsuz/.test(list)) mark('olumsuz');
+  return out;
+}
+export function pickCert(d, tp) {
   const by = {};
   if (tp === 'movie') {
     for (const c of d.release_dates?.results || []) {
-      const cert = (c.release_dates || []).map((x) => x.certification).find(Boolean);
-      if (cert) by[c.iso_3166_1] = cert;
+      const entries = c.release_dates || [];
+      const cert = entries.map((x) => x.certification).find(Boolean);
+      const descriptors = entries.flatMap((x) => Array.isArray(x.descriptors) ? x.descriptors : []);
+      if (cert || descriptors.length) by[c.iso_3166_1] = { cert, descriptors };
     }
   } else {
-    for (const c of d.content_ratings?.results || []) if (c.rating) by[c.iso_3166_1] = c.rating;
+    for (const c of d.content_ratings?.results || []) {
+      if (c.rating || (Array.isArray(c.descriptors) && c.descriptors.length))
+        by[c.iso_3166_1] = { cert: c.rating || '', descriptors: c.descriptors || [] };
+    }
   }
-  for (const cc of ['TR', 'DE', 'GB', 'US']) {
-    if (by[cc]) { const n = normCert(cc, by[cc]); if (n) return { cert: n, csrc: cc }; }
+  const countries = ['TR', 'GB', 'US', 'DE', 'CA', 'AU', 'NZ', 'FR', 'BR', 'MX'];
+  let selected = null, country = null;
+  for (const cc of countries) {
+    if (by[cc] && (by[cc].cert || by[cc].descriptors.length)) { selected = by[cc]; country = cc; break; }
   }
-  return { cert: null, csrc: null };
+  const warnings = {};
+  // Yaş sınıfı için Türkiye önceliği korunur; tanımlayıcılar diğer güvenilir bölgesel
+  // kayıtlarla da tamamlanır, ancak aynı başlık için en yüksek ortak düzey tutulur.
+  for (const cc of countries) {
+    if (!by[cc]) continue;
+    const found = classifyTmdbDescriptors(by[cc].descriptors);
+    for (const [k, v] of Object.entries(found)) warnings[k] = Math.max(warnings[k] || 0, v);
+  }
+  let cert = null, csrc = null;
+  for (const cc of countries) {
+    const raw = by[cc] && by[cc].cert;
+    if (!raw) continue;
+    const normalized = normCert(cc, raw);
+    if (normalized) { cert = normalized; csrc = cc; break; }
+  }
+  return { cert, csrc, w: warnings, warningCountry: Object.keys(warnings).length ? country : null };
 }
 
 // ---------- TMDB ----------
@@ -115,7 +152,7 @@ async function resolve(env, it) {
   if (best.conf < AUTO) return { ...base, st: 'pending' };
   const d = await tmdb(env, `/${best.tp}/${best.id}`, { language: 'tr-TR', append_to_response: best.tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
   const c = pickCert(d, best.tp);
-  return { ...base, st: 'ok', tid: best.id, tp: best.tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: best.cy, cert: c.cert, csrc: c.csrc, gen: (d.genres || []).map((g) => g.name) };
+  return { ...base, st: 'ok', tid: best.id, tp: best.tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: best.cy, cert: c.cert, csrc: c.csrc, w: c.w || {}, gen: (d.genres || []).map((g) => g.name) };
 }
 
 const imdbOf = (d) => { const v = d.external_ids?.imdb_id || d.imdb_id; return /^tt\d+$/.test(v || '') ? v : null; };
