@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 108,
+    title: 'Dikey oynatıcı görüntü alanı düzeltildi',
+    items: [
+      'Android yerel video görünümü artık gizli HTML video öğesinin sıfır ölçülerini değil, gerçek video alanını temel alır',
+      'Dikey canlı TV ve film/dizi oynatımında video alanı ekranın yaklaşık yüzde 46 yüksekliğini kullanır',
+      'Sığdır seçeneğinde görüntü oranı korunur; video alanı EPG veya öneri listesinin altına taşmaz',
+    ],
+  },
+  {
     id: 107,
     title: 'Dikey film ve dizi oynatıcı yerleşimi iyileştirildi',
     items: [
