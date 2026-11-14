@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 105,
+    title: 'Dikey oynatıcı görüntü oranı düzeltildi',
+    items: [
+      'Canlı yayın videosu dikey ekranda 16:9 alana sığdırılır; görüntü kırpılmaz',
+      'EPG paneli video alanının hemen altından başlayarak kalan ekranı kullanır',
+      'Android yerel oynatıcı boyutu doğrudan video alanının ölçüsüne eşitlenir',
+    ],
+  },
+  {
     id: 104,
     title: 'Dikey oynatıcı ve EPG ekranı düzenlendi',
     items: [
