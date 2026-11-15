@@ -847,7 +847,7 @@ function drawCrumb(kind) {
     $('#crumb-sort').classList.toggle('on', S.sort[kind] !== 'default');
   }
   const clearRecent = $('#btn-clear-recent');
-  if (clearRecent) clearRecent.hidden = !(kind === 'live' && g === '__recent' && store.recents(sid()).length);
+  if (clearRecent) clearRecent.hidden = !((kind === 'live' && g === '__recent' && store.recents(sid()).length) || (kind !== 'live' && g === '__cont' && store.continueWatching(sid()).length));
   const label = { live: 'Kanal', movie: 'Film', series: 'Dizi' }[kind];
   qEl.placeholder = g != null ? 'Bu kategoride ara…' : `${label} ara…`;
 }
@@ -1044,15 +1044,23 @@ function recentItemSheet(it) {
 }
 
 function clearRecentSheet() {
+  const kind = TAB_KIND[S.tab];
+  const isContinue = !!kind && kind !== 'live' && S.group[kind] === '__cont';
+  const title = isContinue ? 'Devam et listesini temizle' : 'Son izlenenleri temizle';
+  const message = isContinue
+    ? 'Film ve dizi izleme geçmişindeki devam kayıtları kaldırılacak. Favoriler ve katalog etkilenmez.'
+    : 'Son izlenenler listesindeki tüm kanallar kaldırılacak. Favoriler ve kanal listen etkilenmez.';
+  const action = isContinue ? 'Devam et listesini temizle' : 'Tüm son izlenenleri temizle';
   const sh = openSheet({
-    title: 'Son izlenenleri temizle',
-    html: '<p class="hint">Son izlenenler listesindeki tüm kanallar kaldırılacak. Favoriler ve kanal listen etkilenmez.</p><button class="btn danger" id="recent-clear-all">Tüm son izlenenleri temizle</button>',
+    title,
+    html: `<p class="hint">${message}</p><button class="btn danger" id="recent-clear-all">${action}</button>`,
     mount: (body) => {
       $('#recent-clear-all', body).addEventListener('click', () => {
-        store.clearRecents(sid());
+        if (isContinue) store.clearProgress(sid());
+        else store.clearRecents(sid());
         sh.close();
         refreshList(true);
-        toast('Son izlenenler temizlendi');
+        toast(isContinue ? 'Devam et listesi temizlendi' : 'Son izlenenler temizlendi');
       });
     },
   });
