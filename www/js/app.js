@@ -3734,7 +3734,7 @@ function themeSheet() {
   let selected = store.pref('set.theme', DEFAULT_THEME);
   const preview = (t) => `
     <button class="theme-choice${t.id === selected ? ' on' : ''}" type="button" data-theme-choice="${esc(t.id)}" aria-pressed="${t.id === selected}">
-      <div class="theme-preview" style="--preview-accent:${t.swatch};--preview-bar:${t.bar}">
+      <div class="theme-preview" style="--preview-accent:${t.previewAccent || t.swatch};--preview-bar:${t.bar}">
         <div class="theme-preview-head"><b>IPTV PRO</b><span>⌕　⚙</span></div>
         <div class="theme-preview-tiles"><i>▣</i><i>▰</i><i>▶</i><i>★</i></div>
         <div class="theme-preview-posters"><i></i><i></i><i></i></div>
