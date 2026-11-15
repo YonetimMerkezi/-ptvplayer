@@ -74,7 +74,29 @@ export function createPlayerUI({ engine, player, env }) {
   // ---- kaydırma hareketleri: sol yarı dikey = parlaklık, sağ yarı dikey = ses, yatay = sarma ----
   // Tam ekran ↔ küçük ekran düğmesi: oturum boyunca "Telefon oynatıcı yönü" ayarının üstüne yazar; oynatıcı kapanınca sıfırlanır.
   let orientOverride = null;
-  const orientNow = () => orientOverride || (env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape');
+  // Videoya göre otomatik yön: 'portrait' = dikey tam ekran, 'landscape' = yatay tam ekran. Elle seçim (orientOverride) her zaman önceliklidir.
+  let autoDir = null;
+  let autoFor = null;
+  const autoOrientOn = () => !!env.autoOrient && env.autoOrient() && !onTv();
+  function autoOrient(st) {
+    if (!open || !st.item || orientOverride || playerLocked || !autoOrientOn()) return;
+    if (st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
+    if (!(st.vw > 0 && st.vh > 0)) return;
+    const key = st.item.id + '|' + (st.ep ? st.ep.id : '');
+    if (autoFor === key) return; // her video için bir kez
+    autoFor = key;
+    const dir = st.vh > st.vw ? 'portrait' : 'landscape';
+    if (dir === autoDir && !root.classList.contains('vod-portrait')) return;
+    autoDir = dir;
+    root.classList.remove('vod-portrait'); // otomatik yön hep tam ekrandır (küçük ekran yerleşimi değil)
+    engine.setImmersive(true, dir === 'landscape').catch(() => {}); // yatay kilit ↔ dikey kilit
+    if (engine.kind === 'native') engine.clearRect().catch(() => {}); // küçük ekran yuvası kalkar, görüntü tüm ekranı kaplar
+    syncDock();
+    syncOrientBtn(st.item);
+    render(st);
+  }
+  // Otomatik yön (autoDir) tam ekran demektir: küçük ekran (dikey yerleşim) yalnız ayardan ya da elle seçimden gelir
+  const orientNow = () => orientOverride || (autoDir ? 'landscape' : env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape');
   const levels = { brightness: 0.5, volume: 0.5 };
   let hudTimer = 0;
   const gest = { id: null, x0: 0, y0: 0, t0: 0, mode: null, kind: '', start: 0, base: 0, target: null, swallow: false, applied: 0, tapAt: 0 };
@@ -433,6 +455,7 @@ export function createPlayerUI({ engine, player, env }) {
       const v = q('#pl-video-frame').getBoundingClientRect();
       if (v.width > 0 && v.height > 0) engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
     });
+    autoOrient(st);
     renderVodShelf(st);
     q('#pl-prog').classList.toggle('live', live);
     const pausing = st.status === 'playing' || st.status === 'buffering' || st.status === 'loading';
@@ -868,15 +891,19 @@ export function createPlayerUI({ engine, player, env }) {
     if (!b) return;
     const it = item || player.state().item;
     b.hidden = onTv() || !it || !!it.cast || it.kind === 'recording';
-    const small = orientNow() === 'portrait';
-    b.innerHTML = icon(small ? 'expand' : 'shrink');
-    b.setAttribute('aria-label', small ? 'Tam ekran' : 'Küçük ekran');
-    b.title = small ? 'Tam ekran' : 'Küçük ekran';
+    const autoPortrait = !orientOverride && autoDir === 'portrait';
+    const small = !autoPortrait && !(autoDir && !orientOverride) && orientNow() === 'portrait';
+    const label = autoPortrait ? 'Yatay çevir' : small ? 'Tam ekran' : 'Küçük ekran';
+    b.innerHTML = icon(small || autoPortrait ? 'expand' : 'shrink');
+    b.setAttribute('aria-label', label);
+    b.title = label;
   }
   function toggleOrient() {
     const st = player.state();
     if (!open || !st.item || playerLocked) return;
-    orientOverride = orientNow() === 'portrait' ? 'landscape' : 'portrait';
+    // Otomatik dikey tam ekrandayken düğme yatay çevirir; otomatik yatayda küçük ekrana geçer
+    orientOverride = autoDir ? (autoDir === 'portrait' ? 'landscape' : 'portrait') : orientNow() === 'portrait' ? 'landscape' : 'portrait';
+    autoDir = null;
     const portrait = orientOverride === 'portrait';
     const vod = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast;
     root.classList.toggle('vod-portrait', vod && portrait);
@@ -921,6 +948,8 @@ export function createPlayerUI({ engine, player, env }) {
 
   function openUi(item, targets, opts) {
     ctx = opts.ctx || null;
+    autoDir = null;
+    autoFor = null;
     leavePreview();
     enterFullscreen(item);
     player.open(item, targets, { ep: opts.ep || null, startAt: opts.startAt || 0 });
@@ -1057,6 +1086,8 @@ export function createPlayerUI({ engine, player, env }) {
     sleep.cancel();
     renderSleepLabel();
     root.hidden = true;
+    autoDir = null;
+    autoFor = null;
     orientOverride = null; // oturumluk tam ekran/küçük ekran seçimi biter; ayardaki yön geçerli olur
     root.classList.remove('vod-portrait');
     setPortraitSplit(false);

@@ -33,6 +33,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   add('time', (e) => on({ type: 'time', pos: e.pos, dur: e.dur, buffered: e.buffered }));
   add('error', (e) => on({ type: 'error', message: describeError(e.message, e.http), frozen: /VIDEO_FROZEN/.test(String(e.message || '')), cause: e.cause, decoder: e.decoder, rendered: e.rendered }));
   add('tracks', () => on({ type: 'tracks' }));
+  add('videoSize', (e) => on({ type: 'videoSize', width: Number(e.width) || 0, height: Number(e.height) || 0 }));
   add('recording', (e) => onRec(e));
   add('dlProgress', (e) => onDl(e));
   return {
@@ -108,6 +109,7 @@ export function createWebEngine({ video, Hls, on }) {
   video.addEventListener('playing', () => fire('playing'));
   video.addEventListener('pause', () => fire(video.ended ? 'ended' : 'paused'));
   video.addEventListener('ended', () => fire('ended'));
+  video.addEventListener('loadedmetadata', () => on({ type: 'videoSize', width: video.videoWidth || 0, height: video.videoHeight || 0 }));
   video.addEventListener('error', () => {
     if (!video.getAttribute('src') && !hls) return;
     on({ type: 'error', message: 'Tarayıcı bu yayını oynatamıyor' });

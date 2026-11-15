@@ -193,6 +193,7 @@ const pui = createPlayerUI({
     setPref: (k, v) => store.setPref(k, v),
     langPref: () => ({ audio: normalizeAudioLang(store.pref('set.audioLang', 'auto')), sub: normalizeSubLang(store.pref('set.subLang', 'auto')), subIfMissing: setting('subMissing') }),
     autoNext: () => setting('autoNext'),
+    autoOrient: () => setting('autoOrient'),
     intro: () => normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)),
     previewRect,
     onMiniPlayer: (active) => {
@@ -3578,6 +3579,7 @@ function playerSheet() {
       `<div class="sel-row"><span>Canlı yayın biçimi<small>Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır</small></span><select id="g-lfmt">${optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)))}</select></div>` +
       chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
       chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
+      chkRow('autoOrient', 'Yönü videoya göre seç', 'Dikey videolar dikey, yatay videolar yatay tam ekran açılır. Elle yön düğmesine basınca o oturumda seçiminiz geçerli olur') +
       `<div class="sel-row"><span>Telefon oynatıcı yönü<small>Dikey: telefon dik tutulurken oynatıcı açılır. TV modu her zaman yatay kalır</small></span><select id="g-porient">${optionsHtml([['portrait','Dikey'],['landscape','Yatay']], store.pref('set.playerOrientation','landscape'))}</select></div>` +
       (nativePlugin ? chkRow('autoFrameRate', 'Otomatik kare hızı (AFR)', 'Destekleyen Android cihaz ve ekranlarda yayın kare hızına uyum sağlar') : '') +
       chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +

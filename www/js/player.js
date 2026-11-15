@@ -11,7 +11,7 @@ const GOOD_MS = 20000; // yedek adres bu kadar kesintisiz oynarsa "bu yayın bu 
 
 // onSteady(hedef, sıra): ilk adres dışındaki bir adres GOOD_MS boyunca kesintisiz oynadığında bir kez çağrılır (çalışan biçim hatırlansın diye).
 export function createPlayer({ engine, policy = () => retryPolicy(), timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) }, now = () => Date.now(), onSteady = null }) {
-  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0, log: [] };
+  const st = { status: 'idle', item: null, ep: null, pos: 0, dur: -1, live: false, error: '', idx: 0, targets: [], tracksVer: 0, reconnect: 0, vw: 0, vh: 0, log: [] };
   const listeners = new Set();
   let progressCb = null;
   let stallTimer = null;
@@ -132,6 +132,14 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
       note(`hata: ${ev.message}${more ? ` (${more})` : ''}`);
       return fail(ev.message, !!ev.frozen);
     }
+    if (ev.type === 'videoSize') {
+      if (ev.width > 0 && ev.height > 0 && (st.vw !== ev.width || st.vh !== ev.height)) {
+        st.vw = ev.width;
+        st.vh = ev.height;
+        emit();
+      }
+      return;
+    }
     if (ev.type === 'tracks') {
       st.tracksVer++; // ses/altyazı parçaları değişti: arayüz düğmeleri yeniden okusun
       emit();
@@ -196,7 +204,7 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
     },
     handle, // motor olaylarını içeri almak için (uygulama bağlar)
     async open(item, targets, { ep = null, startAt = 0 } = {}) {
-      Object.assign(st, { item, ep, targets, idx: 0, pos: startAt, dur: -1, live: item.kind === 'live', error: '', log: [] });
+      Object.assign(st, { item, ep, targets, idx: 0, pos: startAt, dur: -1, live: item.kind === 'live', error: '', vw: 0, vh: 0, log: [] });
       everPlayed = false;
       reconnects = 0;
       frozen = 0;
