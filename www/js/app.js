@@ -1552,7 +1552,9 @@ function playLive(items, index, meta = {}) {
 function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const isRec = item.kind === 'recording'; // cihazdaki kayıt: yerel dosya, kaynaktan bağımsız
   const localUrl = local || (ep && ep.dlUrl) || ''; // indirilmiş film/bölüm: ağsız yerel dosyadan oynar, ilerleme yine kaynağın öğesine yazılır
-  const targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '', bgAudio: !!item.audio, title: item.name }] : targetsOf(item, ep);
+  let targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '' }] : targetsOf(item, ep);
+  const bgAudio = !!store.pref('backgroundAudio', !!item.audio);
+  targets = targets.map((target) => ({ ...target, bgAudio, title: item.name }));
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   if (item.kind !== 'series' && !isRec && !item.localMedia) store.pushRecent(sid(), item);
   // Film nereden açılırsa açılsın (son izlenenler, bağlantı, indirilenler) oynatıcının altında önerilen filmler listesi olsun
