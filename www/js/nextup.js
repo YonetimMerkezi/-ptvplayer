@@ -19,7 +19,10 @@ export const DEFAULT_INTRO = 85;
 
 export const normalizeIntro = (v) => {
   const n = Number(v);
-  return Number.isFinite(n) ? Math.max(0, Math.min(240, Math.round(n))) : DEFAULT_INTRO;
+  if (!Number.isFinite(n)) return DEFAULT_INTRO;
+  if (n === 0) return 0;
+  if (n < 10) return DEFAULT_INTRO;
+  return Math.min(240, Math.round(n));
 };
 
 const playing = (st) => st.status === 'playing' || st.status === 'buffering' || st.status === 'paused';
