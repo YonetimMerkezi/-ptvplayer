@@ -1549,3 +1549,44 @@ html[data-theme="rose"] { --bg:#160811; --surface:#29101d; --raised:#3b192a; --l
 .theme-preview-posters i:nth-child(3) { background: linear-gradient(145deg,color-mix(in srgb,var(--preview-accent) 72%,#fff),#172033 70%,#090f1d); }
 .set-tile[data-set="theme"] .ic { color: var(--accent); }
 html[data-multi] .set-tile[data-set=theme] { --tc: var(--p0); }
+
+
+/* İnternet hız testi: ayrı tam sayfa, ölçüm odaklı kompakt arayüz */
+.speed-page-shell { background:var(--bg); }
+.speed-page-shell .pg-body { padding:10px 16px calc(28px + env(safe-area-inset-bottom)); }
+.speed-page { width:100%; max-width:680px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+.speed-hero { position:relative; overflow:hidden; border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line)); border-radius:24px; padding:18px 18px 20px; background:radial-gradient(130% 100% at 50% 0%,color-mix(in srgb,var(--accent) 19%,var(--surface)),var(--surface) 72%); text-align:center; }
+.speed-hero:after { content:""; position:absolute; width:210px; height:210px; border-radius:50%; border:1px solid color-mix(in srgb,var(--accent) 10%,transparent); top:54px; left:50%; transform:translateX(-50%); pointer-events:none; }
+.speed-hero-top { display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; }
+.speed-kicker { color:var(--muted); font-size:.68rem; font-weight:800; letter-spacing:.14em; }
+.speed-server { color:var(--muted); font-size:.72rem; display:flex; align-items:center; gap:6px; }
+.speed-server i { width:7px; height:7px; border-radius:50%; background:#4ade80; box-shadow:0 0 0 4px rgba(74,222,128,.12); }
+.speed-meter { width:206px; height:206px; margin:24px auto 16px; padding:10px; border-radius:50%; background:conic-gradient(from -90deg,var(--accent) 0deg,var(--accent) var(--speed-angle),color-mix(in srgb,var(--line) 82%,transparent) var(--speed-angle),color-mix(in srgb,var(--line) 82%,transparent) 360deg); box-shadow:0 0 34px color-mix(in srgb,var(--accent) 15%,transparent); transition:background .25s ease; position:relative; z-index:1; }
+.speed-meter:before { content:""; position:absolute; inset:7px; border-radius:50%; background:var(--surface); }
+.speed-meter-core { position:absolute; inset:13px; z-index:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:50%; background:radial-gradient(circle at 50% 20%,color-mix(in srgb,var(--accent) 13%,var(--surface)),var(--surface) 72%); }
+.speed-meter-core small { color:var(--muted); font-size:.68rem; font-weight:800; letter-spacing:.13em; }
+.speed-meter-core b { color:var(--text); font-size:3.05rem; line-height:1.12; font-weight:800; font-variant-numeric:tabular-nums; }
+.speed-meter-core span { color:var(--accent); font-size:.9rem; font-weight:700; }
+.speed-state { font-size:1.12rem; font-weight:750; }
+.speed-sub { color:var(--muted); margin:5px 0 15px; font-size:.86rem; line-height:1.45; }
+.speed-progress { height:5px; border-radius:5px; overflow:hidden; background:var(--raised); }
+.speed-progress i { display:block; height:100%; width:0; border-radius:inherit; background:var(--accent); transition:width .25s ease; }
+.speed-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.speed-metric { min-width:0; padding:13px 10px; border-radius:15px; background:var(--surface); border:1px solid var(--line); display:flex; flex-direction:column; gap:7px; }
+.speed-metric>span { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:.75rem; font-weight:650; white-space:nowrap; }
+.speed-metric>span i { width:8px; height:8px; border-radius:50%; background:var(--accent); }
+.speed-metric .sm-ping { background:#fbbf24; }.speed-metric .sm-down { background:#34d399; }.speed-metric .sm-up { background:#60a5fa; }
+.speed-metric>b { font-size:1.18rem; line-height:1.2; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.speed-metric>b small { color:var(--muted); font-size:.67rem; font-weight:600; }
+.speed-metric>small { color:var(--muted); font-size:.66rem; line-height:1.3; }
+.speed-verdict { display:flex; align-items:center; gap:13px; padding:14px; border:1px solid var(--line); border-radius:16px; background:color-mix(in srgb,var(--surface) 85%,transparent); }
+.speed-verdict-icon { flex:none; display:grid; place-items:center; width:42px; height:42px; border-radius:13px; color:var(--accent); background:var(--accent-soft); }
+.speed-verdict-icon .ic { width:23px; height:23px; }
+.speed-verdict b { font-size:.95rem; }
+.speed-verdict p { color:var(--muted); margin:3px 0 0; font-size:.8rem; line-height:1.4; }
+.speed-start { width:100%; min-height:54px; justify-content:center; border-radius:16px; font-weight:800; }
+.speed-start:disabled { opacity:.65; }
+.speed-cancel { width:100%; justify-content:center; }
+.speed-footnote { color:var(--muted); text-align:center; font-size:.7rem; line-height:1.45; margin:0 8px 12px; }
+.tile.mini.t-speed { --accent:#38bdf8; }
+@media (min-width:560px) { .speed-page { gap:18px; }.speed-hero { padding:22px 26px; }.speed-meter { width:226px; height:226px; }.speed-metric { padding:16px; } }
