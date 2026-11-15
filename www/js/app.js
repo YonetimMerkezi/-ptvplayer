@@ -2487,7 +2487,6 @@ function renderHome(v) {
   const favN = store.favs(sid()).length;
   const recN = store.recents(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
-  const hi = greeting(new Date().getHours());
   // Ana ekran satırları: kaldığın yerden devam (film + dizi) ve en son eklenen filmler; boşsa satır çıkmaz.
   const rowCards = (list) => list.map(({ kind, it }, i) => card(it, i, `data-hk="${kind}" data-hid="${esc(it.id)}"`)).join('');
   const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
@@ -2497,13 +2496,15 @@ function renderHome(v) {
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   v.innerHTML = `<div class="home">
     <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
-    <div class="hero"><div class="hero-t"><small>${esc(hi.text)} ${hi.emoji}</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
-    <div class="tiles">
+    <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">Bağlı</span><button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
+    <div class="home-section-head"><b>Keşfet</b><span>Yayın ve içerikler</span></div>
+    <div class="tiles home-primary">
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
       <button class="tile t-movie" data-go="movies">${icon('movie')}<b>Filmler</b><small>${cnt(c.movies.length, 'film')}</small></button>
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
       <button class="tile t-today" data-go="today">${icon('cal')}<b>Bugün TV’de</b><small>Spor · Film · Dizi</small></button>
     </div>
+    <div class="home-section-head home-tools-head"><b>Hızlı erişim</b><span>Araçlar</span></div>
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
