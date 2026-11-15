@@ -38,12 +38,12 @@ function removeLayerWithMotion(el, closeClass) {
   setTimeout(() => el.remove(), delay);
 }
 // html: gövde; mount(bodyEl, api): içerik bağlama. Döndürür { el, body, close, setTitle }.
-export function openSheet({ title, html = '', mount, full = false }) {
+export function openSheet({ title, html = '', mount, full = false, className = '' }) {
   // full: Ayarlar alt sayfaları. TV'de küçük (alttan kesilen) pencere yerine tam sayfa açılır; telefon ve bilgisayarda alt pencere kalır.
   if (full && document.documentElement.classList.contains('tv')) return openPage({ title, html, mount, cls: 'set-pg' });
   const id = 'sheet' + ++seq;
   const back = document.createElement('div');
-  back.className = 'sheet-back' + (document.body.classList.contains('player-open') ? ' over-player' : '');
+  back.className = 'sheet-back' + (document.body.classList.contains('player-open') ? ' over-player' : '') + (className ? ' ' + className : '');
   back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-h"><h3>${esc(title)}</h3><button class="icon-btn" data-close aria-label="Kapat">${icon('close')}</button></div><div class="sheet-b">${html}</div></div>`;
   $('#sheets').append(back);
   pushLayer(id, () => removeLayerWithMotion(back, 'is-closing'));
