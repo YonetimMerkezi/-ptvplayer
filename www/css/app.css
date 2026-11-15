@@ -1807,3 +1807,7 @@ html[data-multi] .set-tile[data-set=motion] .ic { color:var(--tc,var(--accent));
 .sync-player-sheet .sy-manual input { width:100%; min-width:0; height:48px; padding:0 12px; border:1px solid var(--line); border-radius:13px; background:var(--raised); color:var(--text); text-align:center; font-size:1.15rem; font-weight:750; font-variant-numeric:tabular-nums; }
 .sync-player-sheet .sy-manual span { color:var(--muted); font-size:.9rem; font-weight:700; }
 .sync-player-sheet .sy-manual input:focus-visible, .sync-player-sheet .sy-range:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+/* Genel ayarlarda özel intro süresi alanı */
+.sel-row input[type="number"] { width:96px; min-width:80px; height:42px; flex:none; padding:0 10px; border:1px solid var(--line); border-radius:10px; background:var(--raised); color:var(--text); text-align:center; font-variant-numeric:tabular-nums; }
+.sel-row input[type="number"]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
