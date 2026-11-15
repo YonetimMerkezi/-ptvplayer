@@ -294,6 +294,25 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // Oynatıcı ayarlarından arka plan sesini anında açıp kapatır.
+    // Tercih JS tarafında saklanır; bu metot açık oynatma oturumunu ve ön plan hizmetini eşitler.
+    @PluginMethod
+    public void setBackgroundAudio(final PluginCall call) {
+        final boolean enabled = call.getData().optBoolean("on", false);
+        final String title = call.getData().optString("title", "");
+        main.post(() -> {
+            bgAudio = enabled;
+            if (enabled && player != null) {
+                AudioKeepAliveService.start(getContext(), title);
+                player.setPlayWhenReady(true);
+                player.setVolume(1f);
+            } else {
+                AudioKeepAliveService.stop(getContext());
+            }
+            call.resolve();
+        });
+    }
+
     // Yayın önbelleği düzeyi (Ayarlar > Genel): süreler ms; üst sınır bayt olarak da konur ki yüksek bithızlı yayın belleği doldurmasın.
     // Canlı yayın gerçek hızda gelir (önden indirilemez): başlamak ve kesintiden sonra sürmek için çok tampon beklenirse her takılma uzun süre donar ve
     // JS bekçisi (7 sn) yayını baştan açar; bu yüzden canlıda bu iki eşik sınırlanır (en çok 2,5 sn ve 3 sn). Üst/alt tampon süreleri ayardaki gibi kalır.
