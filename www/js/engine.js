@@ -65,6 +65,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     },
     // Ses senkronu (ms): açık oynatıcıya anında uygulanır (yalnız Android)
     setAudioDelay: (ms) => plugin.setAudioDelay({ ms }),
+    setBackgroundAudio: (on_, title = '') => plugin.setBackgroundAudio({ on: !!on_, title }),
     // Gece modu (off | light | medium | strong): açık oynatıcıya anında uygulanır (yalnız Android)
     setNightMode: (level) => plugin.setNightMode({ level }),
     // Diyalog vurgulama (konuşmayı öne çıkarır): açık oynatıcıya anında uygulanır (yalnız Android)
