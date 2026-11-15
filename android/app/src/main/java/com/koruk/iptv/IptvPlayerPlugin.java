@@ -120,6 +120,9 @@ public class IptvPlayerPlugin extends Plugin {
     private static final long MAX_DOWNLOAD_BYTES = 400L * 1024L * 1024L;
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    // Medya merkezi: müzik arka planda çalarken ekran kapanınca duraklatılmaz; harici altyazı (UTF-8'e çevrilmiş dosya adresi).
+    private volatile boolean bgAudio = false;
+    private String subUri = "";
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService probeIo = Executors.newFixedThreadPool(2); // yayın sağlık testi: indirmeleri bekletmesin
     private final ExecutorService apiIo = Executors.newFixedThreadPool(3); // küçük API/JSON istekleri (maç skorları…): büyük liste/rehber indirmelerinin arkasında beklemesin
@@ -266,10 +269,17 @@ public class IptvPlayerPlugin extends Plugin {
         final boolean keepRec = call.getData().optBoolean("keepRecording", false);
         final boolean live = call.getData().optBoolean("live", false);
         final boolean compatReq = call.getData().optBoolean("compat", false);
+        final boolean audioBg = call.getData().optBoolean("bgAudio", false);
+        final String audioTitle = call.getData().optString("title", "");
+        final String subtitle = call.getData().optString("subUri", "");
         audioDelayMs = clampDelay(call.getData().optInt("audioDelay", audioDelayMs));
         nightLevel = cleanNight(call.getData().optString("night", nightLevel));
         main.post(() -> {
             try {
+                subUri = subtitle;
+                if (audioBg) AudioKeepAliveService.start(getContext(), audioTitle);
+                else if (bgAudio) AudioKeepAliveService.stop(getContext());
+                bgAudio = audioBg;
                 startPlayback(url, mime, startMs, headers, buffer, keepRec, live, compatReq);
                 call.resolve();
             } catch (Exception e) {
@@ -376,7 +386,7 @@ public class IptvPlayerPlugin extends Plugin {
         playerView.setVisibility(View.VISIBLE);
         applySubStyle();
 
-        player.setMediaItem(mediaItemOf(url, mime));
+        player.setMediaItem(mediaItemOf(url, mime, subUri));
         if (startMs > 0) player.seekTo(startMs);
         player.setPlayWhenReady(true);
         player.prepare();
@@ -453,8 +463,22 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     private static MediaItem mediaItemOf(String url, String mime) {
+        return mediaItemOf(url, mime, "");
+    }
+
+    // sub: harici altyazı dosyasının adresi (.srt/.vtt); boşsa altyazı eklenmez. Varsayılan işaretli olduğundan kendiliğinden açılır.
+    private static MediaItem mediaItemOf(String url, String mime, String sub) {
         MediaItem.Builder item = new MediaItem.Builder().setUri(url);
         if ("hls".equals(mime)) item.setMimeType(MimeTypes.APPLICATION_M3U8);
+        if (sub != null && !sub.isEmpty()) {
+            String subMime = sub.toLowerCase(java.util.Locale.ROOT).endsWith(".vtt") ? MimeTypes.TEXT_VTT : MimeTypes.APPLICATION_SUBRIP;
+            item.setSubtitleConfigurations(java.util.Collections.singletonList(
+                new MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub))
+                    .setMimeType(subMime)
+                    .setLabel("Harici altyazı")
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()));
+        }
         return item.build();
     }
 
@@ -536,6 +560,9 @@ public class IptvPlayerPlugin extends Plugin {
     public void stop(final PluginCall call) {
         main.post(() -> {
             StreamRecorder.stop(null);
+            if (bgAudio) AudioKeepAliveService.stop(getContext());
+            bgAudio = false;
+            subUri = "";
             releasePlayer();
             if (playerView != null) playerView.setVisibility(View.GONE);
             getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -2435,6 +2462,7 @@ public class IptvPlayerPlugin extends Plugin {
     // Uygulama görünmez oldu: kayıt sürerken yayın sessiz akar, yoksa duraklatılır.
     private void pauseForBackground() {
         if (player == null) return;
+        if (bgAudio) return; // müzik arka planda çalmaya devam eder (ön plan hizmeti süreci canlı tutar)
         if (StreamRecorder.active()) player.setVolume(0f);
         else player.setPlayWhenReady(false);
     }
@@ -2571,30 +2599,24 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
 
-    // Cihazdaki video/ses dosyalarını Android'in sistem dosya seçicisiyle açar.
+    // Cihazdaki video/ses dosyalarını Android'in sistem dosya seçicisiyle açar; birden fazla dosya seçilebilir.
     // SAF URI izni kalıcı alınır; dosya uygulama deposuna kopyalanmaz.
+    // Yanıt: { items: [{uri, name, mime}], uri, name, mime } — üstteki üç alan ilk dosyaya aittir (eski arayüzle uyum).
     @PluginMethod
     public void pickLocalMedia(final PluginCall call) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "video/*", "audio/*" });
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(call, intent, "localMediaResult");
     }
 
-    @ActivityCallback
-    private void localMediaResult(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
-            call.reject("Dosya seçilmedi");
-            return;
-        }
-        Intent data = result.getData();
-        Uri uri = data.getData();
+    // Seçilen tek bir URI için kalıcı izin alır ve {uri, name, mime} döndürür.
+    private JSObject describeLocalMedia(Uri uri, int grantFlags) {
         try {
-            final int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
-            if (flags != 0) getContext().getContentResolver().takePersistableUriPermission(uri, flags);
+            if (grantFlags != 0) getContext().getContentResolver().takePersistableUriPermission(uri, grantFlags);
         } catch (Exception ignored) {
             // Bazı sağlayıcılar kalıcı izin vermez; geçerli oturumdaki URI yine kullanılabilir.
         }
@@ -2605,7 +2627,7 @@ public class IptvPlayerPlugin extends Plugin {
             cursor = getContext().getContentResolver().query(uri, new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null);
             if (cursor != null && cursor.moveToFirst()) {
                 int col = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
-                if (col >= 0) name = cursor.getString(col);
+                if (col >= 0 && cursor.getString(col) != null) name = cursor.getString(col);
             }
         } catch (Exception ignored) {
         } finally {
@@ -2615,7 +2637,213 @@ public class IptvPlayerPlugin extends Plugin {
         out.put("uri", uri.toString());
         out.put("name", name);
         out.put("mime", mime == null ? "" : mime);
+        return out;
+    }
+
+    @ActivityCallback
+    private void localMediaResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            call.reject("Dosya seçilmedi");
+            return;
+        }
+        Intent data = result.getData();
+        final int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri u = clip.getItemAt(i).getUri();
+                if (u != null) uris.add(u);
+            }
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        if (uris.isEmpty()) {
+            call.reject("Dosya seçilmedi");
+            return;
+        }
+        JSArray items = new JSArray();
+        JSObject first = null;
+        for (Uri u : uris) {
+            JSObject one = describeLocalMedia(u, flags);
+            if (first == null) first = one;
+            items.put(one);
+        }
+        JSObject out = new JSObject();
+        out.put("items", items);
+        out.put("uri", first.getString("uri"));
+        out.put("name", first.getString("name"));
+        out.put("mime", first.getString("mime"));
         call.resolve(out);
+    }
+
+    // ------------------------------------------------------------------ medya merkezi: cihaz kütüphanesi
+
+    // Klasör seçici: seçilen ağaç için kalıcı okuma izni alınır. Yanıt: {uri, name}.
+    @PluginMethod
+    public void libAddFolder(final PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        startActivityForResult(call, intent, "libFolderResult");
+    }
+
+    @ActivityCallback
+    private void libFolderResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
+            call.reject("Klasör seçilmedi");
+            return;
+        }
+        final Uri tree = result.getData().getData();
+        try {
+            getContext().getContentResolver().takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception ignored) {
+            // kalıcı izin verilmediyse bu oturumda yine okunur
+        }
+        io.execute(() -> {
+            JSObject o = new JSObject();
+            o.put("uri", tree.toString());
+            o.put("name", MediaLibrary.rootName(getContext(), tree));
+            call.resolve(o);
+        });
+    }
+
+    // Klasör ağacını tarar. Yanıt: {files:[{uri,name,kind,mime,size,mod,dir}], truncated}.
+    @PluginMethod
+    public void libScan(final PluginCall call) {
+        final String uri = call.getData().optString("uri", "");
+        if (uri.isEmpty()) {
+            call.reject("uri gerekli");
+            return;
+        }
+        io.execute(() -> {
+            try {
+                call.resolve(new JSObject(MediaLibrary.scan(getContext(), Uri.parse(uri)).toString()));
+            } catch (Exception e) {
+                call.reject("Klasör taranamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    // Küçük resim. Yanıt: {data} (data: adresi; yoksa boş).
+    @PluginMethod
+    public void libThumb(final PluginCall call) {
+        final String uri = call.getData().optString("uri", "");
+        final String kind = call.getData().optString("kind", "video");
+        final int size = call.getData().optInt("size", 240);
+        io.execute(() -> {
+            JSObject o = new JSObject();
+            String d = uri.isEmpty() ? null : MediaLibrary.thumb(getContext(), Uri.parse(uri), kind, size);
+            o.put("data", d == null ? "" : d);
+            call.resolve(o);
+        });
+    }
+
+    // Galeri için büyük fotoğraf. Yanıt: {data}.
+    @PluginMethod
+    public void libImage(final PluginCall call) {
+        final String uri = call.getData().optString("uri", "");
+        final int max = call.getData().optInt("max", 1600);
+        io.execute(() -> {
+            try {
+                JSObject o = new JSObject();
+                o.put("data", MediaLibrary.image(getContext(), Uri.parse(uri), max));
+                call.resolve(o);
+            } catch (Throwable e) {
+                call.reject("Fotoğraf açılamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    // Harici altyazıyı oynatıcıya uygun UTF-8 dosyaya çevirir. Yanıt: {uri}.
+    @PluginMethod
+    public void libPrepareSub(final PluginCall call) {
+        final String uri = call.getData().optString("uri", "");
+        io.execute(() -> {
+            try {
+                JSObject o = new JSObject();
+                o.put("uri", MediaLibrary.prepareSubtitle(getContext(), Uri.parse(uri)));
+                call.resolve(o);
+            } catch (Exception e) {
+                call.reject("Altyazı hazırlanamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ medya merkezi: ağ paylaşımları
+
+    @PluginMethod
+    public void netDavList(final PluginCall call) {
+        final String url = call.getData().optString("url", "");
+        final String user = call.getData().optString("user", "");
+        final String pass = call.getData().optString("pass", "");
+        io.execute(() -> {
+            try {
+                call.resolve(new JSObject(NetShares.davList(url, user, pass).toString()));
+            } catch (Throwable e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void netUpnpDiscover(final PluginCall call) {
+        final int ms = call.getData().optInt("timeoutMs", 3500);
+        io.execute(() -> {
+            try {
+                JSObject o = new JSObject();
+                o.put("servers", NetShares.upnpDiscover(ms));
+                call.resolve(o);
+            } catch (Throwable e) {
+                call.reject("Ağ taranamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void netUpnpBrowse(final PluginCall call) {
+        final String control = call.getData().optString("control", "");
+        final String id = call.getData().optString("id", "0");
+        io.execute(() -> {
+            try {
+                call.resolve(new JSObject(NetShares.upnpBrowse(control, id).toString()));
+            } catch (Throwable e) {
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void netSmbList(final PluginCall call) {
+        final String host = call.getData().optString("host", "");
+        final String path = call.getData().optString("path", "");
+        final String user = call.getData().optString("user", "");
+        final String pass = call.getData().optString("pass", "");
+        io.execute(() -> {
+            try {
+                call.resolve(new JSObject(NetShares.smbList(host, path, user, pass).toString()));
+            } catch (Throwable e) {
+                call.reject("SMB bağlantısı kurulamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void netSmbUrl(final PluginCall call) {
+        final String host = call.getData().optString("host", "");
+        final String path = call.getData().optString("path", "");
+        final String user = call.getData().optString("user", "");
+        final String pass = call.getData().optString("pass", "");
+        io.execute(() -> {
+            try {
+                JSObject o = new JSObject();
+                o.put("url", NetShares.smbPlayUrl(host, path, user, pass));
+                call.resolve(o);
+            } catch (Throwable e) {
+                call.reject("SMB dosyası açılamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
     }
 
     // Sesli arama: Android konuşma tanıma ekranı açılır, söylenen metin {text} olarak döner (boş: iptal).
@@ -2668,6 +2896,8 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        if (bgAudio) AudioKeepAliveService.stop(getContext());
+        bgAudio = false;
         if (activePlugin == this) activePlugin = null;
         Downloads.setListener(null);
         main.removeCallbacksAndMessages(null);
