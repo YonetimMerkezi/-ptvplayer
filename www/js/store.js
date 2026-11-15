@@ -191,6 +191,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
     const limit = Math.min(200, Math.max(10, Number(api.pref('set.recentLimit', 40)) || 40));
     write('rec.' + sid, list.slice(0, limit));
   };
+  api.removeRecent = (sid, id) => write('rec.' + sid, api.recents(sid).filter((r) => r.id !== id));
   api.clearRecents = (sid) => write('rec.' + sid, []);
 
   // ---- film/dizi ilerlemesi ----
