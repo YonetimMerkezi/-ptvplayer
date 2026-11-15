@@ -2484,7 +2484,7 @@ function renderHome(v) {
   const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
   const fresh = newestItems(visibleAll('movie')).slice(0, 12).map((it) => ({ kind: 'movie', it }));
   const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
-  const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'recent') + homeRow('✨ Son eklenen filmler', fresh, 'movies');
+  const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') + homeRow('✨ Son eklenen filmler', fresh, 'movies');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   v.innerHTML = `<div class="home">
     <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
@@ -2531,6 +2531,10 @@ function renderHome(v) {
 
 // Ana ekran kutuları ve kumanda renkli tuşları aynı yoldan açar.
 function goTo(go) {
+  if (go === 'continue') {
+    setTab('movies');
+    return enterGroup('movie', '__cont');
+  }
   if (go === 'recent') {
     setTab('live');
     return showRecent();
