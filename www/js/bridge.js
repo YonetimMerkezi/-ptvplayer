@@ -31,6 +31,8 @@ export function nativePlugin(name, win = globalThis.window) {
     getLevels: call('getLevels'),
     setBrightness: call('setBrightness'),
     setVolume: call('setVolume'),
+    setDialogBoost: call('setDialogBoost'),
+    setSpeed: call('setSpeed'),
     selectTrack: call('selectTrack'),
     download: call('download'),
     probe: call('probe'),

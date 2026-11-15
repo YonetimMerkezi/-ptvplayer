@@ -613,35 +613,6 @@ export function createPlayerUI({ engine, player, env }) {
     }
   }
 
-  async function trackSheet(type) {
-    const t = await engine.tracks();
-    const list = type === 'audio' ? t.audio : t.text;
-    // Çözülemeyen ses izleri soluk ve seçilemez gösterilir (seçilirse sessiz kalırdı); nedeni satırda yazar.
-    const bad = type === 'audio' ? (t.audioBad || []) : [];
-    const badRows = bad.map((x) => `<button class="list-item" data-bad="1" aria-disabled="true" style="opacity:.55"><span class="t">${esc(x.label)}<small>Bu cihaz çözemiyor${x.codec ? ' (' + esc(x.codec.replace(/^audio\//, '')) + ')' : ''}</small></span></button>`).join('');
-    const rows = list
-      .map((x) => `<button class="list-item" data-id="${esc(x.id)}"><span class="t">${esc(x.label)}</span>${x.selected ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`)
-      .join('');
-    const off = type === 'text' ? `<button class="list-item" data-id=""><span class="t">Kapalı</span>${t.textOn ? '' : icon('check').replace('class="ic"', 'class="ic ok"')}</button>` : '';
-    const look = type === 'text' && engine.setSubtitleStyle ? '<button class="list-item" data-look><span class="t">Altyazı görünümü<small>Boyut, renk, arka plan, konum</small></span></button>' : '';
-    const sh = openSheet({
-      title: type === 'audio' ? 'Ses dili' : 'Altyazı',
-      html: off + rows + badRows + look,
-      mount: (body) =>
-        body.addEventListener('click', async (e) => {
-          if (e.target.closest('[data-look]')) {
-            sh.close();
-            return subtitleSheet();
-          }
-          if (e.target.closest('[data-bad]')) return toast('Bu ses biçimi bu cihazda çözülemiyor', 2500);
-          const b = e.target.closest('[data-id]');
-          if (!b) return;
-          await engine.selectTrack(type, b.dataset.id);
-          sh.close();
-        }),
-    });
-  }
-
   // ---- altyazı görünümü: boyut, renk, arka plan, konum; seçim kalıcı, oynatıcıya anında iletilir (yalnız Android) ----
   const subNow = () => normalizeSub(env.pref('sub', DEFAULT_SUB));
   function subtitleSheet(onChange = () => {}) {
@@ -704,6 +675,110 @@ export function createPlayerUI({ engine, player, env }) {
           Promise.resolve(engine.setNightMode(level)).catch(() => toast('Gece modu uygulanamadı', 2500));
           sh.close();
         }),
+    });
+  }
+
+  // ---- Oynatıcı ayarları: Ses / Altyazı / Görüntü & Hız sekmeleri tek pencerede ----
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  let speedNow = 1;
+  let speedFor = '';
+  const itemKey = () => {
+    const st = player.state();
+    return st.item ? st.item.id + (st.ep ? st.ep.id : '') : '';
+  };
+  const curSpeed = () => (speedFor === itemKey() ? speedNow : 1); // yeni içerik normal hızda açılır
+  const dialogNow = () => !!env.pref('dialog', false);
+
+  async function playerSettings(startTab = 'audio') {
+    let tab = startTab;
+    let t = await engine.tracks().catch(() => noTracks());
+    const live = !!player.state().live;
+    const chip = (on, attrs, label) => `<button class="ps-chip${on ? ' on' : ''}" ${attrs}>${on ? icon('check') : ''}<span>${esc(label)}</span></button>`;
+    const sw = (key, title, desc, on) => `<div class="ps-sw"><span><b>${esc(title)}</b><small>${esc(desc)}</small></span><button class="ps-switch${on ? ' on' : ''}" data-sw="${key}" role="switch" aria-checked="${on}" aria-label="${esc(title)}"><i></i></button></div>`;
+    const audioHtml = () => {
+      const list = t.audio || [];
+      const bad = t.audioBad || [];
+      const rows = list.map((x) => `<button class="ps-row${x.selected ? ' on' : ''}" data-aud="${esc(x.id)}"><span>${esc(x.label)}</span>${x.selected ? icon('check') : ''}</button>`).join('');
+      const badRows = bad.map((x) => `<button class="ps-row dis" data-bad="1" aria-disabled="true"><span>${esc(x.label)}<small>Bu cihaz çözemiyor${x.codec ? ' (' + esc(x.codec.replace(/^audio\//, '')) + ')' : ''}</small></span></button>`).join('');
+      const langs = rows || badRows ? `<h4 class="ps-h">Mevcut ses dilleri</h4>${rows}${badRows}<hr class="ps-hr">` : '';
+      const night = nightNow();
+      const dyn = engine.setNightMode || engine.setDialogBoost
+        ? `<h4 class="ps-h">Dinamik ses iyileştirme ayarları</h4>${engine.setNightMode ? sw('night', 'Gece modu', 'Sesleri daha yumuşak ve rahat dinlenebilir hale getir', night !== 'off') : ''}${engine.setNightMode && night !== 'off' ? `<div class="ps-chips">${NIGHT_LEVELS.filter(([id]) => id !== 'off').map(([id, label]) => chip(id === night, `data-nl="${id}"`, label)).join('')}</div>` : ''}${engine.setDialogBoost ? sw('dialog', 'Diyalog vurgulama', 'Konuşma ve diyalogları daha net öne çıkar', dialogNow()) : ''}`
+        : '';
+      return langs + dyn || '<p class="hint">Bu cihazda ses ayarı yok.</p>';
+    };
+    const textHtml = () => {
+      const list = t.text || [];
+      const off = list.length ? `<button class="ps-row${t.textOn ? '' : ' on'}" data-sub-id=""><span>Kapalı</span>${t.textOn ? '' : icon('check')}</button>` : '';
+      const rows = list.map((x) => `<button class="ps-row${x.selected ? ' on' : ''}" data-sub-id="${esc(x.id)}"><span>${esc(x.label)}</span>${x.selected ? icon('check') : ''}</button>`).join('');
+      const tracks = list.length ? `<h4 class="ps-h">Mevcut altyazılar</h4>${off}${rows}<hr class="ps-hr">` : '<p class="hint">Bu içerikte altyazı izi yok. Cihaz videolarında aynı klasördeki .srt dosyası otomatik yüklenir.</p>';
+      if (!engine.setSubtitleStyle) return tracks;
+      const cur = subNow();
+      const grp = (key, title, items, label) => `<h4 class="ps-h">${title}</h4><div class="ps-chips">${items.map(([id, name, v]) => chip(cur[key] === id, `data-sk="${key}" data-sv="${id}"`, label ? label(name, v) : name)).join('')}</div>`;
+      return tracks + grp('size', 'Altyazı boyutu', SUB_SIZES, (name, v) => `${Math.round(16 * v)} (${name})`) + grp('color', 'Altyazı rengi', SUB_COLORS) + grp('bg', 'Arka plan', SUB_BGS) + grp('pos', 'Konum', SUB_POS);
+    };
+    const displayHtml = () => {
+      const sp = curSpeed();
+      const aspect = `<h4 class="ps-h">Görüntü oranı</h4><div class="ps-chips">${RESIZE.map(([, label], i) => chip(i === resizeIdx, `data-rz="${i}"`, label)).join('')}</div>`;
+      const speed = !engine.setSpeed ? '' : live ? '<h4 class="ps-h">Oynatma hızı</h4><p class="hint">Canlı yayında oynatma hızı değiştirilemez.</p>' : `<h4 class="ps-h">Oynatma hızı</h4><div class="ps-chips">${SPEEDS.map((v) => chip(v === sp, `data-sp="${v}"`, v === 1 ? 'Normal (1x)' : v + 'x')).join('')}</div>`;
+      return aspect + speed;
+    };
+    const sh = openSheet({
+      title: 'Oynatıcı Ayarları',
+      html: '<div class="ps"></div>',
+      mount: (body) => {
+        const root = body.querySelector('.ps');
+        const draw = () => {
+          const scroll = root.querySelector('.ps-body');
+          const keep = scroll ? scroll.scrollTop : 0;
+          const tabs = [['audio', 'Ses', (t.audio || []).length], ['text', 'Altyazı', (t.text || []).length], ['display', 'Görüntü & Hız', null]];
+          root.innerHTML = `<div class="ps-tabs" role="tablist">${tabs.map(([id, label, n]) => `<button class="ps-tab${id === tab ? ' on' : ''}" role="tab" aria-selected="${id === tab}" data-tab="${id}">${label}${n == null ? '' : ` (${n})`}</button>`).join('')}</div><div class="ps-body">${tab === 'audio' ? audioHtml() : tab === 'text' ? textHtml() : displayHtml()}</div><button class="btn ps-ok" data-ok>TAMAM</button>`;
+          root.querySelector('.ps-body').scrollTop = keep;
+        };
+        root.addEventListener('click', async (e) => {
+          const b = e.target.closest('button');
+          if (!b) return;
+          if (b.dataset.ok !== undefined) return sh.close();
+          if (b.dataset.tab) {
+            tab = b.dataset.tab;
+            return draw();
+          }
+          if (b.dataset.bad) return toast('Bu ses biçimi bu cihazda çözülemiyor', 2500);
+          if (b.dataset.aud !== undefined) {
+            await engine.selectTrack('audio', b.dataset.aud).catch(() => {});
+            t = await engine.tracks().catch(() => t);
+          } else if (b.dataset.subId !== undefined) {
+            await engine.selectTrack('text', b.dataset.subId).catch(() => {});
+            t = await engine.tracks().catch(() => t);
+          } else if (b.dataset.sw === 'night') {
+            const level = nightNow() === 'off' ? normalizeNight('medium') : 'off';
+            env.setPref('night', level);
+            renderNightLabel();
+            Promise.resolve(engine.setNightMode(level)).catch(() => toast('Gece modu uygulanamadı', 2500));
+          } else if (b.dataset.nl) {
+            const level = normalizeNight(b.dataset.nl);
+            env.setPref('night', level);
+            renderNightLabel();
+            Promise.resolve(engine.setNightMode(level)).catch(() => toast('Gece modu uygulanamadı', 2500));
+          } else if (b.dataset.sw === 'dialog') {
+            const on = !dialogNow();
+            env.setPref('dialog', on);
+            Promise.resolve(engine.setDialogBoost(on)).catch(() => toast('Diyalog vurgulama uygulanamadı', 2500));
+          } else if (b.dataset.sk) {
+            const v = { ...subNow(), [b.dataset.sk]: b.dataset.sv };
+            env.setPref('sub', v);
+            Promise.resolve(engine.setSubtitleStyle(subParams(v))).catch(() => toast('Altyazı görünümü uygulanamadı', 2500));
+          } else if (b.dataset.rz !== undefined) {
+            applyResize(Number(b.dataset.rz), true);
+          } else if (b.dataset.sp !== undefined) {
+            speedNow = Number(b.dataset.sp);
+            speedFor = itemKey();
+            Promise.resolve(engine.setSpeed(speedNow)).catch(() => toast('Oynatma hızı uygulanamadı', 2500));
+          } else return;
+          draw();
+        });
+        draw();
+      },
     });
   }
 
@@ -1431,8 +1506,9 @@ export function createPlayerUI({ engine, player, env }) {
   q('#pl-golive').addEventListener('click', () => {
     if (ctx && ctx.items[ctx.index]) ctx.play(ctx.items[ctx.index], ctx.index);
   });
-  q('#pl-audio').addEventListener('click', () => trackSheet('audio'));
-  q('#pl-text').addEventListener('click', () => trackSheet('text'));
+  q('#pl-audio').addEventListener('click', () => playerSettings('audio'));
+  q('#pl-text').addEventListener('click', () => playerSettings('text'));
+  q('#pl-settings').addEventListener('click', () => playerSettings('audio'));
   q('#pl-night').addEventListener('click', nightSheet);
   q('#nu-now').addEventListener('click', () => go(1));
   q('#nu-no').addEventListener('click', () => {
@@ -1540,8 +1616,8 @@ export function createPlayerUI({ engine, player, env }) {
       popLayer('player');
     } else if (k === 'Info') showUi(true);
     else if (k === 'Guide' && live) env.onEpgSheet(st.item);
-    else if (k === 'Captions' && visibleBtn('#pl-text')) trackSheet('text');
-    else if (k === 'AudioTrack' && visibleBtn('#pl-audio')) trackSheet('audio');
+    else if (k === 'Captions' && visibleBtn('#pl-text')) playerSettings('text');
+    else if (k === 'AudioTrack' && visibleBtn('#pl-audio')) playerSettings('audio');
     else if (colorOf(k)) {
       // renkli tuşlar: Genel ayarlar > Kumanda renkli tuşları'nda atanan iş (varsayılan: kırmızı favori, yeşil altyazı, sarı uyku, mavi en-boy)
       const act = actionFor(k, env.pref ? env.pref('remote.player', null) : null, PLAYER_ACTIONS, DEFAULT_PLAYER);

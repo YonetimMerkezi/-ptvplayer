@@ -67,6 +67,7 @@ import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
+import { greeting, homeContinue, statusText } from './home-extras.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
@@ -149,7 +150,7 @@ let player;
 let engine;
 const video = $('#vid');
 const onEngine = (ev) => player.handle(ev);
-engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0)), () => normalizeNight(store.pref('night', DEFAULT_NIGHT)), (e) => dlEvent(e)) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
+engine = nativePlugin ? createNativeEngine(nativePlugin, onEngine, () => normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)), (e) => recEvent(e), () => clampDelay(store.pref('audioDelay', 0)), () => normalizeNight(store.pref('night', DEFAULT_NIGHT)), (e) => dlEvent(e), () => !!store.pref('dialog', false)) : createWebEngine({ video, Hls: window.Hls, on: onEngine });
 // Yeniden bağlanma davranışı Genel ayarlar › Yayın bağlantısı'ndan okunur (her denemede güncel değer)
 const policy = () => retryPolicy({ reconnect: store.pref('set.reconnect', DEFAULT_RECONNECT), stall: store.pref('set.stall', DEFAULT_STALL) });
 // Yedek adres (öteki biçim) kesintisiz oynadıysa kanal için hatırlanır; sonraki açılışta o biçim başa alınır (Genel ayarlar › Canlı yayın biçimi).
@@ -2438,9 +2439,17 @@ function renderHome(v) {
   const favN = store.favs(sid()).length;
   const recN = store.recents(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
+  const hi = greeting(new Date().getHours());
+  // Ana ekran satırları: kaldığın yerden devam (film + dizi) ve en son eklenen filmler; boşsa satır çıkmaz.
+  const rowCards = (list) => list.map(({ kind, it }, i) => card(it, i, `data-hk="${kind}" data-hid="${esc(it.id)}"`)).join('');
+  const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
+  const fresh = newestItems(visibleAll('movie')).slice(0, 12).map((it) => ({ kind: 'movie', it }));
+  const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
+  const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'recent') + homeRow('✨ Son eklenen filmler', fresh, 'movies');
+  const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
-    <div class="hero"><div class="hero-t"><small>Hoş Geldiniz</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
+    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player Pro</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button><button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="hero"><div class="hero-t"><small>${esc(hi.text)} ${hi.emoji}</small><b>${esc(src.name)}</b><span id="h-upd"></span></div><button class="re" data-refresh aria-label="Listeyi yenile">${icon('refresh')}<span>Yenile</span></button></div>
     <div class="tiles">
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
       <button class="tile t-movie" data-go="movies">${icon('movie')}<b>Filmler</b><small>${cnt(c.movies.length, 'film')}</small></button>
@@ -2456,6 +2465,8 @@ function renderHome(v) {
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
+    ${rows}
+    <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
   v.onclick = (e) => {
@@ -2464,6 +2475,13 @@ function renderHome(v) {
       return refreshCatalog();
     }
     if (e.target.closest('#h-search')) return globalSearch();
+    if (e.target.closest('#h-add')) return sourceForm();
+    if (e.target.closest('#h-swap')) return store.sources().length ? sourceSwitcher() : sourceForm();
+    const hc = e.target.closest('[data-hid]');
+    if (hc) {
+      const it = S.idx[CAT_KEY[hc.dataset.hk]].get(hc.dataset.hid);
+      if (it) return hc.dataset.hk === 'series' ? openSeries(it) : openMovie(it);
+    }
     if (e.target.closest('#h-set')) return setTab('sources');
     if (e.target.closest('#h-src')) return kidActive() ? undefined : store.sources().length ? sourceSwitcher() : sourceForm();
     const t = e.target.closest('[data-go]');

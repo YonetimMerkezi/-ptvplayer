@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 116,
+    title: 'Oynatıcı ayarları sekmeleri, diyalog vurgulama, oynatma hızı ve yeni ana ekran',
+    items: [
+      'Oynatıcıda yeni Ayarlar düğmesi: Ses, Altyazı ve Görüntü & Hız sekmeleri tek pencerede (Ses ve Altyazı düğmeleri de bu pencereyi açar)',
+      'Diyalog vurgulama: konuşmaları daha net öne çıkarır (Android); Gece modu açma/kapama anahtarı ve düzey seçimi aynı pencerede',
+      'Oynatma hızı 0,5x – 2x (film ve diziler); canlı yayında kapalı',
+      'Altyazı boyutu 5 kademe (14–28), yeni Kırmızı renk',
+      'Ana ekran: saate göre karşılama, Kaldığın yerden devam et ve Son eklenen filmler satırları, Bağlantı ve liste durumu kartı',
+      'Ana ekran üstünde Kaynak ekle ve Kaynak değiştir düğmeleri',
+    ],
+  },
+  {
     id: 115,
     title: 'Medya merkezi: cihaz kütüphanesi, ağ paylaşımları, müzik ve fotoğraf',
     items: [

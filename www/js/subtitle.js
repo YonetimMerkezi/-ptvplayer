@@ -1,16 +1,18 @@
 // Altyazı görünümü (boyut, renk, arka plan, konum): seçimler kalıcıdır, oynatıcıya sayısal değer olarak iletilir (saf mantık).
 
 export const SUB_SIZES = [
-  ['small', 'Küçük', 0.8],
+  ['small', 'Küçük', 0.875],
   ['normal', 'Normal', 1],
-  ['large', 'Büyük', 1.3],
-  ['xlarge', 'Çok büyük', 1.7],
+  ['medium', 'Orta', 1.25],
+  ['large', 'Büyük', 1.5],
+  ['xlarge', 'Çok büyük', 1.75],
 ];
 export const SUB_COLORS = [
   ['white', 'Beyaz', '#FFFFFF'],
   ['yellow', 'Sarı', '#FFE14D'],
   ['cyan', 'Turkuaz', '#6EE7F2'],
   ['green', 'Yeşil', '#8CF08C'],
+  ['red', 'Kırmızı', '#FF5C5C'],
 ];
 export const SUB_BGS = [
   ['none', 'Yok', 0],

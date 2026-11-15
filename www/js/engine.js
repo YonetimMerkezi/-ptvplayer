@@ -26,7 +26,7 @@ export function describeError(name, http = 0) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
-export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0, getNight = () => 'off', onDl = () => {}) {
+export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0, getNight = () => 'off', onDl = () => {}, getDialog = () => false) {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
   add('state', (e) => on({ type: 'state', state: e.state, live: !!e.live }));
@@ -45,7 +45,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     // opts.compat: uyumlu mod (yazılım çözücü başta, geniş TS ayrıştırma). target.live: canlı yayın (progressive .ts'te Media3 canlı olduğunu bilmez;
     // tampon eşikleri ve yeniden kurulumda konum buna göre seçilir).
     load: (target, startMs = 0, keepRecording = false, opts = null) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat), bgAudio: !!target.bgAudio, title: target.title || '', subUri: target.subUri || '' }),
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat), dialog: !!getDialog(), bgAudio: !!target.bgAudio, title: target.title || '', subUri: target.subUri || '' }),
     // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
     rec: {
       start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),
@@ -67,6 +67,10 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     setAudioDelay: (ms) => plugin.setAudioDelay({ ms }),
     // Gece modu (off | light | medium | strong): açık oynatıcıya anında uygulanır (yalnız Android)
     setNightMode: (level) => plugin.setNightMode({ level }),
+    // Diyalog vurgulama (konuşmayı öne çıkarır): açık oynatıcıya anında uygulanır (yalnız Android)
+    setDialogBoost: (on_) => plugin.setDialogBoost({ on: !!on_ }),
+    // Oynatma hızı (0,25–3x; yalnız Android, film/dizi)
+    setSpeed: (speed) => plugin.setSpeed({ speed }),
     // Altyazı görünümü: { size, color, bgAlpha, bottom, outline } (yalnız Android)
     setSubtitleStyle: (p) => plugin.setSubtitleStyle(p),
     pause: () => plugin.pause(),
