@@ -9,10 +9,10 @@ export const THEMES = [
   { id: 'red', name: 'Kırmızı', swatch: '#fb7185', bar: '#1c0a0f' },
   // Çok renkli temalar: her ana kutu ve simge kendi renginde (CSS'te html[data-multi] kuralları + --p0…--p8 paleti).
   // swatch burada tek renk değil, seçicideki yuvarlağın arka planıdır.
-  { id: 'cards', name: 'Renkli kartlar', swatch: 'conic-gradient(#4ade80, #38bdf8, #a78bfa, #fb7185, #fb923c, #4ade80)', bar: '#0b0f1b', multi: true },
-  { id: 'solid', name: 'Dolu renk', swatch: 'linear-gradient(135deg, #16a34a 0%, #ea580c 34%, #7c3aed 67%, #0284c7 100%)', bar: '#0a0e19', multi: true },
-  { id: 'neon', name: 'Neon cam', swatch: 'linear-gradient(135deg, #a855f7 0%, #38bdf8 50%, #ec4899 100%)', bar: '#070816', multi: true },
-  { id: 'sunset', name: 'Gün batımı', swatch: 'linear-gradient(160deg, #6b21a8 0%, #be185d 50%, #ea580c 100%)', bar: '#3a0f4a', multi: true },
+  { id: 'cards', name: 'Renkli kartlar', previewAccent: '#4ade80', swatch: 'conic-gradient(#4ade80, #38bdf8, #a78bfa, #fb7185, #fb923c, #4ade80)', bar: '#0b0f1b', multi: true },
+  { id: 'solid', name: 'Dolu renk', previewAccent: '#16a34a', swatch: 'linear-gradient(135deg, #16a34a 0%, #ea580c 34%, #7c3aed 67%, #0284c7 100%)', bar: '#0a0e19', multi: true },
+  { id: 'neon', name: 'Neon cam', previewAccent: '#38bdf8', swatch: 'linear-gradient(135deg, #a855f7 0%, #38bdf8 50%, #ec4899 100%)', bar: '#070816', multi: true },
+  { id: 'sunset', name: 'Gün batımı', previewAccent: '#be185d', swatch: 'linear-gradient(160deg, #6b21a8 0%, #be185d 50%, #ea580c 100%)', bar: '#3a0f4a', multi: true },
   { id: 'midnight', name: 'Gece yarısı', swatch: '#a5b4fc', bar: '#080d19' },
   { id: 'ocean', name: 'Okyanus', swatch: '#2dd4bf', bar: '#041923' },
   { id: 'graphite', name: 'Grafit', swatch: '#cbd5e1', bar: '#101318' },
