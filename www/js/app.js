@@ -3730,6 +3730,53 @@ function playerSheet() {
   });
 }
 
+function themeSheet() {
+  let selected = store.pref('set.theme', DEFAULT_THEME);
+  const preview = (t) => `
+    <button class="theme-choice${t.id === selected ? ' on' : ''}" type="button" data-theme-choice="${esc(t.id)}" aria-pressed="${t.id === selected}">
+      <div class="theme-preview" style="--preview-accent:${t.swatch};--preview-bar:${t.bar}">
+        <div class="theme-preview-head"><b>IPTV PRO</b><span>⌕　⚙</span></div>
+        <div class="theme-preview-tiles"><i>▣</i><i>▰</i><i>▶</i><i>★</i></div>
+        <div class="theme-preview-posters"><i></i><i></i><i></i></div>
+        <div class="theme-preview-nav"><i>⌂</i><i>▣</i><i>▰</i><i>★</i><i>⚙</i></div>
+      </div>
+      <span class="theme-choice-name">${esc(t.name)}</span>
+      <span class="theme-choice-check" aria-hidden="true">${t.id === selected ? '✓' : ''}</span>
+    </button>`;
+  const page = openPage({
+    title: 'Uygulama teması',
+    cls: 'theme-picker-page',
+    html: `
+      <p class="theme-picker-intro">Uygulamanın genel görünümünü belirleyen temayı seçin. Kartlardaki küçük ana ekran önizlemeleri tema renklerini gösterir.</p>
+      <div class="theme-choice-grid" id="theme-choice-grid">${THEMES.map(preview).join('')}</div>
+      <div class="theme-apply-bar">
+        <div><small>Seçili tema</small><b id="theme-choice-label">${esc(THEMES.find((t) => t.id === selected)?.name || 'Yeşil')}</b></div>
+        <button class="btn primary" id="theme-apply">Uygula</button>
+      </div>`,
+    mount: (body, api) => {
+      $('#theme-choice-grid', body).addEventListener('click', (e) => {
+        const card = e.target.closest('[data-theme-choice]');
+        if (!card) return;
+        selected = card.dataset.themeChoice;
+        $('.theme-choice', body).forEach((x) => {
+          const active = x.dataset.themeChoice === selected;
+          x.classList.toggle('on', active);
+          x.setAttribute('aria-pressed', String(active));
+          $('.theme-choice-check', x).textContent = active ? '✓' : '';
+        });
+        $('#theme-choice-label', body).textContent = THEMES.find((t) => t.id === selected)?.name || 'Yeşil';
+      });
+      $('#theme-apply', body).addEventListener('click', () => {
+        const applied = applyTheme(selected);
+        store.setPref('set.theme', applied);
+        api.close();
+        toast('Uygulama teması uygulandı');
+      });
+    },
+  });
+  return page;
+}
+
 function generalSheet() {
   const lim = Number(store.pref('set.recentLimit', 40));
   openSheet({
@@ -3744,7 +3791,7 @@ function generalSheet() {
       `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
       `<div class="sel-row"><span>Film ve dizi kategori sırası<small>Netflix düzeni: yeni eklenenler, platformlar, Türkçe içerik ve en çok izlenen türler önce; yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir</small></span><select id="g-cord">${optionsHtml(CAT_ORDERS, catOrderMode())}</select></div>` +
       `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Netflix gibi görünümde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
-      `<div class="sel-row sel-col"><span>Tema rengi</span><div class="swatches" id="g-theme" role="radiogroup" aria-label="Tema rengi">${THEMES.map((t) => `<button class="swatch${t.id === store.pref('set.theme', DEFAULT_THEME) ? ' on' : ''}" role="radio" aria-checked="${t.id === store.pref('set.theme', DEFAULT_THEME)}" data-theme="${t.id}" style="--sw:${t.swatch}"><i></i><span>${esc(t.name)}</span></button>`).join('')}</div></div>` +
+      `<div class="sel-row theme-entry"><span>Uygulama teması<small>Uygulamanın renklerini ve ana ekran görünümünü önizleyerek seçin</small></span><button class="btn sm ghost" id="g-theme-open">Temaları görüntüle</button></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
@@ -3767,15 +3814,7 @@ function generalSheet() {
           toast('Son izlenenler temizlendi');
         }
       });
-      $('#g-theme', body).addEventListener('click', (e) => {
-        const b = e.target.closest('[data-theme]');
-        if (!b) return;
-        store.setPref('set.theme', applyTheme(b.dataset.theme));
-        $$('#g-theme .swatch', body).forEach((x) => {
-          x.classList.toggle('on', x === b);
-          x.setAttribute('aria-checked', String(x === b));
-        });
-      });
+      $('#g-theme-open', body).addEventListener('click', () => themeSheet());
       $('#g-cap', body).addEventListener('change', (e) => {
         store.setPref('set.caption', applyCaption(e.target.value, document));
         renderTab(); // ızgara hücre yüksekliği değişti: liste yeniden kurulur
