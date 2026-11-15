@@ -351,6 +351,7 @@ public class IptvPlayerPlugin extends Plugin {
             public void onVideoSizeChanged(VideoSize size) {
                 updatePipParams(); // PiP penceresi yayının en-boy oranına uysun
                 applyAutoFrameRate();
+                emitVideoSize();
             }
 
             // Ses/altyazı parçaları yayın çözüldükçe sonradan da ortaya çıkabilir (özellikle TS yayınlarda).
@@ -1540,6 +1541,19 @@ public class IptvPlayerPlugin extends Plugin {
         notifyListeners("error", o);
     }
 
+    // Web katmanı ekran yönünü videoya göre seçebilsin (dönüş açısı uygulanmamışsa en-boy yer değiştirir).
+    // ExoPlayer aynı boyutu ikinci kez bildirmez (aynı videoyu yeniden açınca olay gelmez): durum değişince de gönderilir, web katmanı tekrarı yok sayar.
+    private void emitVideoSize() {
+        if (player == null) return;
+        VideoSize size = player.getVideoSize();
+        if (size.width <= 0 || size.height <= 0) return;
+        boolean swap = size.unappliedRotationDegrees % 180 != 0;
+        JSObject vs = new JSObject();
+        vs.put("width", swap ? size.height : size.width);
+        vs.put("height", swap ? size.width : size.height);
+        notifyListeners("videoSize", vs);
+    }
+
     private void emitState() {
         if (player == null) return;
         int s = player.getPlaybackState();
@@ -1555,6 +1569,7 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("playing", player.isPlaying());
         o.put("live", player.isCurrentMediaItemLive());
         notifyListeners("state", o);
+        if (name.equals("playing") || name.equals("paused")) emitVideoSize();
         updatePipParams();
     }
 
