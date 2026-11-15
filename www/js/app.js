@@ -2133,7 +2133,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}${s.managed ? '' : `<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button>`}<button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -2259,6 +2259,7 @@ function onSourcesClick(e) {
   if (t) {
     const k = t.dataset.set;
     if (k === 'general') return generalSheet();
+    if (k === 'theme') return themeSheet();
     if (k === 'admin') return openAdmin();
     if (k === 'player') return playerSheet();
     if (k === 'epg') return epgSettingsSheet();
@@ -3734,7 +3735,7 @@ function themeSheet() {
   let selected = store.pref('set.theme', DEFAULT_THEME);
   const preview = (t) => `
     <button class="theme-choice${t.id === selected ? ' on' : ''}" type="button" data-theme-choice="${esc(t.id)}" aria-pressed="${t.id === selected}">
-      <div class="theme-preview" style="--preview-accent:${t.previewAccent || t.swatch};--preview-bar:${t.bar}">
+      <div class="theme-preview" data-preview-theme="${esc(t.id)}" style="--preview-accent:${t.previewAccent || t.swatch};--preview-bar:${t.bar}">
         <div class="theme-preview-head"><b>IPTV PRO</b><span>⌕　⚙</span></div>
         <div class="theme-preview-tiles"><i>▣</i><i>▰</i><i>▶</i><i>★</i></div>
         <div class="theme-preview-posters"><i></i><i></i><i></i></div>
@@ -3791,7 +3792,6 @@ function generalSheet() {
       `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
       `<div class="sel-row"><span>Film ve dizi kategori sırası<small>Netflix düzeni: yeni eklenenler, platformlar, Türkçe içerik ve en çok izlenen türler önce; yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir</small></span><select id="g-cord">${optionsHtml(CAT_ORDERS, catOrderMode())}</select></div>` +
       `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Netflix gibi görünümde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
-      `<div class="sel-row theme-entry"><span>Uygulama teması<small>Uygulamanın renklerini ve ana ekran görünümünü önizleyerek seçin</small></span><button class="btn sm ghost" id="g-theme-open">Temaları görüntüle</button></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
@@ -3814,7 +3814,6 @@ function generalSheet() {
           toast('Son izlenenler temizlendi');
         }
       });
-      $('#g-theme-open', body).addEventListener('click', () => themeSheet());
       $('#g-cap', body).addEventListener('change', (e) => {
         store.setPref('set.caption', applyCaption(e.target.value, document));
         renderTab(); // ızgara hücre yüksekliği değişti: liste yeniden kurulur
