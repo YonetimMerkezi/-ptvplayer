@@ -13,10 +13,10 @@ export const THEMES = [
   { id: 'solid', name: 'Dolu renk', swatch: 'linear-gradient(135deg, #16a34a 0%, #ea580c 34%, #7c3aed 67%, #0284c7 100%)', bar: '#0a0e19', multi: true },
   { id: 'neon', name: 'Neon cam', swatch: 'linear-gradient(135deg, #a855f7 0%, #38bdf8 50%, #ec4899 100%)', bar: '#070816', multi: true },
   { id: 'sunset', name: 'Gün batımı', swatch: 'linear-gradient(160deg, #6b21a8 0%, #be185d 50%, #ea580c 100%)', bar: '#3a0f4a', multi: true },
-  { id: 'midnight', name: 'Gece yarısı', swatch: 'linear-gradient(135deg, #64748b, #312e81)', bar: '#080d19' },
-  { id: 'ocean', name: 'Okyanus', swatch: 'linear-gradient(135deg, #06b6d4, #155e75)', bar: '#041923' },
-  { id: 'graphite', name: 'Grafit', swatch: 'linear-gradient(135deg, #94a3b8, #475569)', bar: '#101318' },
-  { id: 'rose', name: 'Gül kurusu', swatch: 'linear-gradient(135deg, #fb7185, #9d174d)', bar: '#1b0a14' },
+  { id: 'midnight', name: 'Gece yarısı', swatch: '#a5b4fc', bar: '#080d19' },
+  { id: 'ocean', name: 'Okyanus', swatch: '#2dd4bf', bar: '#041923' },
+  { id: 'graphite', name: 'Grafit', swatch: '#cbd5e1', bar: '#101318' },
+  { id: 'rose', name: 'Gül kurusu', swatch: '#fb8cae', bar: '#1b0a14' },
 ];
 export const DEFAULT_THEME = 'green';
 
