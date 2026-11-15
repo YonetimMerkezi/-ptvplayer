@@ -55,6 +55,7 @@ import { AFTER_OPTIONS, DEFAULT_AFTER, MIN_LEN, normalizeAfter, isValidPin, make
 import { createMultiEngine, createSlotSupervisor, fitSlots } from './multi.js';
 import { AUTO_CHECK_MS, LAUNCH_CHECK_MS, UPDATE_BASE, checkUpdate, explainError, fmtMB, isNewer, retry, shouldAutoCheck, versionCodeOf } from './update.js';
 import { checkStreamHealth } from './health.js';
+import { runInternetSpeedTest } from './speedtest.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
 import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
 import { searchAll, totalOf } from './multisearch.js';
@@ -2509,6 +2510,7 @@ function renderHome(v) {
       <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
       <button class="tile mini t-sport" data-go="sport">${miniIc('ball')}<b>Spor</b></button>
+      <button class="tile mini t-speed" data-go="speedtest">${miniIc('activity')}<b>İnternet hız testi</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
@@ -2551,10 +2553,117 @@ function goTo(go) {
   if (go === 'local') return openLibrary();
   if (go === 'rec') return recordingsSheet();
   if (go === 'dl') return downloadsSheet();
+  if (go === 'speedtest') return internetSpeedTestPage();
   if (go === 'guide') return guidePage();
   if (go === 'sport') return openSportsPage();
   if (go === 'today') return openToday();
   setTab(go);
+}
+
+function internetSpeedTestPage() {
+  const page = openPage({
+    title: 'İnternet hız testi',
+    cls: 'speed-page-shell',
+    html: `
+      <div class="speed-page">
+        <section class="speed-hero">
+          <div class="speed-hero-top"><span class="speed-kicker">BAĞLANTI ANALİZİ</span><span class="speed-server"><i></i> Cloudflare test ağı</span></div>
+          <div class="speed-meter" id="speed-meter" style="--speed-angle:0deg">
+            <div class="speed-meter-core"><small>İNDİRME</small><b id="speed-main">—</b><span>Mbps</span></div>
+          </div>
+          <div class="speed-state" id="speed-state">Bağlantını ölçmeye hazır mısın?</div>
+          <p class="speed-sub" id="speed-sub">Gecikme, indirme ve yükleme hızını tek testte ölç.</p>
+          <div class="speed-progress"><i id="speed-progress"></i></div>
+        </section>
+        <section class="speed-metrics">
+          <div class="speed-metric"><span><i class="sm-ping"></i> Gecikme</span><b id="speed-ping">— <small>ms</small></b><small>Sunucu yanıt süresi</small></div>
+          <div class="speed-metric"><span><i class="sm-down"></i> İndirme</span><b id="speed-down">— <small>Mbps</small></b><small>İçerik alma hızı</small></div>
+          <div class="speed-metric"><span><i class="sm-up"></i> Yükleme</span><b id="speed-up">— <small>Mbps</small></b><small>Veri gönderme hızı</small></div>
+        </section>
+        <section class="speed-verdict" id="speed-verdict">
+          <div class="speed-verdict-icon">${icon('activity')}</div>
+          <div><b id="speed-verdict-title">Teste hazır</b><p id="speed-verdict-text">Test sırasında diğer indirme ve yayınları durdurman daha doğru sonuç verir.</p></div>
+        </section>
+        <button class="btn lg speed-start" id="speed-start">${icon('play')} Testi başlat</button>
+        <button class="btn ghost speed-cancel" id="speed-cancel" hidden>Testi iptal et</button>
+        <p class="speed-footnote">Ücretsiz test sunucusu · Bir test yaklaşık 9 MB veri kullanır. Sonuçlar bağlantı koşullarına göre değişebilir.</p>
+      </div>`,
+    mount: (body, api) => {
+      const $id = (id) => body.querySelector('#' + id);
+      const start = $id('speed-start');
+      const cancel = $id('speed-cancel');
+      const meter = $id('speed-meter');
+      let controller = null;
+      let running = false;
+      const setMetric = (id, value, unit) => { $id(id).innerHTML = value + ' <small>' + unit + '</small>'; };
+      const verdict = (r) => {
+        const title = r.downloadMbps >= 50 && r.pingMs < 40 ? 'Çok iyi bağlantı' : r.downloadMbps >= 15 ? 'Yayın için uygun' : r.downloadMbps >= 5 ? 'HD yayın için yeterli' : 'Bağlantı sınırlı';
+        const message = r.downloadMbps >= 15
+          ? 'İndirme hızın HD ve çoğu Full HD yayın için yeterli. Wi-Fi sinyali ve sunucu yoğunluğu yine de etkileyebilir.'
+          : r.downloadMbps >= 5
+            ? 'HD yayın mümkün; yüksek çözünürlükte ara belleğe alma yaşanabilir.'
+            : 'Canlı yayınlarda donma görülebilir. Modeme yaklaşmayı veya ağdaki yoğun indirmeleri durdurmayı dene.';
+        $id('speed-verdict-title').textContent = title;
+        $id('speed-verdict-text').textContent = message;
+      };
+      const stopUi = () => { running = false; start.disabled = false; start.innerHTML = `${icon('refresh')} Yeniden test et`; cancel.hidden = true; };
+      const cancelTest = () => { if (controller) controller.abort(); };
+      cancel.addEventListener('click', cancelTest);
+      page.el.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) cancelTest(); });
+      start.addEventListener('click', async () => {
+        if (running) return;
+        running = true;
+        controller = new AbortController();
+        start.disabled = true;
+        start.textContent = 'Test çalışıyor…';
+        cancel.hidden = false;
+        $id('speed-state').textContent = 'Bağlantı ölçülüyor';
+        $id('speed-sub').textContent = 'Lütfen test bitene kadar bu ekranı açık tut.';
+        $id('speed-verdict-title').textContent = 'Ölçüm devam ediyor';
+        $id('speed-verdict-text').textContent = 'Önce gecikme, ardından indirme ve yükleme hızı ölçülüyor.';
+        setMetric('speed-ping', '—', 'ms');
+        setMetric('speed-down', '—', 'Mbps');
+        setMetric('speed-up', '—', 'Mbps');
+        $id('speed-main').textContent = '…';
+        meter.style.setProperty('--speed-angle', '0deg');
+        $id('speed-progress').style.width = '0%';
+        try {
+          const result = await runInternetSpeedTest({
+            signal: controller.signal,
+            onProgress: (p) => {
+              $id('speed-state').textContent = p.message;
+              $id('speed-progress').style.width = p.percent + '%';
+              if (p.phase === 'download' && p.transferred) {
+                const partial = Math.min(999, p.transferred / 1_000_000);
+                $id('speed-main').textContent = partial.toFixed(1);
+                meter.style.setProperty('--speed-angle', Math.min(360, partial / 300 * 360) + 'deg');
+              }
+            },
+          });
+          setMetric('speed-ping', String(result.pingMs), 'ms');
+          setMetric('speed-down', result.downloadMbps.toFixed(1), 'Mbps');
+          setMetric('speed-up', result.uploadMbps.toFixed(1), 'Mbps');
+          $id('speed-main').textContent = result.downloadMbps.toFixed(1);
+          meter.style.setProperty('--speed-angle', Math.min(360, result.downloadMbps / 300 * 360) + 'deg');
+          $id('speed-state').textContent = 'Test tamamlandı';
+          $id('speed-sub').textContent = 'Ölçüm ' + new Date(result.testedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) + ' saatinde tamamlandı.';
+          verdict(result);
+        } catch (error) {
+          const cancelled = error && error.name === 'AbortError';
+          $id('speed-state').textContent = cancelled ? 'Test iptal edildi' : 'Test tamamlanamadı';
+          $id('speed-sub').textContent = cancelled ? 'İstediğinde yeniden başlatabilirsin.' : 'Sunucuya erişilemedi. İnternet bağlantını kontrol edip yeniden dene.';
+          $id('speed-verdict-title').textContent = cancelled ? 'Ölçüm durduruldu' : 'Bağlantı ölçülemedi';
+          $id('speed-verdict-text').textContent = cancelled ? 'Herhangi bir sonuç kaydedilmedi.' : (error && error.message) || 'Bilinmeyen ağ hatası';
+          $id('speed-progress').style.width = '0%';
+          $id('speed-main').textContent = '—';
+        } finally {
+          controller = null;
+          stopUi();
+        }
+      });
+    },
+  });
+  return page;
 }
 
 function showRecent() {
