@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clampDelay, stepDelay, fmtDelay, describeDelay, DELAY_MIN, DELAY_MAX, DELAY_PRESETS } from '../www/js/avsync.js';
 
-test('clampDelay: 50 ms adıma yuvarlar, sınırlar içinde tutar, bozuk değeri 0 yapar', () => {
+test('clampDelay: 10 ms adıma yuvarlar, sınırlar içinde tutar, bozuk değeri 0 yapar', () => {
   assert.equal(clampDelay(0), 0);
-  assert.equal(clampDelay(120), 100);
-  assert.equal(clampDelay(130), 150);
+  assert.equal(clampDelay(120), 120);
+  assert.equal(clampDelay(130), 130);
   assert.equal(clampDelay('250'), 250);
   assert.equal(clampDelay(99999), DELAY_MAX);
   assert.equal(clampDelay(-99999), DELAY_MIN);
@@ -21,7 +21,7 @@ test('stepDelay: adım ekler, sınırı aşmaz', () => {
   assert.equal(stepDelay(1900, 250), DELAY_MAX);
   assert.equal(stepDelay(-900, -250), DELAY_MIN);
   assert.equal(stepDelay(undefined, 50), 50);
-  assert.deepEqual(DELAY_PRESETS.map((d) => stepDelay(0, d)), [-250, -50, 50, 250]);
+  assert.deepEqual(DELAY_PRESETS.map((d) => stepDelay(0, d)), [-250, -50, -10, 10, 50, 250]);
 });
 
 test('fmtDelay / describeDelay', () => {
