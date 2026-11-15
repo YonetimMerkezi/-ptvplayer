@@ -2610,7 +2610,7 @@ function internetSpeedTestPage() {
       const stopUi = () => { running = false; start.disabled = false; start.innerHTML = `${icon('refresh')} Yeniden test et`; cancel.hidden = true; };
       const cancelTest = () => { if (controller) controller.abort(); };
       cancel.addEventListener('click', cancelTest);
-      page.el.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) cancelTest(); });
+      api.el.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) cancelTest(); });
       start.addEventListener('click', async () => {
         if (running) return;
         running = true;
