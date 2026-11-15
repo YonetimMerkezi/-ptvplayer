@@ -846,6 +846,8 @@ function drawCrumb(kind) {
     $('#crumb-sort').hidden = !sortable;
     $('#crumb-sort').classList.toggle('on', S.sort[kind] !== 'default');
   }
+  const clearRecent = $('#btn-clear-recent');
+  if (clearRecent) clearRecent.hidden = !(kind === 'live' && g === '__recent' && store.recents(sid()).length);
   const label = { live: 'Kanal', movie: 'Film', series: 'Dizi' }[kind];
   qEl.placeholder = g != null ? 'Bu kategoride ara…' : `${label} ara…`;
 }
@@ -1026,10 +1028,45 @@ function heroSync(kind, mode) {
   }
 }
 
+function recentItemSheet(it) {
+  const sh = openSheet({
+    title: 'Son izlenenlerden kaldır',
+    html: `<p class="hint">${esc(it.name || 'Bu kanal')} son izlenenler listesinden kaldırılacak. Favorilerinden veya kanal listesinden silinmez.</p><button class="btn danger" id="recent-remove-one">${icon('trash')}Son izlenenlerden kaldır</button>`,
+    mount: (body) => {
+      $('#recent-remove-one', body).addEventListener('click', () => {
+        store.removeRecent(sid(), it.id);
+        sh.close();
+        refreshList(true);
+        toast('Son izlenenlerden kaldırıldı');
+      });
+    },
+  });
+}
+
+function clearRecentSheet() {
+  const sh = openSheet({
+    title: 'Son izlenenleri temizle',
+    html: '<p class="hint">Son izlenenler listesindeki tüm kanallar kaldırılacak. Favoriler ve kanal listen etkilenmez.</p><button class="btn danger" id="recent-clear-all">Tüm son izlenenleri temizle</button>',
+    mount: (body) => {
+      $('#recent-clear-all', body).addEventListener('click', () => {
+        store.clearRecents(sid());
+        sh.close();
+        refreshList(true);
+        toast('Son izlenenler temizlendi');
+      });
+    },
+  });
+}
+
 function mountList(kind, mode = 'items') {
   const el = $('#list');
   S.listMode = mode;
-  const longPress = (i) => S.items[i] && folderSheet(kind, S.items[i]);
+  const longPress = (i) => {
+    const it = S.items[i];
+    if (!it) return;
+    if (kind === 'live' && S.group.live === '__recent') return recentItemSheet(it);
+    return folderSheet(kind, it);
+  };
   if (mode === 'rows') {
     const want = normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION));
     S.list = new Shelves(el, {
@@ -1403,6 +1440,7 @@ $('#btn-search').addEventListener('click', () => {
   globalSearch();
 });
 $('#crumb-sort').addEventListener('click', () => sortSheet(S.tab === 'favs' ? S.favKind : TAB_KIND[S.tab]));
+$('#btn-clear-recent').addEventListener('click', () => clearRecentSheet());
 $('#q-clear').addEventListener('click', () => closeSearch());
 
 // Sesli arama (Android): cihazın konuşma tanıyıcısı açılır, söylenen metin arama kutusuna yazılır. İptalde sessiz kalır.
