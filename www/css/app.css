@@ -1538,3 +1538,14 @@ html[data-theme="rose"] { --bg:#160811; --surface:#29101d; --raised:#3b192a; --l
 @media (min-width:900px) {
   .theme-choice-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
 }
+
+
+/* Tema seçimi ayrı ayar bölümü */
+.theme-picker-page .pg-body { padding-top: 10px; }
+.theme-preview-tiles i:nth-child(2) { background: color-mix(in srgb,var(--preview-accent) 34%,#172033); }
+.theme-preview-tiles i:nth-child(3) { background: color-mix(in srgb,var(--preview-accent) 22%,#0f172a); }
+.theme-preview-tiles i:nth-child(4) { background: color-mix(in srgb,#facc15 34%,#172033); color:#facc15; }
+.theme-preview-posters i:nth-child(2) { background: linear-gradient(145deg,color-mix(in srgb,var(--preview-accent) 35%,#fff),#27334b 68%,#101827); }
+.theme-preview-posters i:nth-child(3) { background: linear-gradient(145deg,color-mix(in srgb,var(--preview-accent) 72%,#fff),#172033 70%,#090f1d); }
+.set-tile[data-set="theme"] .ic { color: var(--accent); }
+html[data-multi] .set-tile[data-set=theme] { --tc: var(--p0); }
