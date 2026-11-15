@@ -345,8 +345,10 @@ final class NetShares {
         props.setProperty("jcifs.smb.client.responseTimeout", "15000");
         props.setProperty("jcifs.smb.client.connTimeout", "10000");
         CIFSContext base = new BaseContext(new PropertyConfiguration(props));
-        if (user == null || user.isEmpty()) c = base.withGuestCredentials();
-        else {
+        if (user == null || user.isEmpty()) {
+            // Kullanıcı adı boşsa misafir girişi (jcifs-ng 2.1.10'da withGuestCredentials yok; GUEST kullanıcısı aynı işi görür)
+            c = base.withCredentials(new NtlmPasswordAuthenticator(null, "GUEST", ""));
+        } else {
             String domain = "";
             String u = user;
             int bs = user.indexOf('\\');
