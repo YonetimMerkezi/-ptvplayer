@@ -59,6 +59,9 @@ dependencies {
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    // Ağ paylaşımları: WebDAV/UPnP istekleri (OkHttp) ve SMB (jcifs-ng)
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "eu.agno3.jcifs:jcifs-ng:2.1.10"
     implementation project(':capacitor-cordova-android-plugins')
 }
 
