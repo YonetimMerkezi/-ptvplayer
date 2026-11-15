@@ -47,7 +47,7 @@ import { createCastUI } from './cast-ui.js';
 import { REMOTE_KEYS } from './cast.js';
 import { clampDelay } from './avsync.js';
 import { normalizeNight, DEFAULT_NIGHT } from './night.js';
-import { INTRO_OPTIONS, DEFAULT_INTRO, normalizeIntro, pickNextMovie } from './nextup.js';
+import { DEFAULT_INTRO, normalizeIntro, pickNextMovie } from './nextup.js';
 import { subParams, subLabel, DEFAULT_SUB } from './subtitle.js';
 import { PLAYER_ACTIONS, HOME_ACTIONS, DEFAULT_PLAYER, DEFAULT_HOME, COLORS, normalizeKeys, actionFor } from './remote.js';
 import { watchNextItems, watchNextPayload, parseDeepLink } from './tvhome.js';
