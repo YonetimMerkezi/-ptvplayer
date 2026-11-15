@@ -530,6 +530,7 @@ function setTab(tab) {
 }
 
 function renderTab() {
+  applyMotionProfile();
   if (kidActive() && (S.tab === 'sources' || S.tab === 'multi')) S.tab = 'home'; // çocuk modunda ayarlar ve çoklu ekran yok
   S.list && S.list.destroy();
   S.list = null;
@@ -2142,7 +2143,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}${s.managed ? '' : `<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button>`}<button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -2262,6 +2263,54 @@ async function openAdmin() {
   }
 }
 
+function motionProfileChoice() {
+  const v = store.pref('motion.profile', 'auto');
+  return ['auto', 'full', 'light', 'off'].includes(v) ? v : 'auto';
+}
+
+function applyMotionProfile() {
+  const root = document.documentElement;
+  const choice = motionProfileChoice();
+  const dm = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  const lowPower = root.classList.contains('tv') || (dm > 0 && dm <= 2) || (cores > 0 && cores <= 4);
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const effective = reduced ? 'off' : choice === 'auto' ? (lowPower ? 'light' : 'full') : choice;
+  root.dataset.motionChoice = choice;
+  root.dataset.motion = effective;
+}
+
+function motionSettingsSheet() {
+  applyMotionProfile();
+  const current = motionProfileChoice();
+  const sh = openSheet({
+    title: 'Görünüm ve animasyonlar',
+    html: `<p class="hint">Geçiş efektlerini cihazının gücüne göre seç. TV ve düşük donanımlı cihazlarda hafif mod önerilir.</p>
+      <label class="field"><span>Animasyon profili</span><select id="motion-profile">
+        <option value="auto" ${current === 'auto' ? 'selected' : ''}>Akıllı (önerilen)</option>
+        <option value="full" ${current === 'full' ? 'selected' : ''}>Tam animasyon</option>
+        <option value="light" ${current === 'light' ? 'selected' : ''}>Hafif animasyon</option>
+        <option value="off" ${current === 'off' ? 'selected' : ''}>Animasyonsuz</option>
+      </select><small id="motion-help">Akıllı mod, TV ve düşük donanımlı cihazlarda hafif geçişleri otomatik seçer.</small></label>
+      <div class="motion-preview"><span class="motion-preview-dot"></span><div><b>Sayfa geçişleri</b><small>Menüler ve açılır pencereler bu tercihe göre hareket eder.</small></div></div>`,
+    mount: (body) => {
+      const select = $('#motion-profile', body);
+      const help = $('#motion-help', body);
+      select.addEventListener('change', () => {
+        store.setPref('motion.profile', select.value);
+        applyMotionProfile();
+        help.textContent = select.value === 'auto'
+          ? 'Cihazın TV veya düşük donanımlıysa hafif, diğer cihazlarda tam animasyon kullanılır.'
+          : select.value === 'full' ? 'Tüm sayfa ve pencere geçişleri akıcı hareketlerle gösterilir.'
+          : select.value === 'light' ? 'Kısa ve hafif belirme efektleri kullanılır; ağır hareketler kapalıdır.'
+          : 'Tüm geçiş animasyonları kapatılır.';
+        toast('Animasyon tercihi kaydedildi');
+      });
+    },
+  });
+  return sh;
+}
+
 function onSourcesClick(e) {
   if (e.target.closest('#ver-tap')) return verTap();
   const t = e.target.closest('[data-set]');
@@ -2269,6 +2318,7 @@ function onSourcesClick(e) {
     const k = t.dataset.set;
     if (k === 'general') return generalSheet();
     if (k === 'theme') return themeSheet();
+    if (k === 'motion') return motionSettingsSheet();
     if (k === 'admin') return openAdmin();
     if (k === 'player') return playerSheet();
     if (k === 'epg') return epgSettingsSheet();
