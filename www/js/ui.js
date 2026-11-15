@@ -24,6 +24,19 @@ export function logo(url, name) {
 }
 
 let seq = 0;
+
+function removeLayerWithMotion(el, closeClass) {
+  if (!el || !el.isConnected) return;
+  const mode = document.documentElement.dataset.motion || 'full';
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (mode === 'off' || reduced) {
+    el.remove();
+    return;
+  }
+  el.classList.add(closeClass);
+  const delay = mode === 'light' ? 120 : 230;
+  setTimeout(() => el.remove(), delay);
+}
 // html: gövde; mount(bodyEl, api): içerik bağlama. Döndürür { el, body, close, setTitle }.
 export function openSheet({ title, html = '', mount, full = false }) {
   // full: Ayarlar alt sayfaları. TV'de küçük (alttan kesilen) pencere yerine tam sayfa açılır; telefon ve bilgisayarda alt pencere kalır.
@@ -33,7 +46,7 @@ export function openSheet({ title, html = '', mount, full = false }) {
   back.className = 'sheet-back' + (document.body.classList.contains('player-open') ? ' over-player' : '');
   back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-h"><h3>${esc(title)}</h3><button class="icon-btn" data-close aria-label="Kapat">${icon('close')}</button></div><div class="sheet-b">${html}</div></div>`;
   $('#sheets').append(back);
-  pushLayer(id, () => back.remove());
+  pushLayer(id, () => removeLayerWithMotion(back, 'is-closing'));
   back.addEventListener('click', (e) => {
     if (e.target === back || e.target.closest('[data-close]')) popLayer(id);
   });
@@ -60,7 +73,7 @@ export function openPage({ title = '', html = '', mount, cls = '' }) {
   el.setAttribute('aria-label', title || 'Sayfa');
   el.innerHTML = `<header class="pg-bar"><button class="icon-btn" data-close aria-label="Geri">${icon('back')}</button><h3>${esc(title)}</h3></header><div class="pg-body">${html}</div>`;
   $('#sheets').append(el);
-  pushLayer(id, () => el.remove());
+  pushLayer(id, () => removeLayerWithMotion(el, 'is-closing'));
   el.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) popLayer(id);
   });
