@@ -197,6 +197,11 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   // ---- film/dizi ilerlemesi ----
   api.progressAll = (sid) => read('prog.' + sid, {});
   api.progress = (sid, id) => api.progressAll(sid)[id] || null;
+  api.clearProgress = (sid) => {
+    const all = api.progressAll(sid);
+    for (const id of Object.keys(all)) markGone('progx.' + sid, id);
+    write('prog.' + sid, {});
+  };
   api.setProgress = (sid, e, pos, dur) => {
     const all = api.progressAll(sid);
     if (dur > 0 && pos / dur > 0.95) {
