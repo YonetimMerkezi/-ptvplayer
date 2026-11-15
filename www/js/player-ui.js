@@ -1,5 +1,6 @@
 // Oynatıcı ekranı: denetim çubukları, kanal değiştirme, ses/altyazı seçimi, klavye/kumanda.
 import { esc, fmtDuration, fmtClock, fold } from './util.js';
+import { VirtualList } from './vlist.js';
 import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
 import { normalizeLabels } from './ptools.js';
@@ -1122,6 +1123,7 @@ export function createPlayerUI({ engine, player, env }) {
   }
   function chpHide() {
     chp.open = false;
+    chpDropList();
     chpCatLayer = false;
     chp.level = 'ch';
     chp.filter = '';
@@ -1188,30 +1190,50 @@ export function createPlayerUI({ engine, player, env }) {
     }
     chpRenderList(true);
   }
+  // Yavaş TV kutuları ve projeksiyonlar için sanal liste: yalnız görünen ~12 satır DOM'da durur (binlerce kanal olsa da)
+  let chpVl = null;
+  function chpDropList() {
+    if (chpVl) chpVl.destroy();
+    chpVl = null;
+  }
+  function chpRow(it, i) {
+    if (chp.level === 'cat') {
+      const cur = chpCurKey();
+      return `<div class="row chp-row${it.id === cur ? ' active' : ''}" role="button" tabindex="0" data-i="${i}">${it.locked ? icon('lock') : ''}${it.folder ? icon('folder') : ''}<span class="chp-n">${esc(it.name)}</span><small>${it.count}</small></div>`;
+    }
+    const curId = player.state().item && player.state().item.id;
+    return `<div class="row chp-row${it.id === curId ? ' active' : ''}" role="button" tabindex="0" data-i="${i}"><small class="chp-num">${channelNumber(it, i)}</small><span class="chp-n">${esc(it.name)}</span></div>`;
+  }
   function chpRenderList(focus) {
-    const list = chp.el && chp.el.querySelector('#chp-list');
-    if (!list) return;
-    let act = null;
+    const host = chp.el && chp.el.querySelector('#chp-list');
+    if (!host) return;
+    chpDropList();
+    let rows;
     if (chp.level === 'cat') {
       const f = fold(chp.filter);
-      const cur = chpCurKey();
-      const rows = f ? chp.cats.filter((r) => fold(r.name).includes(f)) : chp.cats;
-      list.innerHTML = rows.length ? rows.map((r) => `<button class="chp-row${r.id === cur ? ' active' : ''}" data-cat="${esc(r.id)}">${r.locked ? icon('lock') : ''}${r.folder ? icon('folder') : ''}<span class="chp-n">${esc(r.name)}</span><small>${r.count}</small></button>`).join('') : '<p class="hint">Kategori bulunamadı</p>';
-    } else {
-      const curId = player.state().item && player.state().item.id;
-      list.innerHTML = chp.items.length ? chp.items.map((it, i) => `<button class="chp-row${it.id === curId ? ' active' : ''}" data-ch="${i}"><small class="chp-num">${channelNumber(it, i)}</small><span class="chp-n">${esc(it.name)}</span></button>`).join('') : '<p class="hint">Bu kategoride kanal yok</p>';
+      rows = f ? chp.cats.filter((r) => fold(r.name).includes(f)) : chp.cats;
+    } else rows = chp.items;
+    chp.rows = rows;
+    if (!rows.length) {
+      host.innerHTML = `<p class="hint">${chp.level === 'cat' ? 'Kategori bulunamadı' : 'Bu kategoride kanal yok'}</p>`;
+      return;
     }
-    act = list.querySelector('.chp-row.active');
-    if (act && !(chp.level === 'cat' && chp.filter)) act.scrollIntoView({ block: 'center' }); // çalan kanal / kategori ortalanır
-    if (focus && kbdMode()) (act || list.querySelector('.chp-row') || chp.el.querySelector('button')).focus({ preventScroll: true });
+    chpVl = new VirtualList(host, {
+      rowH: 48,
+      render: chpRow,
+      onTap: (i) => (chp.level === 'cat' ? chpPickCat(chp.rows[i] && chp.rows[i].id) : chpPlay(i)),
+    });
+    chpVl.setItems(rows);
+    const cur = chp.level === 'cat' ? chpCurKey() : (player.state().item || {}).id;
+    const at = chp.level === 'cat' && chp.filter ? -1 : rows.findIndex((r) => r.id === cur);
+    if (at >= 0) chpVl.scrollToIndex(at); // çalan kanal / kategori ortalanır
+    if (focus && kbdMode()) requestAnimationFrame(() => chpVl && chpVl.focusIndex(Math.max(0, at)));
   }
   function chpClick(e) {
-    const b = e.target.closest('[data-chp],[data-cat],[data-ch]');
+    const b = e.target.closest('[data-chp]');
     if (!b) return;
     if (b.dataset.chp === 'close') return chpDismiss();
     if (b.dataset.chp === 'up') return chpShowCats();
-    if (b.dataset.cat != null) return chpPickCat(b.dataset.cat);
-    if (b.dataset.ch != null) chpPlay(Number(b.dataset.ch));
   }
 
   // ---- olaylar ----
