@@ -92,6 +92,7 @@ html[data-multi] .set-tile[data-set=general] { --tc: var(--p4); }
 html[data-multi] .set-tile[data-set=player] { --tc: var(--p1); }
 html[data-multi] .set-tile[data-set=epg] { --tc: var(--p5); }
 html[data-multi] .set-tile[data-set=health] { --tc: var(--p8); }
+html[data-multi] .set-tile[data-set=speedtest] { --tc: var(--p5); }
 html[data-multi] .set-tile[data-set=plans] { --tc: var(--p7); }
 html[data-multi] .set-tile[data-set=auto] { --tc: var(--p3); }
 html[data-multi] .set-tile[data-set=kid] { --tc: var(--p6); }
