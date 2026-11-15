@@ -1368,18 +1368,18 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 .tile.mini.t-local .ic { color:var(--accent); }
 
 /* İki seviyeli kanal paneli (oynatıcı): Kanallar ↔ Kategoriler */
-.pl-chpanel { position:absolute; z-index:8; top:0; right:0; bottom:0; width:min(360px,86vw); display:flex; flex-direction:column; padding:max(8px,var(--safe-t)) max(8px,var(--safe-r)) max(8px,var(--safe-b)) 8px; background:rgba(5,12,18,.94); color:#fff; backdrop-filter:blur(12px); border-left:1px solid #ffffff2b; }
+.pl-chpanel { position:absolute; z-index:8; top:0; right:0; bottom:0; width:min(360px,86vw); display:flex; flex-direction:column; padding:max(8px,var(--safe-t)) max(8px,var(--safe-r)) max(8px,var(--safe-b)) 8px; background:rgba(6,13,19,.5); color:#fff; text-shadow:0 1px 3px #000c; border-left:1px solid #ffffff2b; }
 .pl-chpanel[hidden] { display:none !important; }
 .chp-head { display:flex; align-items:center; gap:8px; min-height:48px; }
 .chp-head b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chp-up { flex:none; }
 .chp-q { margin:4px 0 8px; }
-.chp-list { flex:1; overflow-y:auto; overscroll-behavior:contain; }
-.chp-row { display:flex; align-items:center; gap:10px; width:100%; min-height:48px; padding:0 12px; border-radius:10px; text-align:left; color:inherit; content-visibility:auto; contain-intrinsic-size:48px; }
+.chp-list { flex:1; min-height:0; position:relative; }
+.chp-row { color:inherit; }
 .chp-row .chp-n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chp-row small { flex:none; opacity:.7; }
 .chp-row .chp-num { min-width:2.2em; }
-.chp-row.active { background:#ffffff1f; font-weight:600; box-shadow:inset 3px 0 0 var(--gold, #f5c451); }
+.chp-row.active { background:rgba(255,255,255,.16); font-weight:600; box-shadow:inset 3px 0 0 var(--gold, #f5c451); }
 .chp-row:focus-visible { outline:2px solid var(--gold, #f5c451); outline-offset:-2px; }
 @media (orientation: portrait) {
   .pl-chpanel { top:auto; left:0; width:auto; height:62vh; border-left:0; border-top:1px solid #ffffff2b; border-radius:16px 16px 0 0; padding:8px max(8px,var(--safe-r)) max(8px,var(--safe-b)) max(8px,var(--safe-l)); }
