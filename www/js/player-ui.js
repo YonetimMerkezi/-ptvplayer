@@ -71,6 +71,9 @@ export function createPlayerUI({ engine, player, env }) {
   let tracksLoadedFor = null;
 
   // ---- kaydırma hareketleri: sol yarı dikey = parlaklık, sağ yarı dikey = ses, yatay = sarma ----
+  // Tam ekran ↔ küçük ekran düğmesi: oturum boyunca "Telefon oynatıcı yönü" ayarının üstüne yazar; oynatıcı kapanınca sıfırlanır.
+  let orientOverride = null;
+  const orientNow = () => orientOverride || (env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape');
   const levels = { brightness: 0.5, volume: 0.5 };
   let hudTimer = 0;
   const gest = { id: null, x0: 0, y0: 0, t0: 0, mode: null, kind: '', start: 0, base: 0, target: null, swallow: false, applied: 0, tapAt: 0 };
@@ -154,7 +157,11 @@ export function createPlayerUI({ engine, player, env }) {
     gest.swallow = false;
     const stacked = dockQuery.matches && (root.classList.contains('portrait-split') || root.classList.contains('vod-portrait'));
     // Dikey kipte yerel görüntü #pl-video-frame kutusundadır (#vid gizli); kaydırma hareketleri yalnız bu kutuda çalışır
-    const videoRect = (stacked ? q('#pl-video-frame') : q('#vid')).getBoundingClientRect();
+    let videoRect = (stacked ? q('#pl-video-frame') : q('#vid')).getBoundingClientRect();
+    // KÖK NEDEN DÜZELTMESİ: Android'de yerel oynatma sırasında `html.native-playing #vid { display: none }` olduğundan #vid ölçüsü 0×0 döner;
+    // her dokunuş "video dışı" sayılıp kaydırma (ileri-geri sarma, parlaklık, ses) hiç başlamıyordu. Tam ekran yatay kipte görüntü zaten
+    // tüm oynatıcıyı kapladığı için ölçü boşsa oynatıcı kökü kullanılır.
+    if (!(videoRect.width > 0 && videoRect.height > 0)) videoRect = root.getBoundingClientRect();
     if (playerLocked || pts.size >= 2 || !open || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('button, input, #pl-status .btn') ||
         e.clientX < videoRect.left || e.clientX > videoRect.right || e.clientY < videoRect.top || e.clientY > videoRect.bottom) {
       gest.id = null;
@@ -195,7 +202,7 @@ export function createPlayerUI({ engine, player, env }) {
       const sec = seekDelta(dx, gest.videoRect.width);
       gest.target = seekTarget(gest.base, sec, st.dur);
       const real = (gest.target - gest.base) / 1000;
-      hud(real >= 0 ? 'fwd' : 'rew', `${fmtDelta(real)} · ${fmtDuration(gest.target / 1000)}`);
+      hud(real >= 0 ? 'fwd' : 'rew', `${fmtDelta(real)} · ${fmtDuration(gest.target)}`);
     } else if (gest.mode === 'v') {
       const v = levelFrom(gest.start, dy, gest.videoRect.height);
       levels[gest.kind] = v;
@@ -416,9 +423,10 @@ export function createPlayerUI({ engine, player, env }) {
     const live = st.live;
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
-    const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && !!env.pref && env.pref('set.playerOrientation', 'landscape') === 'portrait';
+    const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
+    syncOrientBtn(st.item);
     if (vodPortrait && env.native) requestAnimationFrame(() => {
       if (!open || !root.classList.contains('vod-portrait')) return;
       const v = q('#pl-video-frame').getBoundingClientRect();
@@ -852,12 +860,40 @@ export function createPlayerUI({ engine, player, env }) {
     });
   }
 
+  // Tam ekran ↔ küçük ekran düğmesi (telefon): küçükte video üstte + altta liste (dikey), tam ekranda yatay kilitli tam ekran.
+  function syncOrientBtn(item) {
+    const b = q('#pl-orient');
+    if (!b) return;
+    const it = item || player.state().item;
+    b.hidden = onTv() || !it || !!it.cast || it.kind === 'recording';
+    const small = orientNow() === 'portrait';
+    b.innerHTML = icon(small ? 'expand' : 'shrink');
+    b.setAttribute('aria-label', small ? 'Tam ekran' : 'Küçük ekran');
+    b.title = small ? 'Tam ekran' : 'Küçük ekran';
+  }
+  function toggleOrient() {
+    const st = player.state();
+    if (!open || !st.item || playerLocked) return;
+    orientOverride = orientNow() === 'portrait' ? 'landscape' : 'portrait';
+    const portrait = orientOverride === 'portrait';
+    const vod = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast;
+    root.classList.toggle('vod-portrait', vod && portrait);
+    engine.setImmersive(true, !portrait).catch(() => {}); // yönü döndürür (yatay kilit ↔ dikey kilit)
+    if (vod && !portrait && engine.kind === 'native') engine.clearRect().catch(() => {}); // küçük ekran yuvası kalkar, görüntü tüm ekranı kaplar
+    syncDock();
+    syncOrientBtn(st.item);
+    render(st); // dikeyde yerel görüntü yuvası yeniden ölçülür
+    hud('aspect', portrait ? 'Küçük ekran' : 'Tam ekran');
+    showUi(false);
+  }
+
   // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
   function enterFullscreen(item) {
     open = true;
-    const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast && !!env.pref && env.pref('set.playerOrientation', 'landscape') === 'portrait';
+    const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
+    syncOrientBtn(item);
     shelfSig = '';
     shelfSeason = null;
     shelfCurSeason = null;
@@ -876,7 +912,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-pip').hidden = engine.kind !== 'native' || onTv(); // TV'de resim içinde resim yok
     applyResize(resizeIdx);
     loadLevels();
-    const landscape = onTv() || (!vodPortrait && (!env.pref || env.pref('set.playerOrientation', 'landscape') !== 'portrait'));
+    const landscape = onTv() || (!vodPortrait && orientNow() !== 'portrait');
     engine.setImmersive(true, landscape).catch(() => {});
     showUi(true);
   }
@@ -1018,6 +1054,7 @@ export function createPlayerUI({ engine, player, env }) {
     sleep.cancel();
     renderSleepLabel();
     root.hidden = true;
+    orientOverride = null; // oturumluk tam ekran/küçük ekran seçimi biter; ayardaki yön geçerli olur
     root.classList.remove('vod-portrait');
     setPortraitSplit(false);
     syncDock(); // open artık false: araç düğmeleri kendi yerine döner
@@ -1142,6 +1179,7 @@ export function createPlayerUI({ engine, player, env }) {
     const st = player.state();
     if (st.item) renderPortraitEpg(st);
   });
+  q('#pl-orient').addEventListener('click', toggleOrient);
   q('#pl-lock').addEventListener('click', () => setPlayerLocked(true));
   q('#pl-unlock').addEventListener('click', () => {
     setPlayerLocked(false);
