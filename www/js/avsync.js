@@ -1,8 +1,8 @@
 // Ses senkronu (dudak uyumu): sesi görüntüye göre geciktirir (+) ya da öne alır (−). Değer ms, her yayında geçerli.
 export const DELAY_MIN = -1000;
 export const DELAY_MAX = 2000;
-export const DELAY_STEP = 50;
-export const DELAY_PRESETS = [-250, -50, 50, 250]; // sayfadaki hızlı adım düğmeleri
+export const DELAY_STEP = 10;
+export const DELAY_PRESETS = [-250, -50, -10, 10, 50, 250]; // sayfadaki hızlı adım düğmeleri
 
 export function clampDelay(v) {
   const n = Math.round(Number(v) / DELAY_STEP) * DELAY_STEP;
