@@ -723,16 +723,28 @@ export function createPlayerUI({ engine, player, env }) {
       const speed = !engine.setSpeed ? '' : live ? '<h4 class="ps-h">Oynatma hızı</h4><p class="hint">Canlı yayında oynatma hızı değiştirilemez.</p>' : `<h4 class="ps-h">Oynatma hızı</h4><div class="ps-chips">${SPEEDS.map((v) => chip(v === sp, `data-sp="${v}"`, v === 1 ? 'Normal (1x)' : v + 'x')).join('')}</div>`;
       return aspect + speed;
     };
+    const behaviorHtml = () => {
+      const mini = !!env.pref('miniOnBack', true);
+      const bg = !!env.pref('backgroundAudio', !!(player.state().item && player.state().item.audio));
+      const miniRow = env.native
+        ? sw('mini', 'Geri çıkınca mini oynatıcı', 'Geri tuşuna bastığında yayın küçük pencerede devam etsin', mini)
+        : '<p class="hint">Mini oynatıcı tercihi Android uygulamasında kullanılabilir.</p>';
+      const bgRow = engine.setBackgroundAudio
+        ? sw('bgAudio', 'Arka planda ses', 'Uygulamadan çıktığında veya ekran kapandığında ses devam etsin', bg)
+        : '<p class="hint">Arka planda ses özelliği Android uygulamasında kullanılabilir.</p>';
+      return `<section class="ps-behavior"><h4 class="ps-h">Geri çıkış davranışı</h4>${miniRow}<h4 class="ps-h">Arka planda oynatma</h4>${bgRow}<p class="ps-note">Mini oynatıcı uygulama içinde görünür kalır. Arka planda ses ise görüntü ekranda değilken ses akışını sürdürür.</p></section>`;
+    };
     const sh = openSheet({
       title: 'Oynatıcı Ayarları',
+      className: 'player-sheet',
       html: '<div class="ps"></div>',
       mount: (body) => {
         const root = body.querySelector('.ps');
         const draw = () => {
           const scroll = root.querySelector('.ps-body');
           const keep = scroll ? scroll.scrollTop : 0;
-          const tabs = [['audio', 'Ses', (t.audio || []).length], ['text', 'Altyazı', (t.text || []).length], ['display', 'Görüntü & Hız', null]];
-          root.innerHTML = `<div class="ps-tabs" role="tablist">${tabs.map(([id, label, n]) => `<button class="ps-tab${id === tab ? ' on' : ''}" role="tab" aria-selected="${id === tab}" data-tab="${id}">${label}${n == null ? '' : ` (${n})`}</button>`).join('')}</div><div class="ps-body">${tab === 'audio' ? audioHtml() : tab === 'text' ? textHtml() : displayHtml()}</div><button class="btn ps-ok" data-ok>TAMAM</button>`;
+          const tabs = [['audio', 'Ses', (t.audio || []).length], ['text', 'Altyazı', (t.text || []).length], ['display', 'Görüntü & Hız', null], ['behavior', 'Davranış', null]];
+          root.innerHTML = `<div class="ps-tabs" role="tablist">${tabs.map(([id, label, n]) => `<button class="ps-tab${id === tab ? ' on' : ''}" role="tab" aria-selected="${id === tab}" data-tab="${id}">${label}${n == null ? '' : ` (${n})`}</button>`).join('')}</div><div class="ps-body">${tab === 'audio' ? audioHtml() : tab === 'text' ? textHtml() : tab === 'display' ? displayHtml() : behaviorHtml()}</div><button class="btn ps-ok" data-ok>TAMAM</button>`;
           root.querySelector('.ps-body').scrollTop = keep;
         };
         root.addEventListener('click', async (e) => {
@@ -764,6 +776,17 @@ export function createPlayerUI({ engine, player, env }) {
             const on = !dialogNow();
             env.setPref('dialog', on);
             Promise.resolve(engine.setDialogBoost(on)).catch(() => toast('Diyalog vurgulama uygulanamadı', 2500));
+          } else if (b.dataset.sw === 'mini') {
+            const on = !env.pref('miniOnBack', true);
+            env.setPref('miniOnBack', on);
+            toast(on ? 'Geri çıkınca mini oynatıcı açılacak' : 'Geri çıkınca oynatma duracak');
+          } else if (b.dataset.sw === 'bgAudio') {
+            const st = player.state();
+            const on = !env.pref('backgroundAudio', !!(st.item && st.item.audio));
+            env.setPref('backgroundAudio', on);
+            if (st.targets) st.targets.forEach((target) => { target.bgAudio = on; target.title = st.item ? st.item.name : ''; });
+            await engine.setBackgroundAudio(on, st.item ? st.item.name : '').catch(() => toast('Arka planda ses ayarı uygulanamadı', 3000));
+            toast(on ? 'Arka planda ses açıldı' : 'Arka planda ses kapatıldı');
           } else if (b.dataset.sk) {
             const v = { ...subNow(), [b.dataset.sk]: b.dataset.sv };
             env.setPref('sub', v);
@@ -933,6 +956,7 @@ export function createPlayerUI({ engine, player, env }) {
     const btn = (d) => `<button class="btn ghost" data-d="${d}">${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`;
     openSheet({
       title: 'Ses senkronu',
+      className: 'player-sheet sync-player-sheet',
       html: `<p class="hint">Ses görüntüden önce geliyorsa + yönüne (geciktir), sonra geliyorsa − yönüne (öne al) ayarlayın. Değer tüm yayınlarda geçerlidir.</p><div class="sy-val" id="sy-val" aria-live="polite"></div><p class="hint" id="sy-desc"></p><div class="sy-btns">${DELAY_PRESETS.map(btn).join('')}</div><button class="btn ghost sy-reset" data-r>Sıfırla</button><p class="hint">Gecikme ayarlıyken Dolby/DTS sesler çözülerek işlenir. İlk ayarda yayın yeniden açılır.</p>`,
       mount: (body) => {
         box = body;
@@ -1200,7 +1224,7 @@ export function createPlayerUI({ engine, player, env }) {
     const current = player.state();
     // Android'de geri çıkışta yayını kapatma: uygulama içinde yüzen mini oynatıcıya küçült.
     // Uygulama arka plana alınırsa Android'in sistem PiP akışı ayrıca çalışır.
-    if (env.native && current.item && !stopping && !onTv()) {
+    if (env.native && current.item && !stopping && !onTv() && env.pref('miniOnBack', true)) {
       setMini(true);
       enterPreview();
       engine.setImmersive(false, false).catch(() => {});
