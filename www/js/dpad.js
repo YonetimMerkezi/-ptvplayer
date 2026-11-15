@@ -159,7 +159,11 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
       // Tam ekran oynatıcı açıkken altında kalan sayfa (ör. film ayrıntısı) kumandanın değildir: yalnız oynatıcının üstüne açılan katmanlar kapsam olur.
       if (!playing || top.classList.contains('over-player')) return top.classList.contains('sheet-back') ? top.querySelector('.sheet') || top : top;
     }
-    if (playing) return doc.querySelector('#pl-ui.show');
+    if (playing) {
+      const chp = doc.querySelector('#pl-chpanel:not([hidden])'); // iki seviyeli kanal paneli açıkken odak yalnız onun içinde gezer
+      if (chp) return chp;
+      return doc.querySelector('#pl-ui.show');
+    }
     return doc.getElementById('app');
   }
 

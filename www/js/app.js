@@ -184,6 +184,10 @@ const pui = createPlayerUI({
     shortEpg: (it) => (S.source ? loadShortEpg(S.source, net, it, 4).catch(() => []) : Promise.resolve([])),
     isFav: (it) => !!S.source && store.isFav(S.source.id, it.id),
     toggleFav: (it) => toggleFav(it),
+    liveCategories: () => playerCategories(),
+    liveItems: (key) => (key === '__all' ? visibleAll('live') : itemsOfGroup('live', key)),
+    unlockCat: (key) => ensureUnlocked('live', key),
+    playLive: (items, index, meta) => playLive(items, index, meta),
     onEpgSheet: (it) => epgSheet(it),
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
@@ -690,6 +694,14 @@ const catOrderMode = () => normalizeCatOrder(store.pref('set.catOrder', DEFAULT_
 const providerGroups = (kind) => (isMv(kind) && catOrderMode() === 'smart' ? smartSort(S.groups[kind]) : S.groups[kind]);
 
 // Varsayılan sıra: klasörler, sonra grupların (Netflix düzeni ya da sağlayıcı) sırası.
+// Oynatıcıdaki kanal paneli için: ana ekranla aynı sıra ve gizleme (Tümü, Son izlenen, klasörler, sağlayıcı grupları); boş ve gizli kategori yok.
+function playerCategories() {
+  const rows = categoryRows('live', { edit: false, filter: '' });
+  return rows
+    .map((c) => (c.locked && S.unlocked.has(catKey('live', c.id)) ? { ...c, locked: false } : c))
+    .filter((c) => c.locked || c.count > 0);
+}
+
 function categoryBase(kind) {
   const prefs = prefsOf(kind);
   return [
@@ -698,7 +710,7 @@ function categoryBase(kind) {
   ];
 }
 
-function categoryRows(kind) {
+function categoryRows(kind, { edit = S.catEdit, filter = S.catFilter } = {}) {
   const prefs = prefsOf(kind);
   const specials = [{ id: '__all', name: 'Tümü', count: visibleAll(kind).length, special: true }];
   if (kind === 'live') specials.push({ id: '__recent', name: 'Son izlenen', count: recentItems(kind).length, special: true });
@@ -713,8 +725,8 @@ function categoryRows(kind) {
     }
   }
   let rows = arrange(categoryBase(kind), prefs).map((r) => ({ ...r, hidden: prefs.hidden.includes(r.id), lockSet: isLocked(prefs, r.id), locked: lockEnabled() && isLocked(prefs, r.id) }));
-  if (!S.catEdit) rows = rows.filter((r) => !r.hidden);
-  const f = fold(S.catFilter);
+  if (!edit) rows = rows.filter((r) => !r.hidden);
+  const f = fold(filter);
   const match = (r) => fold(r.name).includes(f);
   return f ? specials.filter(match).concat(rows.filter(match)) : specials.concat(rows);
 }
@@ -1448,8 +1460,9 @@ async function playLocalMedia() {
 
 // ------------------------------------------------------------------ oynatma
 
-function playLive(items, index) {
-  const ctx = { items, index, play: (it, i) => startPlay(it, { ctx: { ...ctx, index: i } }) };
+function playLive(items, index, meta = {}) {
+  // meta: { catKey, catName } — kanal panelinden seçilen kategori; kanal ↑↓ ve son kanal o kategoride sürer
+  const ctx = { items, index, ...meta, play: (it, i) => startPlay(it, { ctx: { ...ctx, index: i } }) };
   startPlay(items[index], { ctx });
 }
 

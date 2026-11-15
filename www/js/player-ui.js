@@ -1,5 +1,5 @@
 // Oynatıcı ekranı: denetim çubukları, kanal değiştirme, ses/altyazı seçimi, klavye/kumanda.
-import { esc, fmtDuration, fmtClock } from './util.js';
+import { esc, fmtDuration, fmtClock, fold } from './util.js';
 import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
 import { normalizeLabels } from './ptools.js';
@@ -455,6 +455,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-prev').hidden = !hasNav;
     q('#pl-next').hidden = !hasNav;
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
+    q('#pl-chs').hidden = !(live && chpAvailable());
     q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-info-fav').hidden = q('#pl-fav').hidden;
     q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
@@ -1045,6 +1046,7 @@ export function createPlayerUI({ engine, player, env }) {
     stopRequested = false;
     if (!open) return;
     open = false;
+    if (chp.open) chpHide();
     setPlayerLocked(false);
     layerOpen = false;
     hideTip();
@@ -1089,8 +1091,132 @@ export function createPlayerUI({ engine, player, env }) {
     if (env.onClose) env.onClose();
   }
 
+
+  // ---- iki seviyeli kanal paneli: Kanallar ↔ Kategoriler ----
+  // Kanallar: başlıkta kategori adı, solunda ↑ Kategoriler. Kategoriler: ana ekranla aynı sıra, kanal sayısı, çalan kanalın kategorisi vurgulu.
+  // Geri/Esc önce kategorilerden kanallara döner, sonra paneli kapatır (nav katmanları: 'chp' ve 'chp-cats').
+  const chp = { el: null, open: false, level: 'ch', key: null, name: '', items: [], cats: [], filter: '' };
+  let chpCatLayer = false;
+  const chpAvailable = () => !!(env.liveCategories && env.liveItems && ctx && Array.isArray(ctx.items) && player.state().live);
+  const chpCurKey = () => {
+    if (ctx && ctx.catKey) return ctx.catKey;
+    const it = player.state().item;
+    return it && it.group ? 'g:' + it.group : null;
+  };
+  function chpEnsureEl() {
+    if (chp.el) return chp.el;
+    const el = document.createElement('section');
+    el.id = 'pl-chpanel';
+    el.className = 'pl-chpanel';
+    el.hidden = true;
+    el.setAttribute('aria-label', 'Kanal listesi');
+    el.addEventListener('click', chpClick);
+    el.addEventListener('input', (e) => {
+      if (e.target.id !== 'chp-q') return;
+      chp.filter = e.target.value.trim();
+      chpRenderList(false);
+    });
+    root.appendChild(el);
+    chp.el = el;
+    return el;
+  }
+  function chpHide() {
+    chp.open = false;
+    chpCatLayer = false;
+    chp.level = 'ch';
+    chp.filter = '';
+    if (chp.el) chp.el.hidden = true;
+  }
+  const chpDismiss = () => chp.open && popLayer('chp');
+  function chpOpen() {
+    if (!chpAvailable() || chp.open) return;
+    const it = player.state().item;
+    chp.level = 'ch';
+    chp.key = ctx.catKey || null;
+    chp.name = ctx.catName || (it && it.group) || 'Kanallar';
+    chp.items = ctx.items;
+    chp.filter = '';
+    chp.open = true;
+    chpEnsureEl().hidden = false;
+    pushLayer('chp', chpHide);
+    chpRender();
+  }
+  function chpShowCats() {
+    if (!chp.open || chp.level === 'cat') return;
+    chp.cats = env.liveCategories() || [];
+    chp.level = 'cat';
+    chp.filter = '';
+    chpCatLayer = true;
+    pushLayer('chp-cats', () => {
+      if (!chpCatLayer) return;
+      chpCatLayer = false;
+      chp.level = 'ch';
+      chp.filter = '';
+      if (chp.open) chpRender();
+    });
+    chpRender();
+  }
+  async function chpPickCat(id) {
+    const row = chp.cats.find((r) => r.id === id);
+    if (!row) return;
+    if (row.locked && env.unlockCat && !(await env.unlockCat(id))) return; // ana ekrandaki PIN kapısı aynen
+    chp.key = id;
+    chp.name = row.name;
+    chp.items = env.liveItems(id) || [];
+    if (chpCatLayer) popLayer('chp-cats');
+    else {
+      chp.level = 'ch';
+      chpRender();
+    }
+  }
+  function chpPlay(index) {
+    const item = chp.items[index];
+    if (!item) return;
+    if (chp.items === ctx.items && ctx.play) ctx.play(item, index);
+    else if (env.playLive) env.playLive(chp.items, index, { catKey: chp.key, catName: chp.name }); // ctx yeni kategorinin kanallarıyla yenilenir
+    chpDismiss();
+  }
+  function chpRender() {
+    const el = chpEnsureEl();
+    const x = icon('close');
+    if (chp.level === 'cat') {
+      el.innerHTML = `<div class="chp-head"><b>Kategoriler</b><button class="icon-btn" data-chp="close" aria-label="Paneli kapat">${x}</button></div>` +
+        (chp.cats.length > 8 ? `<label class="field chp-q"><input id="chp-q" type="search" placeholder="Kategori ara…" autocomplete="off" value="${esc(chp.filter)}"></label>` : '') +
+        '<div class="chp-list" id="chp-list"></div>';
+    } else {
+      el.innerHTML = `<div class="chp-head"><button class="btn sm ghost chp-up" data-chp="up" aria-label="Kategoriler">${icon('up')}<span>Kategoriler</span></button><b>${esc(chp.name)}</b><button class="icon-btn" data-chp="close" aria-label="Paneli kapat">${x}</button></div><div class="chp-list" id="chp-list"></div>`;
+    }
+    chpRenderList(true);
+  }
+  function chpRenderList(focus) {
+    const list = chp.el && chp.el.querySelector('#chp-list');
+    if (!list) return;
+    let act = null;
+    if (chp.level === 'cat') {
+      const f = fold(chp.filter);
+      const cur = chpCurKey();
+      const rows = f ? chp.cats.filter((r) => fold(r.name).includes(f)) : chp.cats;
+      list.innerHTML = rows.length ? rows.map((r) => `<button class="chp-row${r.id === cur ? ' active' : ''}" data-cat="${esc(r.id)}">${r.locked ? icon('lock') : ''}${r.folder ? icon('folder') : ''}<span class="chp-n">${esc(r.name)}</span><small>${r.count}</small></button>`).join('') : '<p class="hint">Kategori bulunamadı</p>';
+    } else {
+      const curId = player.state().item && player.state().item.id;
+      list.innerHTML = chp.items.length ? chp.items.map((it, i) => `<button class="chp-row${it.id === curId ? ' active' : ''}" data-ch="${i}"><small class="chp-num">${channelNumber(it, i)}</small><span class="chp-n">${esc(it.name)}</span></button>`).join('') : '<p class="hint">Bu kategoride kanal yok</p>';
+    }
+    act = list.querySelector('.chp-row.active');
+    if (act && !(chp.level === 'cat' && chp.filter)) act.scrollIntoView({ block: 'center' }); // çalan kanal / kategori ortalanır
+    if (focus && kbdMode()) (act || list.querySelector('.chp-row') || chp.el.querySelector('button')).focus({ preventScroll: true });
+  }
+  function chpClick(e) {
+    const b = e.target.closest('[data-chp],[data-cat],[data-ch]');
+    if (!b) return;
+    if (b.dataset.chp === 'close') return chpDismiss();
+    if (b.dataset.chp === 'up') return chpShowCats();
+    if (b.dataset.cat != null) return chpPickCat(b.dataset.cat);
+    if (b.dataset.ch != null) chpPlay(Number(b.dataset.ch));
+  }
+
   // ---- olaylar ----
   player.on(render);
+  q('#pl-chs').addEventListener('click', chpOpen);
   q('#pl-season').addEventListener('click', () => {
     const items = ctx && Array.isArray(ctx.items) ? ctx.items : [];
     const seasons = [...new Set(items.map((e) => e.season).filter((x) => x != null))];
@@ -1287,7 +1413,7 @@ export function createPlayerUI({ engine, player, env }) {
     const live = st.live;
     const k = e.key;
     // Oynatıcının üstünde (over-player) alt sayfa/sayfa/şifre ekranı açıkken oklar, Tamam, boşluk ve rakamlar onlarındır (odak içinde gezer); oynatıcı yayına dokunmaz
-    if (open && (k.startsWith('Arrow') || k === 'Enter' || k === ' ' || /^[0-9]$/.test(k)) && (document.getElementById('lock') || document.querySelector('#sheets > .over-player'))) return;
+    if (open && (k.startsWith('Arrow') || k === 'Enter' || k === ' ' || /^[0-9]$/.test(k)) && (document.getElementById('lock') || document.querySelector('#sheets > .over-player') || chp.open)) return;
     if (!open) {
       // önizleme: kanal tuşları listedeki bir sonraki/önceki kanalı önizler (tam ekranı açmaz)
       const step = k === 'ChannelUp' || k === 'MediaTrackNext' ? 1 : k === 'ChannelDown' || k === 'MediaTrackPrevious' ? -1 : 0;
