@@ -140,6 +140,10 @@ public class IptvPlayerPlugin extends Plugin {
     // Altyazı görünümü (Genel ayarlar / oynatıcıdaki altyazı penceresi): {size, color, bgAlpha, bottom, outline}
     private JSObject subStyle = null;
     private NightAudioProcessor nightProc = null;
+    // Diyalog vurgulama (konuşmayı öne çıkarır) ve oynatma hızı (yalnız film/dizi): oynatıcı bırakılınca sıfırlanmaz, her yeni açılışta JS yeniden iletir.
+    private volatile boolean dialogOn = false;
+    private DialogueAudioProcessor dialogProc = null;
+    private volatile float speedReq = 1f;
     private String lastMime = "auto";
     private JSObject lastHeaders = null;
     private String lastBuffer = "high";
@@ -274,9 +278,11 @@ public class IptvPlayerPlugin extends Plugin {
         final String subtitle = call.getData().optString("subUri", "");
         audioDelayMs = clampDelay(call.getData().optInt("audioDelay", audioDelayMs));
         nightLevel = cleanNight(call.getData().optString("night", nightLevel));
+        dialogOn = call.getData().optBoolean("dialog", dialogOn);
         main.post(() -> {
             try {
                 subUri = subtitle;
+                if (!keepRec) speedReq = 1f; // yeni içerik normal hızda başlar; aynı yayına yeniden bağlanırken hız korunur
                 if (audioBg) AudioKeepAliveService.start(getContext(), audioTitle);
                 else if (bgAudio) AudioKeepAliveService.stop(getContext());
                 bgAudio = audioBg;
@@ -387,6 +393,7 @@ public class IptvPlayerPlugin extends Plugin {
         applySubStyle();
 
         player.setMediaItem(mediaItemOf(url, mime, subUri));
+        if (speedReq != 1f) player.setPlaybackSpeed(speedReq);
         if (startMs > 0) player.seekTo(startMs);
         player.setPlayWhenReady(true);
         player.prepare();
@@ -434,20 +441,22 @@ public class IptvPlayerPlugin extends Plugin {
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
         if (compatMode) extractors.setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS | DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES);
         ExoPlayer.Builder eb;
-        if (delay && (audioDelayMs != 0 || NightCompressor.isActive(nightLevel))) {
+        if (delay && (audioDelayMs != 0 || NightCompressor.isActive(nightLevel) || dialogOn)) {
             // Gecikme ve gece modu PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
             // İkisi de takılır; kullanılmayan (0 ms / off) olan sesi olduğu gibi geçirir, böylece oynarken açılıp kapanabilir.
             final AudioDelayProcessor proc = new AudioDelayProcessor(audioDelayMs);
             final NightAudioProcessor night = new NightAudioProcessor(nightLevel);
+            final DialogueAudioProcessor dialog = new DialogueAudioProcessor(dialogOn);
             delayProc = proc;
             nightProc = night;
+            dialogProc = dialog;
             eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()) {
                 @Override
                 protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
                     return new DefaultAudioSink.Builder()
                             .setEnableFloatOutput(enableFloatOutput)
                             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                            .setAudioProcessors(new AudioProcessor[] {proc, night})
+                            .setAudioProcessors(new AudioProcessor[] {proc, night, dialog})
                             .build();
                 }
             }.setEnableDecoderFallback(true).setMediaCodecSelector(selector));
@@ -544,6 +553,7 @@ public class IptvPlayerPlugin extends Plugin {
     private void releasePlayer() {
         delayProc = null;
         nightProc = null;
+        dialogProc = null;
         castActive = false;
         castState = "idle";
         castPos = 0;
@@ -692,6 +702,36 @@ public class IptvPlayerPlugin extends Plugin {
                     startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false);
                 }
             }
+            call.resolve();
+        });
+    }
+
+    // Diyalog vurgulama: açık oynatıcıya anında uygulanır; işlemci takılı değilse oynatıcı yeniden kurulur (canlıda yayın yeniden açılır, filmde konum korunur).
+    @PluginMethod
+    public void setDialogBoost(final PluginCall call) {
+        final boolean on = call.getData().optBoolean("on", false);
+        dialogOn = on;
+        main.post(() -> {
+            if (player != null) {
+                if (dialogProc != null) {
+                    dialogProc.setOn(on);
+                    player.seekTo(player.getCurrentPosition()); // sarma ses hattını boşaltır, yeni durum okunur
+                } else if (on && !curUrl.isEmpty()) {
+                    long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
+                    startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false);
+                }
+            }
+            call.resolve();
+        });
+    }
+
+    // Oynatma hızı (0,25–3x): yalnız film/dizi için kullanılır; ses perdesi korunur.
+    @PluginMethod
+    public void setSpeed(final PluginCall call) {
+        final float sp = (float) Math.max(0.25, Math.min(3.0, call.getData().optDouble("speed", 1.0)));
+        speedReq = sp;
+        main.post(() -> {
+            if (player != null) player.setPlaybackSpeed(sp);
             call.resolve();
         });
     }
