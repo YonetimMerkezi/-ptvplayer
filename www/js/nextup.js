@@ -17,7 +17,10 @@ export const INTRO_OPTIONS = [
 ];
 export const DEFAULT_INTRO = 85;
 
-export const normalizeIntro = (v) => (INTRO_OPTIONS.some(([s]) => s === Number(v)) ? Number(v) : DEFAULT_INTRO);
+export const normalizeIntro = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(240, Math.round(n))) : DEFAULT_INTRO;
+};
 
 const playing = (st) => st.status === 'playing' || st.status === 'buffering' || st.status === 'paused';
 
