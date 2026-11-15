@@ -1711,3 +1711,50 @@ html[data-multi] .set-tile[data-set=motion] .ic { color:var(--tc,var(--accent));
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
 }
+
+
+/* Oynatıcı pencereleri: merkezlenmiş, geniş, kaydırılabilir ve tüm ekran boyutlarında kesilmez. */
+.sheet-back.player-sheet { align-items:center; padding:max(12px,var(--safe-t)) max(12px,var(--safe-r)) max(12px,var(--safe-b)) max(12px,var(--safe-l)); background:rgba(3,7,18,.78); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); }
+.player-sheet .sheet { width:100%; max-width:min(920px,100%); max-height:min(90dvh,780px); height:min(84dvh,740px); border:1px solid color-mix(in srgb,var(--accent) 20%,var(--line)); border-radius:24px; padding-bottom:max(10px,var(--safe-b)); background:linear-gradient(155deg,color-mix(in srgb,var(--surface) 96%,var(--accent) 4%),var(--surface)); box-shadow:0 24px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.035); overflow:hidden; }
+.player-sheet .sheet-h { flex:none; padding:18px 18px 12px 22px; border-bottom:1px solid var(--line); }
+.player-sheet .sheet-h h3 { font-size:1.2rem; font-weight:750; letter-spacing:-.02em; }
+.player-sheet .sheet-h .icon-btn { background:var(--raised); }
+.player-sheet .sheet-b { display:flex; flex:1; min-height:0; overflow:hidden; padding:14px 22px 18px; }
+.player-sheet .ps { display:flex; flex:1; min-height:0; flex-direction:column; gap:12px; }
+.player-sheet .ps-tabs { flex:none; gap:6px; overflow-x:auto; scrollbar-width:none; }
+.player-sheet .ps-tabs::-webkit-scrollbar { display:none; }
+.player-sheet .ps-tab { flex:1 0 auto; min-width:86px; padding:0 12px; border-radius:12px 12px 0 0; }
+.player-sheet .ps-body { flex:1; min-height:0; max-height:none; overflow-y:auto; padding:8px 4px 12px; overscroll-behavior:contain; }
+.player-sheet .ps-ok { flex:none; border-radius:14px; background:var(--accent); color:var(--accent-ink); font-weight:800; }
+.player-sheet .ps-h { margin-top:10px; font-size:1rem; }
+.player-sheet .ps-row, .player-sheet .ps-sw { border:1px solid color-mix(in srgb,var(--line) 70%,transparent); }
+.player-sheet .ps-chip { border-radius:14px; }
+.player-sheet .ps-behavior { max-width:760px; margin:0 auto; }
+.player-sheet .ps-note { padding:12px 14px; margin:14px 0 4px; border-radius:14px; background:var(--accent-soft); color:var(--muted); font-size:.85rem; line-height:1.5; }
+.player-sheet .ps-sw { min-height:72px; }
+.player-sheet .ps-switch { width:56px; height:32px; border-radius:18px; }
+.player-sheet .ps-switch i { width:22px; height:22px; border-radius:50%; }
+.player-sheet .ps-switch.on i { transform:translateX(24px); }
+.sync-player-sheet .sheet-b { overflow-y:auto; display:block; }
+.sync-player-sheet .sy-val { display:grid; place-items:center; min-height:116px; margin:12px 0 4px; border:1px solid var(--line); border-radius:20px; background:radial-gradient(circle at 50% 0%,var(--accent-soft),transparent 72%),var(--raised); font-size:clamp(2.2rem,7vw,3.2rem); letter-spacing:-.04em; }
+.sync-player-sheet #sy-desc { margin:8px 0 18px; }
+.sync-player-sheet .sy-btns { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0; }
+.sync-player-sheet .sy-btns .btn { min-height:56px; border:1px solid var(--line); border-radius:15px; background:var(--raised); font-size:1.05rem; font-weight:750; }
+.sync-player-sheet .sy-reset { min-height:54px; border-radius:15px; background:var(--raised); }
+@media (max-width:520px) {
+  .sheet-back.player-sheet { padding:10px; }
+  .player-sheet .sheet { max-height:92dvh; height:88dvh; border-radius:21px; }
+  .player-sheet .sheet-h { padding:14px 14px 10px 18px; }
+  .player-sheet .sheet-b { padding:10px 14px 14px; }
+  .player-sheet .ps-tabs { gap:2px; }
+  .player-sheet .ps-tab { min-width:74px; padding:0 8px; font-size:.82rem; }
+  .sync-player-sheet .sy-btns { gap:7px; }
+  .sync-player-sheet .sy-btns .btn { min-height:52px; font-size:.95rem; }
+}
+@media (max-height:520px) {
+  .player-sheet .sheet { height:94dvh; max-height:94dvh; }
+  .player-sheet .sheet-h { padding-top:8px; padding-bottom:6px; }
+  .player-sheet .ps { gap:6px; }
+  .player-sheet .ps-ok { min-height:42px; }
+  .sync-player-sheet .sy-val { min-height:72px; margin:4px 0; }
+}
