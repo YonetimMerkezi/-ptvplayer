@@ -1475,10 +1475,10 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 
 
 /* Ek tema paletleri */
-html[data-theme="midnight"] { --bg:#070b16; --surface:#111827; --raised:#1e293b; --line:#334155; --sel:#4338ca; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#26345b 0%,#10182b 52%,#060914 100%); --text:#edf2ff; --muted:#9aa8c2; --accent:#a5b4fc; --accent-ink:#111337; --accent-soft:rgba(165,180,252,.18); --mini:#4f46e5; }
-html[data-theme="ocean"] { --bg:#03131b; --surface:#08232d; --raised:#103846; --line:#155568; --sel:#0e7490; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#0c5363 0%,#082631 54%,#020d13 100%); --text:#e6fbff; --muted:#91b9c4; --accent:#2dd4bf; --accent-ink:#032a2a; --accent-soft:rgba(45,212,191,.18); --mini:#0f766e; }
-html[data-theme="graphite"] { --bg:#101216; --surface:#1b1f25; --raised:#292f38; --line:#414955; --sel:#64748b; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#343b46 0%,#1a1e25 54%,#0b0d10 100%); --text:#f1f5f9; --muted:#aab3bf; --accent:#cbd5e1; --accent-ink:#18202a; --accent-soft:rgba(203,213,225,.16); --mini:#64748b; }
-html[data-theme="rose"] { --bg:#160811; --surface:#29101d; --raised:#3b192a; --line:#633047; --sel:#be185d; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#61233e 0%,#2a1020 54%,#10060c 100%); --text:#fff0f5; --muted:#d0a8b8; --accent:#fb8cae; --accent-ink:#390b20; --accent-soft:rgba(251,140,174,.18); --mini:#a83260; }
+html[data-theme="midnight"] { --bg:#070b16; --surface:#111827; --raised:#1e293b; --line:#334155; --sel:#4338ca; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#26345b 0%,#10182b 52%,#060914 100%); --text:#edf2ff; --muted:#9aa8c2; --accent: #a5b4fc; --accent-ink:#111337; --accent-soft:rgba(165,180,252,.18); --mini:#4f46e5; }
+html[data-theme="ocean"] { --bg:#03131b; --surface:#08232d; --raised:#103846; --line:#155568; --sel:#0e7490; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#0c5363 0%,#082631 54%,#020d13 100%); --text:#e6fbff; --muted:#91b9c4; --accent: #2dd4bf; --accent-ink:#032a2a; --accent-soft:rgba(45,212,191,.18); --mini:#0f766e; }
+html[data-theme="graphite"] { --bg:#101216; --surface:#1b1f25; --raised:#292f38; --line:#414955; --sel:#64748b; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#343b46 0%,#1a1e25 54%,#0b0d10 100%); --text:#f1f5f9; --muted:#aab3bf; --accent: #cbd5e1; --accent-ink:#18202a; --accent-soft:rgba(203,213,225,.16); --mini:#64748b; }
+html[data-theme="rose"] { --bg:#160811; --surface:#29101d; --raised:#3b192a; --line:#633047; --sel:#be185d; --bg-grad:radial-gradient(1000px 520px at 50% -8%,#61233e 0%,#2a1020 54%,#10060c 100%); --text:#fff0f5; --muted:#d0a8b8; --accent: #fb8cae; --accent-ink:#390b20; --accent-soft:rgba(251,140,174,.18); --mini:#a83260; }
 
 /* Son izlenen temizleme kısayolu */
 #btn-clear-recent { color:var(--danger); font-size:1.05rem; line-height:1; }
