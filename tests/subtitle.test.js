@@ -25,7 +25,7 @@ test('subParams: oynatıcı değerleri', () => {
   assert.equal(d.bottom, 0.08);
   assert.equal(d.outline, false);
   const big = subParams({ size: 'xlarge', color: 'yellow', bg: 'none', pos: 'low' });
-  assert.ok(big.size > 0.09 && big.size < 0.092);
+  assert.ok(big.size > 0.093 && big.size < 0.094);
   assert.equal(big.color, '#FFE14D');
   assert.equal(big.bgAlpha, 0);
   assert.equal(big.outline, true); // arka plan yoksa kenar çizgisi açılır

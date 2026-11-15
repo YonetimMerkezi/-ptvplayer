@@ -259,8 +259,8 @@ test('ses senkronu: yöntem köprüde, yalnız ana oynatıcıda ses işlemcisi, 
   assert.match(kaynak, /public void setAudioDelay\(/, 'setAudioDelay Java\'da yok');
   assert.equal(typeof pl.setAudioDelay, 'function', 'setAudioDelay köprüde yok');
   assert.match(kaynak, /optInt\("audioDelay", audioDelayMs\)/, 'play çağrısı gecikmeyi almalı');
-  assert.match(kaynak, /if \(delay && \(audioDelayMs != 0 \|\| NightCompressor\.isActive\(nightLevel\)\)\)/, 'ses işlemcisi yalnız gecikme ya da gece modu varken ve ana oynatıcıda takılmalı');
-  assert.match(kaynak, /new DefaultAudioSink\.Builder\(\)[\s\S]*?setAudioProcessors\(new AudioProcessor\[\] \{proc, night\}\)/, 'gecikme ve gece modu PCM ister: kodlu geçiş açık bırakılmamalı');
+  assert.match(kaynak, /if \(delay && \(audioDelayMs != 0 \|\| NightCompressor\.isActive\(nightLevel\) \|\| dialogOn\)\)/, 'ses işlemcisi yalnız gecikme, gece modu ya da diyalog vurgulama varken ve ana oynatıcıda takılmalı');
+  assert.match(kaynak, /new DefaultAudioSink\.Builder\(\)[\s\S]*?setAudioProcessors\(new AudioProcessor\[\] \{proc, night, dialog\}\)/, 'gecikme ve gece modu PCM ister: kodlu geçiş açık bırakılmamalı');
   assert.match(kaynak, /Math\.max\(-1000, Math\.min\(2000, ms\)\)/, 'gecikme sınırlanmalı');
   assert.match(kaynak, /private void releasePlayer\(\) \{\s*delayProc = null;\s*nightProc = null;/, 'oynatıcı bırakılınca işlemci referansları da bırakılmalı');
   const islemci = oku('AudioDelayProcessor.java');
@@ -501,8 +501,8 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   // aynı yayına yeniden bağlanmada (keepRec) uyumlu mod sürer; başka yayına geçince kapanır
   assert.match(kaynak, /if \(!keepRec\) compat = false;/);
   // iç yeniden kurulumlar canlı bilgisini korur (progressive .ts için Media3 canlı olduğunu bilmez)
-  assert.equal((kaynak.match(/startPlayback\(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false\)/g) || []).length, 3);
-  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 3);
+  assert.equal((kaynak.match(/startPlayback\(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false\)/g) || []).length, 4);
+  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 4);
   // JS'ten gelen bayraklar okunuyor
   assert.match(kaynak, /optBoolean\("live", false\)/);
   assert.match(kaynak, /optBoolean\("compat", false\)/);
