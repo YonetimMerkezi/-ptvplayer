@@ -1670,25 +1670,25 @@ html[data-motion="full"] #view > .home,
 html[data-motion="full"] #view > .page,
 html[data-motion="full"] #view > .vl,
 html[data-motion="full"] #view > .sh,
-html[data-motion="full"] #view > .split { animation: view-enter 220ms cubic-bezier(.2,.75,.25,1) both; }
+html[data-motion="full"] #view > .split { animation: view-enter var(--motion-view-full,220ms) cubic-bezier(.2,.75,.25,1) both; }
 html[data-motion="light"] #view > .home,
 html[data-motion="light"] #view > .page,
 html[data-motion="light"] #view > .vl,
 html[data-motion="light"] #view > .sh,
-html[data-motion="light"] #view > .split { animation: view-fade 110ms ease-out both; }
+html[data-motion="light"] #view > .split { animation: view-fade var(--motion-view-light,110ms) ease-out both; }
 @keyframes view-enter { from { opacity:0; transform:translateX(12px); } to { opacity:1; transform:translateX(0); } }
 @keyframes view-fade { from { opacity:0; } to { opacity:1; } }
-html[data-motion="full"] .pg { animation: page-enter 230ms cubic-bezier(.2,.75,.25,1) both; }
-html[data-motion="full"] .pg.is-closing { animation: page-exit 190ms ease-in both; pointer-events:none; }
+html[data-motion="full"] .pg { animation: page-enter var(--motion-page-full,230ms) cubic-bezier(.2,.75,.25,1) both; }
+html[data-motion="full"] .pg.is-closing { animation: page-exit var(--motion-page-exit,190ms) ease-in both; pointer-events:none; }
 html[data-motion="light"] .pg { animation: view-fade 110ms ease-out both; }
-html[data-motion="light"] .pg.is-closing { animation: fade-away 100ms ease-in both; pointer-events:none; }
+html[data-motion="light"] .pg.is-closing { animation: fade-away var(--motion-sheet-light,100ms) ease-in both; pointer-events:none; }
 @keyframes page-enter { from { opacity:0; transform:translateX(22px); } to { opacity:1; transform:translateX(0); } }
 @keyframes page-exit { to { opacity:0; transform:translateX(-16px); } }
-html[data-motion="full"] .sheet-back { animation: fade 180ms ease-out both; }
-html[data-motion="full"] .sheet { animation: up 220ms cubic-bezier(.2,.75,.25,1) both; }
-html[data-motion="full"] .sheet-back.is-closing { animation: fade-away 190ms ease-in both; pointer-events:none; }
-html[data-motion="full"] .sheet-back.is-closing .sheet { animation: sheet-down 190ms ease-in both; }
-html[data-motion="light"] .sheet-back { animation: view-fade 100ms ease-out both; }
+html[data-motion="full"] .sheet-back { animation: fade var(--motion-sheet-fade,180ms) ease-out both; }
+html[data-motion="full"] .sheet { animation: up var(--motion-sheet-full,220ms) cubic-bezier(.2,.75,.25,1) both; }
+html[data-motion="full"] .sheet-back.is-closing { animation: fade-away var(--motion-sheet-exit,190ms) ease-in both; pointer-events:none; }
+html[data-motion="full"] .sheet-back.is-closing .sheet { animation: sheet-down var(--motion-sheet-exit,190ms) ease-in both; }
+html[data-motion="light"] .sheet-back { animation: view-fade var(--motion-sheet-light,100ms) ease-out both; }
 html[data-motion="light"] .sheet { animation: view-fade 100ms ease-out both; }
 html[data-motion="light"] .sheet-back.is-closing { animation: fade-away 100ms ease-in both; pointer-events:none; }
 html[data-motion="light"] .sheet-back.is-closing .sheet { animation:none; }
@@ -1799,3 +1799,11 @@ html[data-multi] .set-tile[data-set=motion] .ic { color:var(--tc,var(--accent));
   .player-sheet .sheet-h { min-height:48px; }
   .player-sheet .sheet-b { padding-top:6px; padding-bottom:8px; }
 }
+
+/* Elle ayarlanabilir ses senkronu */
+.sync-player-sheet .sy-manual-label { display:block; margin:12px 2px 6px; color:var(--muted); font-size:.82rem; font-weight:700; }
+.sync-player-sheet .sy-range { width:100%; height:34px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.sync-player-sheet .sy-manual { display:flex; align-items:center; gap:8px; max-width:220px; margin:8px auto 12px; }
+.sync-player-sheet .sy-manual input { width:100%; min-width:0; height:48px; padding:0 12px; border:1px solid var(--line); border-radius:13px; background:var(--raised); color:var(--text); text-align:center; font-size:1.15rem; font-weight:750; font-variant-numeric:tabular-nums; }
+.sync-player-sheet .sy-manual span { color:var(--muted); font-size:.9rem; font-weight:700; }
+.sync-player-sheet .sy-manual input:focus-visible, .sync-player-sheet .sy-range:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
