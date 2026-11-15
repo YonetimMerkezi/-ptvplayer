@@ -1758,3 +1758,44 @@ html[data-multi] .set-tile[data-set=motion] .ic { color:var(--tc,var(--accent));
   .player-sheet .ps-ok { min-height:42px; }
   .sync-player-sheet .sy-val { min-height:72px; margin:4px 0; }
 }
+
+/* Oynatıcı ayar pencereleri – taşma ve küçük ekran düzeni */
+.sheet-back.player-sheet { box-sizing:border-box; }
+.player-sheet .sheet { min-height:0; }
+.player-sheet .sheet-h { min-height:64px; }
+.player-sheet .sheet-b { min-width:0; }
+.player-sheet .ps-tabs { position:relative; }
+.player-sheet .ps-tab { white-space:nowrap; }
+.player-sheet .ps-body { scrollbar-width:thin; scrollbar-color:var(--line) transparent; }
+.player-sheet .ps-body::-webkit-scrollbar { width:5px; }
+.player-sheet .ps-body::-webkit-scrollbar-thumb { background:var(--line); border-radius:8px; }
+.player-sheet .ps-sw { align-items:center; border-radius:16px; padding:14px 16px; }
+.player-sheet .ps-sw > span { min-width:0; }
+.player-sheet .ps-sw b { line-height:1.3; }
+.player-sheet .ps-sw small { line-height:1.45; max-width:58ch; }
+.player-sheet .ps-switch { cursor:pointer; box-shadow:inset 0 0 0 1px rgba(255,255,255,.025); }
+.player-sheet .ps-row { border-radius:15px; }
+.player-sheet .ps-ok { min-height:50px; letter-spacing:.02em; }
+.sync-player-sheet .sheet-b { overscroll-behavior:contain; }
+.sync-player-sheet .sy-btns .btn:active,
+.player-sheet .ps-chip:active,
+.player-sheet .ps-row:active { transform:scale(.985); }
+@media (max-width:520px) {
+  .sheet-back.player-sheet { padding: max(8px,var(--safe-t)) 8px max(8px,var(--safe-b)); }
+  .player-sheet .sheet { width:100%; height:min(90dvh,860px); max-height:calc(100dvh - var(--safe-t) - var(--safe-b) - 16px); border-radius:22px; }
+  .player-sheet .sheet-h { min-height:58px; padding:12px 12px 8px 16px; }
+  .player-sheet .sheet-h h3 { font-size:1.08rem; }
+  .player-sheet .sheet-b { padding:10px 12px max(12px,var(--safe-b)); }
+  .player-sheet .ps-tabs { justify-content:flex-start; }
+  .player-sheet .ps-tab { flex:1 0 auto; min-width:0; padding:0 7px; font-size:.8rem; }
+  .player-sheet .ps-sw { gap:10px; padding:12px; }
+  .player-sheet .ps-sw small { font-size:.78rem; }
+  .sync-player-sheet .sheet { height:auto; max-height:calc(100dvh - var(--safe-t) - var(--safe-b) - 16px); }
+  .sync-player-sheet .sheet-b { padding:12px 14px max(16px,var(--safe-b)); }
+  .sync-player-sheet .sy-val { min-height:92px; }
+}
+@media (max-height:520px) {
+  .player-sheet .sheet { height:calc(100dvh - var(--safe-t) - var(--safe-b) - 12px); max-height:none; }
+  .player-sheet .sheet-h { min-height:48px; }
+  .player-sheet .sheet-b { padding-top:6px; padding-bottom:8px; }
+}
