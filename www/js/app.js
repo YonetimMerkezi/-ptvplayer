@@ -2278,7 +2278,18 @@ function applyMotionProfile() {
   const lowPower = root.classList.contains('tv') || (dm > 0 && dm <= 2) || (cores > 0 && cores <= 4);
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const effective = reduced ? 'off' : choice === 'auto' ? (lowPower ? 'light' : 'full') : choice;
+  const speed = [0.5, 0.75, 1, 1.25, 1.5, 2].includes(Number(store.pref('motion.speed', 1))) ? Number(store.pref('motion.speed', 1)) : 1;
+  const duration = (base) => `${Math.max(1, Math.round(base / speed))}ms`;
+  root.style.setProperty('--motion-view-full', duration(220));
+  root.style.setProperty('--motion-view-light', duration(110));
+  root.style.setProperty('--motion-page-full', duration(230));
+  root.style.setProperty('--motion-page-exit', duration(190));
+  root.style.setProperty('--motion-sheet-fade', duration(180));
+  root.style.setProperty('--motion-sheet-full', duration(220));
+  root.style.setProperty('--motion-sheet-exit', duration(190));
+  root.style.setProperty('--motion-sheet-light', duration(100));
   root.dataset.motionChoice = choice;
+  root.dataset.motionSpeed = String(speed);
   root.dataset.motion = effective;
 }
 
@@ -2294,10 +2305,19 @@ function motionSettingsSheet() {
         <option value="light" ${current === 'light' ? 'selected' : ''}>Hafif animasyon</option>
         <option value="off" ${current === 'off' ? 'selected' : ''}>Animasyonsuz</option>
       </select><small id="motion-help">Akıllı mod, TV ve düşük donanımlı cihazlarda hafif geçişleri otomatik seçer.</small></label>
+      <label class="field"><span>Animasyon hızı</span><select id="motion-speed">
+        ${[[0.5,'Çok yavaş (0,5×)'],[0.75,'Yavaş (0,75×)'],[1,'Normal (1×)'],[1.25,'Biraz hızlı (1,25×)'],[1.5,'Hızlı (1,5×)'],[2,'Çok hızlı (2×)']].map(([v,label]) => `<option value="${v}" ${Number(store.pref('motion.speed',1)) === v ? 'selected' : ''}>${label}</option>`).join('')}
+      </select><small>Animasyon süresini değiştirir; profil seçimiyle birlikte çalışır.</small></label>
       <div class="motion-preview"><span class="motion-preview-dot"></span><div><b>Sayfa geçişleri</b><small>Menüler ve açılır pencereler bu tercihe göre hareket eder.</small></div></div>`,
     mount: (body) => {
       const select = $('#motion-profile', body);
+      const speedSelect = $('#motion-speed', body);
       const help = $('#motion-help', body);
+      speedSelect.addEventListener('change', () => {
+        store.setPref('motion.speed', Number(speedSelect.value));
+        applyMotionProfile();
+        toast('Animasyon hızı kaydedildi');
+      });
       select.addEventListener('change', () => {
         store.setPref('motion.profile', select.value);
         applyMotionProfile();
@@ -3847,7 +3867,7 @@ function playerSheet() {
       `<div class="sel-row"><span>Telefon oynatıcı yönü<small>Dikey: telefon dik tutulurken oynatıcı açılır. TV modu her zaman yatay kalır</small></span><select id="g-porient">${optionsHtml([['portrait','Dikey'],['landscape','Yatay']], store.pref('set.playerOrientation','landscape'))}</select></div>` +
       (nativePlugin ? chkRow('autoFrameRate', 'Otomatik kare hızı (AFR)', 'Destekleyen Android cihaz ve ekranlarda yayın kare hızına uyum sağlar') : '') +
       chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +
-      `<div class="sel-row"><span>Intro atla<small>Dizi bölümünün başında düğme çıkar; seçilen süre kadar ileri sarar</small></span><select id="g-intro">${optionsHtml(INTRO_OPTIONS, normalizeIntro(store.pref('set.intro', DEFAULT_INTRO)))}</select></div>` +
+      `<div class="sel-row"><span>Intro atla süresi<small>Dizi bölümünde atlama düğmesinin ileri saracağı süre (0–240 saniye; 0 kapalı)</small></span><input id="g-intro" type="number" min="0" max="240" step="1" inputmode="numeric" value="${normalizeIntro(store.pref('set.intro', DEFAULT_INTRO))}" aria-label="Intro atlama süresi saniye"></div>` +
       (nativePlugin
         ? `<div class="sel-row"><span>Tercih edilen ses dili<small>Birden çok ses izi olan film ve yayınlarda açılışta bu dil seçilir</small></span><select id="g-alang">${optionsHtml(AUDIO_LANGS, normalizeAudioLang(store.pref('set.audioLang', 'auto')))}</select></div>` +
           `<div class="sel-row"><span>Altyazı dili<small>Açılışta bu dilde altyazı açılır; Kapalı seçilirse hiç açılmaz</small></span><select id="g-slang">${optionsHtml(SUB_LANGS, normalizeSubLang(store.pref('set.subLang', 'auto')))}</select></div>` +
@@ -3898,7 +3918,12 @@ function playerSheet() {
         store.setPref('set.liveFmt', normalizeLiveFmt(e.target.value));
         if (e.target.value !== 'auto') store.setPref(LIVE_FMT_KEY, {}); // açık seçim, kanal başına hatırlananların önüne geçsin
       });
-      $('#g-intro', body).addEventListener('change', (e) => store.setPref('set.intro', normalizeIntro(e.target.value)));
+      $('#g-intro', body).addEventListener('change', (e) => {
+        const value = normalizeIntro(e.target.value);
+        e.target.value = String(value);
+        store.setPref('set.intro', value);
+        toast(value ? `Intro atlama süresi: ${value} sn` : 'Intro atlama kapatıldı');
+      });
       const gsub = $('#g-sub', body);
       if (gsub) gsub.addEventListener('click', () => pui.subtitleSheet(() => ($('#g-sub-s', body).textContent = subLabel(store.pref('sub', DEFAULT_SUB)))));
     },
