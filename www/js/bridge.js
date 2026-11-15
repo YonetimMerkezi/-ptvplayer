@@ -58,6 +58,7 @@ export function nativePlugin(name, win = globalThis.window) {
     dlResumeAll: call('dlResumeAll'),
     dlRemove: call('dlRemove'),
     setAudioDelay: call('setAudioDelay'),
+    setBackgroundAudio: call('setBackgroundAudio'),
     setNightMode: call('setNightMode'),
     setDecoder: call('setDecoder'),
     setAutoFrameRate: call('setAutoFrameRate'),
