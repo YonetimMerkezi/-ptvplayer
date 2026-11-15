@@ -2,6 +2,20 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 115,
+    title: 'Medya merkezi: cihaz kütüphanesi, ağ paylaşımları, müzik ve fotoğraf',
+    items: [
+      'Cihazdan oynat artık Medya merkezi: telefondaki ve harici kart / USB bellekteki klasörleri ekleyip küçük resimlerle klasör klasör gezebilirsin (depolama izni gerekmez)',
+      'Birden fazla video ya da şarkı seçince ya da bir klasörde Tümünü oynat deyince dosyalar ada göre doğal sırayla arka arkaya oynar',
+      'Yerel videoların izleme konumu kaydedilir; aynı dosyayı yeniden açınca kaldığın yerden devam eder',
+      'Aynı klasördeki .srt / .vtt altyazı videoyla otomatik yüklenir; Türkçe (Windows-1254) altyazılar da doğru görünür',
+      'Cihaz klasörlerinde ada göre arama (Türkçe harf duyarsız) ve Son eklenenler listesi',
+      'WebDAV, SMB (Windows paylaşımı) ve DLNA / UPnP medya sunucularındaki videolara, müziğe ve fotoğraflara erişim',
+      'Müzik ekran kapalıyken de çalar; fotoğraflar kaydırmalı galeri ve slayt gösterisiyle açılır',
+      'Klasörler uygulama şifresiyle kilitlenebilir; kilitli klasörlerin dosyaları arama ve Son eklenenler listesinde görünmez',
+    ],
+  },
+  {
     id: 114,
     title: 'Cihazdaki medya dosyalarını uygulamada oynatma',
     items: [

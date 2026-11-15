@@ -65,6 +65,8 @@ import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versi
 import { recommendMovies } from './movie-recommendations.js';
 import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
+import { LOCAL_SRC, buildPlaylist } from './local-media.js';
+import { createLibrary } from './library-ui.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
@@ -229,6 +231,10 @@ $('#mini-player-close').addEventListener('click', async (e) => {
 
 // İzleme ilerlemesi kaydı (bu cihazda ya da TV'ye gönderilen oynatmada telefon yoklamasından).
 function saveProgress(item, ep, pos, dur) {
+  if (item && item.localMedia) { // cihazdaki dosya: kaynak seçili olmasa da kaldığı yer kaydedilir
+    store.setProgress(LOCAL_SRC, { id: item.id, kind: item.kind, name: item.name, logo: '' }, pos, dur);
+    return;
+  }
   if (!S.source) return;
   const e = ep
     ? { id: ep.id, kind: 'episode', name: `${item.name} · ${ep.label}`, logo: item.logo, parent: item.id }
@@ -238,7 +244,9 @@ function saveProgress(item, ep, pos, dur) {
 }
 
 player.onProgress((pos, dur, st) => {
-  if (!S.source || st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
+  if (st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
+  if (st.item.localMedia) return saveProgress(st.item, null, pos, dur);
+  if (!S.source) return;
   saveProgress(st.item, st.ep, pos, dur);
   if (Date.now() - wnLast >= WN_EVERY_MS) {
     wnLast = Date.now(); // oynarken TV satırı en çok dakikada bir güncellenir
@@ -1436,6 +1444,27 @@ qEl.addEventListener(
 );
 
 
+// Medya merkezi: cihaz klasörleri, ağ paylaşımları, müzik, fotoğraf (library-ui.js). Şifre işlevleri çağrı anında okunur.
+let library = null;
+function openLibrary() {
+  if (!library) {
+    library = createLibrary({
+      plugin: nativePlugin,
+      store,
+      openPage,
+      openSheet,
+      toast,
+      icon,
+      startPlay: (item, opts) => startPlay(item, opts),
+      askPin: (title, hint) => askPin(title, hint),
+      lockEnabled: () => lockEnabled(),
+      createPin: () => createPin(),
+      pickFiles: () => playLocalMedia(),
+    });
+  }
+  library.open();
+}
+
 async function playLocalMedia() {
   if (!nativePlugin || typeof nativePlugin.pickLocalMedia !== 'function') {
     toast('Cihazdan medya seçimi Android uygulamasında kullanılabilir');
@@ -1443,16 +1472,20 @@ async function playLocalMedia() {
   }
   try {
     const picked = await nativePlugin.pickLocalMedia();
-    if (!picked || !picked.uri) return;
-    const item = {
-      id: 'local-' + Date.now(),
-      name: picked.name || 'Cihaz medyası',
-      kind: 'movie',
-      mime: picked.mime || 'auto',
-      url: picked.uri,
-      localMedia: true,
+    // Yeni köprü seçilen dosyaları items dizisinde döndürür; eski sürüm tek {uri, name, mime} verir.
+    const rows = picked && Array.isArray(picked.items) && picked.items.length ? picked.items : picked && picked.uri ? [picked] : [];
+    const items = buildPlaylist(rows);
+    if (!items.length) return;
+    const first = rows.length === 1 ? items[0] : items.find((x) => x.url === rows[0].uri) || items[0];
+    const ctx = {
+      items,
+      index: items.indexOf(first),
+      autoNext: items.length > 1,
+      title: 'Sıradaki videolar',
+      nextLabel: 'Sıradaki video',
+      play: (it, i) => startPlay(it, { local: it.url, ctx: { ...ctx, index: i } }),
     };
-    startPlay(item, { local: picked.uri, ctx: { items: [], index: 0 } });
+    startPlay(first, { local: first.url, ctx });
   } catch (e) {
     const message = String(e && (e.message || e) || '');
     if (!/cancel|iptal|dosya seçilmedi/i.test(message)) toast('Medya açılamadı: ' + message);
@@ -1470,15 +1503,15 @@ function playLive(items, index, meta = {}) {
 function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const isRec = item.kind === 'recording'; // cihazdaki kayıt: yerel dosya, kaynaktan bağımsız
   const localUrl = local || (ep && ep.dlUrl) || ''; // indirilmiş film/bölüm: ağsız yerel dosyadan oynar, ilerleme yine kaynağın öğesine yazılır
-  const targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto' }] : targetsOf(item, ep);
+  const targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '', bgAudio: !!item.audio, title: item.name }] : targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
-  if (item.kind !== 'series' && !isRec) store.pushRecent(sid(), item);
+  if (item.kind !== 'series' && !isRec && !item.localMedia) store.pushRecent(sid(), item);
   // Film nereden açılırsa açılsın (son izlenenler, bağlantı, indirilenler) oynatıcının altında önerilen filmler listesi olsun
   if (!ctx && item.kind === 'movie' && !isRec) ctx = movieCtx(item);
   let at = startAt;
   if (isRec) at = 0;
   else if (at == null) {
-    const p = store.progress(sid(), ep ? ep.id : item.id);
+    const p = store.progress(item.localMedia ? LOCAL_SRC : sid(), ep ? ep.id : item.id);
     at = p && p.pos > 0 ? Math.max(0, p.pos - 3000) : 0;
   }
   pui.open(item, targets, { ep, startAt: item.kind === 'live' ? 0 : at, ctx });
@@ -2421,7 +2454,7 @@ function renderHome(v) {
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
       <button class="tile mini t-sport" data-go="sport">${miniIc('ball')}<b>Spor</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
-      ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Cihazdan oynat</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
+      ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
@@ -2446,7 +2479,7 @@ function goTo(go) {
     return showRecent();
   }
   if (kidActive() && (go === 'rec' || go === 'multi' || go === 'dl')) return; // çocuk modunda kayıtlar, indirilenler ve çoklu ekran yok
-  if (go === 'local') return playLocalMedia();
+  if (go === 'local') return openLibrary();
   if (go === 'rec') return recordingsSheet();
   if (go === 'dl') return downloadsSheet();
   if (go === 'guide') return guidePage();

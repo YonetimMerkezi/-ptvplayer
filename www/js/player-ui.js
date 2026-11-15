@@ -78,6 +78,16 @@ export function createPlayerUI({ engine, player, env }) {
   let autoDir = null;
   let autoFor = null;
   const autoOrientOn = () => !!env.autoOrient && env.autoOrient() && !onTv();
+  // Ekran dönemiyorsa (TV, projeksiyon) ya da kullanıcı yatayı seçtiyse dikey video uzatılmaz: kayıtlı "uzat/doldur" tercihi bu video için yok sayılır, şeritli sığdırma kullanılır.
+  let fitFor = null;
+  function fitPortraitVideo(st) {
+    if (!open || !st.item || st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
+    if (!(st.vh > st.vw) || (!orientOverride && autoDir === 'portrait')) return;
+    const key = st.item.id + '|' + (st.ep ? st.ep.id : '');
+    if (fitFor === key) return;
+    fitFor = key;
+    if (RESIZE[resizeIdx][0] !== 'fit') engine.setResize('fit').catch(() => {});
+  }
   function autoOrient(st) {
     if (!open || !st.item || orientOverride || playerLocked || !autoOrientOn()) return;
     if (st.item.kind === 'live' || st.item.kind === 'recording' || st.item.cast) return;
@@ -88,6 +98,7 @@ export function createPlayerUI({ engine, player, env }) {
     const dir = st.vh > st.vw ? 'portrait' : 'landscape';
     if (dir === autoDir && !root.classList.contains('vod-portrait')) return;
     autoDir = dir;
+    hud('aspect', dir === 'portrait' ? 'Dikey video' : 'Yatay video'); // ekranda görünür: yön kendiliğinden seçildi
     root.classList.remove('vod-portrait'); // otomatik yön hep tam ekrandır (küçük ekran yerleşimi değil)
     engine.setImmersive(true, dir === 'landscape').catch(() => {}); // yatay kilit ↔ dikey kilit
     if (engine.kind === 'native') engine.clearRect().catch(() => {}); // küçük ekran yuvası kalkar, görüntü tüm ekranı kaplar
@@ -403,7 +414,7 @@ export function createPlayerUI({ engine, player, env }) {
       return;
     }
     shelf.hidden = false;
-    title.textContent = isSeries ? 'Bölümler' : 'Önerilen filmler';
+    title.textContent = ctx.title || (isSeries ? 'Bölümler' : 'Önerilen filmler');
     // Durum her güncellendiğinde (saniyede birkaç kez) yeniden çizilirse liste kaydırma konumunu yitirir; yalnız içerik değişince çizilir.
     const currentId = st.ep && st.ep.id || st.item.id;
     const seasons = isSeries ? [...new Set(items.map((e) => e.season).filter((x) => x != null))] : [];
@@ -456,6 +467,7 @@ export function createPlayerUI({ engine, player, env }) {
       if (v.width > 0 && v.height > 0) engine.setRect({ x: v.left, y: v.top, w: v.width, h: v.height }).catch(() => {});
     });
     autoOrient(st);
+    fitPortraitVideo(st);
     renderVodShelf(st);
     q('#pl-prog').classList.toggle('live', live);
     const pausing = st.status === 'playing' || st.status === 'buffering' || st.status === 'loading';
@@ -534,7 +546,7 @@ export function createPlayerUI({ engine, player, env }) {
     const nxt = ctx.items[ctx.index + 1];
     q('#nu-name').textContent = (nxt && (nxt.label || nxt.title || nxt.name)) || '';
     // Film önerisi kendiliğinden başlamaz: sayaç yok, düğme yalnız "Oynat"
-    q('#nu-h').textContent = r.movie ? 'Sıradaki film önerisi' : 'Sonraki bölüm';
+    q('#nu-h').textContent = r.movie ? 'Sıradaki film önerisi' : ctx.nextLabel || 'Sonraki bölüm';
     q('#nu-l').textContent = r.movie ? 'Oynat' : 'Şimdi oynat · ';
     q('#nu-s').textContent = r.movie ? '' : r.secs + ' sn';
     q('#nu-no').textContent = r.movie ? 'Kapat' : 'İptal';
@@ -950,6 +962,7 @@ export function createPlayerUI({ engine, player, env }) {
     ctx = opts.ctx || null;
     autoDir = null;
     autoFor = null;
+    fitFor = null;
     leavePreview();
     enterFullscreen(item);
     player.open(item, targets, { ep: opts.ep || null, startAt: opts.startAt || 0 });
@@ -1088,6 +1101,7 @@ export function createPlayerUI({ engine, player, env }) {
     root.hidden = true;
     autoDir = null;
     autoFor = null;
+    fitFor = null;
     orientOverride = null; // oturumluk tam ekran/küçük ekran seçimi biter; ayardaki yön geçerli olur
     root.classList.remove('vod-portrait');
     setPortraitSplit(false);

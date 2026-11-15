@@ -45,7 +45,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     // opts.compat: uyumlu mod (yazılım çözücü başta, geniş TS ayrıştırma). target.live: canlı yayın (progressive .ts'te Media3 canlı olduğunu bilmez;
     // tampon eşikleri ve yeniden kurulumda konum buna göre seçilir).
     load: (target, startMs = 0, keepRecording = false, opts = null) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat) }),
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat), bgAudio: !!target.bgAudio, title: target.title || '', subUri: target.subUri || '' }),
     // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
     rec: {
       start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),
