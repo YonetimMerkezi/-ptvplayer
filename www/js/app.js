@@ -3759,7 +3759,7 @@ function themeSheet() {
         const card = e.target.closest('[data-theme-choice]');
         if (!card) return;
         selected = card.dataset.themeChoice;
-        $('.theme-choice', body).forEach((x) => {
+        body.querySelectorAll('.theme-choice').forEach((x) => {
           const active = x.dataset.themeChoice === selected;
           x.classList.toggle('on', active);
           x.setAttribute('aria-pressed', String(active));
