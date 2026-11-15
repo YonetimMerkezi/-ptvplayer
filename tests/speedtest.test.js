@@ -23,7 +23,7 @@ test('hız testi ping, indirme ve yükleme sonuçlarını üretir', async () => 
   });
   assert.equal(result.pingMs, 100);
   assert.equal(result.downloadMbps, 0.6);
-  assert.equal(result.uploadMbps, 0.08);
+  assert.equal(result.uploadMbps, 0.1);
   assert.equal(result.server, 'Cloudflare');
   assert.equal(calls.filter((x) => x.url.includes('__down?bytes=0')).length, 2);
   assert.ok(calls.some((x) => x.method === 'POST'));
