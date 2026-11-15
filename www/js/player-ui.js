@@ -957,7 +957,7 @@ export function createPlayerUI({ engine, player, env }) {
     openSheet({
       title: 'Ses senkronu',
       className: 'player-sheet sync-player-sheet',
-      html: `<p class="hint">Ses görüntüden önce geliyorsa + yönüne (geciktir), sonra geliyorsa − yönüne (öne al) ayarlayın. Değer tüm yayınlarda geçerlidir.</p><div class="sy-val" id="sy-val" aria-live="polite"></div><p class="hint" id="sy-desc"></p><div class="sy-btns">${DELAY_PRESETS.map(btn).join('')}</div><button class="btn ghost sy-reset" data-r>Sıfırla</button><p class="hint">Gecikme ayarlıyken Dolby/DTS sesler çözülerek işlenir. İlk ayarda yayın yeniden açılır.</p>`,
+      html: `<p class="hint">Ses görüntüden önce geliyorsa + yönüne (geciktir), sonra geliyorsa − yönüne (öne al) ayarlayın. Değer tüm yayınlarda geçerlidir.</p><div class="sy-val" id="sy-val" aria-live="polite"></div><p class="hint" id="sy-desc"></p><label class="sy-manual-label" for="sy-range">Hassas ayar · 10 ms adım</label><input id="sy-range" class="sy-range" type="range" min="-1000" max="2000" step="10" value="${audioDelay()}"><div class="sy-manual"><input id="sy-manual" type="number" min="-1000" max="2000" step="10" value="${audioDelay()}" inputmode="numeric" aria-label="Ses senkronu milisaniye"><span>ms</span></div><div class="sy-btns">${DELAY_PRESETS.map(btn).join('')}</div><button class="btn ghost sy-reset" data-r>Sıfırla</button><p class="hint">Eksi değer sesi öne alır, artı değer geciktirir. Hassas aralık: −1000 ile +2000 ms.</p><p class="hint">Gecikme ayarlıyken Dolby/DTS sesler çözülerek işlenir. İlk ayarda yayın yeniden açılır.</p>`,
       mount: (body) => {
         box = body;
         body.addEventListener('click', (e) => {
@@ -965,12 +965,23 @@ export function createPlayerUI({ engine, player, env }) {
           if (d) return set(stepDelay(audioDelay(), Number(d.dataset.d)));
           if (e.target.closest('[data-r]')) set(0);
         });
+        const range = $('#sy-range', body);
+        const manual = $('#sy-manual', body);
+        range.addEventListener('input', () => set(Number(range.value)));
+        manual.addEventListener('change', () => {
+          const value = Number(manual.value);
+          if (manual.value.trim() !== '' && Number.isFinite(value)) set(value);
+          else draw();
+        });
         draw();
       },
     });
     function draw() {
-      $('#sy-val', box).textContent = fmtDelay(audioDelay());
-      $('#sy-desc', box).textContent = describeDelay(audioDelay());
+      const value = audioDelay();
+      $('#sy-val', box).textContent = fmtDelay(value);
+      $('#sy-desc', box).textContent = describeDelay(value);
+      $('#sy-range', box).value = String(value);
+      $('#sy-manual', box).value = String(value);
     }
   }
 
