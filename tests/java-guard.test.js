@@ -502,7 +502,7 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   assert.match(kaynak, /if \(!keepRec\) compat = false;/);
   // iç yeniden kurulumlar canlı bilgisini korur (progressive .ts için Media3 canlı olduğunu bilmez)
   assert.equal((kaynak.match(/startPlayback\(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false\)/g) || []).length, 4);
-  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 4);
+  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 5);
   // JS'ten gelen bayraklar okunuyor
   assert.match(kaynak, /optBoolean\("live", false\)/);
   assert.match(kaynak, /optBoolean\("compat", false\)/);
@@ -511,7 +511,7 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
 test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yayın bilgisine ve hata olaylarına konur', () => {
   // çözücü adı Media3'ten (ana oynatıcıya da çoklu ekrandaki gibi dinleyici takılır) ve her oynatıcı kurulumunda sıfırlanır
   assert.match(kaynak, /private volatile String videoDecoder = "";/);
-  assert.match(kaynak, /videoDecoder = "";\s*player = buildExo\(headers, true, loadControlFor\((?:buffer|effectiveBuffer), live\), true, true, compat\);\s*player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
+  assert.match(kaynak, /videoDecoder = "";\s*player = buildExo\(headers, true, loadControlFor\((?:buffer|effectiveBuffer), live\), true, true, compat\);\s*(?:applyVideoLimits\(player\);\s*)?player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
   // hata olayı: HTTP kodu + neden zinciri + çözücü; donma olayı: çizilen kare sayısı + çözücü; getStats: çözücü
   assert.match(kaynak, /o\.put\("cause", causeOf\(error\)\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
   assert.match(kaynak, /o\.put\("message", "VIDEO_FROZEN"\);[\s\S]*?o\.put\("rendered", r\);[\s\S]*?o\.put\("decoder", videoDecoder\);/);
