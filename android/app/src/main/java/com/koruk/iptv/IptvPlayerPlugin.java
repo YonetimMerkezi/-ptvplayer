@@ -371,6 +371,8 @@ public class IptvPlayerPlugin extends Plugin {
             result.put("mode", performanceMode);
             result.put("active", activePerformance);
             result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+        result.put("maxMultiScreens", maxMultiScreens());
+            result.put("maxMultiScreens", maxMultiScreens());
             call.resolve(result);
             notifyListeners("performanceProfile", result);
         });
@@ -1068,6 +1070,11 @@ public class IptvPlayerPlugin extends Plugin {
         final double[] r = rectOf(call);
         main.post(() -> {
             try {
+                activePerformance = resolvePerformanceProfile(performanceMode);
+                if (!slots.containsKey(id) && slots.size() >= maxMultiScreens()) {
+                    call.reject("Bu cihazın " + activePerformance + " performans profili en fazla " + maxMultiScreens() + " eşzamanlı ekranı destekliyor. Daha fazla ekran için performans profilini yükseltebilirsiniz.");
+                    return;
+                }
                 startSlot(id, url, mime, headers, r, muted, fill);
                 call.resolve();
             } catch (Exception e) {
@@ -1080,6 +1087,13 @@ public class IptvPlayerPlugin extends Plugin {
         double w = call.getData().optDouble("w", 0);
         double h = call.getData().optDouble("h", 0);
         return (w > 0 && h > 0) ? new double[] {call.getData().optDouble("x", 0), call.getData().optDouble("y", 0), w, h} : null;
+    }
+
+    // Çoklu ekran sınırı: düşük cihazda çözücü/RAM baskısını önle; yüksek profilde en çok 9 kutu.
+    private int maxMultiScreens() {
+        if ("low".equals(activePerformance)) return 2;
+        if ("balanced".equals(activePerformance)) return 4;
+        return 9;
     }
 
     private void startSlot(final int id, String url, String mime, JSObject headers, double[] r, boolean muted, boolean fill) {
@@ -1097,9 +1111,9 @@ public class IptvPlayerPlugin extends Plugin {
         parent.addView(s.view, 0); // WebView'in altında
         getBridge().getWebView().setBackgroundColor(Color.TRANSPARENT);
         placeView(s.view, r);
-        s.player = buildExo(headers, false, new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(5000, 20000, 1500, 3000)
-                .build(), false, false, false);
+        String slotBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : "high";
+        s.player = buildExo(headers, false, loadControlFor(slotBuffer, true), false, false, false);
+        applyVideoLimits(s.player);
         s.player.setVolume(muted ? 0f : 1f);
         s.player.setWakeMode(C.WAKE_MODE_NETWORK);
         // Çoklu video yüzeylerinde hazırlık sırasında son kareyi koru ve boşta kalan shutter'ı saydam tut.
