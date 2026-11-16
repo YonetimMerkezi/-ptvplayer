@@ -84,6 +84,11 @@ test('çoklu ekran: her kutu ayrı oynatıcı, yalnız seçili kutu sesli, sesli
   assert.match(kaynak, /C\.TRACK_TYPE_VIDEO[\s\S]*?"video"/, 'görüntü izi bildirilmiyor');
   assert.match(kaynak, /onVideoDecoderInitialized/, 'çözücü adı alınmıyor');
   assert.match(kaynak, /setViewportSize\(/, 'kutu için çözünürlük sınırı yok');
+  assert.match(kaynak, /private int maxMultiScreens\(\)[\s\S]*?"low"\.equals\(activePerformance\)\) return 2;[\s\S]*?"balanced"\.equals\(activePerformance\)\) return 4;[\s\S]*?return 9;/, 'profil bazlı çoklu ekran sınırı yok');
+  assert.match(kaynak, /slots\.size\(\) >= maxMultiScreens\(\)/, 'sınır aşılınca yeni oynatıcı açılmamalı');
+  assert.match(kaynak, /loadControlFor\(slotBuffer, true\)/, 'çoklu ekran tamponu performans profiline uymalı');
+  assert.match(kaynak, /applyVideoLimits\(s\.player\)/, 'çoklu ekran çözünürlüğü performans profiline uymalı');
+  assert.match(kaynak, /result\.put\("maxMultiScreens", maxMultiScreens\(\)\)/, 'tanılamada desteklenen ekran sayısı gösterilmeli');
   assert.match(kaynak, /setEnableDecoderFallback\(true\)/, 'yedek çözücü kapalı');
   // eklenti kapanınca tüm kutu oynatıcıları bırakılmalı (sızıntı olmasın)
   assert.match(kaynak, /handleOnDestroy[\s\S]*?stopAllSlots\(\)/);
