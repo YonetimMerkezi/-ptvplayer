@@ -148,7 +148,7 @@ test('scrollStep: yatay kategori/sekme şeritleri de kumandayla kontrollü kayar
   assert.equal(scrollStep(sc, 'right'), true);
   assert.equal(sc.scrollLeft, 200, 'yatay adım yarım ekran');
   sc.scrollLeft = 800;
-  assert.equal(scrollStep(sc, 'right'), true);
+  assert.equal(scrollStep(sc, 'right'), false, 'en sağda daha fazla kaydırılmaz');
   assert.equal(sc.scrollLeft, 800, 'son noktayı aşmaz');
   assert.equal(scrollStep(sc, 'left'), true);
   assert.equal(sc.scrollLeft, 600);
