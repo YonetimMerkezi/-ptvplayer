@@ -1,5 +1,6 @@
 // Spor (futbol) ekranı: gün/lig seçimi, maç listesi, canlı skor (dakikada bir tazelenir), maçın kanalına tek dokunuşla geçiş.
 // Mantık sports.js'te; burada yalnız ekran var. Uygulama ilk açıldığında yüklenmez (ana ekrandan "Spor"a basınca yüklenir).
+import { needPro, hasPro } from './membership.js';
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { MATCH_LEADS, MATCH_LEAD_DEFAULT, leadLabel, matchPlanId, canRemind, makeMatchPlan } from './plan.js';
@@ -270,6 +271,7 @@ export function openSports(env) {
       toast('Bu maç başladı ya da bitti; hatırlatıcı kurulamaz', 2600);
       return null;
     }
+    if (!needPro('remind')) return null;
     const plan = rem.set(makeMatchPlan(m, { lead, ...remindInfo(m) }));
     try {
       store.setPref(LEAD_KEY, lead);
@@ -300,7 +302,7 @@ export function openSports(env) {
     return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
   };
   function autoRemind() {
-    if (!rem || !favs.length || !matches.length) return 0;
+    if (!rem || !favs.length || !matches.length || !hasPro('teamfollow')) return 0;
     let planned = [];
     try {
       planned = (rem.list() || []).map((x) => x.id);
@@ -331,6 +333,7 @@ export function openSports(env) {
 
   // Takımı takip eder / bırakır; döner: takip ediliyor mu
   function toggleTeam(side) {
+    if (!isFavSide(favs, side) && !needPro('teamfollow')) return false; // takibi bırakmak her zaman serbest
     const r = toggleFav(favs, side);
     if (r.full) {
       toast('En fazla 30 takım takip edilebilir', 2600);
@@ -756,6 +759,7 @@ export function openSports(env) {
   // Maça dokununca ayrıntı ekranı açılır; yayın kanalları (rehber, yayın akışı) o ekrandadır.
   // Maç ayrıntısı (olaylar, kadro, yayın kanalları): ayrı modül, ilk dokunuşta yüklenir.
   async function openDetail(m) {
+    if (!needPro('sportdetail')) return;
     try {
       const mod = await import('./sports-detail-ui.js');
       mod.openMatchDetail(

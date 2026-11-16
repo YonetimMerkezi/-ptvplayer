@@ -29,7 +29,7 @@ import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, openPage, fmtAgo } from './ui.js';
 import { marquee } from './marquee.js';
 import { holeClip } from './hole.js';
-import { THEMES, DEFAULT_THEME, applyTheme } from './theme.js';
+import { THEMES, DEFAULT_THEME, applyTheme, themeById } from './theme.js';
 import { initDpad } from './dpad.js';
 import { createHero, heroModel, heroCellW } from './hero.js';
 import { Shelves, shelfSizes, ROW_CAPS, SHELF_CAP, normalizeRowCap } from './shelves.js';
@@ -70,6 +70,7 @@ import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, statusText } from './home-extras.js';
 import { cleanTitle } from './titleclean.js';
+import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
@@ -107,7 +108,28 @@ function applyFontScale() {
   document.documentElement.style.setProperty('--fs', String(fontScale()));
 }
 applyFontScale();
-applyTheme(store.pref('set.theme', DEFAULT_THEME));
+// ---- Üyelik (membership.js): deneme → Standart → Pro. Satın alma bağlanana kadar kilitler kapalıdır; yönetici açıkken Ayarlar > Üyelik'teki
+// önizleme seçimi kilitli hâli yalnız bu cihazda dener.
+const memPreview = () => (store.pref('adm.on', false) ? normalizePreview(store.pref('mem.preview', '')) : '');
+const memOn = () => enforced(memPreview());
+function memState() {
+  let start = Number(store.pref('mem.start', 0));
+  if (!start) {
+    start = Date.now();
+    store.setPref('mem.start', start);
+  }
+  return memberState({ start, ent: store.pref('mem.ent', null), preview: memPreview() });
+}
+// Sessiz soru: özellik bu üyelikte açık mı? (kilitler kapalıysa her şey açık)
+const proOk = (feature) => !memOn() || canUse(feature, memState());
+const memBlocked = () => memOn() && !canUseApp(memState());
+setProGate((feature, silent) => {
+  if (proOk(feature)) return true;
+  if (!silent) memberSheet(feature);
+  return false;
+});
+const themeAllowed = (id) => (themeById(id).multi && !proOk('themes') ? DEFAULT_THEME : id);
+applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
 // Hafif mod (animasyon/gölge/bulanıklık kapalı) ve devam çubuklarını gizleme: kök öğede işaret, CSS uygular.
 const applyLiteMode = () => applyLite(store.pref('set.lite', DEFAULT_LITE), document, navigator);
 const applyViewPrefs = () => {
@@ -180,7 +202,7 @@ const pui = createPlayerUI({
   env: {
     native: !!nativePlugin,
     canRecord: !!engine.rec,
-    recStart: (item, maxMs) => engine.rec.start(item.name, maxMs),
+    recStart: (item, maxMs) => (needPro('rec') ? engine.rec.start(item.name, maxMs) : Promise.reject(new Error('Kayıt Pro üyelikle açılır'))),
     recStop: () => engine.rec.stop(),
     playRecording: (r, ctx) => startPlay(recItem(r), { ctx }),
     isTv: () => isTvUi() || tvDetected, // TV'de resim içinde resim ve küçük oynatıcı yok
@@ -521,6 +543,7 @@ function pushTabLayer() {
 function setTab(tab) {
   if (tab === 'sources' && kidActive()) return kidExit(); // çocuk modunda Ayarlar yerine çıkış şifresi sorulur
   if (tab === 'multi' && kidActive()) return;
+  if (tab === 'multi' && !needPro('multi')) return;
   S.tab = tab;
   store.setPref('tab', tab);
   closeSearch(true);
@@ -545,6 +568,8 @@ function renderTab() {
   heroOff();
   const v = $('#view');
   v.onclick = null;
+  document.body.classList.toggle('mem-blocked', memBlocked()); // üst çubuktaki arama ve yenileme de kapanır
+  if (memBlocked()) return renderPaywall(v); // deneme bitti, üyelik yok: uygulama üyelik ekranında bekler
   const split = S.tab === 'live' && S.split && !!S.source;
   if (S.tab !== 'multi' && M.on) multiStop();
   if (!split && !S.miniplayer && (pui.isPreviewing() || S.pv)) {
@@ -921,11 +946,16 @@ function renderBrowse(v, kind) {
 // Film ve dizi ekranı (Genel ayarlar): Netflix gibi satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: TV'de Netflix gibi, telefonda klasik.
 const MV_VIEWS = [['auto', 'Otomatik'], ['rows', 'Netflix gibi'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
 const isMv = (kind) => kind === 'movie' || kind === 'series';
-function mvView() {
+function mvPref() {
   const p = store.pref('set.mvView', 'auto');
   if (MV_VIEWS.some(([k]) => k === p && k !== 'auto')) return p;
   if (store.pref('set.tvHero', true) === false) return 'classic'; // eski "TV vitrini" anahtarı kapatılmışsa
   return isTvUi() ? 'rows' : 'classic';
+}
+// Geçerli görünüm: Netflix görünümü ve TV vitrini Pro'dur; üyelik yetmiyorsa klasik ızgara gösterilir (ayar silinmez, Pro gelince geri döner).
+function mvView() {
+  const v = mvPref();
+  return v !== 'classic' && !proOk('rows') ? 'classic' : v;
 }
 // Vitrin alanı: satırlarda ve satırlardan girilen ızgarada; klasik görünümde yalnız TV'de ızgarada. Telefonda dokunmatikken CSS gizler.
 const heroActive = (kind, mode) => {
@@ -1696,6 +1726,7 @@ function togglePlan(kind, it, p) {
     toast(kind === 'rec' ? 'Zamanlı kayıt kaldırıldı' : 'Hatırlatıcı kaldırıldı', 1800);
     return false;
   }
+  if (!needPro(kind === 'rec' ? 'rec' : 'remind')) return false;
   const now = Date.now();
   let plan;
   if (kind === 'rec') {
@@ -2183,7 +2214,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}${s.managed ? '' : `<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button>`}<button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${memOn() || store.pref('adm.on', false) ? `<button class="set-tile" data-set="member">${icon('star-on')}<span>Üyelik</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -2390,7 +2421,8 @@ function onSourcesClick(e) {
     if (k === 'news') return whatsNewSheet(true);
     if (k === 'rec') return recordingsSheet();
     if (k === 'dl') return downloadsSheet();
-    if (k === 'cast') return castUi.receiverSheet();
+    if (k === 'cast') return needPro('cast') ? castUi.receiverSheet() : undefined;
+    if (k === 'member') return memberSheet();
     if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
   }
   const b = e.target.closest('[data-a], #src-add, #clr-rec');
@@ -2433,6 +2465,7 @@ function confirmDelete(id) {
 }
 
 function sourceForm(edit) {
+  if (!edit && store.sources().length >= 1 && !needPro('sources')) return; // ilk kaynak herkese açık; sonrakiler Pro
   let type = edit ? (edit.local ? 'file' : edit.type) : 'xtream';
   const v = (k) => esc((edit && edit[k]) || '');
   const sh = openSheet({
@@ -4078,6 +4111,7 @@ function themeSheet() {
         $('#theme-choice-label', body).textContent = THEMES.find((t) => t.id === selected)?.name || 'Yeşil';
       });
       $('#theme-apply', body).addEventListener('click', () => {
+        if (themeById(selected).multi && !needPro('themes')) return;
         const applied = applyTheme(selected);
         store.setPref('set.theme', applied);
         api.close();
@@ -4137,6 +4171,10 @@ function generalSheet() {
         renderTab(); // kategoriler yeni sırayla yeniden kurulur
       });
       $('#g-mv', body).addEventListener('change', (e) => {
+        if ((e.target.value === 'rows' || e.target.value === 'hero') && !needPro('rows')) {
+          e.target.value = store.pref('set.mvView', 'auto');
+          return;
+        }
         store.setPref('set.mvView', MV_VIEWS.some(([k]) => k === e.target.value) ? e.target.value : 'auto');
         renderTab(); // satırlar ↔ ızgara: görünüm baştan kurulur
       });
@@ -4912,6 +4950,7 @@ function dlFromPlayer(st) {
 // Tek bölüm ilk seferden sonra sormadan eklenir; film ve sezon için (sürüm, Wi-Fi, uyarı) seçenek sayfası açılır.
 function dlAsk(it, { eps = null, season = null } = {}) {
   if (!dlOk()) return;
+  if (!needPro('dl')) return;
   if (eps && season == null && store.pref('dl.ack', false)) return void dlQueueToast(eps.map((ep) => ({ item: it, ep })));
   dlSheet(it, { eps, season });
 }
@@ -5281,7 +5320,48 @@ async function saveMovieCatalogFile() {
   toast(movies.length + ' film kaydı dışa aktarıldı.', 3500);
 }
 
+// ---- Üyelik ekranları ----
+// Üyelik sayfası: durum, iki yıllık plan ve Pro özellikleri. feature verilirse (kilitli özelliğe dokunuldu) en üstte o özellik anılır.
+// Satın alma düğmeleri Google Play faturalandırması bağlanana kadar kapalıdır.
+function memberSheet(feature = '') {
+  const st = memState();
+  const f = proFeature(feature);
+  const admin = store.pref('adm.on', false);
+  const buy = (tier, label) => `<button class="btn${tier === 'pro' ? ' primary' : ''}" data-buy="${tier}"${BILLING_READY ? '' : ' disabled'}>${label}</button>`;
+  const sh = openSheet({
+    full: true, // TV'de tam sayfa
+    title: 'Üyelik',
+    html:
+      (f ? `<p class="mem-need">${icon('lock')}<span><b>${esc(f.name)}</b> Pro üyelikle açılır.</span></p>` : '') +
+      `<div class="mem-st mem-${st.tier}"><b>${esc(memOn() ? TIERS[st.tier] : 'Tüm özellikler açık')}</b><span>${esc(memOn() ? stateText(st) : 'Üyelik sistemi henüz devrede değil')}</span></div>` +
+      `<div class="mem-plan"><h4>Standart <small>yıllık</small></h4><p class="hint">Canlı TV, film ve dizi, favoriler, TV rehberi ve tek kaynak. ${TRIAL_DAYS} günlük deneme bittikten sonra uygulamayı kullanmak için gerekir.</p>${st.tier === 'standard' || st.tier === 'pro' ? '<p class="mem-have">Üyeliğiniz var</p>' : buy('standard', 'Standart üyelik al')}</div>` +
+      `<div class="mem-plan mem-pro"><h4>Pro <small>yıllık</small></h4><p class="hint">Standart üyeliğin her şeyi ve aşağıdaki özellikler.</p><ul class="mem-feats">${PRO_FEATURES.map((x) => `<li${f && f.id === x.id ? ' class="on"' : ''}><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></li>`).join('')}</ul>${st.tier === 'pro' ? '<p class="mem-have">Pro üyeliğiniz var</p>' : buy('pro', 'Pro üyelik al')}</div>` +
+      (BILLING_READY ? '' : '<p class="hint">Satın alma, uygulamanın Google Play sürümüyle açılacak.</p>') +
+      (admin ? `<div class="sel-row"><span>Önizleme (yönetici)<small>Kilitli hâli yalnız bu cihazda dener; diğer kullanıcılar etkilenmez</small></span><select id="mem-pv">${optionsHtml(PREVIEWS, memPreview())}</select></div>` : ''),
+    mount: (body) => {
+      const pv = $('#mem-pv', body);
+      if (pv) {
+        pv.addEventListener('change', () => {
+          store.setPref('mem.preview', normalizePreview(pv.value));
+          sh.close();
+          applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
+          renderTab();
+          toast(memOn() ? `Üyelik önizlemesi: ${PREVIEWS.find(([k]) => k === memPreview())[1]}` : 'Üyelik önizlemesi kapandı');
+        });
+      }
+    },
+  });
+  return sh;
+}
+
+// Deneme bitti ve üyelik yok: sekmelerin yerinde bu ekran durur.
+function renderPaywall(v) {
+  v.innerHTML = `<div class="page mem-wall">${icon('lock')}<h2>Deneme süreniz doldu</h2><p>Iptv Player Pro’yu kullanmaya devam etmek için yıllık üyelik gerekir. Kaynaklarınız, favorileriniz ve ayarlarınız duruyor.</p><button class="btn primary" id="mw-open" data-autofocus>Üyelik seçenekleri</button></div>`;
+  v.onclick = (e) => e.target.closest('#mw-open') && memberSheet();
+}
+
 function backupSheet() {
+  if (!needPro('backup')) return;
   const sh = openSheet({
     title: 'Yedekle / geri yükle',
     html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button><button class="list-item" id="bk-movies"><span class="t">Film kataloğunu dışa aktar<small>Yalnızca film bilgileri; hesap bilgileri ve yayın adresleri eklenmez</small></span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori (silmeler dahil), izleme ilerlemesi ve kategori düzenini karşılıklı eşitler. Favori ve ilerlemede en yeni değişiklik geçerli olur</small></span></button><button class="chk' + (store.pref('sync.auto', true) !== false ? ' on' : '') + '" id="bk-auto" role="switch" aria-checked="' + (store.pref('sync.auto', true) !== false) + '"><i>' + icon('check') + '</i><span class="t">Kendiliğinden eşitle<small>Uygulama açılınca ve öne gelince, eşleşmiş TV aynı ağdaysa sessizce eşitler</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
@@ -5389,6 +5469,7 @@ function afterSync() {
 }
 
 function castItem(item, ep, { startMs = 0, ctx = null, closePlayer = false } = {}) {
+  if (!needPro('cast')) return;
   const targets = targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
   if (item.kind !== 'series' && item.kind !== 'recording') store.pushRecent(sid(), item);
@@ -5555,6 +5636,7 @@ function kidGroups(kind, title, done) {
 
 function kidSheet() {
   if (!S.source) return toast('Önce bir kaynak ekleyin');
+  if (!kidActive() && !needPro('kid')) return;
   const sh = openSheet({
     full: true, // TV'de tam sayfa
     title: 'Çocuk profili',

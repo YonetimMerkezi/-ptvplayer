@@ -96,6 +96,7 @@ html[data-multi] .set-tile[data-set=speedtest] { --tc: var(--p5); }
 html[data-multi] .set-tile[data-set=plans] { --tc: var(--p7); }
 html[data-multi] .set-tile[data-set=auto] { --tc: var(--p3); }
 html[data-multi] .set-tile[data-set=kid] { --tc: var(--p6); }
+html[data-multi] .set-tile[data-set=member] { --tc: var(--p7); }
 html[data-multi] .set-tile[data-set=news] { --tc: var(--p2); }
 html[data-multi] .set-tile[data-set=rec] { --tc: var(--p8); }
 html[data-multi] .set-tile[data-set=dl] { --tc: var(--p1); }
@@ -192,6 +193,30 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 .row.cat.hid .act[data-act=eye] { color: var(--danger); }
 .vl .row, .vl .card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .hint { color: var(--muted); font-size: 0.8125rem; margin: 0 0 10px; }
+/* Üyelik sayfası (Ayarlar > Üyelik) ve deneme bitti ekranı */
+.mem-need { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--text); }
+.mem-need .ic { flex: none; width: 20px; height: 20px; color: var(--accent); }
+.mem-st { display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line); }
+.mem-st b { font-size: 1.0625rem; }
+.mem-st span { color: var(--muted); font-size: 0.875rem; }
+.mem-st.mem-expired { border-color: var(--danger); }
+.mem-plan { margin: 0 0 12px; padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.mem-plan.mem-pro { border-color: var(--accent); }
+.mem-plan h4 { margin: 0 0 6px; font-size: 1.125rem; }
+.mem-plan h4 small { margin-left: 6px; color: var(--muted); font-size: 0.8125rem; font-weight: 500; }
+.mem-plan .btn { width: 100%; }
+.mem-plan .btn:disabled { opacity: 0.5; }
+.mem-have { margin: 0; color: var(--accent); font-weight: 700; }
+.mem-feats { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; }
+.mem-feats li { display: flex; flex-direction: column; gap: 1px; padding-left: 12px; border-left: 3px solid var(--line); }
+.mem-feats li.on { border-left-color: var(--accent); }
+.mem-feats li b { font-size: 0.9375rem; }
+.mem-feats li small { color: var(--muted); font-size: 0.8125rem; }
+body.mem-blocked #btn-search, body.mem-blocked #btn-refresh, body.mem-blocked #searchbar { display: none; }
+.mem-wall { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
+.mem-wall > .ic { width: 48px; height: 48px; color: var(--accent); }
+.mem-wall h2 { margin: 0; font-size: 1.5rem; }
+.mem-wall p { margin: 0; max-width: 34em; color: var(--muted); }
 .fl-new { margin-top: 14px; }
 
 .vl { position: relative; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; contain: strict; }

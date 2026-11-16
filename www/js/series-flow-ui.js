@@ -1,5 +1,6 @@
 // "Dizi akışı" ekranı: haftalık 1001dizi takvimi, bugün/yarın için ücretsiz EPG tamamlaması ve hatırlatıcılar.
 // Satıra dokununca kanal kullanıcının listesinde bulunursa açılır; zil dizi başlamadan önce hatırlatıcı kurar (Planlananlar'da görünür).
+import { needPro } from './membership.js';
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { WEEKDAYS, dayIndex, loadSeriesWeek, isSportsChannel } from './series-flow.js';
@@ -187,6 +188,7 @@ export function openSeriesFlow(env) {
 
   function toggleFollow(r) {
     const before = isFollowed(followed, r.title);
+    if (!before && !needPro('seriesfollow')) return; // takibi bırakmak her zaman serbest
     followed = toggleFollowed(followed, r);
     saveFollowed();
     if (before && env.reminders) {

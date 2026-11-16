@@ -1,5 +1,6 @@
 // "Bugün TV'de" ekranı: TV rehberinden bugünün (ya da yarının) spor, film ve dizi programları saatleriyle; kanallar seçilebilir.
 // Modül ilk kullanımda yüklenir (app.js openToday).
+import { needPro } from './membership.js';
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf } from './today.js';
@@ -127,6 +128,7 @@ export function openToday(env) {
       env.reminders.remove(id);
       env.toast && env.toast('Hatırlatıcı kaldırıldı', 1800);
     } else {
+      if (!needPro('remind')) return;
       const plan = makePlan('rem', it, p, { src: env.sourceId ? env.sourceId() : 'today' });
       env.reminders.set(plan);
       env.toast && env.toast('Film hatırlatıcısı kuruldu', 2000);
