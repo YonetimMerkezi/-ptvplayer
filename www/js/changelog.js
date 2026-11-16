@@ -20,6 +20,7 @@ export const CHANGELOG = [
       'Netflix görünümünde arama kutusu ve Düzenle çubuğu vitrinin üstünden kalktı; “Kategorileri düzenle” üst çubukta',
       'Oynatıcı: yükleniyor halkası oynat düğmesinin üstüne binmez; çözülemeyen ses biçiminde ekrana uyarı çıkmaz, Ses düğmesi işaretlenir',
       'Canlı TV ızgarasında kanal adının ikinci satırı kesilmez',
+      'Ses: cihazın çözemediği AC3/DTS sesli yayınlar artık uygulamanın kendi ses çözücüsüyle çalınır',
       'Oynatıcı: düğmeler ve pencereler yenilendi; açık düğmenin yazısı görünür, “Yayın bilgisi” penceresinde başlık ve kapat (X) düğmesi var, dikeyde düğmelerin altında durur',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
     ],

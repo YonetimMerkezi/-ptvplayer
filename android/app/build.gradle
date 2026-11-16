@@ -55,6 +55,9 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer:$media3Version"
     implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
     implementation "androidx.media3:media3-ui:$media3Version"
+    // Yazılım ses çözücüsü (FFmpeg): cihazda çözücüsü olmayan AC3/E-AC3/DTS seslerini çalar. Jellyfin'in hazır derlemesi; sürümü
+    // media3Version ile aynı tutulmalı ("+1" yapı numarasıdır). Lisansı GPLv3'tür.
+    implementation "org.jellyfin.media3:media3-ffmpeg-decoder:${media3Version}+1"
     implementation "androidx.tvprovider:tvprovider:1.0.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
