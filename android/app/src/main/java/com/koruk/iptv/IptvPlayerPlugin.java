@@ -377,9 +377,43 @@ public class IptvPlayerPlugin extends Plugin {
         result.put("mode", performanceMode);
         result.put("active", activePerformance);
         result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+
+        // Cihaz tanılama: RAM, işlemci, Android sürümü ve kullanılabilir donanım video çözücüleri.
         ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
         result.put("memoryClassMb", am != null ? am.getMemoryClass() : 0);
+        long totalRamMb = 0;
+        try {
+            ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+            if (am != null) {
+                am.getMemoryInfo(memoryInfo);
+                totalRamMb = memoryInfo.totalMem / (1024L * 1024L);
+            }
+        } catch (Exception ignored) { }
+        result.put("totalRamMb", totalRamMb);
         result.put("cores", Runtime.getRuntime().availableProcessors());
+        result.put("androidSdk", Build.VERSION.SDK_INT);
+        result.put("androidVersion", Build.VERSION.RELEASE == null ? "" : Build.VERSION.RELEASE);
+        result.put("manufacturer", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
+        result.put("model", Build.MODEL == null ? "" : Build.MODEL);
+
+        JSArray videoDecoders = new JSArray();
+        try {
+            android.media.MediaCodecInfo[] codecs = new android.media.MediaCodecList(
+                    android.media.MediaCodecList.REGULAR_CODECS).getCodecInfos();
+            for (android.media.MediaCodecInfo codecInfo : codecs) {
+                if (codecInfo.isEncoder()) continue;
+                JSArray videoTypes = new JSArray();
+                for (String type : codecInfo.getSupportedTypes()) {
+                    if (type != null && type.toLowerCase(Locale.US).startsWith("video/")) videoTypes.put(type);
+                }
+                if (videoTypes.length() == 0) continue;
+                JSObject decoder = new JSObject();
+                decoder.put("name", codecInfo.getName());
+                decoder.put("types", videoTypes);
+                videoDecoders.put(decoder);
+            }
+        } catch (Exception ignored) { }
+        result.put("videoDecoders", videoDecoders);
         call.resolve(result);
     }
 
