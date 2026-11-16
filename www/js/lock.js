@@ -16,7 +16,13 @@ export const DEFAULT_AFTER = 60;
 export const isValidPin = (p) => typeof p === 'string' && /^\d+$/.test(p) && p.length >= MIN_LEN && p.length <= MAX_LEN;
 export const normalizeAfter = (v) => (AFTER_OPTIONS.some(([k]) => k === Number(v)) ? Number(v) : DEFAULT_AFTER);
 
-export function newSalt(rand = () => Math.random()) {
+// Tuz için kriptografik rastgelelik (varsa); yalnızca eski WebView'de Math.random'a düşülür.
+const secureRand = () => {
+  const c = globalThis.crypto;
+  return c && typeof c.getRandomValues === 'function' ? c.getRandomValues(new Uint32Array(1))[0] / 4294967296 : Math.random();
+};
+
+export function newSalt(rand = secureRand) {
   let s = '';
   for (let i = 0; i < 16; i++) s += Math.floor(rand() * 16).toString(16);
   return s;

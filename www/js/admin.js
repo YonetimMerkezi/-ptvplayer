@@ -31,7 +31,9 @@ export function createGithub({ token, fetchImpl = (...a) => globalThis.fetch(...
     let json = null;
     try {
       json = await res.json();
-    } catch {}
+    } catch {
+      /* gövde JSON değil (boş yanıt/HTML): json null kalır, durum kodu yine döner */
+    }
     return { status: res.status, json };
   }
   const fail = (r, what) => {

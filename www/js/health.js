@@ -75,7 +75,7 @@ export async function checkStreamHealth(target, { fetchImpl = globalThis.fetch, 
     });
     const latencyMs = Math.max(0, now() - started);
     const status = response.status;
-    try { if (response.body && response.body.cancel) await response.body.cancel(); } catch {}
+    try { if (response.body && response.body.cancel) await response.body.cancel(); } catch { /* gövde zaten kapanmış: yok sayılır */ }
     const ok = (status >= 200 && status < 300) || status === 206;
     return {
       ok, status, latencyMs,

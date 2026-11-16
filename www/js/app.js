@@ -9,7 +9,7 @@ import {
   playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, peekVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
   loadArchiveEpg, archiveTargets, recordTarget,
 } from './catalog.js';
-import { makePlan, activePlans, addPlan, removePlan, hasPlan, recConflict, planId, planWhen, REMIND_LEAD_MIN } from './plan.js';
+import { makePlan, activePlans, addPlan, removePlan, hasPlan, recConflict, planId, planWhen } from './plan.js';
 import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
@@ -57,8 +57,8 @@ import { AUTO_CHECK_MS, LAUNCH_CHECK_MS, UPDATE_BASE, checkUpdate, explainError,
 import { checkStreamHealth } from './health.js';
 import { runInternetSpeedTest } from './speedtest.js';
 import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, applyHidden, hiddenCount } from './hhist.js';
-import { KID_KINDS, CAT_KEYS as KID_CAT, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
-import { searchAll, totalOf } from './multisearch.js';
+import { KID_KINDS, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
+import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
@@ -68,7 +68,7 @@ import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
-import { greeting, homeContinue, statusText } from './home-extras.js';
+import { homeContinue, statusText } from './home-extras.js';
 import { cleanTitle } from './titleclean.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
@@ -118,6 +118,7 @@ let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
 const S = {
+  linkErr: false, // son liste yenilemesi başarısız mı (ana ekrandaki bağlantı durumu için)
   source: null,
   cat: emptyCatalog(),
   idx: { live: new Map(), movies: new Map(), series: new Map() },
@@ -441,12 +442,15 @@ async function refreshCatalog({ quiet = false } = {}) {
     });
     if (!S.source || S.source.id !== id) return;
     await store.cache.set('cat:' + id, catalogToStorable(cat));
+    S.linkErr = false;
     setCatalog(cat);
     if (S.tab !== 'multi') rerenderKeepingList(); // çoklu ekranda yayınlar kesilmesin
     banner(cat.warnings.length ? cat.warnings[0] : null, { err: cat.warnings.length > 0 });
     if (!quiet) toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi`);
     maybeRefreshEpg(true);
   } catch (e) {
+    S.linkErr = true;
+    paintLink();
     banner(`Liste alınamadı: ${e.message}`, { err: true });
     if (S.tab !== 'sources' && S.tab !== 'multi') rerenderKeepingList();
   } finally {
@@ -957,7 +961,9 @@ function paintGlow(cv, im) {
   const sh = Math.min(h, (w * H) / W); // afişin 16:9'luk üst-orta dilimi
   try {
     cv.getContext('2d').drawImage(im, 0, Math.max(0, (h - sh) * 0.3), w, sh, 0, 0, W, H);
-  } catch (_) {}
+  } catch (_) {
+    /* görsel çizilemedi (CORS/bozuk resim): arka plan boş kalır, işlev etkilenmez */
+  }
 }
 
 function paintHeroBg(urls, nWide = urls.length) {
@@ -2535,6 +2541,25 @@ function sourceSwitcher() {
 
 const fmtDate = (d, o) => d.toLocaleDateString('tr-TR', o);
 
+// Ana ekrandaki bağlantı durumu: sabit "Bağlı" yerine gerçek durum (çevrimdışı, son yenileme hatası, boş liste).
+function linkState() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return { text: 'Çevrimdışı', ok: false };
+  if (S.linkErr) return { text: 'Bağlantı hatası', ok: false };
+  const c = S.cat;
+  if (c && !(c.live.length + c.movies.length + c.series.length)) return { text: 'Liste boş', ok: false };
+  return { text: 'Bağlı', ok: true };
+}
+function paintLink() {
+  const st = linkState();
+  document.querySelectorAll('.home-source-state, .hp-state').forEach((el) => {
+    el.textContent = st.text;
+    el.classList.toggle('bad', !st.ok);
+  });
+  document.querySelectorAll('.home-source-indicator, .hp-dot').forEach((el) => el.classList.toggle('bad', !st.ok));
+}
+window.addEventListener('online', paintLink);
+window.addEventListener('offline', paintLink);
+
 function tickClock() {
   const now = new Date();
   const t = fmtClock(now.getTime());
@@ -2550,8 +2575,7 @@ function tickClock() {
     hd.textContent = fmtDate(now, { day: 'numeric', month: 'long', year: 'numeric' });
     document.querySelector('.hp-time').textContent = t;
   }
-  const u = $('#h-upd');
-  if (u) u.textContent = 'Son güncelleme: ' + fmtAgo(S.cat.fetchedAt);
+  paintLink();
 }
 
 
@@ -2581,8 +2605,8 @@ function renderHome(v) {
   const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') + homeRow('✨ Son eklenen filmler', fresh, 'movies');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player <em>Pro</em></span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">Bağlı</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
-    <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">Bağlı</span><button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
+    <div class="home-top"><div class="brand">${icon('tv')}<b>Iptv</b><span>Player <em>Pro</em></span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">${linkState().text}</span><button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
     <div class="home-section-head"><b>Keşfet</b><span>Yayın ve içerikler</span></div>
     <div class="tiles home-primary">
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
@@ -4121,7 +4145,9 @@ async function shareOrCopy(text, title) {
     try {
       await nativePlugin.shareText({ text, title });
       return 'share';
-    } catch {}
+    } catch {
+      /* kullanıcı paylaşımı kapattı ya da menü açılamadı: panoya kopyalamaya düşülür */
+    }
   }
   if (await copyText(text)) {
     toast('Panoya kopyalandı');

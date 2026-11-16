@@ -66,7 +66,7 @@ export async function runInternetSpeedTest({
         onProgress({ phase: 'download', percent: 20 + Math.min(48, Math.round((received / downloadBytes) * 48)), message: 'İndirme hızı ölçülüyor', transferred: received, total: downloadBytes });
       }
     } finally {
-      try { reader.releaseLock(); } catch {}
+      try { reader.releaseLock(); } catch { /* okuyucu zaten bırakılmış: yok sayılır */ }
     }
   } else {
     const buf = await down.arrayBuffer();
