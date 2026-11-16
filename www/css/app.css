@@ -1991,3 +1991,18 @@ html.tv [data-scroll] {
   .home-row { padding:8px 10px; }
   .home-status { padding:9px 11px; gap:7px; }
 }
+
+
+/* Yatay ana ekranda taşan bölümler gizlenmez; dokunarak ve kumandayla aşağı kaydırılabilir. */
+@media (orientation:landscape) {
+  .home {
+    height:100%;
+    min-height:0;
+    overflow-x:hidden;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    touch-action:pan-y;
+    scroll-behavior:auto;
+  }
+}
