@@ -1833,3 +1833,74 @@ html.tv [data-scroll] {
   overscroll-behavior: contain;
   scroll-behavior: auto;
 }
+
+/* ===== Ana ekran · yatay görünüm (telefon yan, tablet, TV) =====
+   Üst çubukta marka + kaynak/tarih/saat hapı + arama, bildirim, ayarlar; altında 4 büyük kutu, tek sıra 8 kısayol ve
+   "Kaldığın yerden devam et" paneli. "Bağlantı durumu" paneli yoktur. Dikey görünüm etkilenmez. */
+.ls-only { display: none; }
+.home-top .brand span em { font-style: normal; }
+.home .cap-clean, .home .cap-m, .home .pct { display: none; }
+.home-top .bell-dot { position: absolute; top: 8px; right: 9px; width: 11px; height: 11px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 2px var(--bg, #0a0d1e); }
+.home-top .icon-btn { position: relative; }
+@media (orientation: landscape) and (min-width: 640px) {
+  .home { gap: clamp(10px, 2.2vh, 20px); padding: calc(var(--safe-t) + 10px) 28px 16px; }
+  .home .ps-only, .home .home-clock, .home .home-sourcebar, .home .home-section-head, .home .home-status { display: none !important; }
+  .home .home-pill.ls-only { display: flex; }
+  .home .home-top .icon-btn.ls-only { display: grid; }
+  .home-top { gap: 6px; padding: 4px 0 2px; }
+  .brand { font-size: 1.7rem; overflow: visible; gap: 14px; }
+  .brand .ic { width: 46px; height: 46px; }
+  .brand span { opacity: 1; font-weight: 600; }
+  .brand span em { color: var(--accent); }
+  .home-pill { margin-left: auto; margin-right: 22px; align-items: center; gap: 14px; min-height: 52px; padding: 0 24px; border-radius: 27px; border: 1px solid var(--line); background: rgba(14, 18, 38, 0.72); cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .home-pill .hp-dot { width: 22px; height: 22px; flex: none; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.18), 0 0 14px rgba(34, 197, 94, 0.55); }
+  .home-pill .hp-name { font-size: 1.05rem; font-weight: 700; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+  .home-pill .hp-state { font-style: normal; font-size: 0.95rem; font-weight: 600; color: #34d399; }
+  .home-pill .hp-sep { width: 1px; height: 28px; flex: none; background: var(--line); }
+  .home-pill .ic { width: 26px; height: 26px; flex: none; color: var(--muted); }
+  .home-pill span { font-size: 1.05rem; }
+  .home-top .icon-btn { width: 52px; height: 52px; border-radius: 26px; }
+  .home-top .icon-btn .ic { width: 30px; height: 30px; }
+  .home-top #h-search { color: #22d3ee; }
+  .home-top #h-set { color: var(--muted); }
+
+  .home .home-primary { gap: clamp(12px, 2vw, 22px); }
+  .home .home-primary > .tile { height: clamp(110px, 24vh, 200px); min-height: 100px; }
+  .home .home-primary > .tile .ic { width: clamp(38px, 7vh, 66px); height: clamp(38px, 7vh, 66px); }
+  .home .home-primary > .tile b { font-size: clamp(1.15rem, 2.8vh, 1.6rem); }
+  .home .home-primary > .tile small { font-size: clamp(0.8rem, 1.9vh, 1.05rem); }
+
+  .home .shortcuts, .home .shortcuts.has-rec, .home .shortcuts.has-rec.has-dl { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: clamp(8px, 1.4vw, 16px); }
+  .home .shortcuts.has-rec.has-dl { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .home .shortcuts .t-dl { order: 6; }
+  .home .shortcuts .t-local { order: 7; }
+  .home .shortcuts .t-recs { order: 8; }
+  .home .tile.mini { min-height: clamp(76px, 16vh, 150px); gap: 8px; padding: 10px 6px; border-radius: 16px; }
+  .home .tile.mini .ic { width: clamp(26px, 5vh, 38px); height: clamp(26px, 5vh, 38px); }
+  .home .tile.mini b { font-size: clamp(0.78rem, 1.9vh, 1.02rem); }
+  .home .tile.mini .t-n { top: -10px; right: -20px; min-width: 24px; height: 24px; border-radius: 12px; line-height: 24px; font-size: 0.8rem; }
+
+  .home-row { padding: 14px 20px 12px; border-radius: 22px; border: 1px solid var(--line); background: rgba(14, 18, 38, 0.55); gap: 12px; }
+  .home-row-h b { font-size: 1.35rem; }
+  .home-row-h button { font-size: 0.95rem; }
+  .home-row-h button::after { content: " ›"; }
+  .home-row-s { gap: 18px; }
+  .home-row-s .card { flex: 0 0 clamp(230px, 19vw, 320px); width: clamp(230px, 19vw, 320px); background: transparent; }
+  .home-row-s .card .poster { flex: none; aspect-ratio: 16 / 9; border-radius: 14px; }
+  .home-row-s .card .cap { height: auto; border: 0; padding: 10px 2px 2px; font-size: 1.05rem; font-weight: 700; }
+  .home-row-s .cap-full { display: none; }
+  .home-row-s .cap-clean { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .home-row-s .cap-m { display: block; margin-top: 3px; font-size: 0.9rem; font-weight: 400; color: var(--muted); }
+  .home-row-s .card .prog { left: 14px; right: 58px; bottom: 12px; height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.28); overflow: hidden; }
+  .home-row-s .card .prog i { border-radius: 4px; background: linear-gradient(90deg, #34d399, #5eead4); }
+  .home-row-s .card .pct { display: block; position: absolute; right: 12px; bottom: 6px; font-size: 0.85rem; font-weight: 700; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+}
+/* Yatay ama dar ekran (≈900dp ve altı): marka yazısı gizlenir, hap sıkışır; üst çubukta taşma olmaz */
+@media (orientation: landscape) and (min-width: 640px) and (max-width: 1099px) {
+  .brand { flex: none; }
+  .brand span { display: none; }
+  .home-pill { gap: 9px; padding: 0 14px; margin-right: 10px; min-width: 0; }
+  .home-pill .hp-name { max-width: 9ch; }
+  .home-pill span { font-size: 0.95rem; }
+  .home-top .icon-btn { width: 46px; height: 46px; }
+}
