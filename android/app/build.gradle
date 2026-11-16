@@ -5,6 +5,12 @@ def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
 
 android {
     namespace "com.koruk.iptv"
+    // Yazılım ses çözücüsü (media3-ffmpeg-decoder) çekirdek kitaplık uyarlamasını (desugaring) şart koşar.
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.koruk.iptv"
@@ -58,6 +64,7 @@ dependencies {
     // Yazılım ses çözücüsü (FFmpeg): cihazda çözücüsü olmayan AC3/E-AC3/DTS seslerini çalar. Jellyfin'in hazır derlemesi; sürümü
     // media3Version ile aynı tutulmalı ("+1" yapı numarasıdır). Lisansı GPLv3'tür.
     implementation "org.jellyfin.media3:media3-ffmpeg-decoder:${media3Version}+1"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
     implementation "androidx.tvprovider:tvprovider:1.0.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
