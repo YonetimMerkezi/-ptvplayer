@@ -367,11 +367,12 @@ public class IptvPlayerPlugin extends Plugin {
                     startPlayback(curUrl, lastMime, pos, lastHeaders, buffer, true, lastLive, false);
                 }
             }
+            // Profil değişikliği açık çoklu ekran kutularına da hemen uygulanır.
+            for (Slot slot : slots.values()) if (slot.player != null) applyVideoLimits(slot.player);
             JSObject result = new JSObject();
             result.put("mode", performanceMode);
             result.put("active", activePerformance);
             result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
-        result.put("maxMultiScreens", maxMultiScreens());
             result.put("maxMultiScreens", maxMultiScreens());
             call.resolve(result);
             notifyListeners("performanceProfile", result);
@@ -385,6 +386,7 @@ public class IptvPlayerPlugin extends Plugin {
         result.put("mode", performanceMode);
         result.put("active", activePerformance);
         result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+        result.put("maxMultiScreens", maxMultiScreens());
 
         // Cihaz tanılama: RAM, işlemci, Android sürümü ve kullanılabilir donanım video çözücüleri.
         ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
