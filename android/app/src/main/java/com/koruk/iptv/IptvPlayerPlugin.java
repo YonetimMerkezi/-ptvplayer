@@ -355,7 +355,7 @@ public class IptvPlayerPlugin extends Plugin {
             activePerformance = resolvePerformanceProfile(mode);
             if (player != null) {
                 applyVideoLimits(player);
-                String buffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : lastBuffer;
+                String buffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : "high";
                 if (!buffer.equals(lastBuffer) && !curUrl.isEmpty()) {
                     long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
                     startPlayback(curUrl, lastMime, pos, lastHeaders, buffer, true, lastLive, false);
