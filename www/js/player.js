@@ -106,9 +106,17 @@ export function createPlayer({ engine, policy = () => retryPolicy(), timers = { 
   function fail(message, isFrozen = false) {
     if (st.status === 'idle' || retryTimer) return; // yeniden bağlanma zaten planlı
     let skip = false;
-    if (isFrozen && ++frozen >= 2) {
-      skip = true;
-      frozen = 0;
+    if (isFrozen) {
+      frozen++;
+      if (frozen >= 2) {
+        // Uyumlu modda da dondu: varsa yedek yayın adresine geç.
+        skip = st.targets.length > 1;
+        frozen = 0;
+        compatNext = false;
+      } else {
+        // İlk donmada aynı adresi bir kez Media3 uyumlu modda yeniden aç.
+        compatNext = true;
+      }
     }
     if (everPlayed && reconnects < (st.live ? policy().liveMax : policy().vodMax)) return scheduleReconnect(skip);
     if (!everPlayed && st.idx + 1 < st.targets.length) {
