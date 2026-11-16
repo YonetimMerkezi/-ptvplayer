@@ -14,6 +14,7 @@ import { NIGHT_LEVELS, normalizeNight, nightLabel, DEFAULT_NIGHT } from './night
 import { decideTracks } from './langpref.js';
 import { nextUp, introSkip, DEFAULT_INTRO } from './nextup.js';
 import { PLAYER_ACTIONS, DEFAULT_PLAYER, colorOf, actionFor } from './remote.js';
+import { nextIndex, nextRepeat, normalizeRepeat, REPEAT_LABEL, hueOf } from './music-order.js';
 import { SUB_SIZES, SUB_COLORS, SUB_BGS, SUB_POS, DEFAULT_SUB, normalizeSub, subParams, subPreviewStyle } from './subtitle.js';
 
 // Denetimler son dokunuştan sonra bu kadar süre görünür kalır.
@@ -499,6 +500,8 @@ export function createPlayerUI({ engine, player, env }) {
       q('#pl-seek').value = st.dur > 0 ? Math.round((st.pos / st.dur) * 1000) : 0;
     }
     if (live) q('#pl-pos').textContent = '';
+    renderMusicButtons();
+    renderMusicArt(st);
     const hasNav = !!ctx && ctx.items.length > 1;
     q('#pl-prev').hidden = !hasNav;
     q('#pl-next').hidden = !hasNav;
@@ -542,7 +545,9 @@ export function createPlayerUI({ engine, player, env }) {
     }
     renderNextUp(st);
     renderIntro(st);
-    if (st.status === 'ended' && ctx && ctx.autoNext && autoNextOn() && epKey(st) !== nextDismissed && ctx.index < ctx.items.length - 1) go(1);
+    if (st.status === 'ended' && musicNow) {
+      if (prev !== 'ended') musicGo(1, true); // bitişte bir kez: sıradaki şarkı, karışık seçim ya da tekrar
+    } else if (st.status === 'ended' && ctx && ctx.autoNext && autoNextOn() && epKey(st) !== nextDismissed && ctx.index < ctx.items.length - 1) go(1);
   }
 
   // ---- sonraki bölüm geri sayımı ve intro atla ----
@@ -817,8 +822,67 @@ export function createPlayerUI({ engine, player, env }) {
     });
   }
 
+  // ---- müzik: karışık çalma ve tekrarlama (music-order.js). Ayarlar kalıcıdır; çalınanlar kümesi liste değişince sıfırlanır.
+  const musicShuffle = () => !!(env.pref && env.pref('music.shuffle', false));
+  const musicRepeat = () => normalizeRepeat(env.pref ? env.pref('music.repeat', 'off') : 'off');
+  let musicList = null;
+  let musicPlayed = new Set();
+  // auto: şarkı kendiliğinden bitti. Dönen: yeni bir şarkı (ya da aynı şarkı baştan) başladı mı.
+  function musicGo(delta, auto) {
+    if (!ctx || !ctx.items || !ctx.items.length) return false;
+    if (musicList !== ctx.items) {
+      musicList = ctx.items;
+      musicPlayed = new Set();
+    }
+    musicPlayed.add(ctx.index);
+    const i = nextIndex({ index: ctx.index, count: ctx.items.length, delta, repeat: musicRepeat(), shuffle: musicShuffle(), auto, played: [...musicPlayed] });
+    if (i < 0) return false;
+    if (musicPlayed.size >= ctx.items.length) musicPlayed = new Set(); // karışık çalmada tur bitti: yeni tur
+    if (bgMusic && !open) quietUntil = Date.now() + 8000; // arka plandaki müzikte sıradaki parça arayüz açmadan başlar
+    const st = player.state();
+    if (i === ctx.index && st.item) {
+      player.open(st.item, st.targets, { startAt: 0 }); // aynı şarkı baştan (kayıtlı konumdan değil)
+      return true;
+    }
+    ctx.index = i;
+    ctx.play(ctx.items[i], i);
+    return true;
+  }
+  function renderMusicButtons() {
+    const sh = q('#pl-shuffle');
+    const rp = q('#pl-repeat');
+    sh.hidden = rp.hidden = !musicNow;
+    if (!musicNow) return;
+    const on = musicShuffle();
+    const mode = musicRepeat();
+    sh.classList.toggle('on', on);
+    sh.setAttribute('aria-pressed', String(on));
+    rp.classList.toggle('on', mode !== 'off');
+    rp.innerHTML = icon(mode === 'one' ? 'repeat1' : 'repeat');
+    rp.setAttribute('aria-label', REPEAT_LABEL[mode]);
+  }
+  // Müzik çaların arka planı ve kapağı: şarkıya özgü renk; şarkının kapak resmi varsa (item.logo) kapakta ve bulanık arka planda o görünür.
+  let musicArtFor = null;
+  function renderMusicArt(st) {
+    const box = q('#pl-music');
+    box.hidden = !musicNow;
+    if (!musicNow) return void (musicArtFor = null);
+    const key = st.item.id + '|' + (st.item.logo || '');
+    if (musicArtFor === key) return;
+    musicArtFor = key;
+    box.style.setProperty('--mh', String(hueOf(st.item.name)));
+    for (const id of ['#pm-img', '#pm-bgimg']) {
+      const im = q(id);
+      im.hidden = !st.item.logo;
+      if (st.item.logo) im.src = st.item.logo;
+      else im.removeAttribute('src');
+    }
+    box.classList.toggle('has-art', !!st.item.logo);
+  }
+
   function go(delta) {
     if (!ctx || !ctx.items || !ctx.items.length) return;
+    if (isMusic(player.state().item)) return void musicGo(delta, false);
     let i = ctx.index + delta;
     if (player.state().live) i = (i + ctx.items.length) % ctx.items.length;
     else if (i < 0 || i >= ctx.items.length) return;
@@ -1438,8 +1502,7 @@ export function createPlayerUI({ engine, player, env }) {
     }
     if (st.status !== 'ended' || bgAdvanced === st.item.id) return;
     bgAdvanced = st.item.id;
-    if (ctx && ctx.autoNext && autoNextOn() && ctx.index < ctx.items.length - 1) go(1);
-    else {
+    if (!musicGo(1, true)) {
       bgMusic = false;
       player.close();
     }
@@ -1506,6 +1569,19 @@ export function createPlayerUI({ engine, player, env }) {
   q('#pl-fwd').addEventListener('click', () => {
     player.seekBy(10000);
     showUi(false);
+  });
+  q('#pl-shuffle').addEventListener('click', () => {
+    const on = !musicShuffle();
+    if (env.setPref) env.setPref('music.shuffle', on);
+    musicPlayed = new Set();
+    renderMusicButtons();
+    toast(on ? 'Karışık çalma açık' : 'Karışık çalma kapalı', 1500);
+  });
+  q('#pl-repeat').addEventListener('click', () => {
+    const mode = nextRepeat(musicRepeat());
+    if (env.setPref) env.setPref('music.repeat', mode);
+    renderMusicButtons();
+    toast(REPEAT_LABEL[mode], 1500);
   });
   q('#pl-prev').addEventListener('click', () => go(-1));
   q('#pl-next').addEventListener('click', () => go(1));

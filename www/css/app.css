@@ -212,6 +212,12 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 .mem-feats li.on { border-left-color: var(--accent); }
 .mem-feats li b { font-size: 0.9375rem; }
 .mem-feats li small { color: var(--muted); font-size: 0.8125rem; }
+/* Pro işareti: üyelik sistemi devredeyken (html[data-mem]) Pro özelliklerinin düğmelerinin köşesinde altın "PRO" etiketi */
+html[data-mem] :is([data-go=multi], [data-go=rec], [data-go=dl], .set-tile[data-set=cast], .set-tile[data-set=dl], .set-tile[data-set=rec], .set-tile[data-set=kid], .set-tile[data-set=plans], #pl-tv, #pl-dl, #pl-rec, #tabs [data-tab=multi]) { position: relative; }
+html[data-mem] :is([data-go=multi], [data-go=rec], [data-go=dl], .set-tile[data-set=cast], .set-tile[data-set=dl], .set-tile[data-set=rec], .set-tile[data-set=kid], .set-tile[data-set=plans], #pl-tv, #pl-dl, #pl-rec, #tabs [data-tab=multi])::after { content: "PRO"; position: absolute; top: 4px; right: 4px; z-index: 1; padding: 1px 5px; border-radius: 6px; background: var(--gold); color: #1a1200; font-size: 0.5625rem; font-weight: 800; line-height: 1.5; letter-spacing: 0.06em; pointer-events: none; }
+/* Pro üyenin ana ekran başlığı: altın yıldızlı PRO */
+.brand-col { display: flex; flex-direction: column; flex: none; line-height: 1.05; } /* dar başlıkta sığsın diye adın altında durur */
+.brand-pro { color: var(--gold); font-size: 0.6875rem; font-weight: 800; font-style: normal; letter-spacing: 0.08em; }
 body.mem-blocked #btn-search, body.mem-blocked #btn-refresh, body.mem-blocked #searchbar { display: none; }
 .mem-wall { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
 .mem-wall > .ic { width: 48px; height: 48px; color: var(--accent); }
@@ -1278,7 +1284,6 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
    Tek yükseklik belirteci: --yt-h. Eski, üst üste binen 34/42/46/56vh kuralları kaldırıldı.
    ================================================================================================ */
 #pl-video-frame, #pl-below { display: none; }
-.pl-cover { display: none; } /* müzik çaların kapak simgesi: yalnız dikey müzik çalarda görünür */
 
 @media (orientation: portrait) {
   html #player.portrait-split, html #player.vod-portrait {
@@ -1322,16 +1327,37 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
     top: calc(var(--yt-top) + var(--yt-h)); min-height: 0; overflow: hidden; background: #0a0e14; color: #fff;
     padding: 0 var(--safe-r) var(--safe-b) var(--safe-l); overflow: clip;
   }
-  /* Müzik çalar (ses dosyaları, telefon): video kutusunun yerinde kare kapak; denetimler kapağın altına dizilir ve hep görünür */
-  html #player.vod-portrait.music { --yt-h: min(92vw, 46vh); }
-  #player.vod-portrait.music #pl-video-frame { display: flex; align-items: flex-start; justify-content: center; background: radial-gradient(120% 90% at 25% 10%, color-mix(in srgb, var(--accent) 62%, #0a0e14), #0a0e14 78%); }
-  #player.vod-portrait.music .pl-cover { display: block; width: 34%; height: auto; aspect-ratio: 1; margin-top: 16%; color: #ffffffd9; filter: drop-shadow(0 10px 28px #0008); }
+  /* Müzik çalar (ses dosyaları, telefon): tam ekran renkli arka plan görseli (şarkının kapağı varsa bulanık hâli), ortada kapak,
+     altında karışık / önceki / oynat / sonraki / tekrar ve şarkı listesi. Denetimler hep görünür. */
+  html #player.vod-portrait.music { --yt-h: 58vh; background: #05070c; }
   #player.vod-portrait.music #vid { opacity: 0; }
-  #player.vod-portrait.music #pl-ui { background: linear-gradient(#0006, #0000 30%, #0000 55%, #0a0e14); }
-  #player.vod-portrait.music .pl-mid { margin: auto 0 14px; }
-  #player.vod-portrait.music .big-btn { background: #ffffff1f; }
-  #player.vod-portrait.music .big-btn.lg { width: 64px; height: 64px; background: var(--accent); color: var(--on-accent, #06120a); }
-  #player.vod-portrait.music .pl-info-text b { font-size: 1.125rem; }
+  #pl-music { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+  .pm-bg { position: absolute; inset: 0; background: linear-gradient(165deg, hsl(calc(var(--mh, 260) * 1deg) 72% 38%), hsl(calc(var(--mh, 260) * 1deg + 50deg) 70% 18%) 55%, #05070c); }
+  .pm-bg i { position: absolute; border-radius: 50%; filter: blur(56px); opacity: 0.6; animation: pm-drift 16s ease-in-out infinite alternate; }
+  .pm-bg i:nth-of-type(1) { width: 78vw; height: 78vw; left: -24vw; top: 2vh; background: hsl(calc(var(--mh, 260) * 1deg + 300deg) 85% 55%); }
+  .pm-bg i:nth-of-type(2) { width: 70vw; height: 70vw; right: -26vw; top: 26vh; background: hsl(calc(var(--mh, 260) * 1deg + 40deg) 90% 55%); animation-duration: 21s; animation-direction: alternate-reverse; }
+  .pm-bg i:nth-of-type(3) { width: 90vw; height: 90vw; left: 6vw; bottom: -30vw; background: hsl(calc(var(--mh, 260) * 1deg + 160deg) 80% 42%); animation-duration: 26s; }
+  .pm-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(#0003, #0000 22%, #05070c99 62%, #05070c); }
+  #pm-bgimg { position: absolute; left: -12%; top: -12%; width: 124%; height: 124%; object-fit: cover; filter: blur(38px) brightness(0.62) saturate(1.35); }
+  #pl-music.has-art .pm-bg i { opacity: 0.25; }
+  .pm-art { position: absolute; left: 50%; top: calc(var(--safe-t) + 8.5vh); width: min(64vw, 32vh); aspect-ratio: 1; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 28px; border: 1px solid #ffffff38; background: linear-gradient(145deg, #ffffff3d, #ffffff12); box-shadow: 0 26px 64px #000a; }
+  .pm-art .ic { width: 46%; height: 46%; color: #fff; }
+  .pm-art img { width: 100%; height: 100%; object-fit: cover; }
+  #pl-music.has-art .pm-art .ic { display: none; }
+  @keyframes pm-drift { to { transform: translate(7vw, -5vh) scale(1.18); } }
+  html[data-lite] .pm-bg i { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .pm-bg i { animation: none; } }
+  #player.vod-portrait.music #pl-ui { background: none; }
+  #player.vod-portrait.music .pl-mid { margin: auto 0 6px; gap: clamp(8px, 3.6vw, 20px); }
+  #player.vod-portrait.music #pl-rew, #player.vod-portrait.music #pl-fwd { display: none; } /* müzikte ±10 sn yerine karışık ve tekrar; sarma ilerleme çubuğundan */
+  #player.vod-portrait.music .big-btn { width: 48px; height: 48px; background: #ffffff24; color: #fff; }
+  #player.vod-portrait.music .big-btn.lg { width: 68px; height: 68px; background: #fff; color: #0a0e14; }
+  #player.vod-portrait.music .big-btn.pm-btn { width: 42px; height: 42px; background: none; color: #ffffffb3; }
+  #player.vod-portrait.music .big-btn.pm-btn .ic { width: 24px; height: 24px; }
+  #player.vod-portrait.music .big-btn.pm-btn.on { color: #0a0e14; background: var(--gold); } /* açık: altın dolgu, koyu simge */
+  #player.vod-portrait.music #pl-below { background: none; }
+  #player.vod-portrait.music .pl-info-text b { font-size: 1.25rem; }
+  #player.vod-portrait.music .pl-vod-card { background: #ffffff14; border-color: #ffffff24; }
   #player.locked #pl-info { display: none; }
   .pl-info { flex: none; padding: 10px 12px 2px; }
   .pl-info-head { display: flex; align-items: center; gap: 6px; }

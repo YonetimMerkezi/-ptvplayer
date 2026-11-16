@@ -119,6 +119,8 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
     if (ctxRoot && ctxRoot.type === 'smb') url = (await plugin.netSmbUrl({ host: ctxRoot.host, path: row.path, user: ctxRoot.user || '', pass: ctxRoot.pass || '' })).url;
     const item = { id: row.id, name: row.title || cleanName(row.name), kind: 'movie', mime: 'auto', url, localMedia: true, audio: row.kind === 'audio' };
     if (row.headers) item.headers = row.headers;
+    // Şarkının kapak resmi (varsa) müzik çaların kapağında ve arka planında görünür; gelmesi beklenmez, hazır olunca eklenir.
+    if (row.kind === 'audio' && row.uri) thumbOf({ uri: row.uri, kind: 'audio' }).then((d) => d && (item.logo = d)).catch(() => {});
     if (row.kind === 'video') {
       try {
         if (!ctxRoot || ctxRoot.type === 'saf') {
