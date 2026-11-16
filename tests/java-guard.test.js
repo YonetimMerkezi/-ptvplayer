@@ -521,6 +521,10 @@ test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yay
 
 test('Android performans tanılaması RAM, CPU, Android sürümü ve donanım video çözücülerini raporlar', () => {
   assert.match(kaynak, /result\.put\("totalRamMb", totalRamMb\)/);
+  assert.match(kaynak, /result\.put\("availableRamMb", availableRamMb\)/);
+  assert.match(kaynak, /result\.put\("lowRamDevice", lowRamDevice\)/);
+  assert.match(kaynak, /result\.put\("maxHeapMb", Runtime\.getRuntime\(\)\.maxMemory\(\)/);
+  assert.match(kaynak, /am\.isLowRamDevice\(\)/);
   assert.match(kaynak, /result\.put\("memoryClassMb", am != null \? am\.getMemoryClass\(\) : 0\)/);
   assert.match(kaynak, /result\.put\("cores", Runtime\.getRuntime\(\)\.availableProcessors\(\)\)/);
   assert.match(kaynak, /result\.put\("androidSdk", Build\.VERSION\.SDK_INT\)/);
