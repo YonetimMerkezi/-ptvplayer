@@ -583,6 +583,7 @@ function renderTab() {
   document.body.classList.toggle('multi-full', S.tab === 'multi' && !!S.source);
   const browse = S.tab === 'live' || S.tab === 'movies' || S.tab === 'series';
   $('#btn-search').hidden = !(browse || S.tab === 'favs');
+  if (!browse) $('#btn-catedit').hidden = true; // göz atma sekmelerinde kategori çubuğu çizilirken ayarlanır
   $('#btn-refresh').hidden = !S.source;
   $('#btn-home').hidden = S.tab === 'home';
   $('#crumb').hidden = $('#crumb-sort').hidden = true; // kategori başlığını yalnız liste sayfası (drawCrumb) açar
@@ -927,16 +928,19 @@ function wireCatbar(kind) {
 function drawCatbar(kind, mode, all) {
   // Satırlarda (Netflix gibi) çubuk yalnız dokunmatikte durur (kategori ara + Düzenle); kumandada Düzenle en alttaki kutudur.
   // Liste/Izgara düğmesi klasik kategori listesi ve kategori içi içindir; satırların görünümü Ayarlar'dan seçilir.
+  // Satırlarda (Netflix gibi) çubuk yoktur: vitrin görselinin üstünü kapatmasın. Telefonda "Kategorileri düzenle" üst çubuktaki
+  // düğmedir (#btn-catedit); kumandada en alttaki kutudur. Kategori arama, düzenleme açılınca (klasik liste) görünür.
   const rows = mode === 'rows';
-  const visible = (mode === 'cats' || mode === 'items' || (rows && !isTvUi())) && all;
+  const visible = (mode === 'cats' || mode === 'items') && all;
   $('#catbar').hidden = !visible;
-  $('#catq').hidden = !((mode === 'cats' || rows) && (S.groups[kind].length > 8 || S.catFilter));
-  $('#cat-view').hidden = !visible || rows || S.catEdit;
+  $('#btn-catedit').hidden = !(rows && !isTvUi() && all);
+  $('#catq').hidden = !(mode === 'cats' && (S.groups[kind].length > 8 || S.catFilter));
+  $('#cat-view').hidden = !visible || S.catEdit;
   const view = displayMode(kind);
   $('#cat-view').textContent = view === 'grid' ? '☷ Liste' : '▦ Izgara';
   $('#cat-view').setAttribute('aria-label', view === 'grid' ? 'Liste görünümüne geç' : 'Izgara görünümüne geç');
   $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit || mode !== 'cats';
-  $('#cat-edit').hidden = mode !== 'cats' && !rows;
+  $('#cat-edit').hidden = mode !== 'cats';
   $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
 }
 
@@ -999,6 +1003,7 @@ function paintHero(it, info, final) {
 
 // Arka plan: iki katman çapraz geçer; yeni görsel yüklenene dek eskisi durur (boş/yanıp sönme olmaz). Önce geniş görsel, olmazsa afiş.
 let heroBgSeq = 0;
+const HERO_IMG_WAIT_MS = 2500; // bir görsel adresi için en çok bekleme
 let heroBgUrl = '';
 // Dikey afişin bulanık, geniş yansıması: sağda bütün gösterilen afişin arkasında ekranı doldurur, böylece geniş görseli olmayan yapım da
 // tam arka planlı görünür. Küçük (16:9) tuvale çizilip CSS ile büyütülür; filtre kullanılmadığından hafif modda ve düşük bellekli TV'de de ucuzdur.
@@ -1036,7 +1041,22 @@ function paintHeroBg(urls, nWide = urls.length) {
     const im = new Image();
     im.referrerPolicy = 'no-referrer';
     im.alt = '';
+    // Yanıt vermeyen bir adres (dizilerde sağlayıcının verdiği geniş görsel sık sık böyledir) ne yüklenir ne hata verir; vitrin görselsiz
+    // kalıyordu. Süre dolunca sıradaki adrese (afişe) geçilir.
+    let settled = false;
+    const giveUp = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(wait);
+      im.onload = im.onerror = null;
+      next(n + 1);
+    };
+    const wait = setTimeout(giveUp, HERO_IMG_WAIT_MS);
     im.onload = () => {
+      if (settled) return;
+      if (!im.naturalWidth) return giveUp(); // boş/bozuk görsel
+      settled = true;
+      clearTimeout(wait);
       if (seq !== heroBgSeq) return;
       const [a, b] = el.querySelectorAll('i');
       const glow = el.querySelector('canvas.glow');
@@ -1056,7 +1076,7 @@ function paintHeroBg(urls, nWide = urls.length) {
       el.classList.add('has');
       heroBgUrl = url;
     };
-    im.onerror = () => next(n + 1);
+    im.onerror = giveUp;
     im.src = url;
   };
   next(0);
@@ -1094,10 +1114,10 @@ function heroSync(kind, mode) {
   }
   const cur = hero.current;
   if (!cur) hero.reset(); // kategoriye yeni girildi: önceki hatalar yeni denemeyi engellemesin
-  if (!cur || !(rows ? S.list.hasItem(cur.id) : S.items.some((x) => x.id === cur.id))) {
-    hero.stop();
-    hero.focus(first);
-  }
+  // Vitrin her eşitlemede yeniden çizilir: odak, kutu henüz gizliyken (liste kurulurken) geldiyse o çizim atlanmıştır ve görsel hiç gelmezdi.
+  const keep = cur && (rows ? S.list.hasItem(cur.id) : S.items.some((x) => x.id === cur.id));
+  hero.stop();
+  hero.focus(keep ? cur : first);
 }
 
 function recentItemSheet(it) {
@@ -5895,6 +5915,7 @@ function lockSheet() {
 
 $('#btn-source').addEventListener('click', () => !kidActive() && (store.sources().length ? sourceSwitcher() : sourceForm()));
 $('#btn-refresh').addEventListener('click', () => refreshCatalog());
+$('#btn-catedit').addEventListener('click', () => $('#cat-edit') && $('#cat-edit').click());
 $('#btn-home').addEventListener('click', () => {
   const k = TAB_KIND[S.tab];
   if (k && S.group[k] != null) return leaveGroup(k); // tek geri oku: önce kategori listesine, sonra ana ekrana

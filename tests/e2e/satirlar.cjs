@@ -396,15 +396,17 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
         lines: Number(getComputedStyle(document.querySelector('#list')).getPropertyValue('--cap-lines')),
       };
     });
-    ok(ph.bar && ph.edit === 'Düzenle' && !ph.tile && !ph.titles.includes('Düzenle'), 'telefon: kategori çubuğunda "Düzenle" düğmesi var, kumanda kutusu/satırı yok');
+    // Satırlarda kategori çubuğu yoktur (vitrin görselini kapatmasın); "Kategorileri düzenle" üst çubuktaki düğmedir
+    const topEdit = await page.evaluate(() => { const b = document.querySelector('#btn-catedit'); return !!b && !b.hidden && b.getBoundingClientRect().width > 0; });
+    ok(!ph.bar && topEdit && !ph.tile && !ph.titles.includes('Düzenle'), 'telefon: kategori çubuğu yok, üst çubukta "Kategorileri düzenle" düğmesi var, kumanda kutusu/satırı yok');
     ok(ph.fs === 12 && ph.lines === 3, `telefon: ad yazısı 12 px ve 3 satır (${ph.fs}px, ${ph.lines} satır)`);
     ok(Math.abs(ph.h - (6 + ph.lines * ph.lh)) <= 1 && ph.bb > 0, `telefon: ad alanı tam ${ph.lines} satırlık (sonraki satırın ucu sızmaz): ${ph.h}px ≈ 6 + ${ph.lines}×${ph.lh}`);
-    await page.click('#cat-edit');
+    await page.click('#btn-catedit');
     await page.waitForSelector('.row.cat.edit', { timeout: 5000 });
     ok((await page.textContent('#cat-edit')) === 'Bitti' && (await page.evaluate(() => !document.querySelector('.sh-row'))), 'telefon: Düzenle klasik kategori listesini düzenleme kipinde açtı');
     await page.click('#cat-edit');
     await page.waitForSelector('.sh-row', { timeout: 5000 });
-    ok((await page.textContent('#cat-edit')) === 'Düzenle', 'telefon: Bitti satırlara döndürdü');
+    ok(await page.evaluate(() => document.querySelector('#catbar').hidden && !document.querySelector('#btn-catedit').hidden), 'telefon: Bitti satırlara döndürdü');
 
     // yatay telefon + klavye/kumanda: vitrin görünür
     await page.setViewportSize({ width: 844, height: 390 });
