@@ -1731,6 +1731,7 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("message", "VIDEO_FROZEN");
         o.put("code", -2);
         o.put("rendered", r);
+        o.put("frozen", true); // JS yeniden bağlanma yöneticisi uyumlu mod/alternatif adres sırasını uygulasın
         if (!videoDecoder.isEmpty()) o.put("decoder", videoDecoder);
         notifyListeners("error", o);
     }
