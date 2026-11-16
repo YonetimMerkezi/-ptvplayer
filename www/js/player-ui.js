@@ -527,7 +527,12 @@ export function createPlayerUI({ engine, player, env }) {
     scheduleFit();
 
     const s = q('#pl-status');
-    if (st.status === 'loading' || st.status === 'buffering') {
+    // Yükleniyor ya da hata kutusu ekranın ortasındadır: oynat/duraklat düğmesi o sırada gizlenir (üst üste binmesinler).
+    // Yalnız dönen halka varsa kutunun zemini olmaz (bare); yazı varsa pencere görünümündedir.
+    const busy = st.status === 'loading' || st.status === 'buffering';
+    root.classList.toggle('busy', busy || st.status === 'error');
+    s.classList.toggle('bare', busy && !st.reconnect);
+    if (busy) {
       s.hidden = false;
       s.innerHTML = '<div class="spinner"></div>' + (st.reconnect ? `<div class="rc">Yeniden bağlanılıyor… (${st.reconnect})</div>` : '');
     } else if (st.status === 'error') {
@@ -631,7 +636,12 @@ export function createPlayerUI({ engine, player, env }) {
       const good = (t.audio || []).length;
       const bad = (t.audioBad || []).length;
       q('#pl-audio').hidden = !(good > 1 || bad > 0);
-      if (good === 0 && bad > 0) toast('Bu cihaz yayının ses biçimini (AC3/DTS vb.) çözemiyor; ses gelmeyebilir. “Ses dili” bölümüne bakın.', 5000);
+      // Cihazın çözemediği ses biçimi (AC3/DTS vb.): her kanalda ekranın ortasına uyarı çıkmaz; Ses düğmesi işaretlenir, ayrıntı
+      // düğmeye dokununca açılan "Ses dili" penceresinde yazar.
+      const noAudio = good === 0 && bad > 0;
+      q('#pl-audio').classList.toggle('warn', noAudio);
+      q('#pl-audio span').textContent = noAudio ? 'Ses çözülemiyor' : 'Ses';
+      q('#pl-audio').setAttribute('aria-label', noAudio ? 'Ses: bu cihaz yayının ses biçimini çözemiyor' : 'Ses dili');
       q('#pl-text').hidden = !(t.text && t.text.length > 0);
     } catch {
       /* iz bilgisi yoksa düğmeler gizli kalır */
@@ -1147,6 +1157,8 @@ export function createPlayerUI({ engine, player, env }) {
     document.body.classList.add('player-open');
     document.documentElement.classList.toggle('native-playing', !!env.native);
     q('#pl-audio').hidden = true;
+    q('#pl-audio').classList.remove('warn'); // yeni yayın: önceki yayının ses uyarısı taşınmaz
+    q('#pl-audio span').textContent = 'Ses';
     q('#pl-text').hidden = true;
     q('#pl-hud').hidden = true;
     q('#pl-nextup').hidden = true;

@@ -1222,7 +1222,9 @@ function mountList(kind, mode = 'items') {
     S.list = new VirtualList(el, {
       ...(grid ? {
         minCellW: 116, gap, pad: GRID_PAD,
-        cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 0.92,
+        // Kutu, içeriği kadar yüksek olmalı: iç boşluk 20 + logo 54 + ara 8 + iki satır ad (0,8rem × 1,25 × 2) + pay. Dar kutuda ve büyük
+        // yazı ayarında genişliğin 0,92'si yetmiyor, adın ikinci satırı alttan kesiliyordu.
+        cellH: (w, cols) => Math.max(((w - 24 - gap * (cols - 1)) / cols) * 0.92, Math.ceil(86 + 32 * remScale())),
         render: (it, i) => liveTile(it, i),
       } : {
         rowH: scaled(64),

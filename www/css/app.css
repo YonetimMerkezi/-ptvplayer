@@ -242,6 +242,7 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 /* Pro işareti: üyelik sistemi devredeyken (html[data-mem]) Pro özelliklerinin düğmelerinin köşesinde altın "PRO" etiketi */
 html[data-mem] :is([data-go=multi], [data-go=rec], [data-go=dl], .set-tile[data-set=cast], .set-tile[data-set=dl], .set-tile[data-set=rec], .set-tile[data-set=kid], .set-tile[data-set=plans], #pl-tv, #pl-dl, #pl-rec, #tabs [data-tab=multi]) { position: relative; }
 html[data-mem] :is([data-go=multi], [data-go=rec], [data-go=dl], .set-tile[data-set=cast], .set-tile[data-set=dl], .set-tile[data-set=rec], .set-tile[data-set=kid], .set-tile[data-set=plans], #pl-tv, #pl-dl, #pl-rec, #tabs [data-tab=multi])::after { content: "PRO"; position: absolute; top: 4px; right: 4px; z-index: 1; padding: 1px 5px; border-radius: 6px; background: var(--gold); color: #1a1200; font-size: 0.5625rem; font-weight: 800; line-height: 1.5; letter-spacing: 0.06em; pointer-events: none; }
+html[data-mem] :is(#pl-tv, #pl-dl, #pl-rec)::after { top: -7px; right: -7px; } /* oynatıcıda düğme küçüktür: etiket simgeyi kapatmasın diye köşeden taşar */
 /* Pro üyenin ana ekran başlığı: altın yıldızlı PRO */
 .brand-col { display: flex; flex-direction: column; flex: none; line-height: 1.05; } /* dar başlıkta sığsın diye adın altında durur */
 .brand-pro { color: var(--gold); font-size: 0.6875rem; font-weight: 800; font-style: normal; letter-spacing: 0.08em; }
@@ -467,9 +468,13 @@ html.native-playing #vid { display: none; }
 /* Oynatıcı düğmeleri varsayılan yalnız simge (adı title/aria-label'de); Ayarlar'dan seçilenlerin adı da yazar, kayıt süresi hep görünür */
 .pl-tools .tool span { display: none; }
 .pl-tools .tool:not(.lbl):not(.rec-on) { padding: 0 11px; }
-.pl-tools .tool.lbl span, .pl-tools .tool.rec-on span { display: inline; }
+.pl-tools .tool.lbl span, .pl-tools .tool.rec-on span, .pl-tools .tool.warn span { display: inline; }
+#player .tool.warn { border-color: var(--danger); color: #ffd7d7; } /* Ses düğmesi: cihaz yayının ses biçimini çözemiyor */
+#player .tool.warn .ic { color: var(--danger); }
 .tool .ic { width: 20px; height: 20px; }
 .pl-status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; padding: 16px 20px; border-radius: 16px; background: var(--pc-solid); border: 1px solid var(--pc-line); max-width: 82%; pointer-events: auto; }
+.pl-status.bare { padding: 0; background: none; border-color: transparent; pointer-events: none; } /* yalnız dönen halka */
+#player.busy #pl-play { visibility: hidden; } /* yükleniyor/hata kutusu ortadayken oynat düğmesi yer tutar ama görünmez */
 .pl-status .btn { margin-top: 12px; }
 .pl-status .rc, .sp-status .rc, .mp-st .rc { margin-top: 10px; font-size: 0.8125rem; color: #cbd5e1; }
 .spinner { width: 34px; height: 34px; border: 3px solid #fff4; border-top-color: #fff; border-radius: 50%; animation: sp 0.8s linear infinite; margin: 0 auto; }
