@@ -515,6 +515,7 @@ test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yay
   // hata olayı: HTTP kodu + neden zinciri + çözücü; donma olayı: çizilen kare sayısı + çözücü; getStats: çözücü
   assert.match(kaynak, /o\.put\("cause", causeOf\(error\)\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
   assert.match(kaynak, /o\.put\("message", "VIDEO_FROZEN"\);[\s\S]*?o\.put\("rendered", r\);[\s\S]*?o\.put\("decoder", videoDecoder\);/);
+  assert.match(kaynak, /o\.put\("frozen", true\)/, 'donma olayı JS yeniden bağlanma yöneticisine frozen bayrağı taşımalı');
   assert.match(kaynak, /o\.put\("compat", compat\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
   assert.match(kaynak, /private static String causeOf\(Throwable error\) \{[\s\S]*?getClass\(\)\.getSimpleName\(\)/);
 });
