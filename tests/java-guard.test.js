@@ -539,4 +539,7 @@ test('Android performans tanılaması RAM, CPU, Android sürümü ve donanım vi
   assert.match(kaynak, /result\.put\("videoDecoders", videoDecoders\)/);
   assert.match(kaynak, /result\.put\("maxMultiScreens", maxMultiScreens\(\)\)/, "tanılama ekran sınırını da göstermeli");
   assert.match(kaynak, /for \(Slot slot : slots\.values\(\)\) if \(slot\.player != null\) applyVideoLimits\(slot\.player\)/, "profil değişikliği açık çoklu ekranlara uygulanmalı");
+  assert.match(kaynak, /private long availableRamMb\(\)[\s\S]*?am\.getMemoryInfo\(info\)[\s\S]*?info\.availMem/ , "anlık boş RAM ölçülmeli");
+  assert.match(kaynak, /if \(available < 350\) return 1;[\s\S]*?if \(available < 1200\) return Math\.min\(profileLimit, 4\)/, "bellek baskısında eşzamanlı ekran sayısı azaltılmalı");
+  assert.match(kaynak, /result\.put\("availableRamMb", availableRamMb\(\)\)/, "anlık boş RAM tanılamada gösterilmeli");
 });
