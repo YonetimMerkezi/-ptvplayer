@@ -1940,3 +1940,54 @@ html.tv [data-scroll] {
   .home-status-metrics small { font-size:.55rem; }
   .home-foot { min-height:18px; font-size:.62rem; }
 }
+
+
+/* Yatay ana ekran: boşluk dağılımını sabitle, kısayolları tek satırda tut. */
+@media (orientation:landscape) {
+  .home {
+    align-content:stretch;
+    grid-template-rows:auto auto auto auto minmax(128px,1fr) auto;
+    row-gap:clamp(5px,1vh,9px);
+  }
+  .home .shortcuts {
+    grid-template-columns:repeat(8,minmax(0,1fr));
+    grid-auto-flow:row;
+    align-content:start;
+    min-height:0;
+  }
+  .home .shortcuts .tile.mini {
+    min-width:0;
+    width:auto;
+  }
+  .home-row {
+    min-height:0;
+    height:100%;
+  }
+  .home-row-s {
+    min-height:0;
+    flex:1 1 auto;
+  }
+  .home-status {
+    min-height:0;
+    overflow:hidden;
+  }
+  .home-foot {
+    min-width:0;
+  }
+}
+@media (orientation:landscape) and (max-height:740px) {
+  .home {
+    gap:5px;
+    grid-template-rows:auto auto auto auto minmax(112px,1fr) auto;
+    padding-top:calc(var(--safe-t) + 4px);
+    padding-bottom:max(4px,var(--safe-b));
+  }
+  .home .home-primary>.tile {
+    height:clamp(82px,18vh,124px);
+  }
+  .home .shortcuts .tile.mini {
+    min-height:clamp(48px,10vh,68px);
+  }
+  .home-row { padding:8px 10px; }
+  .home-status { padding:9px 11px; gap:7px; }
+}
