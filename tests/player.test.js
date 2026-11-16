@@ -404,7 +404,7 @@ test('film ilk açılışta: tampon büyüyorsa bekçi yeniden kurulur, üst sı
 });
 
 test('olay kaydı: açılış, hata ayrıntısı, yeniden bağlanma ve yedek adrese geçiş sırayla yazılır', async () => {
-  const { p, tick, timers } = setup();
+  const { p, tick, timers, calls } = setup();
   await p.open(live, [T('http://h/1.m3u8', 'hls'), T('http://h/1.ts', 'ts')]);
   tick(2400);
   p.handle({ type: 'state', state: 'playing' });
