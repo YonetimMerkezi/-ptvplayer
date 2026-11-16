@@ -192,7 +192,7 @@ test('Android TV bildirimi: kumanda başlatıcısı, afiş, dokunmatik ve leanba
 });
 
 test('yayın kaydı: yalnız ana oynatıcı kayda yazar, çıkışta/yeni yayında kayıt kapanır, liste (m3u8) kayda girmez', () => {
-  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\(buffer, live\), true, true, compat\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
+  assert.match(kaynak, /buildExo\(headers, true, loadControlFor\((?:buffer|effectiveBuffer), live\), true, true, compat\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
   assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false, false, false\)/, 'çoklu ekran kutuları kayda yazmamalı, ses gecikmesi ve uyumlu mod almamalı');
   assert.match(kaynak, /public void stop\(final PluginCall call\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'oynatıcı kapanınca kayıt bitmeli');
   assert.match(kaynak, /if \(!keepRec\) \{\s*StreamRecorder\.stop\(null\);/, 'başka yayına geçilince kayıt bitmeli');
@@ -486,7 +486,7 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   // canlı yayın gerçek hızda gelir: başlama/yeniden başlama tamponu sınırlanmazsa her takılma uzun donar (JS bekçisi 7 sn'de yayını baştan açar)
   assert.match(kaynak, /loadControlFor\(String level, boolean live\)/);
   assert.match(kaynak, /if \(live\) \{\s*start = Math\.min\(start, 2500\);\s*resume = Math\.min\(resume, 3000\);/);
-  assert.match(kaynak, /loadControlFor\(buffer, live\)/);
+  assert.match(kaynak, /loadControlFor\((?:buffer|effectiveBuffer), live\)/);
   // bekçi her saniye (tick) çağrılır, kare sayacı ilerlemezse VIDEO_FROZEN bildirir ve uyumlu modu açar
   assert.match(kaynak, /emitTime\(\);\s*watchVideo\(\);/);
   assert.match(kaynak, /private void watchVideo\(\)[\s\S]*?renderedOutputBufferCount[\s\S]*?compat = true;[\s\S]*?"VIDEO_FROZEN"[\s\S]*?notifyListeners\("error"/);
@@ -511,7 +511,7 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
 test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yayın bilgisine ve hata olaylarına konur', () => {
   // çözücü adı Media3'ten (ana oynatıcıya da çoklu ekrandaki gibi dinleyici takılır) ve her oynatıcı kurulumunda sıfırlanır
   assert.match(kaynak, /private volatile String videoDecoder = "";/);
-  assert.match(kaynak, /videoDecoder = "";\s*player = buildExo\(headers, true, loadControlFor\(buffer, live\), true, true, compat\);\s*player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
+  assert.match(kaynak, /videoDecoder = "";\s*player = buildExo\(headers, true, loadControlFor\((?:buffer|effectiveBuffer), live\), true, true, compat\);\s*player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
   // hata olayı: HTTP kodu + neden zinciri + çözücü; donma olayı: çizilen kare sayısı + çözücü; getStats: çözücü
   assert.match(kaynak, /o\.put\("cause", causeOf\(error\)\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
   assert.match(kaynak, /o\.put\("message", "VIDEO_FROZEN"\);[\s\S]*?o\.put\("rendered", r\);[\s\S]*?o\.put\("decoder", videoDecoder\);/);
