@@ -323,13 +323,19 @@ public class IptvPlayerPlugin extends Plugin {
         ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
         int memoryClass = am != null ? am.getMemoryClass() : 128;
         long ramMb = 0;
+        boolean lowRamDevice = false;
         try {
             ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
-            if (am != null) { am.getMemoryInfo(mi); ramMb = mi.totalMem / (1024L * 1024L); }
+            if (am != null) {
+                am.getMemoryInfo(mi);
+                ramMb = mi.totalMem / (1024L * 1024L);
+                lowRamDevice = am.isLowRamDevice();
+            }
         } catch (Exception ignored) { }
         int cores = Runtime.getRuntime().availableProcessors();
-        if (memoryClass <= 128 || (ramMb > 0 && ramMb <= 3072) || cores <= 4) return "low";
-        if (memoryClass <= 192 || (ramMb > 0 && ramMb <= 5120) || cores <= 6) return "balanced";
+        // Dört çekirdekli güncel cihazları doğrudan düşük sınıfa atma; RAM sınıfı ve Android'in low-RAM işaretini önceliklendir.
+        if (lowRamDevice || memoryClass <= 128 || (ramMb > 0 && ramMb <= 3072) || cores <= 2) return "low";
+        if (memoryClass <= 192 || (ramMb > 0 && ramMb <= 5120) || cores <= 4) return "balanced";
         return "high";
     }
 
@@ -390,6 +396,19 @@ public class IptvPlayerPlugin extends Plugin {
             }
         } catch (Exception ignored) { }
         result.put("totalRamMb", totalRamMb);
+        long availableRamMb = 0;
+        boolean lowRamDevice = false;
+        try {
+            ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+            if (am != null) {
+                am.getMemoryInfo(memoryInfo);
+                availableRamMb = memoryInfo.availMem / (1024L * 1024L);
+                lowRamDevice = am.isLowRamDevice();
+            }
+        } catch (Exception ignored) { }
+        result.put("availableRamMb", availableRamMb);
+        result.put("lowRamDevice", lowRamDevice);
+        result.put("maxHeapMb", Runtime.getRuntime().maxMemory() / (1024L * 1024L));
         result.put("cores", Runtime.getRuntime().availableProcessors());
         result.put("androidSdk", Build.VERSION.SDK_INT);
         result.put("androidVersion", Build.VERSION.RELEASE == null ? "" : Build.VERSION.RELEASE);
@@ -410,6 +429,10 @@ public class IptvPlayerPlugin extends Plugin {
                 JSObject decoder = new JSObject();
                 decoder.put("name", codecInfo.getName());
                 decoder.put("types", videoTypes);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    decoder.put("hardwareAccelerated", codecInfo.isHardwareAccelerated());
+                    decoder.put("vendor", codecInfo.isVendor());
+                }
                 videoDecoders.put(decoder);
             }
         } catch (Exception ignored) { }
