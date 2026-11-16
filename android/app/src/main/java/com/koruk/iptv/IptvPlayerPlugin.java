@@ -433,7 +433,11 @@ public class IptvPlayerPlugin extends Plugin {
         castState = "buffering";
 
         videoDecoder = "";
-        activePerformance = resolvePerformanceProfile(performanceMode);\n        String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;\n        lastBuffer = effectiveBuffer;\n        player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);\n        applyVideoLimits(player);
+        activePerformance = resolvePerformanceProfile(performanceMode);
+        String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;
+        lastBuffer = effectiveBuffer;
+        player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);
+        applyVideoLimits(player);
         player.addAnalyticsListener(new AnalyticsListener() {
             @Override
             public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
