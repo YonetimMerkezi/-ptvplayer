@@ -537,4 +537,6 @@ test('Android performans tanılaması RAM, CPU, Android sürümü ve donanım vi
   assert.match(kaynak, /result\.put\("androidVersion", Build\.VERSION\.RELEASE/);
   assert.match(kaynak, /new android\.media\.MediaCodecList\(\s*android\.media\.MediaCodecList\.REGULAR_CODECS\)/);
   assert.match(kaynak, /result\.put\("videoDecoders", videoDecoders\)/);
+  assert.match(kaynak, /result\.put\("maxMultiScreens", maxMultiScreens\(\)\)/, "tanılama ekran sınırını da göstermeli");
+  assert.match(kaynak, /for \(Slot slot : slots\.values\(\)\) if \(slot\.player != null\) applyVideoLimits\(slot\.player\)/, "profil değişikliği açık çoklu ekranlara uygulanmalı");
 });
