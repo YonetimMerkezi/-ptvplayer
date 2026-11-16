@@ -107,3 +107,22 @@ test('manifest: ön plan hizmeti türü ve izinler değişmedi', () => {
   assert.match(m, /FOREGROUND_SERVICE_MEDIA_PLAYBACK/);
   assert.match(m, /POST_NOTIFICATIONS/);
 });
+
+test('müzik: geri çıkınca video penceresi (mini oynatıcı) yok, müzik arka planda sürer', () => {
+  const ui = oku('www/js/player-ui.js');
+  const kapat = ui.slice(ui.indexOf('async function closeUi()'));
+  const dal = kapat.indexOf('keepsPlaying(current)');
+  const mini = kapat.indexOf('setMini(true)');
+  assert.ok(dal > 0 && mini > 0 && dal < mini, 'müzik dalı mini oynatıcıdan önce gelir');
+  assert.ok(!kapat.slice(dal, mini).includes('setMini(true)'));
+  assert.match(kapat.slice(dal, mini), /bgMusic = true;[\s\S]*?return;/, 'oynatıcı kapatılmadan çıkılır');
+  assert.match(ui, /if \(open && !keepsPlaying\(player\.state\(\)\)\) stopRequested = true;/, 'geri oku müziği durdurmaz');
+});
+
+test('müzik: arka planda parça bitince arayüz açmadan sıradakine geçer, liste bitince kapanır', () => {
+  const ui = oku('www/js/player-ui.js');
+  assert.match(ui, /quietUntil = Date\.now\(\) \+ 8000/);
+  assert.match(ui, /bgMusic && !open && quietUntil > Date\.now\(\) && item && item\.audio/);
+  assert.match(ui, /if \(!bgMusic \|\| open\) return;/);
+  assert.match(ui, /bgMusic = false;\s*player\.close\(\);/);
+});
