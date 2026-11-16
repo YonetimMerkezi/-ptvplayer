@@ -41,11 +41,13 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     enterPip: () => plugin.enterPip(),
     openExternal: (target) => plugin.openExternal({ url: target.url, mime: target.mime === 'hls' || /\\.m3u8(\\?|$)/i.test(target.url) ? 'application/vnd.apple.mpegurl' : target.mime === 'dash' || /\\.mpd(\\?|$)/i.test(target.url) ? 'application/dash+xml' : /^video\\//i.test(target.mime || '') ? target.mime : 'video/*' }),
     onPipChannel: (fn) => plugin.addListener('pipChannel', fn),
+    // Kilit ekranı / bildirim / Bluetooth tuşlarından gelen komutlar (next, prev, close): sıra mantığı web katmanındadır.
+    onMediaCmd: (fn) => plugin.addListener('mediaCmd', fn),
     // keepRecording: aynı yayına yeniden bağlanılıyor, süren kayıt kesilmesin.
     // opts.compat: uyumlu mod (yazılım çözücü başta, geniş TS ayrıştırma). target.live: canlı yayın (progressive .ts'te Media3 canlı olduğunu bilmez;
     // tampon eşikleri ve yeniden kurulumda konum buna göre seçilir).
     load: (target, startMs = 0, keepRecording = false, opts = null) =>
-      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat), dialog: !!getDialog(), bgAudio: !!target.bgAudio, title: target.title || '', subUri: target.subUri || '' }),
+      plugin.play({ url: target.url, mime: target.mime || 'auto', headers: target.headers || {}, startMs: Math.max(0, Math.floor(startMs)), buffer: getBuffer(), keepRecording, audioDelay: getDelay(), night: getNight(), live: !!target.live, compat: !!(opts && opts.compat), dialog: !!getDialog(), bgAudio: !!target.bgAudio, audioOnly: !!target.audioOnly, canPrev: !!target.canPrev, canNext: !!target.canNext, title: target.title || '', subUri: target.subUri || '' }),
     // Yayın kaydı (yalnız Android): izlenen yayın cihaza .ts olarak yazılır.
     rec: {
       start: (name, maxMs) => plugin.recordStart({ name, maxMs: maxMs || 0 }),
@@ -128,6 +130,7 @@ export function createWebEngine({ video, Hls, on }) {
     kind: 'web',
     enterPip: async () => { throw new Error('PiP yalnız Android uygulamasında kullanılabilir'); },
     onPipChannel: () => ({ remove() {} }),
+    onMediaCmd: () => ({ remove() {} }),
     async load(target, startMs = 0) {
       clean();
       const isHls = target.mime === 'hls' || /\.m3u8(\?|$)/i.test(target.url);

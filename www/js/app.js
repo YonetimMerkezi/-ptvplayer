@@ -1566,6 +1566,11 @@ function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   if (item.kind !== 'series' && !isRec && !item.localMedia) store.pushRecent(sid(), item);
   // Film nereden açılırsa açılsın (son izlenenler, bağlantı, indirilenler) oynatıcının altında önerilen filmler listesi olsun
   if (!ctx && item.kind === 'movie' && !isRec) ctx = movieCtx(item);
+  // KÖK NEDEN DÜZELTMESİ: yerel katman müziği (audioOnly) video saymasın (PiP açılmasın, medya oturumu açılsın); önceki/sonraki düğmeleri
+  // yalnız gerçek bir liste varken (müzik/video/bölüm) gösterilsin. Canlı TV ve "önerilen filmler" listesinde bu düğmeler anlamsız.
+  const navList = !!ctx && Array.isArray(ctx.items) && ctx.items.length > 1 && item.kind !== 'live' && !ctx.movie;
+  const nav = { audioOnly: !!item.audio, canPrev: navList && ctx.index > 0, canNext: navList && ctx.index < ctx.items.length - 1 };
+  targets = targets.map((target) => ({ ...target, ...nav }));
   let at = startAt;
   if (isRec) at = 0;
   else if (at == null) {

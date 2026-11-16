@@ -1060,7 +1060,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-hud').hidden = true;
     q('#pl-nextup').hidden = true;
     q('#pl-intro').hidden = true;
-    q('#pl-pip').hidden = engine.kind !== 'native' || onTv(); // TV'de resim içinde resim yok
+    q('#pl-pip').hidden = engine.kind !== 'native' || onTv() || !!(item && item.audio); // TV'de ve müzikte resim içinde resim yok
     applyResize(resizeIdx);
     loadLevels();
     const landscape = onTv() || (!vodPortrait && orientNow() !== 'portrait');
@@ -1519,6 +1519,30 @@ export function createPlayerUI({ engine, player, env }) {
     engine.onPipChannel((e) => {
       const st = player.state();
       if (st.item && st.item.kind === 'live') go(Number(e.direction) || 0);
+    });
+  }
+  // Kilit ekranı, bildirim paneli ve Bluetooth/kulaklık tuşları: yerel katman oynat/duraklat/sarmayı kendisi yapar, sıra ve kapatma burada.
+  if (engine.onMediaCmd) {
+    engine.onMediaCmd((e) => {
+      const st = player.state();
+      if (!st.item) return;
+      const act = e && e.action;
+      if (act === 'close') {
+        // Oynatma yerelde zaten durdu; arayüz de kapanır (mini oynatıcı ya da tam ekran fark etmez).
+        if (open) {
+          stopRequested = true;
+          popLayer('player');
+        } else {
+          player.close();
+        }
+        return;
+      }
+      if (st.item.kind === 'live') return; // canlı TV'de önceki/sonraki anlamsız
+      if (act === 'next') go(1);
+      else if (act === 'prev') {
+        if (st.pos > 3000) player.seek(0); // parçanın başında değilse önce başa sar, sonra önceki parçaya geç
+        else go(-1);
+      }
     });
   }
   q('#pl-external').hidden = engine.kind !== 'native';
