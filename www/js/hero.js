@@ -4,7 +4,20 @@
 export const HERO_DELAY_MS = 300; // odakta bu kadar durulursa ayrıntı istenir (hızlı gezerken ağa gidilmez)
 export const HERO_MAX_FAILS = 3; // üst üste bu kadar hatadan sonra o oturumda istek atılmaz
 
+import { cleanTitle } from './titleclean.js';
+
 const uniq = (list) => [...new Set(list.filter(Boolean))];
+
+// Sağlayıcı adı çoğu kez "Ad | 2026 | 5.2" ya da "Ad | 41. Bölüm | 06.11.2026" biçimindedir. Vitrin başlığında yalnız ad yazar;
+// yıl ve puan zaten alt satırda olduğundan tekrarlanmaz, bölüm/tarih gibi kalan parçalar alt satıra taşınır.
+export function heroName(name, yearField) {
+  const raw = String(name || '');
+  const ct = cleanTitle(raw, yearField);
+  const extra = raw.includes('|')
+    ? raw.split('|').slice(1).map((p) => p.trim()).filter((p) => p && !/^\d{4}$/.test(p) && !/^\d{1,2}([.,]\d{1,2})?$/.test(p))
+    : [];
+  return { title: ct.title || raw, year: ct.year ? String(ct.year) : '', extra: extra.slice(0, 2) }; // alt satır tek satırdır: en çok iki parça (bölüm, tarih)
+}
 
 // Vitrin açıkken kutu genişliği ekrana oranlı: 960×540'ta ~8, 1280×720'de ~9, 1920×1080'de ~9 sütun; altta 1-2 satır görünür kalır.
 export function heroCellW(viewW) {
@@ -17,12 +30,13 @@ export function heroModel(it, info) {
   const backs = uniq([i.backdrop, it.backdrop]);
   const posters = uniq([i.logo, it.logo]);
   const rating = i.rating || it.rating || '';
-  const year = i.year ? String(i.year).slice(0, 4) : '';
+  const nm = heroName(it.name, it.year);
+  const year = i.year ? String(i.year).slice(0, 4) : nm.year;
   const mins = i.durationSec > 0 ? Math.round(i.durationSec / 60) : 0;
   return {
-    title: it.name || '',
+    title: nm.title,
     rating: rating ? String(rating) : '',
-    meta: [year, mins ? `${mins} dk` : '', i.genre || ''].filter(Boolean),
+    meta: [...nm.extra, year, mins ? `${mins} dk` : '', i.genre || ''].filter(Boolean),
     cast: i.cast || '',
     director: i.director || '',
     plot: i.plot || it.plot || '',

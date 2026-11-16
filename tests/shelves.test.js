@@ -1,19 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shelfSizes, nextCell, hTarget, SHELF_CAP, ROW_CAPS, normalizeRowCap } from '../www/js/shelves.js';
+import { shelfSizes, nextCell, hTarget, SHELF_CAP, SHELF_LOW_H, ROW_CAPS, normalizeRowCap } from '../www/js/shelves.js';
 
 test('shelfSizes: TV ekranlarında bir satır tam, sonrakinin başlığı görünür; kutu sınırları', () => {
-  for (const [w, h] of [[960, 273], [1280, 384], [1920, 608]]) {
+  // liste alanı = ekran − üst çubuk − vitrin (%32): 960×540 → 295, 1280×720 → 428, 1920×1080 → 673
+  for (const [w, h] of [[960, 295], [1280, 428], [1920, 673]]) {
     const s = shelfSizes({ viewW: w, viewH: h });
     assert.ok(s.cw >= 84 && s.cw <= 210, `kutu genişliği sınırda (${s.cw})`);
     assert.equal(s.ch, Math.round(s.cw * 1.5 + 46));
     assert.equal(s.rowH, s.title + s.pad + s.ch);
-    // 960×540'ta alçak ekranda en küçük kutu bile sığmayabilir; diğerlerinde satır görünümün %85'inden azdır
-    if (w > 960) assert.ok(s.rowH <= h * 0.85, `${w}×${h}: satır ${s.rowH} px, görünüm ${h} px`);
+    // alçak görünümde (960×540) satır alanı doldurur; diğerlerinde satır görünümün %85'inden azdır (alttaki başlık görünür)
+    if (h >= SHELF_LOW_H) assert.ok(s.rowH <= h * 0.85, `${w}×${h}: satır ${s.rowH} px, görünüm ${h} px`);
     assert.ok(s.rowH < h * 1.0, `${w}×${h}: satır görünümden küçük`);
   }
   const big = shelfSizes({ viewW: 3840, viewH: 1500 });
   assert.equal(big.cw, 210);
+});
+
+test('shelfSizes: alçak TV görünümünde (960×540, vitrinin altı) kutular en küçük boyda kalmaz, satır alana sığar', () => {
+  // TV'de kök yazı 18 px: başlık/boşluk ölçeği 1,125, iki satırlık ad alanı 56 px
+  const s = shelfSizes({ viewW: 908, viewH: 295, scale: 1.125, capPx: 56 });
+  assert.ok(s.cw >= 100, `kutu okunaklı (${s.cw} px)`);
+  assert.ok(s.rowH <= 295, `satır alana sığar (${s.rowH} px)`);
 });
 
 test('shelfSizes: telefon ~3,3 kutu; yazı ölçeği başlık ve boşluğu büyütür', () => {

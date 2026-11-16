@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 117,
+    title: 'Netflix gibi film/dizi ekranı geri geldi; vitrin, odak halkası ve ana ekran düzeltmeleri',
+    items: [
+      'Film ve dizi ekranı “Netflix gibi” ayarında kategoriler yeniden yatay kayan satırlar olarak açılır; her satırın üstünde kategori adı görünür',
+      'TV vitrini: odaktaki yapımın arka plan görseli artık güvenilir biçimde yüklenir; başlıkta yalnız ad yazar, bölüm ve tarih alt satırda',
+      'Odak halkası kutunun çevresinde tam görünür: satırlarda, kategori içinde ve ana ekrandaki “Son eklenen filmler” satırında kırpılmaz, ekran dışına taşmaz',
+      'TV’de kutular daha büyük ve afişler doğru oranda; kutudaki ad alanı alttan yarım satır göstermez',
+      'Kategorileri düzenlerken (sırala, gizle, kilitle) düğmeler ızgara görünümünde de çıkar',
+      'Ana ekranda aynı film “Son eklenen filmler” satırında bir kez gösterilir',
+    ],
+  },
+  {
     id: 116,
     title: 'Oynatıcı ayarları sekmeleri, diyalog vurgulama, oynatma hızı ve yeni ana ekran',
     items: [

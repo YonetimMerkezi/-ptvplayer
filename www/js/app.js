@@ -100,6 +100,9 @@ const fontScale = () => {
   return p >= 80 && p <= 160 ? p / 100 : 1;
 };
 const scaled = (n) => Math.round(n * Math.max(1, fontScale()));
+// rem'in gerçek karşılığı (16 px'e oranı): TV'de kök yazı 18 px'tir ve yazı boyutu ayarıyla çarpılır. Kutudaki ad alanı CSS'te rem ile
+// ölçüldüğünden, kutu yüksekliğini hesaplayan kod da bu oranı kullanır; yoksa ad alanı afişten yer çalar (afiş basık görünür).
+const remScale = () => (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16;
 function applyFontScale() {
   document.documentElement.style.setProperty('--fs', String(fontScale()));
 }
@@ -676,9 +679,14 @@ function setDisplayMode(kind, value) {
   if (S.list) { S.list.destroy(); S.list = null; }
   refreshList(true);
 }
+// Kategori listesi düzenlenirken hep satır listesidir: sırala/gizle/kilitle düğmeleri satırdadır (ızgara kutusunda yer yok).
+const catsGrid = (kind) => displayMode(kind) === 'grid' && !S.catEdit;
+// Kurulu listenin yerleşimi: kip ya da kategori listesinin ızgara/liste hâli değişince liste baştan kurulur.
+const listKey = (kind, mode) => (mode === 'cats' ? `cats:${catsGrid(kind) ? 'grid' : 'list'}` : mode);
 function browseMode(kind) {
   if (S.query || S.group[kind] != null) return 'items';
-  return 'cats';
+  // Netflix gibi görünüm: kategoriler yatay kayan satırlardır; düzenleme ve kategori süzgeci klasik kategori listesini açar
+  return isMv(kind) && !S.catEdit && !S.catFilter && mvView() === 'rows' ? 'rows' : 'cats';
 }
 
 // Satırlar: "Tümü" satır olmaz (tüm listenin tek satırı anlamsız; klasik görünümde ve aramada durur), en üst satır "Devam et"tir.
@@ -881,15 +889,18 @@ function wireCatbar(kind) {
 }
 
 function drawCatbar(kind, mode, all) {
-  const visible = (mode === 'cats' || mode === 'items') && all;
+  // Satırlarda (Netflix gibi) çubuk yalnız dokunmatikte durur (kategori ara + Düzenle); kumandada Düzenle en alttaki kutudur.
+  // Liste/Izgara düğmesi klasik kategori listesi ve kategori içi içindir; satırların görünümü Ayarlar'dan seçilir.
+  const rows = mode === 'rows';
+  const visible = (mode === 'cats' || mode === 'items' || (rows && !isTvUi())) && all;
   $('#catbar').hidden = !visible;
-  $('#catq').hidden = !(mode === 'cats' && (S.groups[kind].length > 8 || S.catFilter));
-  $('#cat-view').hidden = !visible;
+  $('#catq').hidden = !((mode === 'cats' || rows) && (S.groups[kind].length > 8 || S.catFilter));
+  $('#cat-view').hidden = !visible || rows || S.catEdit;
   const view = displayMode(kind);
   $('#cat-view').textContent = view === 'grid' ? '☷ Liste' : '▦ Izgara';
   $('#cat-view').setAttribute('aria-label', view === 'grid' ? 'Liste görünümüne geç' : 'Izgara görünümüne geç');
   $('#cat-new').hidden = $('#cat-reset').hidden = !S.catEdit || mode !== 'cats';
-  $('#cat-edit').hidden = mode !== 'cats';
+  $('#cat-edit').hidden = mode !== 'cats' && !rows;
   $('#cat-edit').textContent = S.catEdit ? 'Bitti' : 'Düzenle';
 }
 
@@ -977,11 +988,13 @@ function paintHeroBg(urls, nWide = urls.length) {
       heroBgUrl = '';
       el.classList.remove('has');
       for (const x of el.children) x.classList.remove('on', 'show');
+      for (const x of el.querySelectorAll('i')) x.textContent = ''; // görsel bellekte tutulmasın
       return;
     }
     if (url === heroBgUrl) return;
     const im = new Image();
     im.referrerPolicy = 'no-referrer';
+    im.alt = '';
     im.onload = () => {
       if (seq !== heroBgSeq) return;
       const [a, b] = el.querySelectorAll('i');
@@ -989,7 +1002,10 @@ function paintHeroBg(urls, nWide = urls.length) {
       const to = a.classList.contains('on') ? b : a;
       const from = to === a ? b : a;
       const poster = n >= nWide;
-      to.style.backgroundImage = `url(${JSON.stringify(url)})`;
+      // Yüklenen görselin kendisi katmana konur (kutulardaki afişlerle aynı yol). CSS arka planı olarak verilince tarayıcı görseli ikinci kez,
+      // bu kez yönlendiren (Referer) bilgisiyle istiyordu; bunu reddeden ya da önbelleğe aldırmayan sunucularda vitrin arka plansız kalıyordu.
+      to.textContent = '';
+      to.appendChild(im);
       to.classList.toggle('poster', poster); // dikey afiş sağda bütün gösterilir (kırpılıp büyütülmez), arkasında bulanık yansıması
       if (poster) to.style.setProperty('--pr', String(im.naturalWidth && im.naturalHeight ? Math.min(1.2, Math.max(0.5, im.naturalWidth / im.naturalHeight)) : 0.667)); // kutu afişin oranında: kenar solması afişin kendi kenarına oturur
       glow.classList.toggle('show', poster);
@@ -1078,6 +1094,11 @@ function clearRecentSheet() {
 function mountList(kind, mode = 'items') {
   const el = $('#list');
   S.listMode = mode;
+  S.listKey = listKey(kind, mode);
+  // ad alanı ölçüleri görünüme özeldir: satırların bıraktığı değer ızgaraya taşınmasın
+  el.style.removeProperty('--cap-lines');
+  el.style.removeProperty('--cap-fs');
+  const GRID_PAD = isTvUi() ? 14 : 8; // ızgaranın üst/alt boşluğu: ilk ve son satırda odaktaki kutunun büyümesi (%4) ve halkası (5 px) kırpılmaz
   const longPress = (i) => {
     const it = S.items[i];
     if (!it) return;
@@ -1095,7 +1116,7 @@ function mountList(kind, mode = 'items') {
         const fs = narrow ? 0.75 : CAP_FS;
         el.style.setProperty('--cap-lines', String(lines || DEFAULT_CAPTION));
         el.style.setProperty('--cap-fs', fs + 'rem');
-        return shelfSizes({ viewW: w, viewH: h, scale: Math.max(1, fontScale()), capPx: captionPx(lines, fontScale(), fs) });
+        return shelfSizes({ viewW: w, viewH: h, scale: Math.max(1, remScale()), capPx: captionPx(lines, remScale(), fs) });
       },
       itemsOf: (row) => rowItems(kind, row),
       titleHtml: (row) => `${row.locked ? icon('lock') : ''}${row.folder ? icon('folder') : ''}<span>${esc(row.name)}</span>`,
@@ -1112,11 +1133,11 @@ function mountList(kind, mode = 'items') {
       onLongPress: (it) => folderSheet(kind, it),
     });
   } else if (mode === 'cats') {
-    const grid = displayMode(kind) === 'grid';
+    const grid = catsGrid(kind);
     const gap = 10;
     S.list = new VirtualList(el, {
       ...(grid ? {
-        minCellW: 132, gap,
+        minCellW: 132, gap, pad: GRID_PAD,
         cellH: (w, cols) => Math.max(86, Math.min(124, (w - 24 - gap * (cols - 1)) / cols * 0.72)),
         render: (c, i) => categoryTile(c, i),
       } : {
@@ -1130,7 +1151,7 @@ function mountList(kind, mode = 'items') {
     const gap = 10;
     S.list = new VirtualList(el, {
       ...(grid ? {
-        minCellW: 116, gap,
+        minCellW: 116, gap, pad: GRID_PAD,
         cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 0.92,
         render: (it, i) => liveTile(it, i),
       } : {
@@ -1149,11 +1170,16 @@ function mountList(kind, mode = 'items') {
   } else {
     const grid = displayMode(kind) === 'grid';
     const gap = 10;
+    // TV vitrini açıkken liste alanı alçaktır: ad en çok 2 satır (tam ad vitrinde yazar) ve bir satır kutu her zaman ekrana sığar
+    const heroGrid = grid && isTvUi() && heroActive(kind, mode);
+    const want = normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION));
+    const lines = heroGrid ? Math.min(2, want) : want;
+    if (heroGrid) el.style.setProperty('--cap-lines', String(lines || DEFAULT_CAPTION));
     S.list = new VirtualList(el, {
       ...(grid ? {
-        minCellW: isTvUi() && heroActive(kind, mode) ? heroCellW(window.innerWidth) : 104,
-        gap,
-        cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(store.pref('set.caption', DEFAULT_CAPTION), fontScale()),
+        minCellW: heroGrid ? heroCellW(window.innerWidth) : 104,
+        gap, pad: GRID_PAD, fitRow: heroGrid, snapRow: heroGrid,
+        cellH: (w, cols) => ((w - 24 - gap * (cols - 1)) / cols) * 1.5 + captionPx(lines, remScale()),
         render: (it, i) => card(it, i),
       } : {
         rowH: scaled(68),
@@ -1184,7 +1210,7 @@ function refreshList(keepScroll = false) {
   if (!kind || !$('#list')) return;
   pruneGroups();
   const mode = browseMode(kind);
-  if (!S.list || S.listMode !== mode) {
+  if (!S.list || S.listMode !== mode || S.listKey !== listKey(kind, mode)) {
     if (S.list) S.list.destroy();
     mountList(kind, mode);
     keepScroll = false;
@@ -2605,7 +2631,16 @@ function renderHome(v) {
       })
       .join('');
   const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
-  const fresh = newestItems(visibleAll('movie')).slice(0, 12).map((it) => ({ kind: 'movie', it }));
+  // aynı film listede birkaç kez bulunabilir (farklı kategori/kalite): ana ekranda adı ve yılı aynı olan tek kutu olur
+  const freshSeen = new Set();
+  const fresh = newestItems(visibleAll('movie'))
+    .filter((it) => {
+      const ct = cleanTitle(it.name, it.year);
+      const k = `${ct.key}|${ct.year || ''}`;
+      return !ct.key || (!freshSeen.has(k) && !!freshSeen.add(k));
+    })
+    .slice(0, 12)
+    .map((it) => ({ kind: 'movie', it }));
   const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
   const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') + homeRow('✨ Son eklenen filmler', fresh, 'movies');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });

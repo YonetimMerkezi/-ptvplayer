@@ -30,9 +30,9 @@ async function vitrinSection({ browser, base, mock, ok, sleep }) {
   const vodHits = () => mock.hits.filter((h) => /action=get_vod_info/.test(h)).length;
   const enterCat = async (page, tab) => {
     await page.click('.tile.t-' + tab);
-    await page.waitForSelector('.row.cat');
+    await page.waitForSelector('.row.cat, .cat-tile'); // klasik kategori listesi: satır ya da kutu (film/dizide varsayılan ızgara)
     await sleep(300);
-    await page.click('.row.cat >> nth=0');
+    await page.click(':is(.row.cat, .cat-tile) >> nth=0');
     await page.waitForSelector('.card');
     await sleep(500);
   };
@@ -55,11 +55,11 @@ async function vitrinSection({ browser, base, mock, ok, sleep }) {
     await page.waitForFunction(() => /Clara Lindqvist/.test(document.querySelector('#hero').textContent), null, { timeout: 5000 });
     ok(/Yönetmen\s*Henrik Lindholm/.test(await page.textContent('#hero')), 'yönetmen ve oyuncular geldi');
     await page.waitForFunction(() => document.querySelector('#hero-bg').classList.contains('has'), null, { timeout: 5000 });
-    const bg1 = await page.evaluate(() => [...document.querySelectorAll('#hero-bg i')].filter((i) => i.classList.contains('on')).map((i) => i.style.backgroundImage));
+    const bg1 = await page.evaluate(() => [...document.querySelectorAll('#hero-bg i')].filter((i) => i.classList.contains('on')).map((i) => ((i.querySelector('img') || {}).src || '')));
     ok(bg1.length === 1 && /\/backdrop\//.test(bg1[0]), 'geniş arka plan tek katmanda görünüyor: ' + bg1.join('|'));
     ok(await page.evaluate(() => getComputedStyle(document.querySelector('#hero-bg')).display === 'block'), 'arka plan katmanı ekranda');
     const hh = await page.evaluate(() => ({ h: document.querySelector('#hero').getBoundingClientRect().height, vh: innerHeight, list: document.querySelector('#list').getBoundingClientRect().height }));
-    ok(Math.abs(hh.h - hh.vh * 0.38) < 2 && hh.list > hh.vh * 0.5, `vitrin ekranın %38’i, altta liste yeterli yerde (${Math.round(hh.h)} px / liste ${Math.round(hh.list)} px)`);
+    ok(Math.abs(hh.h - hh.vh * 0.32) < 2 && hh.list > hh.vh * 0.5, `vitrin ekranın %32’si, altta liste yeterli yerde (${Math.round(hh.h)} px / liste ${Math.round(hh.list)} px)`);
 
     // aşağı ok: odaktaki kutu (halkasıyla) liste alanında tam görünür, kırpılmaz
     await page.keyboard.press('ArrowDown');
@@ -79,7 +79,7 @@ async function vitrinSection({ browser, base, mock, ok, sleep }) {
     ok((await heroTitle(page)) === (await cardName(page, 1)), 'sağ ok: vitrin adı hemen yeni kutuya geçti');
     await page.waitForFunction(() => /Clara Lindqvist/.test(document.querySelector('#hero').textContent), null, { timeout: 5000 });
     await sleep(700);
-    const bg2 = await page.evaluate(() => [...document.querySelectorAll('#hero-bg i')].filter((i) => i.classList.contains('on')).map((i) => i.style.backgroundImage));
+    const bg2 = await page.evaluate(() => [...document.querySelectorAll('#hero-bg i')].filter((i) => i.classList.contains('on')).map((i) => ((i.querySelector('img') || {}).src || '')));
     ok(bg2.length === 1 && bg2[0] !== bg1[0], 'arka plan yeni filmin görseline geçti');
 
     // hızlı gezinme: beklemeden geçilen kutular için ağ isteği gitmez
@@ -123,7 +123,7 @@ async function vitrinSection({ browser, base, mock, ok, sleep }) {
     // kategoriden çıkınca vitrin ve arka plan kalkar
     await page.keyboard.press('Escape');
     await sleep(500);
-    ok(await page.evaluate(() => !!document.querySelector('.row.cat') && !document.documentElement.classList.contains('hero-on') && getComputedStyle(document.querySelector('#hero-bg')).display === 'none'), 'kategori listesine dönünce vitrin yok');
+    ok(await page.evaluate(() => !!document.querySelector('.row.cat, .cat-tile') && !document.documentElement.classList.contains('hero-on') && getComputedStyle(document.querySelector('#hero-bg')).display === 'none'), 'kategori listesine dönünce vitrin yok');
     ok(errs.length === 0, 'sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
     await ctx.close();
   }

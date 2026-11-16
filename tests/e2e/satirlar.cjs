@@ -8,6 +8,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
   console.log('satırlar: Netflix gibi film/dizi ekranı');
   const tvUrl = new URL('?tv=1', base).href;
   const CORS = { 'access-control-allow-origin': '*' };
+  const CAT = '.row.cat, .cat-tile'; // klasik kategori listesi: satır (Liste) ya da kutu (Izgara, film/dizide varsayılan)
 
   // 60 yapımlık büyük liste: her satırda 24 sınırı aşılır ve "Tümünü gör" kutusu çıkar
   const bigMovies = Array.from({ length: 60 }, (_, i) => ({
@@ -89,7 +90,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
 
     await page.waitForFunction(() => /Henrik Lindholm/.test(document.querySelector('#hero').textContent), null, { timeout: 5000 });
     await page.waitForFunction(() => document.querySelector('#hero-bg').classList.contains('has'), null, { timeout: 5000 });
-    ok(await page.evaluate(() => /\/backdrop\//.test([...document.querySelectorAll('#hero-bg i')].filter((i) => i.classList.contains('on')).map((i) => i.style.backgroundImage).join())), 'ayrıntı gelince geniş arka plan görseli görünüyor');
+    ok(await page.evaluate(() => /\/backdrop\//.test([...document.querySelectorAll('#hero-bg i')].filter((i) => i.classList.contains('on')).map((i) => ((i.querySelector('img') || {}).src || '')).join())), 'ayrıntı gelince geniş arka plan görseli görünüyor');
     const hh = await page.evaluate(() => ({ h: document.querySelector('#hero').getBoundingClientRect().height, vh: innerHeight, l: document.querySelector('#list').getBoundingClientRect().height }));
     ok(hh.l > hh.vh * 0.5, `vitrinin altında liste yeterli yerde (vitrin ${Math.round(hh.h)} px, liste ${Math.round(hh.l)} px)`);
 
@@ -318,9 +319,9 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     for (const [mv, want] of [['classic', 'cats'], ['hero', 'cats'], ['rows', 'rows'], ['auto', 'rows']]) {
       const { ctx, page, errs } = await open({ width: 1280, height: 720 }, { mv });
       await page.click('.tile.t-movie');
-      await page.waitForSelector(want === 'rows' ? '.sh-row' : '.row.cat', { timeout: 8000 });
+      await page.waitForSelector(want === 'rows' ? '.sh-row' : CAT, { timeout: 8000 });
       const rows = await page.evaluate(() => document.querySelectorAll('.sh-row').length);
-      const cats = await page.evaluate(() => document.querySelectorAll('.row.cat').length);
+      const cats = await page.evaluate((sel) => document.querySelectorAll(sel).length, CAT);
       ok(want === 'rows' ? rows > 0 && cats === 0 : cats > 0 && rows === 0, `TV, ayar "${mv}": ${want === 'rows' ? 'satırlar' : 'klasik kategori listesi'} (${rows} satır, ${cats} kategori)`);
       ok(errs.length === 0, `TV, ayar "${mv}": sayfa hatası yok`);
       if (mv === 'rows') {
@@ -328,7 +329,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
         await page.keyboard.press('Escape');
         await sleep(300);
         await page.click('.tile.t-live');
-        await page.waitForSelector('.row.cat', { timeout: 8000 });
+        await page.waitForSelector(CAT, { timeout: 8000 });
         ok((await page.evaluate(() => document.querySelectorAll('.sh-row').length)) === 0, 'canlı TV kategorileri satır olmadı');
       }
       await ctx.close();
@@ -339,7 +340,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
   {
     const { ctx, page, errs } = await open({ width: 390, height: 844 }, { tv: false });
     await page.click('.tile.t-movie');
-    await page.waitForSelector('.row.cat', { timeout: 8000 });
+    await page.waitForSelector(CAT, { timeout: 8000 });
     ok((await page.evaluate(() => document.querySelectorAll('.sh-row').length)) === 0, 'telefon varsayılanı: klasik kategori listesi');
     await page.click('#tabs [data-tab=sources]');
     await page.click('[data-set=general]');
@@ -411,7 +412,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.click('#tabs [data-tab=home]');
     await page.click('#tabs [data-tab=movies]');
-    await page.waitForSelector('.row.cat', { timeout: 8000 });
+    await page.waitForSelector(CAT, { timeout: 8000 });
     ok((await page.evaluate(() => document.querySelectorAll('.sh-row').length)) === 0, 'ayar Klasik: telefonda kategori listesi geri geldi');
     ok(errs.length === 0, 'telefon: sayfa hatası yok' + (errs.length ? ': ' + errs[0] : ''));
     await ctx.close();
@@ -462,7 +463,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
       page.evaluate(() => {
         const el = document.querySelector('#hero-bg');
         const on = [...el.children].find((i) => i.classList.contains('on'));
-        return { has: el.classList.contains('has'), url: on ? on.style.backgroundImage : '', poster: !!on && on.classList.contains('poster') };
+        return { has: el.classList.contains('has'), url: on ? ((on.querySelector('img') || {}).src || '') : '', poster: !!on && on.classList.contains('poster') };
       });
 
     // a) ayrıntı geç gelir (1,8 sn): bu sürede arka plan afişle doldurulmaz
@@ -472,7 +473,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await sleep(900);
     let st = await bgState(page);
     ok(!st.has && !st.url, 'ayrıntı yoldayken arka plan afişle doldurulmadı (kırpık afiş görünmüyor)');
-    await page.waitForFunction(() => /\/backdrop\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => i.style.backgroundImage).join()), null, { timeout: 8000 });
+    await page.waitForFunction(() => /\/backdrop\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => ((i.querySelector('img') || {}).src || '')).join()), null, { timeout: 8000 });
     st = await bgState(page);
     ok(st.has && !st.poster, 'ayrıntı gelince geniş görsel (kırpmasız, tam ekran) görünüyor');
     ok(await page.evaluate(() => !document.querySelector('#hero-bg canvas.glow').classList.contains('show')), 'geniş görselde afiş yansıması kapalı');
@@ -488,7 +489,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     ({ ctx, page, errs } = await open({ width: 1920, height: 1080 }, { setup: (c) => withPosters(c, (r) => r.abort()) }));
     await page.click('.tile.t-movie');
     await page.waitForSelector('.sh-row .card', { timeout: 8000 });
-    await page.waitForFunction(() => /\/logo\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => i.style.backgroundImage).join()), null, { timeout: 8000 });
+    await page.waitForFunction(() => /\/logo\//.test([...document.querySelectorAll('#hero-bg i.on')].map((i) => ((i.querySelector('img') || {}).src || '')).join()), null, { timeout: 8000 });
     st = await bgState(page);
     ok(st.has && st.poster, 'ayrıntı gelmeyince afiş yedek olarak çizildi ve "poster" düzeninde (sağda, bütün)');
     const box = await page.evaluate(async () => {
@@ -496,11 +497,11 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
       const r = i.getBoundingClientRect();
       const cs = getComputedStyle(i);
       const im = new Image();
-      im.src = i.style.backgroundImage.replace(/^url\("?|"?\)$/g, '');
+      im.src = ((i.querySelector('img') || {}).src || '');
       await im.decode().catch(() => {});
-      return { ratio: r.width / r.height, want: im.naturalWidth && im.naturalHeight ? Math.min(1.2, Math.max(0.5, im.naturalWidth / im.naturalHeight)) : 0.667, bs: cs.backgroundSize, mask: cs.maskImage || cs.webkitMaskImage || '', right: innerWidth - r.right };
+      return { ratio: r.width / r.height, want: im.naturalWidth && im.naturalHeight ? Math.min(1.2, Math.max(0.5, im.naturalWidth / im.naturalHeight)) : 0.667, bs: getComputedStyle(i.querySelector('img')).objectFit, mask: cs.maskImage || cs.webkitMaskImage || '', right: innerWidth - r.right };
     });
-    ok(box.bs === '100% 100%' && Math.abs(box.ratio - box.want) < 0.03 && box.right > 0, `afiş kendi oranında bir kutuda bütün gösteriliyor, kırpılmıyor (kutu ${box.ratio.toFixed(2)}, afiş ${box.want.toFixed(2)})`);
+    ok(box.bs === 'fill' && Math.abs(box.ratio - box.want) < 0.03 && box.right > 0, `afiş kendi oranında bir kutuda bütün gösteriliyor, kırpılmıyor (kutu ${box.ratio.toFixed(2)}, afiş ${box.want.toFixed(2)})`);
     ok(/linear-gradient/.test(box.mask), 'afişin iki kenarı maske ile yumuşatılıyor');
     // arkasında afişin bulanık yansıması ekranı doldurur: sağdaki afişten uzakta (sol-orta) arka plan siyah değil, afişin rengini taşır
     await sleep(700);

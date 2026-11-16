@@ -14,12 +14,14 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // Ekran ölçüsüne göre kutu ve satır ölçüleri. capPx: kutudaki ad alanı yüksekliği.
 // Satır, görünümün ~%80'i kadardır: bir satır tam görünür, altındaki satırın başlığı görünür kalır.
+// Alçak görünümde (960×540 TV'de vitrinin altı) satır alanın tamamını kullanır: kutular okunaklı kalır, alttaki başlık için yer ayrılmaz.
+export const SHELF_LOW_H = 420;
 export function shelfSizes({ viewW, viewH, scale = 1, capPx = 46 }) {
   const title = Math.round(34 * scale);
   const pad = Math.round(28 * scale); // şeridin üst+alt iç boşluğu: odak halkası ve büyüme kırpılmasın
   const narrow = viewW < 700; // telefon: ekranda ~3,3 kutu (dördüncüsü yarım görünür, kayacağı belli olur)
   const byWidth = viewW / (narrow ? 3.75 : 8.6);
-  const byHeight = (viewH * 0.8 - title - pad - capPx) / 1.5;
+  const byHeight = ((viewH < SHELF_LOW_H ? viewH - 2 : viewH * 0.8) - title - pad - capPx) / 1.5;
   const cw = Math.round(clamp(narrow ? byWidth : Math.min(byWidth, byHeight), 84, 210));
   const ch = Math.round(cw * 1.5 + capPx);
   return { cw, ch, title, pad, rowH: title + pad + ch };
@@ -83,6 +85,7 @@ export class Shelves {
     this._h = new Map(); // satır kimliği → yatay kaydırma
     this._cur = null; // son odaklanan { id, c }
     this._raf = 0;
+    this._al = 0; // odak sonrası satır hizalama karesi
     this.rowH = 300;
     el.classList.add('sh');
     el.innerHTML = '<div class="sh-sizer"></div><div class="sh-win"></div>';
@@ -364,8 +367,27 @@ export class Shelves {
     if (!t || !this.win.contains(t)) return;
     const r = Number(t.dataset.r);
     this._show(t);
+    this._alignSoon();
     const it = this._itemOf(t);
     if (it && this.o.onFocusItem) this.o.onFocusItem(it, this.items[r]);
+  }
+
+  // Kumandada odaktaki satır hep üste oturur: başlığı (kategori adı) görünür kalır. Odak dışarıdan geldiğinde (genel kumanda gezinmesi,
+  // vitrin açılıp liste alanı küçüldüğünde yeniden kurulum) kaydırma yarım kalmasın diye bir sonraki karede düzeltilir; süren kaydırma varsa dokunulmaz.
+  _alignSoon() {
+    if (typeof requestAnimationFrame !== 'function' || !document.documentElement.classList.contains('kbd')) return;
+    if (this._al) cancelAnimationFrame(this._al);
+    this._al = requestAnimationFrame(() => {
+      this._al = 0;
+      if (this.el.__tw) return;
+      const t = document.activeElement && document.activeElement.closest ? document.activeElement.closest('[data-r]') : null;
+      if (!t || !this.win.contains(t)) return;
+      const h = this.el.clientHeight || 400;
+      const to = clamp(Number(t.dataset.r) * this.rowH, 0, Math.max(0, this.items.length * this.rowH - h));
+      if (Math.abs(to - this.el.scrollTop) < 1) return;
+      this.el.scrollTop = to;
+      this.draw();
+    });
   }
 
   _key(ev) {
@@ -417,6 +439,8 @@ export class Shelves {
     this._lpCancel();
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = 0;
+    if (this._al) cancelAnimationFrame(this._al);
+    this._al = 0;
     if (this.el.__tw) cancelAnimationFrame(this.el.__tw.raf);
     if (this._ro) this._ro.disconnect();
   }

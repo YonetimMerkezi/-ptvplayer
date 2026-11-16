@@ -10,10 +10,13 @@ export function visibleRows({ scrollTop, viewH, rowH, count, cols = 1, overscan 
 
 export class VirtualList {
   // opts: rowH, minCellW (ızgara için), cellH, render(item, index) -> html, onTap(index, ev), gap,
+  //       pad (üstte ve altta boşluk, px: ilk/son satırdaki kutunun odak halkası kırpılmasın),
+  //       fitRow (ızgara: bir satır görünüme sığmıyorsa sütun artırılır; alçak ekranda kutu ekran dışına taşmasın),
+  //       snapRow (kumandada odaktaki satır görünümün üstüne oturur; üstte yarım satır kalmaz),
   //       onLongPress(index, ev, el) (isteğe bağlı: uzun basma / sağ tık / Menü tuşu)
   constructor(el, opts) {
     this.el = el;
-    this.o = { gap: 0, ...opts };
+    this.o = { gap: 0, pad: 0, ...opts };
     this.items = [];
     this.cols = 1;
     this._raf = 0;
@@ -86,6 +89,10 @@ export class VirtualList {
   layout() {
     const w = this.el.clientWidth;
     if (this.o.minCellW) this.cols = Math.max(1, Math.floor((w + this.o.gap) / (this.o.minCellW + this.o.gap)));
+    if (this.o.minCellW && this.o.fitRow) {
+      const room = (this.el.clientHeight || 0) - 2 * this.o.pad;
+      while (room > 0 && this.cols < 24 && this.o.cellH(w, this.cols) > room) this.cols++;
+    }
     this.rowH = this.o.minCellW ? this.o.cellH(w, this.cols) + this.o.gap : this.o.rowH;
     this.cellW = this.o.minCellW ? (w - this.o.gap * (this.cols - 1)) / this.cols : w;
     this.draw();
@@ -102,8 +109,9 @@ export class VirtualList {
   // Yalnız görünen aralığı günceller: aynı satır/hücre HTML'i değişmediyse DOM'a dokunulmaz (görsel yeniden yüklenmez,
   // odak ve yer korunur); kaydırınca yalnız giren satırlar eklenir, çıkanlar silinir. Titreme/yanıp sönme böylece olmaz.
   draw() {
-    const v = visibleRows({ scrollTop: this.el.scrollTop, viewH: this.el.clientHeight || 600, rowH: this.rowH, count: this.items.length, cols: this.cols });
-    this.sizer.style.height = v.total + 'px';
+    const pad = this.o.pad;
+    const v = visibleRows({ scrollTop: Math.max(0, this.el.scrollTop - pad), viewH: this.el.clientHeight || 600, rowH: this.rowH, count: this.items.length, cols: this.cols });
+    this.sizer.style.height = (this.items.length ? v.total + 2 * pad : 0) + 'px';
     if (!this.items.length) {
       this.win.textContent = '';
       this._rows.clear();
@@ -126,7 +134,7 @@ export class VirtualList {
         if (i >= this.items.length) break;
         cells.push(this.o.render(this.items[i], i));
       }
-      const style = `top:${r * this.rowH}px;height:${this.rowH - this.o.gap}px` + (grid ? `;grid-template-columns:repeat(${this.cols},1fr);gap:${this.o.gap}px` : '');
+      const style = `top:${pad + r * this.rowH}px;height:${this.rowH - this.o.gap}px` + (grid ? `;grid-template-columns:repeat(${this.cols},1fr);gap:${this.o.gap}px` : '');
       const old = this._rows.get(r);
       if (old && old.sig === style && old.cells.length === cells.length) {
         // aynı satır: yalnız değişen hücreleri değiştir
@@ -186,14 +194,16 @@ export class VirtualList {
   // ve yumuşakça kaydırır. Uzak atlamada doğrudan konumlanır.
   focusIndex(n) {
     const h = this.el.clientHeight || 600;
-    const top = Math.floor(n / this.cols) * this.rowH;
+    const pad = this.o.pad;
+    const top = pad + Math.floor(n / this.cols) * this.rowH;
     const cur = this._tw ? this._goal : this.el.scrollTop;
     // komşu satıra pay: görünüm bir satıra güç yetiriyorsa (alçak TV ekranı + büyük kutular) odaktaki satır halkasıyla birlikte tam görünür kalır
     const m = Math.max(0, Math.min(this.rowH, h / 4, (h - this.rowH) / 2));
     let to = cur;
-    if (top - m < cur) to = top - m;
+    if (this.o.snapRow) to = top - pad;
+    else if (top - m < cur) to = top - m;
     else if (top + this.rowH + m > cur + h) to = top + this.rowH + m - h;
-    const max = Math.max(0, Math.ceil(this.items.length / this.cols) * this.rowH - h);
+    const max = Math.max(0, Math.ceil(this.items.length / this.cols) * this.rowH + 2 * pad - h);
     to = Math.min(max, Math.max(0, to));
     const find = () => this.win.querySelector(`[data-i="${n}"]`);
     this.draw();
@@ -239,7 +249,7 @@ export class VirtualList {
   scrollToIndex(i) {
     this._stopTween();
     const row = Math.floor(i / this.cols);
-    this.el.scrollTop = Math.max(0, row * this.rowH - this.el.clientHeight / 2 + this.rowH / 2);
+    this.el.scrollTop = Math.max(0, this.o.pad + row * this.rowH - this.el.clientHeight / 2 + this.rowH / 2);
   }
 
   destroy() {

@@ -218,3 +218,11 @@ test('final: hata sınırı aşılınca (kapalı) yeni kutular hemen kesin çizi
   h.focus(B);
   assert.equal(calls.final.at(-1), true);
 });
+
+test('heroName: başlıkta yalnız ad; yıl ve puan atılır, bölüm ve tarih alt satıra kalır', async () => {
+  const { heroName } = await import('../www/js/hero.js');
+  assert.deepEqual(heroName('Çatlı | 2026 | 5.2'), { title: 'Çatlı', year: '2026', extra: [] });
+  assert.deepEqual(heroName('Konuşanlar | 41. Bölüm | 06.11.2026 | Exxen'), { title: 'Konuşanlar', year: '', extra: ['41. Bölüm', '06.11.2026'] });
+  assert.equal(heroName('Film 1 Işıkları').title, 'Film 1 Işıkları');
+  assert.deepEqual(heroModel({ name: 'Çatlı | 2026 | 5.2' }, null).meta, ['2026']);
+});
