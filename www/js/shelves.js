@@ -141,6 +141,7 @@ export class Shelves {
     const focus = this._focusedCell();
     this.items = rows;
     this._cache.clear();
+    this._topId = undefined;
     if (!keepScroll) {
       this.el.scrollTop = 0;
       this._h.clear();
@@ -259,8 +260,21 @@ export class Shelves {
     this._rows.set(r, { el, id: row.id, html: el.innerHTML });
   }
 
+  // En üstteki satırın ilk yapımı değişince haber verir (onTopItem): dokunmatikte odak olmadığından vitrin kaydırmayı izler.
+  _top() {
+    if (!this.o.onTopItem || !this.items.length) return;
+    const r = clamp(Math.round(this.el.scrollTop / this.rowH), 0, this.items.length - 1);
+    let it = null;
+    for (let k = r; k < this.items.length && !it; k++) it = this._cells(k).top[0] || null;
+    const id = it ? it.id : null;
+    if (id === this._topId) return;
+    this._topId = id;
+    if (it) this.o.onTopItem(it, this.items[r]);
+  }
+
   draw() {
     if (!this.rowH) return;
+    this._top();
     const v = visibleRows({ scrollTop: this.el.scrollTop, viewH: this.el.clientHeight || 600, rowH: this.rowH, count: this.items.length, cols: 1, overscan: 2 });
     this.sizer.style.height = v.total + 'px';
     const act = document.activeElement;

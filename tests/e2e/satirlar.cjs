@@ -361,7 +361,14 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     });
     ok(Math.abs(m.cw - Math.round(390 / 3.75)) <= 2, `telefonda ekranda ~3,3 kutu, dördüncüsü yarım görünür (kutu ${m.cw} px)`);
     ok(m.scroll && m.rows >= 2, 'telefon: satırlar yatay kaydırılabilir');
-    ok(await page.evaluate(() => getComputedStyle(document.querySelector('#hero')).display === 'none' && getComputedStyle(document.querySelector('#hero-bg')).display === 'none'), 'telefon dikey: vitrin ve arka plan gizli');
+    // Netflix görünümünde vitrin telefonda (dikey, dokunmatik) da vardır: en üstteki satırın ilk yapımını gösterir
+    await page.waitForFunction(() => !!document.querySelector('#hero .hero-t'), null, { timeout: 5000 }).catch(() => {});
+    const phero = await page.evaluate(() => {
+      const h = document.querySelector('#hero');
+      const first = document.querySelector('.sh-row .card .cap');
+      return { shown: getComputedStyle(h).display !== 'none', h: Math.round(h.getBoundingClientRect().height), vh: innerHeight, t: (h.querySelector('.hero-t') || {}).textContent || '', first: first ? first.textContent.trim() : '' };
+    });
+    ok(phero.shown && Math.abs(phero.h - phero.vh * 0.25) < 3 && !!phero.t && phero.first.startsWith(phero.t), `telefon dikey: vitrin görünür, ilk yapımı gösterir (${phero.h} px, "${phero.t}")`);
     // parmakla yatay kaydırma gibi: kaydırınca 25. kutuya ulaşılır, dokununca ayrıntı açılır
     await page.evaluate(() => { const s = document.querySelector('.sh-row .sh-strip'); s.scrollLeft = 300; });
     await sleep(200);

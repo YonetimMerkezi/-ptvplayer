@@ -11,6 +11,8 @@ export const CHANGELOG = [
       'TV’de kutular daha büyük ve afişler doğru oranda; kutudaki ad alanı alttan yarım satır göstermez',
       'Kategorileri düzenlerken (sırala, gizle, kilitle) düğmeler ızgara görünümünde de çıkar',
       'Ana ekranda aynı film “Son eklenen filmler” satırında bir kez gösterilir',
+      'Netflix görünümünde vitrin artık telefonda da var: üstte öne çıkan yapımın gölgeli görseli, kaydırdıkça değişir; dokununca açılır',
+      'Mini müzik çalar: müzik arka planda çalarken sekmelerin üstünde şarkı adı, duraklat, sonraki ve kapat düğmeleri',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
     ],
   },

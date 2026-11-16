@@ -53,6 +53,13 @@
   <div id="upd-note" hidden></div>
   <div id="banner" hidden></div>
   <main id="view"></main>
+  <!-- Mini müzik çalar: müzik arka planda çalarken sekmelerin üstünde durur; ada dokununca müzik çalar açılır -->
+  <div id="mini-music" hidden>
+    <button id="mm-open" aria-label="Müzik çaları aç"><svg class="ic"><use href="#i-note"/></svg><span><b id="mm-name"></b><small id="mm-sub"></small></span></button>
+    <button id="mm-play" class="mm-btn" aria-label="Oynat/Duraklat"><svg class="ic"><use href="#i-pause"/></svg></button>
+    <button id="mm-next" class="mm-btn" aria-label="Sonraki şarkı"><svg class="ic"><use href="#i-next"/></svg></button>
+    <button id="mm-close" class="mm-btn" aria-label="Müziği kapat"><svg class="ic"><use href="#i-close"/></svg></button>
+  </div>
   <nav id="tabs">
     <button data-tab="home" class="on"><svg class="ic"><use href="#i-home"/></svg><span>Ana</span></button>
     <button data-tab="live"><svg class="ic"><use href="#i-tv"/></svg><span>Canlı</span></button>

@@ -1162,6 +1162,41 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   let layerOpen = false;
+  // ---- mini müzik çalar: müzik arka planda çalarken (arayüz kapalı) sekmelerin üstünde durur ----
+  const mini = document.getElementById('mini-music');
+  function renderMiniMusic(st) {
+    if (!mini) return;
+    const show = bgMusic && !open && !!st.item && !!st.item.audio && st.status !== 'idle' && st.status !== 'error';
+    mini.hidden = !show;
+    if (!show) return;
+    $('#mm-name', mini).textContent = st.item.name || '';
+    $('#mm-sub', mini).textContent = st.status === 'paused' ? 'Duraklatıldı' : st.status === 'playing' ? 'Çalıyor' : 'Yükleniyor…';
+    $('#mm-play', mini).innerHTML = icon(st.status === 'playing' ? 'pause' : 'play');
+  }
+  // Arka plandaki müziğin tam ekran çaları yeniden açılır; şarkı kesilmez.
+  function reopenMusic() {
+    const st = player.state();
+    if (!st.item) return;
+    bgMusic = false;
+    quietUntil = 0;
+    if (!layerOpen) {
+      layerOpen = true;
+      pushLayer('player', closeUi);
+    }
+    enterFullscreen(st.item);
+    render(st);
+    renderMiniMusic(st);
+  }
+  if (mini) {
+    $('#mm-open', mini).addEventListener('click', reopenMusic);
+    $('#mm-play', mini).addEventListener('click', () => player.toggle());
+    $('#mm-next', mini).addEventListener('click', () => go(1));
+    $('#mm-close', mini).addEventListener('click', () => {
+      bgMusic = false;
+      player.close();
+      renderMiniMusic(player.state());
+    });
+  }
   function openWithLayer(item, targets, opts) {
     if (bgMusic && !open && quietUntil > Date.now() && item && item.audio) {
       // Arka planda çalan müzikte sıradaki parça: yalnız oynatıcı yeni parçaya geçer, tam ekran arayüz açılmaz.
@@ -1328,6 +1363,7 @@ export function createPlayerUI({ engine, player, env }) {
     // Müzik: geri çıkışta video penceresi açılmaz, müzik arka planda sürer (Kapat bildirimden). Kullanıcı kapatmayı seçtiyse (stopping) durur.
     if (!stopping && keepsPlaying(current)) {
       bgMusic = true;
+      renderMiniMusic(current);
       engine.setImmersive(false, false).catch(() => {});
       if (env.onClose) env.onClose();
       return;
@@ -1493,6 +1529,7 @@ export function createPlayerUI({ engine, player, env }) {
 
   // ---- olaylar ----
   player.on(render);
+  player.on(renderMiniMusic);
   // Arayüz kapalıyken (arka plan müziği) parça bitince sıradakine geçer; liste bitince oynatıcıyı kapatır (hayalet bildirim kalmasın).
   player.on((st) => {
     if (!bgMusic || open) return;

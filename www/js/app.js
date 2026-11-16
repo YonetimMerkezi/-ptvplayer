@@ -1065,6 +1065,12 @@ function heroSync(kind, mode) {
   const on = heroActive(kind, mode);
   box.hidden = !on;
   document.documentElement.classList.toggle('hero-on', on);
+  document.documentElement.classList.toggle('hero-rows', on && mode === 'rows'); // Netflix görünümü: vitrin telefonda (dokunmatik, dikey) da görünür
+  // Dokunmatikte vitrine dokunmak öne çıkan yapımı açar (kumandada vitrin odak almaz)
+  box.onclick = on ? () => {
+    const it = hero.current;
+    if (it && !document.documentElement.classList.contains('kbd')) (kind === 'movie' ? openMovie(it) : openSeries(it));
+  } : null;
   if (!on) {
     box.innerHTML = '';
     return heroOff();
@@ -1161,6 +1167,8 @@ function mountList(kind, mode = 'items') {
         refreshList();
       },
       onFocusItem: (it) => heroActive(kind, 'rows') && hero.focus(it),
+      // Dokunmatikte (telefon) odak yoktur: vitrin, en üstteki satırın ilk yapımını gösterir ve kaydırdıkça değişir
+      onTopItem: (it) => !isTvUi() && !document.documentElement.classList.contains('kbd') && heroActive(kind, 'rows') && hero.focus(it),
       onLongPress: (it) => folderSheet(kind, it),
     });
   } else if (mode === 'cats') {
