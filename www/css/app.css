@@ -1836,7 +1836,7 @@ html.tv [data-scroll] {
 
 
 /* Yatay TV ana ekranı: referans tasarımdaki kompakt, tek ekrana sığan yerleşim. */
-@media (orientation:landscape) and (min-width:900px) and (min-height:500px) {
+@media (orientation:landscape) {
   .home {
     box-sizing:border-box; height:100%; min-height:0; overflow:hidden;
     display:grid; grid-template-columns:minmax(0,1.72fr) minmax(280px,1fr);
@@ -1887,7 +1887,7 @@ html.tv [data-scroll] {
   .home-status-metrics small { color:var(--muted); font-size:clamp(.62rem,.8vw,.76rem); }
   .home-foot { grid-area:foot; min-height:24px; padding:0 2px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:.76rem; }
 }
-@media (orientation:landscape) and (min-width:900px) and (max-height:620px) {
+@media (orientation:landscape) and (max-height:620px) {
   .home { gap:6px; padding-top:calc(var(--safe-t) + 4px); padding-bottom:4px; }
   .home .home-primary>.tile { height:clamp(82px,17vh,108px); }
   .home .shortcuts .tile.mini { min-height:58px; }
@@ -1895,4 +1895,48 @@ html.tv [data-scroll] {
   .home-status { padding:9px 11px; gap:7px; }
   .home-status-source { min-height:42px; }
   .home-status-metrics { padding:6px 3px; }
+}
+
+
+/* Telefon dahil tüm yatay ekranlarda ana ekran yerleşimi etkinleşir. */
+@media (orientation:landscape) and (max-width:899px) {
+  .home {
+    gap:5px;
+    padding:calc(var(--safe-t) + 3px) max(10px,var(--safe-r)) max(3px,var(--safe-b)) max(10px,var(--safe-l));
+    grid-template-columns:minmax(0,1.55fr) minmax(190px,1fr);
+    grid-template-rows:auto auto minmax(70px,auto) auto minmax(0,1fr) auto;
+  }
+  .home-top { min-height:34px; gap:7px; }
+  .home-top .brand { font-size:1rem; }
+  .home-top .brand .ic { width:27px; height:27px; }
+  .home-clock b { font-size:1rem; }
+  .home-clock small { font-size:.62rem; }
+  .home-top .icon-btn { width:34px; height:34px; }
+  .home-sourcebar { min-height:19px; font-size:.72rem; }
+  .home-sourcebar button { min-height:25px; padding:2px 7px; font-size:.7rem; }
+  .home .home-primary { gap:6px; }
+  .home .home-primary>.tile { height:clamp(70px,19vh,104px); padding:6px; border-radius:13px; }
+  .home .home-primary>.tile .ic { width:27px; height:27px; }
+  .home .home-primary>.tile b { font-size:clamp(.72rem,2vw,.95rem); }
+  .home .home-primary>.tile small { font-size:.65rem; }
+  .home .shortcuts { gap:4px; }
+  .home .shortcuts .tile.mini { min-height:48px; padding:4px 2px; border-radius:10px; gap:2px; }
+  .home .shortcuts .tile.mini .t-ic { width:23px; height:23px; }
+  .home .shortcuts .tile.mini .t-ic .ic { width:20px; height:20px; }
+  .home .shortcuts .tile.mini b { font-size:clamp(.5rem,1.45vw,.66rem); }
+  .home-row { padding:7px; border-radius:13px; }
+  .home-row-h b { font-size:.78rem; }
+  .home-row-s { gap:5px; }
+  .home-status { padding:8px; gap:6px; border-radius:13px; }
+  .home-status-head { font-size:.8rem; }
+  .home-status-head .ic { width:21px; height:21px; }
+  .home-status-source { min-height:34px; padding:0 7px; gap:5px; }
+  .home-status-source b { font-size:.75rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .home-status-source span { padding:3px 6px; font-size:.62rem; }
+  .home-status-metrics { gap:2px; padding:5px 2px; }
+  .home-status-metrics span { column-gap:3px; }
+  .home-status-metrics .ic { width:16px; height:16px; }
+  .home-status-metrics b { font-size:.72rem; }
+  .home-status-metrics small { font-size:.55rem; }
+  .home-foot { min-height:18px; font-size:.62rem; }
 }
