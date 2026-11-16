@@ -387,6 +387,7 @@ public class IptvPlayerPlugin extends Plugin {
         result.put("active", activePerformance);
         result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
         result.put("maxMultiScreens", maxMultiScreens());
+        result.put("availableRamMb", availableRamMb());
 
         // Cihaz tanılama: RAM, işlemci, Android sürümü ve kullanılabilir donanım video çözücüleri.
         ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
@@ -1091,11 +1092,29 @@ public class IptvPlayerPlugin extends Plugin {
         return (w > 0 && h > 0) ? new double[] {call.getData().optDouble("x", 0), call.getData().optDouble("y", 0), w, h} : null;
     }
 
-    // Çoklu ekran sınırı: düşük cihazda çözücü/RAM baskısını önle; yüksek profilde en çok 9 kutu.
+    // Anlık kullanılabilir belleği ölç; üreticinin RAM sınıfı tek başına yeterli değildir.
+    private long availableRamMb() {
+        try {
+            ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null) return -1L;
+            ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(info);
+            return info.availMem / (1024L * 1024L);
+        } catch (Exception ignored) {
+            return -1L;
+        }
+    }
+
+    // Çoklu ekran sınırı: profilin yanı sıra anlık bellek baskısına göre de düşürülür.
     private int maxMultiScreens() {
-        if ("low".equals(activePerformance)) return 2;
-        if ("balanced".equals(activePerformance)) return 4;
-        return 9;
+        int profileLimit = "low".equals(activePerformance) ? 2 : "balanced".equals(activePerformance) ? 4 : 9;
+        long available = availableRamMb();
+        if (available < 0) return profileLimit;
+        if (available < 350) return 1;
+        if (available < 550) return Math.min(profileLimit, 2);
+        if (available < 850) return Math.min(profileLimit, 3);
+        if (available < 1200) return Math.min(profileLimit, 4);
+        return profileLimit;
     }
 
     private void startSlot(final int id, String url, String mime, JSObject headers, double[] r, boolean muted, boolean fill) {
