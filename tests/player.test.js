@@ -414,7 +414,7 @@ test('olay kaydı: açılış, hata ayrıntısı, yeniden bağlanma ve yedek adr
   assert.deepEqual(texts().slice(0, 3), ['açılıyor · adres 1/2 · HLS', 'oynuyor (açılış 2,4 sn)', 'hata: Görüntü donuyor (çizilen kare 0 · çözücü OMX.MTK.VIDEO.DECODER.AVC · neden MediaCodecDecoderException)']);
   assert.equal(texts()[3], 'yeniden bağlanma 1');
   timers.fire();
-  assert.equal(texts()[4], 'açılıyor · adres 1/2 · HLS · yeniden bağlanma');
+  assert.equal(texts()[4], 'açılıyor · adres 1/2 · HLS · uyumlu mod · yeniden bağlanma');
   assert.deepEqual(calls.at(-1)[3], { compat: true }, 'ilk donmada aynı adres uyumlu modda açılmalı');
 });
 
