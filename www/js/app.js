@@ -3857,6 +3857,7 @@ function playerSheet() {
     title: 'Oynatıcı ayarları',
     html:
       (nativePlugin ? `<div class="sel-row"><span>Otomatik performans yöneticisi<small>Düşük donanımda çözünürlüğü ve yayın belleğini sınırlar. Otomatik cihazı algılar; seçim hemen uygulanır</small></span><select id="g-perf">${optionsHtml([['auto','Otomatik'],['low','Düşük'],['balanced','Dengeli'],['high','Yüksek']], store.pref('set.performance', 'auto'))}</select></div>` : '') +
+      (nativePlugin ? '<button class="btn ghost sm" id="g-perf-info" type="button">Cihaz performans bilgilerini görüntüle</button>' : '') +
       `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Otomatik cihazın seçimini kullanır. Donanım öncelikli Mi Stick gibi TV kutularında ilk deneme; görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
@@ -3904,6 +3905,31 @@ function playerSheet() {
         store.setPref('set.playerOrientation', e.target.value === 'portrait' ? 'portrait' : 'landscape');
       });
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
+      const perfInfo = $('#g-perf-info', body);
+      if (perfInfo) perfInfo.addEventListener('click', async () => {
+        perfInfo.disabled = true;
+        try {
+          const d = await nativePlugin.getPerformanceProfile();
+          const decoders = Array.isArray(d.videoDecoders) ? d.videoDecoders : [];
+          const decoderRows = decoders.map((x) => {
+            const types = Array.isArray(x.types) ? x.types.join(', ') : '';
+            return `<div class="sel-row"><span>${esc(x.name || 'Bilinmeyen çözücü')}<small>${esc(types)} · ${x.hardwareAccelerated === true ? 'Donanım hızlandırmalı' : x.hardwareAccelerated === false ? 'Yazılım çözücü' : 'Türü belirlenemedi'}</small></span></div>`;
+          }).join('');
+          openSheet({
+            title: 'Cihaz performans bilgisi',
+            html: `<div class="sel-row"><span>Cihaz<small>${esc([d.manufacturer, d.model].filter(Boolean).join(' ') || 'Bilinmiyor')}</small></span></div>
+              <div class="sel-row"><span>Android<small>${esc(d.androidVersion || 'Bilinmiyor')} · API ${Number(d.androidSdk) || '-'}</small></span></div>
+              <div class="sel-row"><span>RAM<small>${Number(d.totalRamMb) || 0} MB toplam · ${Number(d.availableRamMb) || 0} MB kullanılabilir</small></span></div>
+              <div class="sel-row"><span>Uygulama belleği<small>${Number(d.memoryClassMb) || 0} MB sınıf · ${Number(d.maxHeapMb) || 0} MB heap</small></span></div>
+              <div class="sel-row"><span>İşlemci<small>${Number(d.cores) || 0} çekirdek · ${d.lowRamDevice ? 'Düşük RAM cihazı' : 'Standart RAM sınıfı'}</small></span></div>
+              <div class="sect">Video çözücüleri (${decoders.length})</div>${decoderRows || '<p class="hint">Video çözücü bilgisi alınamadı.</p>'}`,
+          });
+        } catch {
+          toast('Cihaz bilgileri alınamadı', 2500);
+        } finally {
+          perfInfo.disabled = false;
+        }
+      });
       const gperf = $('#g-perf', body);
       if (gperf) gperf.addEventListener('change', (e) => {
         const mode = ['auto', 'low', 'balanced', 'high'].includes(e.target.value) ? e.target.value : 'auto';
