@@ -439,9 +439,11 @@ html.native-playing #vid { display: none; }
 .pl-title b { font-size: 1.0625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-title span { font-size: 0.8125rem; color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-mid { display: flex; align-items: center; justify-content: center; gap: 18px; }
-.big-btn { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; background: #0007; position: relative; color: #fff; }
+/* Oynatıcı denetimleri ve pencereleri ortak görünümü paylaşır: koyu yarı saydam zemin, ince açık kenarlık (--pc-*). Oynat düğmesi beyazdır. */
+#player { --pc-bg: rgba(10, 14, 22, 0.62); --pc-solid: rgba(12, 16, 26, 0.94); --pc-line: rgba(255, 255, 255, 0.16); }
+.big-btn { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; background: var(--pc-bg, #0007); border: 1px solid var(--pc-line, transparent); position: relative; color: #fff; }
 .big-btn .ic { width: 28px; height: 28px; }
-.big-btn.lg { width: 76px; height: 76px; border-radius: 38px; background: #000a; }
+.big-btn.lg { width: 76px; height: 76px; border-radius: 38px; background: #fff; border-color: transparent; color: #0a0e14; }
 .big-btn.lg .ic { width: 42px; height: 42px; }
 .big-btn.sm { width: 48px; height: 48px; }
 .big-btn.sm .ic { width: 34px; height: 34px; } /* sarmal ok + içinde 10 */
@@ -459,13 +461,15 @@ html.native-playing #vid { display: none; }
 .pl-tools::-webkit-scrollbar { display: none; }
 /* Düğmeler ortada: boşluk varken iki yana eşit pay verilir, sığmayınca satır baştan yana kayar */
 .pl-tools::before, .pl-tools::after { content: ""; margin: auto; }
-.tool { display: flex; flex: none; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 20px; background: #0007; font-size: 0.8125rem; white-space: nowrap; }
+.tool { display: flex; flex: none; align-items: center; gap: 7px; min-height: 40px; padding: 0 13px; border-radius: 12px; background: var(--pc-bg, #0007); border: 1px solid var(--pc-line, transparent); color: #fff; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+/* Açık (etkin) düğme: vurgu rengi dolgu, koyu yazı ve simge. Her yerleşimde (video üstü, video altı) aynı kural geçerlidir. */
+#player .tool.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 /* Oynatıcı düğmeleri varsayılan yalnız simge (adı title/aria-label'de); Ayarlar'dan seçilenlerin adı da yazar, kayıt süresi hep görünür */
 .pl-tools .tool span { display: none; }
 .pl-tools .tool:not(.lbl):not(.rec-on) { padding: 0 11px; }
 .pl-tools .tool.lbl span, .pl-tools .tool.rec-on span { display: inline; }
 .tool .ic { width: 20px; height: 20px; }
-.pl-status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; padding: 16px 20px; border-radius: 16px; background: #000b; max-width: 82%; pointer-events: auto; }
+.pl-status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; padding: 16px 20px; border-radius: 16px; background: var(--pc-solid); border: 1px solid var(--pc-line); max-width: 82%; pointer-events: auto; }
 .pl-status .btn { margin-top: 12px; }
 .pl-status .rc, .sp-status .rc, .mp-st .rc { margin-top: 10px; font-size: 0.8125rem; color: #cbd5e1; }
 .spinner { width: 34px; height: 34px; border: 3px solid #fff4; border-top-color: #fff; border-radius: 50%; animation: sp 0.8s linear infinite; margin: 0 auto; }
@@ -952,15 +956,25 @@ html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px v
 .row.hs.old .hs-dot { opacity: 0.45; }
 
 /* Oynatıcı: yayın bilgisi kutusu (denetimler gizlense de görünür kalır, dokunuşları engellemez) */
-.pl-stats { position: absolute; left: 12px; top: calc(64px + var(--na-t, 0px)); z-index: 5; max-width: min(86vw, 360px); padding: 8px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 0.75rem; line-height: 1.5; pointer-events: none; }
+/* Yayın bilgisi penceresi: başlık + kapat düğmesi, altında etiket/değer satırları. Yatayda videonun sol üstünde, dikeyde videonun altında durur. */
+.pl-stats { position: absolute; left: 12px; top: calc(64px + var(--na-t, 0px)); z-index: 5; width: min(40vw, 340px); min-width: min(86vw, 280px); max-height: calc(100% - 150px - var(--na-t, 0px)); overflow: auto; border-radius: 16px; background: var(--pc-solid); border: 1px solid var(--pc-line); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.8125rem; line-height: 1.45; }
+.pl-stats[hidden] { display: none; }
+.pls-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 0 14px; }
+.pls-head b { font-size: 0.9375rem; }
+.pls-head .icon-btn { width: 40px; height: 40px; color: #fff; }
+.pls-rows { padding: 2px 14px 12px; }
+.pls-rows > div { display: grid; grid-template-columns: 7.2em minmax(0, 1fr); gap: 10px; padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.pls-rows > div:first-child { border-top: 0; }
+.pls-rows span { color: rgba(255, 255, 255, 0.62); }
+.pls-rows b { font-weight: 600; overflow-wrap: anywhere; }
 /* Sonraki bölüm kartı ve intro atla: üst sağda, alttaki denetimlerle çakışmaz */
 .pl-nextup, .pl-intro { position: absolute; right: 12px; top: calc(64px + var(--na-t, 0px)); z-index: 6; }
-.pl-nextup { max-width: min(86vw, 320px); padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.74); color: #fff; display: flex; flex-direction: column; gap: 8px; }
+.pl-nextup { max-width: min(86vw, 320px); padding: 12px 14px; border-radius: 16px; background: var(--pc-solid); border: 1px solid var(--pc-line); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); color: #fff; display: flex; flex-direction: column; gap: 8px; }
 .pl-nextup[hidden], .pl-intro[hidden] { display: none; }
 .pl-nextup .nu-t span { display: block; color: rgba(255, 255, 255, 0.65); font-size: 0.75rem; }
 .pl-nextup .nu-t b { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
 .pl-nextup .nu-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-.pl-intro { background: rgba(0, 0, 0, 0.74); color: #fff; border: 1px solid rgba(255, 255, 255, 0.4); }
+.pl-intro { background: var(--pc-solid); color: #fff; border: 1px solid var(--pc-line); border-radius: 12px; }
 /* Altyazı görünümü penceresi */
 .sub-prev { display: flex; align-items: center; justify-content: center; min-height: 84px; margin: 0 0 14px; padding: 10px; border-radius: 12px; background: linear-gradient(135deg, #2b3a55, #0f1626); text-align: center; }
 .sub-prev span { padding: 2px 8px; line-height: 1.4; }
@@ -969,15 +983,8 @@ html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px v
 .sub-seg { flex-wrap: wrap; padding: 0; }
 .sub-seg button { flex: 1 1 auto; padding: 0 12px; }
 .sub-reset { margin-top: 4px; }
-.pl-stats > div { display: flex; gap: 10px; justify-content: space-between; }
-.pl-stats span { color: rgba(255, 255, 255, 0.65); flex: none; }
-/* KÖK NEDEN DÜZELTMESİ: .pl-stats mutlak konumlu olduğundan genişliği içeriğe göre daralır; overflow-wrap:anywhere en küçük içerik genişliğini
-   tek harfe indirdiği için kutu şeritleşip metin harf harf alt alta kırılıyordu. break-word en küçük genişliği etkilemez; max-content kutuyu doğal genişliğinde tutar. */
-.pl-stats { width: max-content; }
-.pl-stats b { font-weight: 600; text-align: right; overflow-wrap: break-word; word-break: normal; min-width: 0; }
 .pl-stats .lv-low b { color: #ff7a7a; }
 .pl-stats .lv-good b { color: #6ee7a0; }
-.pl-tools .tool.on { background: var(--accent); color: var(--accent-ink); }
 
 /* Klasör sıralama satırları */
 .fo-row .act { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); flex: none; border-radius: 22px; }
@@ -1355,7 +1362,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.portrait-split #pl-fav, #player.vod-portrait #pl-fav { display: none; } /* başlık ve favori videonun altındaki bilgi alanında */
   #player.portrait-split #pl-back, #player.vod-portrait #pl-back { margin-right: auto; }
   #player.portrait-split .pl-mid, #player.vod-portrait .pl-mid { flex: none; margin: auto 0; gap: clamp(10px, 4.5vw, 24px); }
-  #player.portrait-split .big-btn, #player.vod-portrait .big-btn { width: 40px; height: 40px; border-radius: 50%; background: #0008; }
+  #player.portrait-split .big-btn, #player.vod-portrait .big-btn { width: 40px; height: 40px; border-radius: 50%; }
   #player.portrait-split .big-btn.sm, #player.vod-portrait .big-btn.sm { width: 38px; height: 38px; }
   #player.portrait-split .big-btn.lg, #player.vod-portrait .big-btn.lg { width: 54px; height: 54px; }
   #player.portrait-split .big-btn .ic, #player.vod-portrait .big-btn .ic { width: 22px; height: 22px; }
@@ -1396,7 +1403,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.vod-portrait.music #pl-rew, #player.vod-portrait.music #pl-fwd { display: none; } /* müzikte ±10 sn yerine karışık ve tekrar; sarma ilerleme çubuğundan */
   #player.vod-portrait.music .big-btn { width: 48px; height: 48px; background: #ffffff24; color: #fff; }
   #player.vod-portrait.music .big-btn.lg { width: 68px; height: 68px; background: #fff; color: #0a0e14; }
-  #player.vod-portrait.music .big-btn.pm-btn { width: 42px; height: 42px; background: none; color: #ffffffb3; }
+  #player.vod-portrait.music .big-btn.pm-btn { width: 42px; height: 42px; background: none; border-color: transparent; color: #ffffffb3; }
   #player.vod-portrait.music .big-btn.pm-btn .ic { width: 24px; height: 24px; }
   #player.vod-portrait.music .big-btn.pm-btn.on { color: #0a0e14; background: var(--gold); } /* açık: altın dolgu, koyu simge */
   #player.vod-portrait.music #pl-below { background: none; }
@@ -1420,7 +1427,8 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
     -webkit-mask-image: linear-gradient(90deg, #000 92%, #0000); mask-image: linear-gradient(90deg, #000 92%, #0000);
   }
   .pl-info-tools .pl-tools::before, .pl-info-tools .pl-tools::after { display: none; }
-  .pl-info-tools .pl-tools .tool { min-height: 38px; background: #1a2230; }
+  .pl-info-tools .pl-tools .tool { min-height: 40px; }
+  .pl-info-tools .pl-tools .tool:not(.on):not(.rec-on) { background: var(--raised); border-color: var(--line); color: var(--text); }
   .pl-info-tools .pl-tools .tool span { display: inline; }
   .pl-info-tools .pl-tools .tool:not(.lbl):not(.rec-on) { padding: 0 13px; }
 
@@ -1466,7 +1474,10 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.portrait-split .pl-num, #player.vod-portrait .pl-num { top: calc(var(--yt-top) + 10px); font-size: 1.8rem; min-width: 64px; padding: 6px 14px; }
   #player.portrait-split .pl-nextup, #player.vod-portrait .pl-nextup,
   #player.portrait-split .pl-intro, #player.vod-portrait .pl-intro { top: calc(var(--yt-top) + 52px); right: 8px; }
-  #player.portrait-split .pl-stats, #player.vod-portrait .pl-stats { top: calc(var(--yt-top) + 52px); left: 8px; max-width: 70vw; }
+  .pl-info .pl-stats { position: static; width: auto; max-height: none; margin: 10px 0 2px; box-shadow: none; background: var(--surface); border-color: var(--line); color: var(--text); } /* dikey kip: araç düğmelerinin altında, akışta */
+  .pl-info .pl-stats .pls-head .icon-btn { color: var(--text); }
+  .pl-info .pls-rows span { color: var(--muted); }
+  .pl-info .pls-rows > div { border-top-color: var(--line); }
 }
 
 /* Cihazdan medya kısayolu */

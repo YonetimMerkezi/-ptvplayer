@@ -18,6 +18,7 @@ export const CHANGELOG = [
       'İlk açılışta uygulamayı üç adımda anlatan karşılama ekranı',
       'İçerik uyarıları: doğrulanmış kaydı olmayan film ve dizilerde tür ve özetten çıkarılan tahmini uyarılar gösterilir (yerli ve yabancı); uyarı simgeleri artık görünür',
       'Netflix görünümünde arama kutusu ve Düzenle çubuğu vitrinin üstünden kalktı; “Kategorileri düzenle” üst çubukta',
+      'Oynatıcı: düğmeler ve pencereler yenilendi; açık düğmenin yazısı görünür, “Yayın bilgisi” penceresinde başlık ve kapat (X) düğmesi var, dikeyde düğmelerin altında durur',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
     ],
   },

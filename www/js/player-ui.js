@@ -61,6 +61,14 @@ export function createPlayerUI({ engine, player, env }) {
     } else if (tools.parentNode !== bot) {
       bot.append(line, tools); // özgün sıra: ilerleme çubuğu, yayın satırı, araçlar
     }
+    // Yayın bilgisi penceresi: dikey kipte araç düğmelerinin altında, sayfanın akışında durur (videoyu, başlığı ve düğmeleri kapatmaz);
+    // yatayda videonun üstünde yüzen penceredir.
+    const stats = document.getElementById('pl-stats-box');
+    const info = $('#pl-info');
+    if (stats && info) {
+      if (on && stats.parentNode !== info) info.append(stats);
+      else if (!on && stats.parentNode !== root) root.append(stats);
+    }
   }
   const setPlayerLocked = (on) => {
     playerLocked = !!on;
@@ -1305,7 +1313,7 @@ export function createPlayerUI({ engine, player, env }) {
       /* ölçüm okunamadı: yalnız durum satırları görünür */
     }
     if (!statsOn || !open) return;
-    q('#pl-stats-box').innerHTML = statsRows(player.state(), raw).map((r) => `<div${r.level ? ` class="lv-${r.level}"` : ''}><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('');
+    q('#pl-stats-rows').innerHTML = statsRows(player.state(), raw).map((r) => `<div${r.level ? ` class="lv-${r.level}"` : ''}><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('');
   }
   function setStats(on) {
     statsOn = on;
@@ -1657,6 +1665,7 @@ export function createPlayerUI({ engine, player, env }) {
     showUi(false);
   });
   q('#pl-sleep').addEventListener('click', () => sleepSheet());
+  q('#pl-stats-x').addEventListener('click', () => setStats(false));
   q('#pl-stats').addEventListener('click', () => {
     setStats(!statsOn);
     showUi(false);
