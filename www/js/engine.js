@@ -68,6 +68,8 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
     setBackgroundAudio: (on_, title = '') => plugin.setBackgroundAudio({ on: !!on_, title }),
     // Gece modu (off | light | medium | strong): açık oynatıcıya anında uygulanır (yalnız Android)
     setNightMode: (level) => plugin.setNightMode({ level }),
+    setPerformanceProfile: (mode) => plugin.setPerformanceProfile({ mode }),
+    getPerformanceProfile: () => plugin.getPerformanceProfile(),
     // Diyalog vurgulama (konuşmayı öne çıkarır): açık oynatıcıya anında uygulanır (yalnız Android)
     setDialogBoost: (on_) => plugin.setDialogBoost({ on: !!on_ }),
     // Oynatma hızı (0,25–3x; yalnız Android, film/dizi)
