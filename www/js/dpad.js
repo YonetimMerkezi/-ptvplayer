@@ -20,10 +20,16 @@ export function beyond(r, cur, dir) {
 
 // Kaydırma alanını dir yönünde bir adım kaydırır (en çok yarım ekran); kaydıracak yer yoksa false.
 export function scrollStep(sc, dir) {
-  const room = dir === 'down' ? sc.scrollHeight - sc.clientHeight - sc.scrollTop : sc.scrollTop;
+  const horizontal = dir === 'left' || dir === 'right';
+  const pos = horizontal ? sc.scrollLeft : sc.scrollTop;
+  const size = horizontal ? sc.clientWidth : sc.clientHeight;
+  const total = horizontal ? sc.scrollWidth : sc.scrollHeight;
+  const forward = dir === 'down' || dir === 'right';
+  const room = forward ? total - size - pos : pos;
   if (room <= 1) return false;
-  const step = Math.min(room, Math.max(60, Math.round(sc.clientHeight * 0.5)));
-  sc.scrollTop += dir === 'down' ? step : -step;
+  const step = Math.min(room, Math.max(60, Math.round(size * 0.5)));
+  if (horizontal) sc.scrollLeft += forward ? step : -step;
+  else sc.scrollTop += forward ? step : -step;
   return true;
 }
 
@@ -213,14 +219,34 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
 
   const candidates = (scope) => [...scope.querySelectorAll(FOCUSABLE)].filter((el) => !el.matches('[tabindex="-1"]') && visible(el));
 
+  // scrollIntoView bazı Android TV WebView sürümlerinde tüm üst kapsayıcıları birden kaydırabiliyor.
+  // Yalnızca gerçekten kaydırılabilir üst kapsayıcıları, en yakından başlayarak düzelt.
+  function revealInScrollParents(el, scope) {
+    for (let p = el.parentElement; p && p !== scope.parentElement; p = p.parentElement) {
+      const style = win.getComputedStyle(p);
+      const canX = /auto|scroll/.test(style.overflowX) && p.scrollWidth > p.clientWidth + 1;
+      const canY = /auto|scroll/.test(style.overflowY) && p.scrollHeight > p.clientHeight + 1;
+      if (!canX && !canY) continue;
+      const b = el.getBoundingClientRect();
+      const c = p.getBoundingClientRect();
+      const pad = 14;
+      if (canX) {
+        if (b.left < c.left + pad) p.scrollLeft -= c.left + pad - b.left;
+        else if (b.right > c.right - pad) p.scrollLeft += b.right - (c.right - pad);
+      }
+      if (canY) {
+        if (b.top < c.top + pad) p.scrollTop -= c.top + pad - b.top;
+        else if (b.bottom > c.bottom - pad) p.scrollTop += b.bottom - (c.bottom - pad);
+      }
+    }
+  }
+
   function focusEl(el, scope) {
     el.focus({ preventScroll: true });
-    try {
-      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch {
-      /* eski WebView */
+    if (scope) {
+      revealInScrollParents(el, scope);
+      memory.set(scope, el);
     }
-    if (scope) memory.set(scope, el);
   }
 
   function initialIn(scope) {
@@ -309,7 +335,8 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
       const isRange = !!el && el.tagName === 'INPUT' && el.type === 'range';
       if (isRange && (dir === 'left' || dir === 'right')) return;
       // ↑↓ kaydırıcının değerini oynatmasın (ilerleme çubuğunda film ileri-geri giderdi): odak komşu öğeye geçer, geçecek yer yoksa tuş yutulur
-      if (move(dir, el) || isRange) e.preventDefault();
+      // TV kumandasında boş yönde de varsayılan WebView kaydırmasını/odak kaçışını engelle.
+      if (move(dir, el) || isRange || isTv) e.preventDefault();
       return;
     }
     if ((e.key === 'Enter' || e.key === ' ') && el) {
