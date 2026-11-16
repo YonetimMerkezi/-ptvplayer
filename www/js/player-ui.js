@@ -33,6 +33,12 @@ export function createPlayerUI({ engine, player, env }) {
   let hideTimer = 0;
   let ctx = null; // { list, index } | { eps: [...], index }
   let open = false;
+  // KÖK NEDEN DÜZELTMESİ: müzikte geri çıkınca video penceresi (mini oynatıcı/PiP) açılmaz; arayüz kapanır, müzik normal bir müzik çalar gibi
+  // arka planda sürer (bildirim ve durum çubuğundan yönetilir). bgMusic: arayüz kapalı ama müzik çalıyor.
+  let bgMusic = false;
+  let quietUntil = 0; // bu süre dolmadan başlayan sıradaki parça arayüzü yeniden açmaz (go() koyar; kullanıcının kendi seçimi etkilenmez)
+  let bgAdvanced = null;
+  const keepsPlaying = (cur) => !!(env.native && cur && cur.item && cur.item.audio && !onTv() && cur.status !== 'idle' && cur.status !== 'error' && cur.status !== 'ended');
   let playerLocked = false;
   const dockQuery = window.matchMedia('(orientation: portrait)');
   // Dikey kip (YouTube düzeni): video üstte, altta başlık + araç düğmeleri + içerik. Araç düğmeleri ve yayın satırı bu kipte
@@ -811,6 +817,7 @@ export function createPlayerUI({ engine, player, env }) {
     if (player.state().live) i = (i + ctx.items.length) % ctx.items.length;
     else if (i < 0 || i >= ctx.items.length) return;
     ctx.index = i;
+    if (bgMusic && !open) quietUntil = Date.now() + 8000; // arka plandaki müzikte sıradaki parça arayüz açmadan başlar
     ctx.play(ctx.items[i], i);
   }
 
@@ -919,6 +926,10 @@ export function createPlayerUI({ engine, player, env }) {
         stopRequested = true;
         popLayer('player');
       } else if (previewing) endPreview();
+      else if (bgMusic) {
+        bgMusic = false; // arka plan müziği de uyku zamanlayıcısıyla durur
+        player.close();
+      }
       renderSleepLabel();
     },
   });
@@ -1080,6 +1091,15 @@ export function createPlayerUI({ engine, player, env }) {
 
   let layerOpen = false;
   function openWithLayer(item, targets, opts) {
+    if (bgMusic && !open && quietUntil > Date.now() && item && item.audio) {
+      // Arka planda çalan müzikte sıradaki parça: yalnız oynatıcı yeni parçaya geçer, tam ekran arayüz açılmaz.
+      quietUntil = 0;
+      ctx = opts.ctx || null;
+      player.open(item, targets, { ep: opts.ep || null, startAt: opts.startAt || 0 });
+      return;
+    }
+    bgMusic = false;
+    quietUntil = 0;
     if (!layerOpen) {
       layerOpen = true;
       pushLayer('player', closeUi);
@@ -1233,6 +1253,14 @@ export function createPlayerUI({ engine, player, env }) {
     }
     fromPreview = false;
     const current = player.state();
+    // Müzik: geri çıkışta video penceresi açılmaz, müzik arka planda sürer (Kapat bildirimden). Kullanıcı kapatmayı seçtiyse (stopping) durur.
+    if (!stopping && keepsPlaying(current)) {
+      bgMusic = true;
+      engine.setImmersive(false, false).catch(() => {});
+      if (env.onClose) env.onClose();
+      return;
+    }
+    bgMusic = false;
     // Android'de geri çıkışta yayını kapatma: uygulama içinde yüzen mini oynatıcıya küçült.
     // Uygulama arka plana alınırsa Android'in sistem PiP akışı ayrıca çalışır.
     if (env.native && current.item && !stopping && !onTv() && env.pref('miniOnBack', true)) {
@@ -1393,6 +1421,21 @@ export function createPlayerUI({ engine, player, env }) {
 
   // ---- olaylar ----
   player.on(render);
+  // Arayüz kapalıyken (arka plan müziği) parça bitince sıradakine geçer; liste bitince oynatıcıyı kapatır (hayalet bildirim kalmasın).
+  player.on((st) => {
+    if (!bgMusic || open) return;
+    if (!st.item || !st.item.audio || st.status === 'idle') {
+      bgMusic = false;
+      return;
+    }
+    if (st.status !== 'ended' || bgAdvanced === st.item.id) return;
+    bgAdvanced = st.item.id;
+    if (ctx && ctx.autoNext && autoNextOn() && ctx.index < ctx.items.length - 1) go(1);
+    else {
+      bgMusic = false;
+      player.close();
+    }
+  });
   q('#pl-chs').addEventListener('click', chpOpen);
   q('#pl-season').addEventListener('click', () => {
     const items = ctx && Array.isArray(ctx.items) ? ctx.items : [];
@@ -1441,7 +1484,7 @@ export function createPlayerUI({ engine, player, env }) {
   });
   // Ekrandaki geri oku oynatıcıyı kapatır (yayın durur); telefonun geri hareketi ise yayını mini oynatıcıya küçültür.
   q('#pl-back').addEventListener('click', () => {
-    if (open) stopRequested = true;
+    if (open && !keepsPlaying(player.state())) stopRequested = true; // müzikte geri oku da arayüzü kapatır ama müziği durdurmaz
     popLayer('player');
   });
   q('#pl-play').addEventListener('click', () => {
@@ -1533,6 +1576,7 @@ export function createPlayerUI({ engine, player, env }) {
           stopRequested = true;
           popLayer('player');
         } else {
+          bgMusic = false;
           player.close();
         }
         return;
