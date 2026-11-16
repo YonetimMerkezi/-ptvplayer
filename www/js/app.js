@@ -2588,7 +2588,15 @@ function renderHome(v) {
       ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
     ${rows}
-    <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
+    <div class="home-status">
+      <div class="home-status-head">${icon('check')}<b>Bağlantı Durumu</b></div>
+      <div class="home-status-source">${icon('link')}<b>${esc(src.name)}</b><span>Bağlı</span></div>
+      <div class="home-status-metrics">
+        <span>${icon('tv')}<b>${c.live.length}</b><small>Canlı TV</small></span>
+        <span>${icon('movie')}<b>${c.movies.length + c.series.length}</b><small>VOD</small></span>
+        <span>${icon('list')}<b>${store.sources().length}</b><small>Liste</small></span>
+      </div>
+    </div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
   v.onclick = (e) => {
