@@ -1,6 +1,7 @@
 package com.koruk.iptv;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.PendingIntent;
 import android.app.PictureInPictureParams;
 import android.app.RemoteAction;
@@ -137,6 +138,9 @@ public class IptvPlayerPlugin extends Plugin {
     private volatile String nightLevel = "off";
     // Görüntü çözücü (auto | software): "software" yazılım çözücüyü başa alır; donanım çözücüsü bozuk kare veren TV kutuları için.
     private volatile String decoderMode = "auto";
+    // Performans profili: auto | low | balanced | high. Otomatik profil cihaz belleği/CPU gücüne göre seçilir.
+    private volatile String performanceMode = "auto";
+    private volatile String activePerformance = "balanced";
     // Altyazı görünümü (Genel ayarlar / oynatıcıdaki altyazı penceresi): {size, color, bgAlpha, bottom, outline}
     private JSObject subStyle = null;
     private NightAudioProcessor nightProc = null;
@@ -313,6 +317,72 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // Cihaz sınıfını tahmin eder; yazılım kod çözücüye otomatik geçmez (düşük cihazlarda CPU'yu aşırı yükler).
+    private String resolvePerformanceProfile(String requested) {
+        if (!"auto".equals(requested)) return requested;
+        ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+        int memoryClass = am != null ? am.getMemoryClass() : 128;
+        long ramMb = 0;
+        try {
+            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+            if (am != null) { am.getMemoryInfo(mi); ramMb = mi.totalMem / (1024L * 1024L); }
+        } catch (Exception ignored) { }
+        int cores = Runtime.getRuntime().availableProcessors();
+        if (memoryClass <= 128 || (ramMb > 0 && ramMb <= 3072) || cores <= 4) return "low";
+        if (memoryClass <= 192 || (ramMb > 0 && ramMb <= 5120) || cores <= 6) return "balanced";
+        return "high";
+    }
+
+    private void applyVideoLimits(ExoPlayer target) {
+        if (target == null) return;
+        int width = 1920, height = 1080;
+        if ("low".equals(activePerformance)) { width = 854; height = 480; }
+        else if ("balanced".equals(activePerformance)) { width = 1280; height = 720; }
+        target.setTrackSelectionParameters(target.getTrackSelectionParameters().buildUpon()
+                .setMaxVideoSize(width, height)
+                .build());
+    }
+
+    @PluginMethod
+    public void setPerformanceProfile(final PluginCall call) {
+        String requested = call.getData().optString("mode", "auto");
+        if (!"auto".equals(requested) && !"low".equals(requested) && !"balanced".equals(requested) && !"high".equals(requested)) requested = "auto";
+        final String mode = requested;
+        main.post(() -> {
+            performanceMode = mode;
+            getContext().getSharedPreferences("iptv_performance", Context.MODE_PRIVATE)
+                    .edit().putString("mode", mode).apply();
+            activePerformance = resolvePerformanceProfile(mode);
+            if (player != null) {
+                applyVideoLimits(player);
+                String buffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : lastBuffer;
+                if (!buffer.equals(lastBuffer) && !curUrl.isEmpty()) {
+                    long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
+                    startPlayback(curUrl, lastMime, pos, lastHeaders, buffer, true, lastLive, false);
+                }
+            }
+            JSObject result = new JSObject();
+            result.put("mode", performanceMode);
+            result.put("active", activePerformance);
+            result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+            call.resolve(result);
+            notifyListeners("performanceProfile", result);
+        });
+    }
+
+    @PluginMethod
+    public void getPerformanceProfile(final PluginCall call) {
+        if ("auto".equals(performanceMode)) activePerformance = resolvePerformanceProfile(performanceMode);
+        JSObject result = new JSObject();
+        result.put("mode", performanceMode);
+        result.put("active", activePerformance);
+        result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+        ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+        result.put("memoryClassMb", am != null ? am.getMemoryClass() : 0);
+        result.put("cores", Runtime.getRuntime().availableProcessors());
+        call.resolve(result);
+    }
+
     // Yayın önbelleği düzeyi (Ayarlar > Genel): süreler ms; üst sınır bayt olarak da konur ki yüksek bithızlı yayın belleği doldurmasın.
     // Canlı yayın gerçek hızda gelir (önden indirilemez): başlamak ve kesintiden sonra sürmek için çok tampon beklenirse her takılma uzun süre donar ve
     // JS bekçisi (7 sn) yayını baştan açar; bu yüzden canlıda bu iki eşik sınırlanır (en çok 2,5 sn ve 3 sn). Üst/alt tampon süreleri ayardaki gibi kalır.
@@ -363,7 +433,7 @@ public class IptvPlayerPlugin extends Plugin {
         castState = "buffering";
 
         videoDecoder = "";
-        player = buildExo(headers, true, loadControlFor(buffer, live), true, true, compat);
+        activePerformance = resolvePerformanceProfile(performanceMode);\n        String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;\n        lastBuffer = effectiveBuffer;\n        player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);\n        applyVideoLimits(player);
         player.addAnalyticsListener(new AnalyticsListener() {
             @Override
             public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
