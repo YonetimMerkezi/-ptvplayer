@@ -61,6 +61,8 @@ export function nativePlugin(name, win = globalThis.window) {
     setBackgroundAudio: call('setBackgroundAudio'),
     setNightMode: call('setNightMode'),
     setDecoder: call('setDecoder'),
+    setPerformanceProfile: call('setPerformanceProfile'),
+    getPerformanceProfile: call('getPerformanceProfile'),
     setAutoFrameRate: call('setAutoFrameRate'),
     setSubtitleStyle: call('setSubtitleStyle'),
     tvSyncWatchNext: call('tvSyncWatchNext'),
