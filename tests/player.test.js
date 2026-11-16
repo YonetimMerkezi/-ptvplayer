@@ -8,8 +8,8 @@ function setup(policy) {
   const calls = [];
   const engine = {
     failLoad: null,
-    load: async (t, ms) => {
-      calls.push(['load', t.url, ms]);
+    load: async (t, ms, keep, opts) => {
+      calls.push(opts ? ['load', t.url, ms, opts] : ['load', t.url, ms]);
       if (engine.failLoad) throw new Error(engine.failLoad);
     },
     pause: async () => calls.push(['pause']),
@@ -415,6 +415,22 @@ test('olay kaydı: açılış, hata ayrıntısı, yeniden bağlanma ve yedek adr
   assert.equal(texts()[3], 'yeniden bağlanma 1');
   timers.fire();
   assert.equal(texts()[4], 'açılıyor · adres 1/2 · HLS · yeniden bağlanma');
+  assert.deepEqual(calls.at(-1)[3], { compat: true }, 'ilk donmada aynı adres uyumlu modda açılmalı');
+});
+
+test('uyumlu modda da görüntü donarsa yedek yayın adresine geçilir', async () => {
+  const { p, calls, timers } = setup();
+  await p.open(live, [T('a', 'hls'), T('b', 'ts')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'error', message: 'dondu', frozen: true });
+  timers.fire();
+  assert.equal(calls.at(-1)[1], 'a');
+  assert.deepEqual(calls.at(-1)[3], { compat: true });
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'error', message: 'yeniden dondu', frozen: true });
+  timers.fire();
+  assert.equal(calls.at(-1)[1], 'b', 'ikinci donmada alternatif adres seçilmeli');
+  assert.equal(calls.at(-1)[3], undefined, 'yedek adreste uyumlu mod zorlanmamalı');
 });
 
 test('olay kaydı: sınırlı uzunlukta, aynı satır art arda yazılmaz, yeni açılışta temizlenir', async () => {
