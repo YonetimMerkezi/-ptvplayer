@@ -518,3 +518,13 @@ test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yay
   assert.match(kaynak, /o\.put\("compat", compat\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
   assert.match(kaynak, /private static String causeOf\(Throwable error\) \{[\s\S]*?getClass\(\)\.getSimpleName\(\)/);
 });
+
+test('Android performans tanılaması RAM, CPU, Android sürümü ve donanım video çözücülerini raporlar', () => {
+  assert.match(kaynak, /result\.put\("totalRamMb", totalRamMb\)/);
+  assert.match(kaynak, /result\.put\("memoryClassMb", am != null \? am\.getMemoryClass\(\) : 0\)/);
+  assert.match(kaynak, /result\.put\("cores", Runtime\.getRuntime\(\)\.availableProcessors\(\)\)/);
+  assert.match(kaynak, /result\.put\("androidSdk", Build\.VERSION\.SDK_INT\)/);
+  assert.match(kaynak, /result\.put\("androidVersion", Build\.VERSION\.RELEASE/);
+  assert.match(kaynak, /new android\.media\.MediaCodecList\(\s*android\.media\.MediaCodecList\.REGULAR_CODECS\)/);
+  assert.match(kaynak, /result\.put\("videoDecoders", videoDecoders\)/);
+});
