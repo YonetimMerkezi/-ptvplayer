@@ -1278,6 +1278,7 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
    Tek yükseklik belirteci: --yt-h. Eski, üst üste binen 34/42/46/56vh kuralları kaldırıldı.
    ================================================================================================ */
 #pl-video-frame, #pl-below { display: none; }
+.pl-cover { display: none; } /* müzik çaların kapak simgesi: yalnız dikey müzik çalarda görünür */
 
 @media (orientation: portrait) {
   html #player.portrait-split, html #player.vod-portrait {
@@ -1321,6 +1322,16 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
     top: calc(var(--yt-top) + var(--yt-h)); min-height: 0; overflow: hidden; background: #0a0e14; color: #fff;
     padding: 0 var(--safe-r) var(--safe-b) var(--safe-l); overflow: clip;
   }
+  /* Müzik çalar (ses dosyaları, telefon): video kutusunun yerinde kare kapak; denetimler kapağın altına dizilir ve hep görünür */
+  html #player.vod-portrait.music { --yt-h: min(92vw, 46vh); }
+  #player.vod-portrait.music #pl-video-frame { display: flex; align-items: flex-start; justify-content: center; background: radial-gradient(120% 90% at 25% 10%, color-mix(in srgb, var(--accent) 62%, #0a0e14), #0a0e14 78%); }
+  #player.vod-portrait.music .pl-cover { display: block; width: 34%; height: auto; aspect-ratio: 1; margin-top: 16%; color: #ffffffd9; filter: drop-shadow(0 10px 28px #0008); }
+  #player.vod-portrait.music #vid { opacity: 0; }
+  #player.vod-portrait.music #pl-ui { background: linear-gradient(#0006, #0000 30%, #0000 55%, #0a0e14); }
+  #player.vod-portrait.music .pl-mid { margin: auto 0 14px; }
+  #player.vod-portrait.music .big-btn { background: #ffffff1f; }
+  #player.vod-portrait.music .big-btn.lg { width: 64px; height: 64px; background: var(--accent); color: var(--on-accent, #06120a); }
+  #player.vod-portrait.music .pl-info-text b { font-size: 1.125rem; }
   #player.locked #pl-info { display: none; }
   .pl-info { flex: none; padding: 10px 12px 2px; }
   .pl-info-head { display: flex; align-items: center; gap: 6px; }

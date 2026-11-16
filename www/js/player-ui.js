@@ -113,7 +113,11 @@ export function createPlayerUI({ engine, player, env }) {
     render(st);
   }
   // Otomatik yön (autoDir) tam ekran demektir: küçük ekran (dikey yerleşim) yalnız ayardan ya da elle seçimden gelir
-  const orientNow = () => orientOverride || (autoDir ? 'landscape' : env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape');
+  // Müzik (medya merkezindeki ses dosyaları) telefonda hep dikey müzik çalar ekranında açılır: üstte kapak, altında denetimler ve şarkı listesi.
+  // TV'de ekran dönmediğinden olağan oynatıcı kalır. musicNow: açık olan öğe müzik mi.
+  const isMusic = (item) => !!(item && item.audio && !item.cast) && !onTv();
+  let musicNow = false;
+  const orientNow = () => (musicNow ? 'portrait' : orientOverride || (autoDir ? 'landscape' : env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape'));
   const levels = { brightness: 0.5, volume: 0.5 };
   let hudTimer = 0;
   const gest = { id: null, x0: 0, y0: 0, t0: 0, mode: null, kind: '', start: 0, base: 0, target: null, swallow: false, applied: 0, tapAt: 0 };
@@ -298,7 +302,7 @@ export function createPlayerUI({ engine, player, env }) {
   function scheduleHide() {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      if (seeking) return;
+      if (seeking || musicNow) return; // müzik çalarda denetimler hep görünür
       ui.classList.remove('show');
       if (ui.contains(document.activeElement)) document.activeElement.blur(); // gizli düğmede odak kalmasın: oklar yine kanal/sarma yapsın
     }, HIDE_MS);
@@ -463,6 +467,8 @@ export function createPlayerUI({ engine, player, env }) {
     const live = st.live;
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
+    musicNow = isMusic(st.item);
+    root.classList.toggle('music', musicNow);
     const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
@@ -1023,7 +1029,7 @@ export function createPlayerUI({ engine, player, env }) {
     const b = q('#pl-orient');
     if (!b) return;
     const it = item || player.state().item;
-    b.hidden = onTv() || !it || !!it.cast || it.kind === 'recording';
+    b.hidden = onTv() || !it || !!it.cast || it.kind === 'recording' || isMusic(it); // müzik çalar hep dikeydir
     const autoPortrait = !orientOverride && autoDir === 'portrait';
     const small = !autoPortrait && !(autoDir && !orientOverride) && orientNow() === 'portrait';
     const label = autoPortrait ? 'Yatay çevir' : small ? 'Tam ekran' : 'Küçük ekran';
@@ -1033,7 +1039,7 @@ export function createPlayerUI({ engine, player, env }) {
   }
   function toggleOrient() {
     const st = player.state();
-    if (!open || !st.item || playerLocked) return;
+    if (!open || !st.item || playerLocked || musicNow) return;
     // Otomatik dikey tam ekrandayken düğme yatay çevirir; otomatik yatayda küçük ekrana geçer
     orientOverride = autoDir ? (autoDir === 'portrait' ? 'landscape' : 'portrait') : orientNow() === 'portrait' ? 'landscape' : 'portrait';
     autoDir = null;
@@ -1052,6 +1058,8 @@ export function createPlayerUI({ engine, player, env }) {
   // Tam ekran arayüzü: görüntü yerel görünümde (Android) ya da <video>'da (tarayıcı) tüm ekranı kaplar.
   function enterFullscreen(item) {
     open = true;
+    musicNow = isMusic(item);
+    root.classList.toggle('music', musicNow);
     const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
