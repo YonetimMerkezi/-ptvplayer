@@ -639,12 +639,9 @@ public class IptvPlayerPlugin extends Plugin {
                             .setAudioProcessors(new AudioProcessor[] {proc, night, dialog})
                             .build();
                 }
-            }.setEnableDecoderFallback(true).setMediaCodecSelector(selector).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON));
+            }.setEnableDecoderFallback(true).setMediaCodecSelector(selector));
         } else {
-            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector)
-                    // Yazılım ses çözücüsü (FFmpeg eklentisi) cihazın kendi çözücülerinden SONRA denenir: cihaz biçimi çözebiliyorsa o kullanılır,
-                    // çözemiyorsa (AC3/E-AC3/DTS) ses yazılımla çözülür.
-                    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON));
+            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector));
         }
         return eb
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(base, extractors))
