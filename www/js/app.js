@@ -3856,6 +3856,7 @@ function playerSheet() {
     full: true, // TV'de tam sayfa
     title: 'Oynatıcı ayarları',
     html:
+      (nativePlugin ? `<div class="sel-row"><span>Otomatik performans yöneticisi<small>Düşük donanımda çözünürlüğü ve yayın belleğini sınırlar. Otomatik cihazı algılar; seçim hemen uygulanır</small></span><select id="g-perf">${optionsHtml([['auto','Otomatik'],['low','Düşük'],['balanced','Dengeli'],['high','Yüksek']], store.pref('set.performance', 'auto'))}</select></div>` : '') +
       `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Otomatik cihazın seçimini kullanır. Donanım öncelikli Mi Stick gibi TV kutularında ilk deneme; görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
@@ -3903,6 +3904,12 @@ function playerSheet() {
         store.setPref('set.playerOrientation', e.target.value === 'portrait' ? 'portrait' : 'landscape');
       });
       $('#g-buf', body).addEventListener('change', (e) => store.setPref('set.buffer', normalizeBuffer(e.target.value)));
+      const gperf = $('#g-perf', body);
+      if (gperf) gperf.addEventListener('change', (e) => {
+        const mode = ['auto', 'low', 'balanced', 'high'].includes(e.target.value) ? e.target.value : 'auto';
+        store.setPref('set.performance', mode);
+        if (nativePlugin && nativePlugin.setPerformanceProfile) nativePlugin.setPerformanceProfile({ mode }).then((r) => toast('Performans profili uygulandı: ' + (r.maxVideo || r.active), 2500)).catch(() => toast('Performans profili uygulanamadı', 2500));
+      });
       const galang = $('#g-alang', body);
       if (galang) galang.addEventListener('change', (e) => store.setPref('set.audioLang', normalizeAudioLang(e.target.value)));
       const gslang = $('#g-slang', body);
@@ -5648,6 +5655,11 @@ function applyTvMode() {
   layoutPreview();
 }
 applyTvMode();
+// Android performans yöneticisi: cihaz profili her açılışta belirlenir, kullanıcı seçimi kalıcıdır.
+function applyPerformanceProfile() {
+  if (nativePlugin && nativePlugin.setPerformanceProfile) nativePlugin.setPerformanceProfile({ mode: store.pref('set.performance', 'auto') }).catch(() => toast('Performans profili uygulanamadı', 2500));
+}
+applyPerformanceProfile();
 // Görüntü çözücü tercihi yerel oynatıcıya bildirilir (açılışta ve ayar değişince); açık yayın varsa yeniden kurulur.
 function applyDecoder() {
   if (nativePlugin) nativePlugin.setDecoder({ mode: normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)) }).catch(() => toast('Görüntü çözücü uygulanamadı', 2500));
