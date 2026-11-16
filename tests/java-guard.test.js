@@ -198,7 +198,7 @@ test('Android TV bildirimi: kumanda başlatıcısı, afiş, dokunmatik ve leanba
 
 test('yayın kaydı: yalnız ana oynatıcı kayda yazar, çıkışta/yeni yayında kayıt kapanır, liste (m3u8) kayda girmez', () => {
   assert.match(kaynak, /buildExo\(headers, true, loadControlFor\((?:buffer|effectiveBuffer), live\), true, true, compat\)/, 'ana oynatıcı kayıt katmanıyla kurulmalı');
-  assert.match(kaynak, /buildExo\(headers, false, [\s\S]*?\.build\(\), false, false, false\)/, 'çoklu ekran kutuları kayda yazmamalı, ses gecikmesi ve uyumlu mod almamalı');
+  assert.match(kaynak, /buildExo\(headers, false, loadControlFor\(slotBuffer, true\), false, false, false\)/, 'çoklu ekran kutuları kayda yazmamalı, ses gecikmesi ve uyumlu mod almamalı');
   assert.match(kaynak, /public void stop\(final PluginCall call\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'oynatıcı kapanınca kayıt bitmeli');
   assert.match(kaynak, /if \(!keepRec\) \{\s*StreamRecorder\.stop\(null\);/, 'başka yayına geçilince kayıt bitmeli');
   assert.match(kaynak, /handleOnDestroy\(\)[\s\S]*?StreamRecorder\.stop\(null\)/, 'uygulama kapanınca kayıt dosyası düzgün kapanmalı');
