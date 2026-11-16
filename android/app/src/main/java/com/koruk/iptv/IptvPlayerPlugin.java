@@ -123,6 +123,12 @@ public class IptvPlayerPlugin extends Plugin {
     private final Handler main = new Handler(Looper.getMainLooper());
     // Medya merkezi: müzik arka planda çalarken ekran kapanınca duraklatılmaz; harici altyazı (UTF-8'e çevrilmiş dosya adresi).
     private volatile boolean bgAudio = false;
+    // KÖK NEDEN DÜZELTMESİ: oturum (bildirim + kilit ekranı + Bluetooth tuşları) arka plan anahtarından bağımsızdır; müzik ekran açıkken de oturum açar.
+    // audioOnly: içerik yalnız ses (müzik); görüntü penceresi (PiP) açılmaz. sessionOn: medya oturumu/bildirimi şu an açık.
+    private volatile boolean audioOnly = false;
+    private volatile boolean sessionOn = false;
+    private boolean navPrev = false;
+    private boolean navNext = false;
     private String subUri = "";
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService probeIo = Executors.newFixedThreadPool(2); // yayın sağlık testi: indirmeleri bekletmesin
@@ -278,6 +284,9 @@ public class IptvPlayerPlugin extends Plugin {
         final boolean live = call.getData().optBoolean("live", false);
         final boolean compatReq = call.getData().optBoolean("compat", false);
         final boolean audioBg = call.getData().optBoolean("bgAudio", false);
+        final boolean audioOnlyReq = call.getData().optBoolean("audioOnly", false);
+        final boolean prevReq = call.getData().optBoolean("canPrev", false);
+        final boolean nextReq = call.getData().optBoolean("canNext", false);
         final String audioTitle = call.getData().optString("title", "");
         final String subtitle = call.getData().optString("subUri", "");
         audioDelayMs = clampDelay(call.getData().optInt("audioDelay", audioDelayMs));
@@ -287,8 +296,12 @@ public class IptvPlayerPlugin extends Plugin {
             try {
                 subUri = subtitle;
                 if (!keepRec) speedReq = 1f; // yeni içerik normal hızda başlar; aynı yayına yeniden bağlanırken hız korunur
-                if (audioBg) AudioKeepAliveService.start(getContext(), audioTitle);
-                else if (bgAudio) AudioKeepAliveService.stop(getContext());
+                audioOnly = audioOnlyReq;
+                navPrev = prevReq && !live;
+                navNext = nextReq && !live;
+                // Müzikte (ekran açıkken de) ya da arka plan sesi açık videoda oturum açılır; açık oturumun başlığı/düğmeleri tazelenir.
+                if (audioBg || audioOnlyReq) startSession(audioTitle, live);
+                else if (sessionOn) endSession();
                 bgAudio = audioBg;
                 startPlayback(url, mime, startMs, headers, buffer, keepRec, live, compatReq);
                 call.resolve();
@@ -307,11 +320,11 @@ public class IptvPlayerPlugin extends Plugin {
         main.post(() -> {
             bgAudio = enabled;
             if (enabled && player != null) {
-                AudioKeepAliveService.start(getContext(), title);
+                startSession(title, lastLive);
                 player.setPlayWhenReady(true);
                 player.setVolume(1f);
-            } else {
-                AudioKeepAliveService.stop(getContext());
+            } else if (!audioOnly) {
+                endSession(); // müzikte oturum arka plan anahtarından bağımsız sürer
             }
             call.resolve();
         });
@@ -518,6 +531,18 @@ public class IptvPlayerPlugin extends Plugin {
                 emitState();
             }
 
+            // Ses odağı kaybında (arama) ya da bildirimden duraklatınca oynat/duraklat durumu bildirime ve oturuma yansır.
+            @Override
+            public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                syncSession();
+            }
+
+            // Sarma/parça geçişinde sistemin ilerleme çubuğu yeni konuma alınır.
+            @Override
+            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                syncSession();
+            }
+
             @Override
             public void onVideoSizeChanged(VideoSize size) {
                 updatePipParams(); // PiP penceresi yayının en-boy oranına uysun
@@ -583,7 +608,7 @@ public class IptvPlayerPlugin extends Plugin {
                 .setDefaultRequestProperties(props);
         AudioAttributes audio = new AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .setContentType(audioOnly ? C.AUDIO_CONTENT_TYPE_MUSIC : C.AUDIO_CONTENT_TYPE_MOVIE) // müzik içerik türü: arama/navigasyon sesinde doğru kısma ve duraklatma
                 .build();
         // DefaultDataSource: ağ adreslerinin yanında kayıtların file:// adreslerini de açar. tap: kayıt açıkken baytları da dosyaya yazar.
         DataSource.Factory base = new DefaultDataSource.Factory(getContext(), http);
@@ -725,8 +750,9 @@ public class IptvPlayerPlugin extends Plugin {
     public void stop(final PluginCall call) {
         main.post(() -> {
             StreamRecorder.stop(null);
-            if (bgAudio) AudioKeepAliveService.stop(getContext());
+            endSession();
             bgAudio = false;
+            audioOnly = false;
             subUri = "";
             releasePlayer();
             if (playerView != null) playerView.setVisibility(View.GONE);
@@ -1823,6 +1849,7 @@ public class IptvPlayerPlugin extends Plugin {
         o.put("live", player.isCurrentMediaItemLive());
         notifyListeners("state", o);
         if (name.equals("playing") || name.equals("paused")) emitVideoSize();
+        syncSession();
         updatePipParams();
     }
 
@@ -2574,6 +2601,10 @@ public class IptvPlayerPlugin extends Plugin {
                 call.reject("Önce bir yayın başlatın");
                 return;
             }
+            if (audioOnly) {
+                call.reject("Müzikte resim içinde resim yok");
+                return;
+            }
             if (Build.VERSION.SDK_INT < 26) {
                 call.reject("PiP için Android 8.0 veya üzeri gerekir");
                 return;
@@ -2592,6 +2623,7 @@ public class IptvPlayerPlugin extends Plugin {
     // Ana ekrana çıkınca PiP'e geçilebilir mi: oynayan (ya da yüklenen) bir yayın var ve çoklu ekran açık değil.
     private boolean pipWanted() {
         if (tvDevice(getContext())) return false; // TV'de Ana ekran/Geri ile PiP penceresi açılmaz
+        if (audioOnly) return false; // KÖK NEDEN DÜZELTMESİ: müzikte görüntü yok; uygulamadan çıkınca boş bir video penceresi (PiP) açılmasın, ses bildirimden yönetilir
         return player != null && player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED;
     }
 
@@ -2645,6 +2677,70 @@ public class IptvPlayerPlugin extends Plugin {
             getActivity().setPictureInPictureParams(buildPipParams());
         } catch (RuntimeException ignored) {
             // Activity henüz hazır değilse sonraki oynatma durumu parametreleri günceller.
+        }
+    }
+
+    // ------------------------------------------------------------------ medya oturumu (kilit ekranı, bildirim, Bluetooth tuşları)
+
+    private void startSession(String title, boolean live) {
+        sessionOn = true;
+        AudioKeepAliveService.start(getContext(), title, navPrev, navNext, live);
+    }
+
+    private void endSession() {
+        if (!sessionOn) return;
+        sessionOn = false;
+        AudioKeepAliveService.stop(getContext());
+    }
+
+    // Oynatıcının durumunu oturuma/bildirime yansıtır. Parça bitince kısa bir süre sonra (sıradaki başlamadıysa) oturum kapanır.
+    private void syncSession() {
+        if (!sessionOn || player == null) return;
+        int s = player.getPlaybackState();
+        boolean ended = s == Player.STATE_ENDED;
+        boolean playing = player.getPlayWhenReady() && !ended && s != Player.STATE_IDLE;
+        long dur = player.getDuration();
+        AudioKeepAliveService.update(playing, ended, player.getCurrentPosition(), dur == C.TIME_UNSET ? -1L : dur, player.getPlaybackParameters().speed);
+        if (ended) {
+            final String u = curUrl;
+            main.postDelayed(() -> {
+                // KÖK NEDEN DÜZELTMESİ: liste sonu / otomatik sıradaki kapalı: bitmiş parçanın bildirimi sonsuza dek kalmasın.
+                if (sessionOn && player != null && player.getPlaybackState() == Player.STATE_ENDED && u.equals(curUrl)) endSession();
+            }, 4000);
+        }
+    }
+
+    // Bildirim düğmelerinden, kilit ekranından ve Bluetooth/kulaklık tuşlarından gelen komutlar. false → eklenti yok (hizmet kendini kapatır).
+    public static boolean mediaCommand(String cmd, long arg) {
+        final IptvPlayerPlugin plugin = activePlugin;
+        if (plugin == null) return false;
+        plugin.main.post(() -> plugin.onMediaCommand(cmd, arg));
+        return true;
+    }
+
+    private void onMediaCommand(String cmd, long arg) {
+        if ("close".equals(cmd)) {
+            // Önce yerelde hemen durdur (web katmanı arka planda yavaş kalabilir); sonra arayüz de kapansın.
+            if (player != null) player.setPlayWhenReady(false);
+            endSession();
+            JSObject o = new JSObject();
+            o.put("action", "close");
+            notifyListeners("mediaCmd", o);
+            return;
+        }
+        if (player == null) return;
+        if ("play".equals(cmd)) {
+            if (player.getPlaybackState() == Player.STATE_ENDED) player.seekTo(0);
+            player.setPlayWhenReady(true);
+        } else if ("pause".equals(cmd)) {
+            player.setPlayWhenReady(false);
+        } else if ("seek".equals(cmd)) {
+            player.seekTo(Math.max(0L, arg));
+        } else if ("next".equals(cmd) || "prev".equals(cmd)) {
+            // Sıra mantığı web katmanındadır (karıştır/tekrar dahil); komut olay olarak gider.
+            JSObject o = new JSObject();
+            o.put("action", cmd);
+            notifyListeners("mediaCmd", o);
         }
     }
 
@@ -3122,8 +3218,10 @@ public class IptvPlayerPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
-        if (bgAudio) AudioKeepAliveService.stop(getContext());
+        // KÖK NEDEN DÜZELTMESİ: oturum yalnız arka plan sesi açıkken değil müzikte de açık olabilir; koşulsuz kapatılır (hayalet bildirim kalmasın).
+        endSession();
         bgAudio = false;
+        audioOnly = false;
         if (activePlugin == this) activePlugin = null;
         Downloads.setListener(null);
         main.removeCallbacksAndMessages(null);
