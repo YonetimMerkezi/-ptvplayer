@@ -142,6 +142,18 @@ test('scrollStep: uzun içerik yarım ekran adımlarla kayar, uçta durur, odak 
   assert.equal(scrollStep(tiny, 'down'), false, 'piksel altı taşma kaydırma sayılmaz');
 });
 
+test('scrollStep: yatay kategori/sekme şeritleri de kumandayla kontrollü kayar', () => {
+  const sc = { scrollWidth: 1200, clientWidth: 400, scrollLeft: 0 };
+  assert.equal(scrollStep(sc, 'left'), false, 'en solda sola kaymaz');
+  assert.equal(scrollStep(sc, 'right'), true);
+  assert.equal(sc.scrollLeft, 200, 'yatay adım yarım ekran');
+  sc.scrollLeft = 800;
+  assert.equal(scrollStep(sc, 'right'), true);
+  assert.equal(sc.scrollLeft, 800, 'son noktayı aşmaz');
+  assert.equal(scrollStep(sc, 'left'), true);
+  assert.equal(sc.scrollLeft, 600);
+});
+
 test('pickNext: tam genişlik alan (arama kutusu) üstteki küçük düğme (geri) yerine, altındaki her düğmeden yukarı basınca seçilir', () => {
   // Ara sayfası: başlıkta geri düğmesi, altında tam genişlik arama kutusu + sağda mikrofon, onun altında sekme düğmeleri
   const back = R(8, 6, 44, 44);
