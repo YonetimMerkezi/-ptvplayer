@@ -16,6 +16,8 @@ export const CHANGELOG = [
       'Profiller (Ayarlar > Profiller): her aile üyesinin favorileri, izleme listesi ve kaldığı yer ayrı tutulur; kaynaklar ve ayarlar ortaktır',
       'Afişi olmayan filmlerde afiş, film eşleştirmesinden bulunup gösterilir',
       'İlk açılışta uygulamayı üç adımda anlatan karşılama ekranı',
+      'İçerik uyarıları: doğrulanmış kaydı olmayan film ve dizilerde tür ve özetten çıkarılan tahmini uyarılar gösterilir (yerli ve yabancı); uyarı simgeleri artık görünür',
+      'Netflix görünümünde arama kutusu ve Düzenle çubuğu vitrinin üstünden kalktı; “Kategorileri düzenle” üst çubukta',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
     ],
   },

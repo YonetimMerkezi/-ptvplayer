@@ -74,6 +74,7 @@ import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
+import { estimateAdvisories, ESTIMATE_LABEL, ESTIMATE_ICON } from './advisory-estimate.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
 const Cap = window.Capacitor;
@@ -1910,7 +1911,9 @@ const advisorySmart = (warning) => {
 };
 const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
 
-async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 'movie') {
+// ctx: { genres, plot } — sağlayıcının verdiği tür ve özet; doğrulanmış kayıt olmayan içerikler için tahmini uyarılar buradan (ve
+// Worker'ın verdiği TMDB türleri ile anahtar kelimelerinden) çıkarılır. Tahminler ayrı ve "Tahmini" etiketiyle gösterilir.
+async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 'movie', ctx = null) {
   const host = $('#mv-advisories', body);
   if (!host || !body.isConnected) return;
   let record = null;
@@ -1929,14 +1932,18 @@ async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 
   const manual = Object.entries((wk && wk.w) || {}).filter(([k, v]) => manualKinds[k] && v > 0).map(([k, v]) => ({ label: manualKinds[k][0], icon: manualKinds[k][1], level: manualLv[Math.min(3, v)] }));
   const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
   const sourceNames = { ktb: 'T.C. Kültür ve Turizm Bakanlığı', screenwise: 'Screenwise aile rehberi' };
+  // Tahmini uyarılar: doğrulanmış kaynakların zaten bildirdiği kategoriler yinelenmez.
+  const known = new Set([...unique.map((w) => String(w.category || w.type).toLowerCase()), ...Object.keys((wk && wk.w) || {}).map((k) => ({ siddet: 'violence', korku: 'fear', cinsellik: 'sex', ciplaklik: 'nudity', olumsuz: 'negative_examples' }[k])).filter(Boolean)]);
+  const estimated = estimateAdvisories({ genres: [ctx && ctx.genres, ...((wk && wk.gen) || [])].filter(Boolean).join(', '), plot: (ctx && ctx.plot) || '', keywords: (wk && wk.w && wk.w._kw) || [] }).filter((e) => !known.has(e.category));
+  const estChip = (e) => '<span class="mv-warning-chip mv-est-chip">' + icon(ESTIMATE_ICON[e.category]) + esc(ESTIMATE_LABEL[e.category]) + ' · ' + esc(advisoryLevel(e.level)) + ' <i>tahmini</i></span>';
   const hasRecord = !!(warnings.length || allRatings.length || manual.length || (record && record.guidance));
-  host.innerHTML = (hasRecord
+  host.innerHTML = (hasRecord || estimated.length
     ? allRatings.map((r) => '<span class="mv-warning-chip mv-rating-chip">' + (r.est ? 'Tahmini yaş sınırı' : 'TR sınıflandırma') + ' · ' + esc(r.value) + '</span>').join('') + manual.map((m) => '<span class="mv-warning-chip">' + icon(m.icon) + esc(m.label) + (m.level ? ' · ' + esc(m.level) : '') + '</span>').join('') + unique.slice(0, 5).map((w) => {
         const smart = advisorySmart(w);
         const label = smart.label;
         const level = advisoryLevel(w.level || w.severity) || smart.level;
         return '<span class="mv-warning-chip">' + icon(w.icon || advisorySmart(w).icon) + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
-      }).join('')
+      }).join('') + estimated.slice(0, Math.max(0, 5 - unique.length - manual.length)).map(estChip).join('')
     : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : (failure || 'İçerik uyarıları kontrol ediliyor')) + '</span>') +
     '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
   host.hidden = false;
@@ -1956,8 +1963,12 @@ async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 
     const sourceRows = Object.entries(record && record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(sourceNames[k] || k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : v.status === 'unavailable' ? 'Kaynak sayfası veri sunmadı' : 'Kontrol edilemedi') + (v.message ? ' (' + esc(v.message) + ')' : '') + '</p>').join('');
     const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
     const guidance = record && record.guidance ? '<article class="mv-warning-detail"><b>Screenwise aile rehberi</b>' + (record.guidance.summary ? '<p>' + esc(advisoryTr(record.guidance.summary)) + '</p>' : '') + (record.guidance.ageFit ? '<p>' + esc(advisoryTr(record.guidance.ageFit)) + '</p>' : '') + (record.guidance.score != null ? '<small>Rehber puanı: ' + esc(record.guidance.score) + '/100</small>' : '') + '</article>' : '';
-    const empty = !rows && !guidance ? '<p>Bu içerik için doğrulanmış bir sınıflandırma veya içerik uyarısı henüz alınamadı. Bu, filmde sakıncalı içerik bulunmadığı anlamına gelmez.</p>' : '';
-    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + guidance + empty + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
+    const estRows = estimated.length
+      ? '<h4 class="mv-warning-h">Tahmini uyarılar</h4><p class="mv-warning-checked">Tür, özet ve anahtar kelimelerden çıkarılmıştır; doğrulanmış kayıt değildir, eksik ya da hatalı olabilir.</p>' +
+        estimated.map((e) => '<article class="mv-warning-detail mv-est"><div><b>' + icon(ESTIMATE_ICON[e.category]) + esc(ESTIMATE_LABEL[e.category]) + '</b><span>' + esc(advisoryLevel(e.level)) + '</span></div><small>Tahmin · kaynak: ' + esc(e.from.join(', ')) + '</small></article>').join('')
+      : '';
+    const empty = !rows && !guidance ? '<p>Bu içerik için doğrulanmış bir sınıflandırma veya içerik uyarısı henüz alınamadı. Bu, yapımda sakıncalı içerik bulunmadığı anlamına gelmez.</p>' : '';
+    openSheet({ title: 'İçerik uyarıları', html: '<div class="mv-warning-list">' + rows + guidance + empty + estRows + '</div>' + sourceRows + (checked ? '<p class="mv-warning-checked">Son kontrol: ' + esc(checked) + '</p>' : '') });
   });
 }
 
@@ -2007,7 +2018,8 @@ function openMovie(it) {
           if (!body.isConnected) return;
           const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
           const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '', originalTitle: wk.ot || '' } : baseMeta;
-          loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk));
+          const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
+          loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk, 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
           if (info) {
             const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
@@ -2098,7 +2110,7 @@ function openSeries(it) {
       if (dlUi) watchDl(body, paintDl);
       // İçerik uyarıları (dizi): sayfa her yeniden çizildiğinde (sezon/favori) son durum yeniden boyanır.
       let adv = { meta: null, failure: '', wk: null };
-      const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, adv.wk, 'series');
+      const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, adv.wk, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
       const draw = () => {
         const p = progressOf(it);
         const cont = p ? all.find((x) => x.id === p.id) : null;

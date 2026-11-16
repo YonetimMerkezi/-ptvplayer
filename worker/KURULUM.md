@@ -28,3 +28,15 @@ Worker zaten kuruluysa sırayla:
 3. Uygulamada `www/js/meta-worker.js` içindeki `META_APP_TOKEN` değerine Cloudflare'deki `APP_TOKEN`'ı yapıştır.
    Repo herkese açıksa token da görünür olur: repoyu özel (private) tut ya da bu riski kabul et.
    Kötüye kullanım görürsen Cloudflare'de APP_TOKEN'ı değiştirip uygulamayı güncellemen yeter.
+
+---
+
+# Güncelleme (anahtar kelimeler: tahmini içerik uyarıları)
+
+Uygulama, doğrulanmış içerik uyarısı olmayan film ve dizilerde tür ve özetten tahmini uyarı gösterir. Worker güncellenirse
+TMDB anahtar kelimeleri de (ör. "suicide", "drug addiction", "nudity") tahmine katılır; yabancı yapımlarda isabet belirgin artar.
+
+1. Worker'daki kodu silip yeni `worker.js` içeriğini yapıştır → Deploy. Veritabanında değişiklik yok.
+2. Eski kayıtlar kendiliğinden yenilenir: her yapım bir sonraki sorguda TMDB'den yeniden çözülür (kayıt sürümü 2).
+
+Worker güncellenmese de uygulama çalışır; yalnız anahtar kelimeler olmadan, tür ve özetle tahmin eder.

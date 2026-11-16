@@ -1258,6 +1258,11 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 }
 
 .mv-warning-chip .ic { width:15px; height:15px; margin-right:5px; flex:0 0 auto; }
+/* Tahmini uyarı (tür/özet/anahtar kelimeden): doğrulanmış uyarıdan kesik çizgili kenarlık ve "tahmini" yazısıyla ayrılır */
+.mv-warning-chip.mv-est-chip { border-style: dashed; border-color: var(--line); background: var(--raised); }
+.mv-warning-chip.mv-est-chip i { margin-left: 5px; color: var(--muted); font-style: normal; font-size: 0.75em; }
+.mv-warning-h { margin: 14px 0 4px; font-size: 1rem; }
+.mv-warning-detail.mv-est { border-style: dashed; }
 .mv-warning-detail > div b { display:inline-flex; align-items:center; gap:7px; }
 .mv-warning-detail > div b .ic { width:19px; height:19px; color:var(--accent); flex:0 0 auto; }
 

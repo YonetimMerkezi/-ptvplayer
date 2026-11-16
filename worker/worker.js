@@ -59,6 +59,10 @@ export function classifyTmdbDescriptors(values) {
   if (/language|profanity|strong language|drug|alcohol|smoking|discriminat|harmful behaviour|harmful behavior|olumsuz/.test(list)) mark('olumsuz');
   return out;
 }
+// w alanının sürümü: değişince eski kayıtlar bir sonraki istekte TMDB'den yeniden çözülür.
+// 2: TMDB anahtar kelimeleri (_kw) eklendi; uygulama tahmini içerik uyarılarını bunlardan çıkarır.
+const W_VERSION = 2;
+const keywordsOf = (d) => (d.keywords?.keywords || d.keywords?.results || []).map((k) => String(k && k.name || '').toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 30);
 export function pickCert(d, tp) {
   const by = {};
   if (tp === 'movie') {
@@ -94,7 +98,7 @@ export function pickCert(d, tp) {
     const normalized = normCert(cc, raw);
     if (normalized) { cert = normalized; csrc = cc; break; }
   }
-  return { cert, csrc: csrc || (Object.keys(warnings).length ? country : null), w: { ...warnings, _v: 1 }, warningCountry: Object.keys(warnings).length ? country : null };
+  return { cert, csrc: csrc || (Object.keys(warnings).length ? country : null), w: { ...warnings, _v: W_VERSION, _kw: keywordsOf(d) }, warningCountry: Object.keys(warnings).length ? country : null };
 }
 
 // ---------- TMDB ----------
@@ -147,10 +151,10 @@ async function resolve(env, it) {
   }
   const cands = [...seen.values()].sort((a, b) => b.conf - a.conf);
   const best = cands[0];
-  const base = { k: it.k, tid: null, tp: null, ttl: null, ot: null, imdb: null, yr: null, cert: null, csrc: null, gen: [], w: { _v: 1 }, conf: best ? +best.conf.toFixed(3) : 0, cands: cands.slice(0, 3).map((c) => ({ id: c.id, tp: c.tp, ttl: c.ttl, yr: c.cy, conf: +c.conf.toFixed(2) })) };
+  const base = { k: it.k, tid: null, tp: null, ttl: null, ot: null, imdb: null, yr: null, cert: null, csrc: null, gen: [], w: { _v: W_VERSION }, conf: best ? +best.conf.toFixed(3) : 0, cands: cands.slice(0, 3).map((c) => ({ id: c.id, tp: c.tp, ttl: c.ttl, yr: c.cy, conf: +c.conf.toFixed(2) })) };
   if (!best || best.conf < PENDING) return { ...base, st: 'none' };
   if (best.conf < AUTO) return { ...base, st: 'pending' };
-  const d = await tmdb(env, `/${best.tp}/${best.id}`, { language: 'tr-TR', append_to_response: best.tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
+  const d = await tmdb(env, `/${best.tp}/${best.id}`, { language: 'tr-TR', append_to_response: best.tp === 'movie' ? 'release_dates,external_ids,keywords' : 'content_ratings,external_ids,keywords' });
   const c = pickCert(d, best.tp);
   return { ...base, st: 'ok', tid: best.id, tp: best.tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: best.cy, cert: c.cert, csrc: c.csrc, w: c.w || {}, gen: (d.genres || []).map((g) => g.name) };
 }
@@ -183,7 +187,8 @@ const WKEYS = ['siddet', 'korku', 'cinsellik', 'ciplaklik', 'olumsuz'];
 function cleanW(w) {
   const o = {};
   for (const k of WKEYS) { const v = +w?.[k]; if (Number.isFinite(v) && v > 0) o[k] = Math.min(3, Math.round(v)); }
-  if (Number(w?._v) === 1) o._v = 1;
+  if (Number(w?._v) === W_VERSION) o._v = W_VERSION;
+  if (Array.isArray(w?._kw)) o._kw = w._kw.filter((x) => typeof x === 'string').slice(0, 30);
   return o;
 }
 
@@ -196,7 +201,7 @@ async function lookup(env, body) {
   const out = [], writes = [];
   for (const it of items) {
     const row = have.get(it.k);
-    if (row && (row.st === 'manual' || Number(row.w?._v) === 1 || (row.st === 'none' && Date.now() - row.updated <= RETRY_NONE_MS))) { out.push(pub(row)); continue; }
+    if (row && (row.st === 'manual' || Number(row.w?._v) === W_VERSION || (row.st === 'none' && Date.now() - row.updated <= RETRY_NONE_MS))) { out.push(pub(row)); continue; }
     try {
       const r = await resolve(env, it);
       writes.push(env.DB.prepare(UPSERT_SAFE).bind(...toArgs(r)));
@@ -216,7 +221,7 @@ async function adminSet(env, req) {
   let r = { ...cur };
   if (b.tid) {
     const tp = b.tp === 'tv' ? 'tv' : parseKind(b.k);
-    const d = await tmdb(env, `/${tp}/${+b.tid}`, { language: 'tr-TR', append_to_response: tp === 'movie' ? 'release_dates,external_ids' : 'content_ratings,external_ids' });
+    const d = await tmdb(env, `/${tp}/${+b.tid}`, { language: 'tr-TR', append_to_response: tp === 'movie' ? 'release_dates,external_ids,keywords' : 'content_ratings,external_ids,keywords' });
     const c = pickCert(d, tp);
     r = { ...r, st: 'manual', tid: d.id, tp, ttl: d.title || d.name, ot: d.original_title || d.original_name || null, imdb: imdbOf(d), yr: +(d.release_date || d.first_air_date || '').slice(0, 4) || null, cert: c.cert, csrc: c.csrc, w: c.w || {}, gen: (d.genres || []).map((g) => g.name), conf: 1 };
   }
