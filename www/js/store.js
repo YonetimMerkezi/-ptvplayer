@@ -82,9 +82,14 @@ export function createCache(name = 'iptv-cache') {
 
 export function createStore({ storage = pickStorage(), cache = createCache() } = {}) {
   const P = 'iptv.';
+  // ---- profiller: her aile üyesinin kendi favorileri, son izlenenleri ve kaldığı yeri. Ana profil ('') eski anahtarları kullanır (taşıma yok);
+  // diğer profillerde bu anahtarların başına 'p.<kimlik>.' gelir. Kaynaklar, ayarlar ve kategori düzeni ortaktır.
+  const SCOPED = ['fav.', 'favx.', 'rec.', 'prog.', 'progx.'];
+  let pid = '';
+  const keyOf = (k) => P + (pid && SCOPED.some((x) => k.startsWith(x)) ? 'p.' + pid + '.' + k : k);
   const read = (k, d) => {
     try {
-      const v = storage.getItem(P + k);
+      const v = storage.getItem(keyOf(k));
       if (v == null) return d;
       const x = JSON.parse(v);
       // Bozulmuş kayıt (beklenen dizi/nesne değilse) varsayılana düşer; listeleri okuyan kod çökmez.
@@ -97,7 +102,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   };
   const write = (k, v) => {
     try {
-      storage.setItem(P + k, JSON.stringify(v));
+      storage.setItem(keyOf(k), JSON.stringify(v));
     } catch {
       /* kota dolu: sessizce geç */
     }
@@ -135,10 +140,63 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
         /* yok say */
       }
     }
+    for (const pr of extraProfiles()) dropScoped(pr.id, id); // diğer profillerdeki favori/son izlenen/ilerleme de gider
     cache.del('cat:' + id);
     cache.del('epg:' + id);
     cache.del('file:' + id);
   };
+
+  // ---- profiller ----
+  const MAX_PROFILES = 6;
+  const extraProfiles = () => read('profiles', []).filter((x) => x && typeof x.id === 'string' && x.id && typeof x.name === 'string');
+  const dropScoped = (profileId, sid) => {
+    for (const k of SCOPED) {
+      try {
+        storage.removeItem(P + 'p.' + profileId + '.' + k + sid);
+      } catch {
+        /* yok say */
+      }
+    }
+  };
+  api.MAX_PROFILES = MAX_PROFILES;
+  api.profiles = () => [{ id: '', name: String(read('profile.main', '') || 'Ana profil') }, ...extraProfiles().map((x) => ({ id: x.id, name: x.name }))];
+  api.profileId = () => pid;
+  api.profile = () => api.profiles().find((x) => x.id === pid) || api.profiles()[0];
+  api.setProfile = (id) => {
+    pid = api.profiles().some((x) => x.id === id) ? id : '';
+    write('profile', pid);
+    return pid;
+  };
+  // Ad verir ya da yeni profil ekler. Dönen: profil; sınır dolduysa ya da ad boşsa null.
+  api.saveProfile = ({ id = null, name = '' } = {}) => {
+    const nm = String(name || '').trim().slice(0, 24);
+    if (!nm) return null;
+    if (id === '') {
+      write('profile.main', nm);
+      return { id: '', name: nm };
+    }
+    const list = extraProfiles();
+    const cur = id ? list.find((x) => x.id === id) : null;
+    if (cur) cur.name = nm;
+    else {
+      if (list.length + 1 >= MAX_PROFILES) return null;
+      list.push({ id: 'p' + hashId(Date.now() + Math.random().toString(36)), name: nm });
+    }
+    write('profiles', list);
+    return cur ? { id: cur.id, name: nm } : { ...list[list.length - 1] };
+  };
+  // Profili ve ona ait favori/son izlenen/ilerleme kayıtlarını siler. Ana profil silinmez.
+  api.removeProfile = (id) => {
+    if (!id || !extraProfiles().some((x) => x.id === id)) return false;
+    for (const s of api.sources()) dropScoped(id, s.id);
+    write('profiles', extraProfiles().filter((x) => x.id !== id));
+    if (pid === id) api.setProfile('');
+    return true;
+  };
+  pid = (() => {
+    const id = read('profile', '');
+    return typeof id === 'string' && extraProfiles().some((x) => x.id === id) ? id : '';
+  })();
 
   // ---- kategori düzeni: sıra, gizleme, özel klasörler (kaynak + tür başına) ----
   api.catPrefs = (sid, kind) => normalizePrefs((read('cats.' + sid, {}) || {})[kind]);

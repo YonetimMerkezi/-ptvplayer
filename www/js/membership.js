@@ -23,6 +23,7 @@ export const PRO_FEATURES = [
   ['teamfollow', 'Takım takibi', 'Takımının maçlarını kaçırma'],
   ['cast', 'TV’den oynatma ve kontrol', 'Telefondan TV’ye gönder, telefondan yönet'],
   ['kid', 'Çocuk kilidi', 'Şifreli çocuk profili'],
+  ['profiles', 'Profiller', 'Her aile üyesine ayrı favoriler ve izleme listesi'],
 ].map(([id, name, desc]) => ({ id, name, desc }));
 
 export const isProFeature = (id) => PRO_FEATURES.some((f) => f.id === id);

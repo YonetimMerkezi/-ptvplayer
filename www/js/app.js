@@ -70,6 +70,7 @@ import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, statusText } from './home-extras.js';
 import { cleanTitle } from './titleclean.js';
+import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
@@ -603,13 +604,22 @@ function emptyHtml(title, text, btn) {
   return `<div class="empty"><h3>${esc(title)}</h3><p>${esc(text)}</p>${btn || ''}</div>`;
 }
 
+// İlk açılış tanıtımı: uygulamanın ne olduğu üç adımda; üyelik sistemi devredeyse deneme süresi ve sonrası da açıkça yazar.
 function renderOnboarding(v) {
+  const steps = [
+    ['link', 'Kaynağını ekle', 'Xtream hesabı, M3U bağlantısı ya da telefondaki M3U dosyası'],
+    ['tv', 'İzle', 'Canlı TV, film ve diziler; telefonda ve TV’de'],
+    ['star-on', 'Sana göre', 'Favoriler, izleme listesi, profiller ve temalar'],
+  ];
   v.innerHTML = emptyHtml(
     'Hoş geldiniz',
     'Başlamak için Xtream hesap bilgilerinizi, M3U liste bağlantınızı ya da telefondaki bir M3U dosyasını ekleyin. Uygulama içerik sağlamaz; yalnızca erişim hakkınız olan kaynakları ekleyin.',
-    '<button class="btn" id="ob-add">Kaynak ekle</button>',
+    `<ol class="ob-steps">${steps.map(([ic, t, d]) => `<li>${icon(ic)}<span><b>${t}</b><small>${d}</small></span></li>`).join('')}</ol>` +
+      (memOn() ? `<p class="ob-trial"><b>${TRIAL_DAYS} gün ücretsiz deneme.</b> Sonrasında uygulamayı kullanmak için yıllık Standart üyelik gerekir; ek özellikler Pro üyelikle açılır. <button class="linkbtn" id="ob-mem">Üyelik seçenekleri</button></p>` : '') +
+      '<button class="btn" id="ob-add">Kaynak ekle</button>',
   );
   $('#ob-add').addEventListener('click', () => sourceForm());
+  if ($('#ob-mem')) $('#ob-mem').addEventListener('click', () => memberSheet());
 }
 
 // ------------------------------------------------------------------ göz atma (canlı / film / dizi)
@@ -1492,11 +1502,52 @@ function mediaRow(it, i) {
   const pct = p && p.dur > 0 ? Math.round((p.pos / p.dur) * 100) : 0;
   return `<div class="media-row" role="button" tabindex="0" data-i="${i}"><span class="media-row-img">${img}</span><span class="media-row-text"><b>${esc(it.name)}</b>${pct ? `<i><u style="width:${pct}%"></u></i>` : ''}</span><span class="media-row-go">›</span></div>`;
 }
+// ---- afişsiz filmlere afiş: sağlayıcı afiş adresi vermediyse film, ayrıntı sayfasındaki eşleştirmeyle (yerel katalog, olmazsa Cinemeta)
+// bulunur ve afişi oradan gelir. Yalnız ekranda çizilen kutular için, aynı anda en çok 2 istekle çalışır; bulunamayan film harfli kutuda kalır.
+const posterUrl = (imdbId) => `https://images.metahub.space/poster/medium/${imdbId}/img`;
+const posterImg = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">`;
+const posterAsked = new Set();
+const posterQueue = [];
+let posterBusy = 0;
+function posterFill(it) {
+  if (posterAsked.has(it.id) || posterAsked.size > 800) return;
+  posterAsked.add(it.id);
+  posterQueue.push(it);
+  if (posterQueue.length > 60) posterAsked.delete(posterQueue.shift().id); // hızlı kaydırmada eskiler düşer; yeniden görünürse tekrar sorulur
+  posterPump();
+}
+function posterPump() {
+  while (posterBusy < 2 && posterQueue.length) {
+    const it = posterQueue.pop(); // en son görünen önce
+    posterBusy++;
+    loadMovieMetadata(net, it, null, store)
+      .then((m) => {
+        if (!m || !/^tt\d+$/.test(m.imdbId || '') || it.logo) return;
+        it.logo = posterUrl(m.imdbId);
+        for (const c of document.querySelectorAll('.card[data-pf]')) {
+          if (c.dataset.pf !== String(it.id)) continue;
+          const ph = c.querySelector('.poster .ph');
+          if (ph && !c.querySelector('.poster img')) ph.insertAdjacentHTML('afterend', posterImg(it.logo));
+          c.removeAttribute('data-pf');
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        posterBusy--;
+        posterPump();
+      });
+  }
+}
+
 function card(it, i, attrs = `data-i="${i}"`, meta = null) {
+  if (!it.logo && it.kind === 'movie' && !it.localMedia) {
+    posterFill(it);
+    attrs += ` data-pf="${esc(it.id)}"`;
+  }
   const p = progressOf(it);
   const pct = p && p.dur > 0 ? Math.round((p.pos / p.dur) * 100) : 0;
   const ph = esc(it.name.slice(0, 2).toUpperCase());
-  const img = it.logo ? `<img src="${esc(it.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">` : '';
+  const img = it.logo ? posterImg(it.logo) : '';
   return `<div class="card" role="button" tabindex="0" ${attrs}><div class="poster"><div class="ph">${ph}</div>${img}${isFav(it) ? `<span class="fav">${icon('star-on')}</span>` : ''}${pct ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}${meta && pct ? `<span class="pct">%${pct}</span>` : ''}</div><div class="cap">${meta ? `<span class="cap-full">${esc(it.name)}</span><span class="cap-clean">${esc(meta.title)}</span><small class="cap-m">${esc(meta.sub)}</small>` : esc(it.name)}</div></div>`;
 }
 
@@ -2223,7 +2274,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}${s.managed ? '' : `<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button>`}<button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${memOn() || store.pref('adm.on', false) ? `<button class="set-tile" data-set="member">${icon('star-on')}<span>Üyelik</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${kidActive() ? '' : `<button class="set-tile" data-set="profiles">${icon('home')}<span>${store.profileId() ? `Profil: ${esc(store.profile().name)}` : 'Profiller'}</span></button>`}${memOn() || store.pref('adm.on', false) ? `<button class="set-tile" data-set="member">${icon('star-on')}<span>Üyelik</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -2432,6 +2483,7 @@ function onSourcesClick(e) {
     if (k === 'dl') return downloadsSheet();
     if (k === 'cast') return needPro('cast') ? castUi.receiverSheet() : undefined;
     if (k === 'member') return memberSheet();
+    if (k === 'profiles') return profilesSheet();
     if (k === 'update') return upd && upd.status === 'available' ? updateSheet(upd) : checkForUpdate({ manual: true });
   }
   const b = e.target.closest('[data-a], #src-add, #clr-rec');
@@ -5327,6 +5379,74 @@ async function saveMovieCatalogFile() {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
   toast(movies.length + ' film kaydı dışa aktarıldı.', 3500);
+}
+
+// ---- Profiller: her aile üyesinin kendi favorileri, son izlenenleri ve kaldığı yeri (store.js). Kaynaklar ve ayarlar ortaktır.
+// Profil değişince uygulama yeniden yüklenir: bellekteki bütün listeler yeni profile göre baştan kurulur.
+function profilesSheet() {
+  const cur = store.profileId();
+  const list = store.profiles();
+  const full = list.length >= store.MAX_PROFILES;
+  const sh = openSheet({
+    title: 'Profiller',
+    html:
+      '<p class="hint">Her profilin favorileri, izleme listesi ve kaldığı yer ayrıdır. Kaynaklar ve ayarlar ortaktır.</p>' +
+      list.map((p) => `<div class="prof-row${p.id === cur ? ' on' : ''}"><button class="prof-pick" data-pick="${esc(p.id)}"><i class="prof-av" style="--h:${hueOf(p.name)}">${esc(p.name.slice(0, 1).toUpperCase())}</i><span>${esc(p.name)}<small>${p.id === cur ? 'Etkin profil' : 'Geçmek için dokun'}</small></span></button><button class="icon-btn" data-ren="${esc(p.id)}" aria-label="Adını değiştir">${icon('sliders')}</button>${p.id ? `<button class="icon-btn" data-del="${esc(p.id)}" aria-label="Profili sil">${icon('trash')}</button>` : ''}</div>`).join('') +
+      (full ? `<p class="hint">En çok ${store.MAX_PROFILES} profil olabilir.</p>` : `<button class="btn" id="prof-add">${icon('plus')} Profil ekle</button>`),
+    mount: (body) => {
+      body.addEventListener('click', (e) => {
+        const pick = e.target.closest('[data-pick]');
+        const ren = e.target.closest('[data-ren]');
+        const del = e.target.closest('[data-del]');
+        if (e.target.closest('#prof-add')) {
+          if (!needPro('profiles')) return;
+          sh.close();
+          return profileNameSheet(null);
+        }
+        if (ren) {
+          sh.close();
+          return profileNameSheet(list.find((p) => p.id === ren.dataset.ren));
+        }
+        if (del) {
+          const p = list.find((x) => x.id === del.dataset.del);
+          if (del.dataset.sure !== '1') {
+            del.dataset.sure = '1';
+            return toast(`“${p.name}” ve kayıtları silinecek. Silmek için çöp kutusuna yeniden dokunun.`, 3500);
+          }
+          const wasActive = p.id === cur;
+          store.removeProfile(p.id);
+          sh.close();
+          if (wasActive) return location.reload();
+          return profilesSheet();
+        }
+        if (pick && pick.dataset.pick !== cur) {
+          if (pick.dataset.pick && !needPro('profiles')) return;
+          store.setProfile(pick.dataset.pick);
+          location.reload();
+        }
+      });
+    },
+  });
+  return sh;
+}
+// Profil adı: p verilirse ad değişir, verilmezse yeni profil eklenir.
+function profileNameSheet(p) {
+  const sh = openSheet({
+    title: p ? 'Profil adı' : 'Yeni profil',
+    html: `<form id="prof-f" autocomplete="off"><label class="field"><span>Ad</span><input name="name" maxlength="24" value="${p ? esc(p.name) : ''}" placeholder="Örn. Elif" data-autofocus></label><button class="btn primary" type="submit">${p ? 'Kaydet' : 'Ekle'}</button></form>`,
+    mount: (body) => {
+      $('#prof-f', body).addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = e.target.elements.name.value;
+        const saved = store.saveProfile({ id: p ? p.id : null, name });
+        if (!saved) return toast(name.trim() ? `En çok ${store.MAX_PROFILES} profil olabilir` : 'Bir ad yazın');
+        sh.close();
+        renderTab();
+        profilesSheet();
+      });
+    },
+  });
+  return sh;
 }
 
 // ---- Üyelik ekranları ----

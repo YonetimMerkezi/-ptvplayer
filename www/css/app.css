@@ -97,6 +97,7 @@ html[data-multi] .set-tile[data-set=plans] { --tc: var(--p7); }
 html[data-multi] .set-tile[data-set=auto] { --tc: var(--p3); }
 html[data-multi] .set-tile[data-set=kid] { --tc: var(--p6); }
 html[data-multi] .set-tile[data-set=member] { --tc: var(--p7); }
+html[data-multi] .set-tile[data-set=profiles] { --tc: var(--p3); }
 html[data-multi] .set-tile[data-set=news] { --tc: var(--p2); }
 html[data-multi] .set-tile[data-set=rec] { --tc: var(--p8); }
 html[data-multi] .set-tile[data-set=dl] { --tc: var(--p1); }
@@ -204,6 +205,21 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 .row.cat.hid .act[data-act=eye] { color: var(--danger); }
 .vl .row, .vl .card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .hint { color: var(--muted); font-size: 0.8125rem; margin: 0 0 10px; }
+/* İlk açılış tanıtımı */
+.ob-steps { list-style: none; margin: 4px auto 14px; padding: 0; max-width: 26em; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.ob-steps li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.ob-steps .ic { flex: none; width: 28px; height: 28px; color: var(--accent); }
+.ob-steps span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ob-steps small { color: var(--muted); font-size: 0.8125rem; }
+.ob-trial { max-width: 26em; margin: 0 auto 14px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--gold); color: var(--text); font-size: 0.875rem; text-align: left; }
+.linkbtn { color: var(--accent); text-decoration: underline; font-size: inherit; }
+/* Profiller sayfası */
+.prof-row { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; padding: 4px 6px 4px 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.prof-row.on { border-color: var(--accent); }
+.prof-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 6px; text-align: left; color: var(--text); }
+.prof-pick span { display: flex; flex-direction: column; min-width: 0; font-weight: 700; }
+.prof-pick small { color: var(--muted); font-size: 0.75rem; font-weight: 500; }
+.prof-av { flex: none; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: hsl(calc(var(--h, 200) * 1deg) 65% 42%); color: #fff; font-style: normal; font-weight: 800; }
 /* Üyelik sayfası (Ayarlar > Üyelik) ve deneme bitti ekranı */
 .mem-need { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--text); }
 .mem-need .ic { flex: none; width: 20px; height: 20px; color: var(--accent); }

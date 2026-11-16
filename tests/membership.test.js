@@ -35,11 +35,11 @@ test('üyelik: Standart uygulamayı açar, Pro özelliklerini açmaz; Pro hepsin
   assert.equal(canUsePro(old), false);
 });
 
-test('denemede Pro özellikleri de açık; kararlaştırılan 13 özellik Pro listesinde', () => {
+test('denemede Pro özellikleri de açık; kararlaştırılan özellikler Pro listesinde', () => {
   const tr = memberState({ start: NOW, now: NOW + DAY });
   assert.equal(canUse('cast', tr), true);
-  for (const id of ['multi', 'rec', 'dl', 'sources', 'rows', 'themes', 'backup', 'remind', 'sportdetail', 'seriesfollow', 'teamfollow', 'cast', 'kid']) assert.ok(isProFeature(id), id);
-  assert.equal(PRO_FEATURES.length, 13);
+  for (const id of ['multi', 'rec', 'dl', 'sources', 'rows', 'themes', 'backup', 'remind', 'sportdetail', 'seriesfollow', 'teamfollow', 'cast', 'kid', 'profiles']) assert.ok(isProFeature(id), id);
+  assert.equal(PRO_FEATURES.length, 14);
   assert.equal(isProFeature('live'), false);
 });
 
