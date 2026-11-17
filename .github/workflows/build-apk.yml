@@ -139,6 +139,30 @@ jobs:
           done
           exit 1
 
+      # Play paketinde olmaması gerekenler girmiş mi: girdiyse iş kırmızı olur. Sonuç özeti iş ek açıklamalarında görünür.
+      - name: Paketin içini doğrula
+        run: |
+          python3 - <<'EOF'
+          import zipfile, sys
+          f = 'android/app/build/outputs/bundle/playRelease/app-play-release.aab'
+          z = zipfile.ZipFile(f)
+          names = z.namelist()
+          so = [n for n in names if n.endswith('.so')]
+          manifest = z.read('base/manifest/AndroidManifest.xml')
+          perm = b'REQUEST_INSTALL_PACKAGES' in manifest
+          dex = [z.read(n) for n in names if n.endswith('.dex')]
+          pkg = any(b'application/vnd.android.package-archive' in d for d in dex)
+          ffmpeg = any(b'ffmpeg' in n.lower() for n in so)
+          print(f'::notice title=AAB::boyut={len(open(f, "rb").read())} yerel_kitaplik={so} kurulum_izni={perm} apk_kurma_dizesi={pkg}')
+          bad = []
+          if perm: bad.append('REQUEST_INSTALL_PACKAGES izni Play paketinde olmamalı')
+          if ffmpeg: bad.append('FFmpeg yerel kitaplığı Play paketinde olmamalı')
+          if pkg: bad.append('APK kurma kodu Play paketinde olmamalı')
+          if bad:
+              for b in bad: print('::error::' + b)
+              sys.exit(1)
+          EOF
+
       - uses: actions/upload-artifact@v4
         with:
           name: iptv-play-aab
