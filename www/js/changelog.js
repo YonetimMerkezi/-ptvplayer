@@ -21,6 +21,7 @@ export const CHANGELOG = [
       'Oynatıcı: yükleniyor halkası oynat düğmesinin üstüne binmez; çözülemeyen ses biçiminde ekrana uyarı çıkmaz, Ses düğmesi işaretlenir',
       'Canlı TV ızgarasında kanal adının ikinci satırı kesilmez',
       'Ses: Ayarlar > Oynatıcı’da “Yazılım ses çözücüsü (deneysel)”; açılınca cihazın çözemediği AC3/E-AC3/DTS sesli yayınlar uygulamanın kendi çözücüsüyle çalınır, uygulama kapanırsa kendiliğinden kapanır',
+      'Canlı yayın: yavaş açılan ya da veri yavaş gelen kanallarda (özellikle “UHD” kanallar) 7 sn’de bir baştan bağlanma döngüsü giderildi; veri geliyorsa yayın beklenir, yeniden açılışa ilk açılış kadar süre tanınır',
       'Oynatıcı: düğmeler ve pencereler yenilendi; açık düğmenin yazısı görünür, “Yayın bilgisi” penceresinde başlık ve kapat (X) düğmesi var, dikeyde düğmelerin altında durur',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
     ],

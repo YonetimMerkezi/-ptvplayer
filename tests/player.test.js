@@ -132,6 +132,60 @@ test('oynarken takılan (arabellekte kalan) canlı yayın 7 sn sonra yeniden ba�
   assert.equal(timers.lastMs(), 7000, 'yeniden bağlanırken de kısa bekçi kurulur');
 });
 
+test('canlı: veri yavaş da olsa geliyorsa (önde biriken tampon büyüyor) bekçi uzar, yeniden bağlanılmaz', async () => {
+  const { p, calls, timers, tick } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'state', state: 'buffering' });
+  assert.equal(timers.lastMs(), 7000);
+  const n = timers.fns.length;
+  tick(5000);
+  p.handle({ type: 'time', pos: 10000, dur: -1, buffered: 11500 }); // önde 1,5 sn: veri geliyor
+  assert.equal(timers.fns.length, n + 1, 'bekçi yeniden kuruldu');
+  tick(5000);
+  p.handle({ type: 'time', pos: 10000, dur: -1, buffered: 13000 }); // önde 3 sn: hâlâ geliyor
+  assert.equal(timers.fns.length, n + 2);
+  assert.equal(loads(calls), 1, 'yeniden bağlanılmadı');
+  tick(7000);
+  p.handle({ type: 'time', pos: 10000, dur: -1, buffered: 13000 }); // büyümedi: artık ölü sayılır
+  timers.fire();
+  assert.equal(p.state().reconnect, 1);
+});
+
+test('canlı: tampon doluyken oynatma ilerlemiyorsa (çözücü takılması) bekçi uzamaz, yine yeniden bağlanır', async () => {
+  const { p, timers, tick } = setup();
+  await p.open(live, [T('a')]);
+  p.handle({ type: 'state', state: 'playing' });
+  p.handle({ type: 'state', state: 'buffering' });
+  const n = timers.fns.length;
+  for (let i = 1; i <= 5; i++) {
+    tick(1000);
+    p.handle({ type: 'time', pos: 10000, dur: -1, buffered: 40000 + i * 1000 }); // tampon doluyor ama oynatma yerinde
+  }
+  assert.equal(timers.fns.length, n, 'bekçi uzatılmadı');
+  timers.fire();
+  assert.equal(p.state().reconnect, 1);
+});
+
+test('yeniden açılışa yayının son açılış süresinin iki katı (en çok 25 sn) tanınır; hızlı açılan yayında 7 sn kalır', async () => {
+  // yavaş açılan yayın: ilk açılış 14 sn sürdü
+  const a = setup();
+  await a.p.open(live, [T('a'), T('b')]);
+  a.tick(14000);
+  a.p.handle({ type: 'state', state: 'playing' });
+  a.p.handle({ type: 'state', state: 'buffering' });
+  a.timers.fire(); // 7 sn takıldı → yeniden bağlanma
+  a.timers.fire(); // yeniden açılış başladı
+  assert.equal(a.timers.lastMs(), 25000, 'yeniden açılış 7 sn\'de kesilmez');
+  // yeniden açılış bu kez 1 sn'de oynadıysa sonraki yeniden açılışlarda bekçi yine kısa
+  a.tick(1000);
+  a.p.handle({ type: 'state', state: 'playing' });
+  a.p.handle({ type: 'state', state: 'buffering' });
+  a.timers.fire();
+  a.timers.fire();
+  assert.equal(a.timers.lastMs(), 7000, 'son açılış 1 sn sürdü: yeniden açılışta bekçi yine kısa');
+});
+
 test('yayın sekiz saniye kesintisiz oynarsa deneme sayacı sıfırlanır', async () => {
   const { p, timers, tick } = setup();
   await p.open(live, [T('a')]);
