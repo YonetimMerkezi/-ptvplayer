@@ -55,6 +55,7 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
@@ -62,6 +63,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
@@ -667,7 +669,7 @@ public class IptvPlayerPlugin extends Plugin {
             delayProc = proc;
             nightProc = night;
             dialogProc = dialog;
-            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()) {
+            eb = new ExoPlayer.Builder(getContext(), new IptvRenderersFactory(getContext()) {
                 @Override
                 protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
                     return new DefaultAudioSink.Builder()
@@ -678,7 +680,7 @@ public class IptvPlayerPlugin extends Plugin {
                 }
             }.setEnableDecoderFallback(true).setMediaCodecSelector(selector).setExtensionRendererMode(extMode));
         } else {
-            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector).setExtensionRendererMode(extMode));
+            eb = new ExoPlayer.Builder(getContext(), new IptvRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector).setExtensionRendererMode(extMode));
         }
         return eb
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(base, extractors))
@@ -986,6 +988,21 @@ public class IptvPlayerPlugin extends Plugin {
 
     private static String cleanDecoder(String v) {
         return "software".equals(v) || "hardware".equals(v) ? v : "auto";
+    }
+
+    // Eklenti çözücüler (FFmpeg) yalnız SES için yüklenir. Jellyfin paketindeki deneysel FFmpeg VİDEO çözücüsü (ExperimentalFfmpegVideoRenderer),
+    // Media3 1.3.1'de olmayan RendererCapabilities.create(int) yöntemini çağırır ve parça seçiminde uygulamayı düşürür (NoSuchMethodError);
+    // bu yüzden video her zaman cihazın kendi çözücüsüyle çalar.
+    private static class IptvRenderersFactory extends DefaultRenderersFactory {
+        IptvRenderersFactory(Context context) {
+            super(context);
+        }
+
+        @Override
+        protected void buildVideoRenderers(Context context, int extensionRendererMode, MediaCodecSelector mediaCodecSelector, boolean enableDecoderFallback,
+                                           Handler eventHandler, VideoRendererEventListener eventListener, long allowedVideoJoiningTimeMs, ArrayList<Renderer> out) {
+            super.buildVideoRenderers(context, EXTENSION_RENDERER_MODE_OFF, mediaCodecSelector, enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs, out);
+        }
     }
 
     // Video için yazılım çözücüleri donanım çözücülerinin önüne alır (sıralama kendi içinde korunur); ses ve diğer türler değişmez.

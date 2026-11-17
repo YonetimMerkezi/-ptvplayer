@@ -375,7 +375,7 @@ test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yal
   assert.match(sel[0], /MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'çözücü listesi varsayılan seçiciden alınmalı (donanım çözücü yedek kalır)');
   assert.match(sel[0], /startsWith\("video\/"\)\) return all/, 'ses ve diğer türlerin sırası değişmemeli');
   assert.ok(sel[0].indexOf('if (i.softwareOnly)') < sel[0].indexOf('if (!i.softwareOnly)'), 'yazılım çözücüler donanımın önüne alınmalı');
-  assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\.setExtensionRendererMode\(extMode\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\.setExtensionRendererMode\(extMode\)\)/, 'seçici ve yazılım ses çözücüsü kipi hem ses işlemcili hem sade kurulumda uygulanmalı');
+  assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\.setExtensionRendererMode\(extMode\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new IptvRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\.setExtensionRendererMode\(extMode\)\)/, 'seçici ve yazılım ses çözücüsü kipi hem ses işlemcili hem sade kurulumda uygulanmalı');
   assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST[\s\S]*?"hardware"\.equals\(decoderMode\) \? HARDWARE_FIRST[\s\S]*?compatMode \? SOFTWARE_FIRST_SD : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı; uyumlu mod yazılım çözücüyü yalnız H.264/MPEG-2 için başa alır, kullanıcının "yazılım" ayarı hepsini');
   assert.match(kaynak, /SOFTWARE_FIRST_SD[\s\S]*?"video\/avc"\.equals\(mimeType\)[\s\S]*?"video\/mpeg2"\.equals\(mimeType\)[\s\S]*?SOFTWARE_FIRST\.getDecoderInfos[\s\S]*?MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'HEVC (UHD) uyumlu modda donanım çözücüde kalmalı: yazılım çözücü yetişemez');
   assert.match(kaynak, /changed && player != null && !curUrl\.isEmpty\(\)\) \{[\s\S]*?startPlayback\(curUrl/, 'kip değişince açık yayın yeniden kurulmalı');
@@ -555,6 +555,12 @@ test('yazılım ses çözücüsü: varsayılan kapalı, ayardan açılır; çök
   assert.match(kaynak, /softExt \? DefaultRenderersFactory\.EXTENSION_RENDERER_MODE_ON : DefaultRenderersFactory\.EXTENSION_RENDERER_MODE_OFF/, 'kapalıyken eklenti hiç yüklenmemeli');
   // çoklu ekran kutuları (ses odağı istemeyen) çözücüyü kullanmaz: bayrak yalnız ana oynatıcıda yönetilir
   assert.match(kaynak, /final boolean softExt = softAudio && audioFocus;/);
+  // Jellyfin paketindeki deneysel FFmpeg video çözücüsü Media3 1.3.1'de olmayan bir yöntemi çağırıp uygulamayı düşürüyordu: eklenti yalnız ses için yüklenmeli
+  const fab = kaynak.match(/private static class IptvRenderersFactory extends DefaultRenderersFactory \{[\s\S]*?\n    \}\n/);
+  assert.ok(fab, 'IptvRenderersFactory bulunmalı');
+  assert.match(fab[0], /protected void buildVideoRenderers\(/, 'video çözücü kurulumu geçersiz kılınmalı');
+  assert.match(fab[0], /super\.buildVideoRenderers\(context, EXTENSION_RENDERER_MODE_OFF,/, 'video için eklenti kipi hep kapalı olmalı');
+  assert.ok(!/new DefaultRenderersFactory\(/.test(kaynak), 'düz DefaultRenderersFactory kullanılmamalı (video eklentisi yüklenir)');
   // bayrak oynatıcı kurulmadan ÖNCE yazılır, commit ile (çökmeden önce diske ulaşmalı)
   const k = kaynak.indexOf('if (softExt) softAudioTrying(true);');
   assert.ok(k > 0 && k < kaynak.indexOf('player = buildExo(headers, true'), 'bayrak buildExo\'dan önce yazılmalı');
