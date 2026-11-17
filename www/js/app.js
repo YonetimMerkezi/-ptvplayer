@@ -4066,6 +4066,7 @@ function playerSheet() {
       (nativePlugin ? '<button class="btn ghost sm" id="g-perf-info" type="button">Cihaz performans bilgilerini görüntüle</button>' : '') +
       `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Otomatik cihazın seçimini kullanır. Donanım öncelikli Mi Stick gibi TV kutularında ilk deneme; görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
+      (nativePlugin ? `<div class="sel-row"><span>Yazılım ses çözücüsü (deneysel)<small>Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.${store.pref('set.softAudioCrashed', false) ? ' Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.' : ''}</small></span><select id="g-saud">${optionsHtml([['off', 'Kapalı'], ['on', 'Açık']], store.pref('set.softAudio', 'off') === 'on' ? 'on' : 'off')}</select></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
       `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
       `<div class="sel-row"><span>Canlı yayın biçimi<small>Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır</small></span><select id="g-lfmt">${optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)))}</select></div>` +
@@ -4150,6 +4151,13 @@ function playerSheet() {
       if (gdec) gdec.addEventListener('change', (e) => {
         store.setPref('set.decoder', normalizeDecoder(e.target.value));
         applyDecoder();
+      });
+      const gsaud = $('#g-saud', body);
+      if (gsaud) gsaud.addEventListener('change', (e) => {
+        const on = e.target.value === 'on';
+        store.setPref('set.softAudio', on ? 'on' : 'off');
+        store.setPref('set.softAudioCrashed', false);
+        if (nativePlugin && nativePlugin.setSoftAudio) nativePlugin.setSoftAudio({ on }).catch(() => toast('Yazılım ses çözücüsü uygulanamadı', 2500));
       });
       $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
       $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
@@ -6017,6 +6025,15 @@ function applyDecoder() {
   if (nativePlugin) nativePlugin.setDecoder({ mode: normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)) }).catch(() => toast('Görüntü çözücü uygulanamadı', 2500));
 }
 applyDecoder();
+// Yazılım ses çözücüsü: esas olan yerel durumdur (çökme sonrası kendiliğinden kapanmış olabilir); JS yalnız yansıtır, açılışta yerele geri yazmaz.
+function syncSoftAudio() {
+  if (!nativePlugin || !nativePlugin.getSoftAudio) return;
+  nativePlugin.getSoftAudio().then((r) => {
+    store.setPref('set.softAudio', r && r.on ? 'on' : 'off');
+    store.setPref('set.softAudioCrashed', !!(r && r.crashed));
+  }).catch(() => {});
+}
+syncSoftAudio();
 function applyAutoFrameRate() {
   if (nativePlugin && nativePlugin.setAutoFrameRate) {
     nativePlugin.setAutoFrameRate({ on: !!store.pref('set.autoFrameRate', false) }).catch(() => toast('Otomatik kare hızı uygulanamadı', 2500));

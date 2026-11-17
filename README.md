@@ -38,3 +38,11 @@ Yerelde: JDK 17 + Android SDK kurulu olmalı, sonra `cd android && ./gradlew ass
 - `android/app/src/main/java/com/koruk/iptv/IptvPlayerPlugin.java` — yerel oynatıcı + büyük dosya indirme
 - Video, saydam WebView'in arkasındaki Media3 görünümünde çizilir; denetimler HTML'dir.
 - `mock/` — deneme sunucusu (M3U, Xtream, XMLTV, örnek yayın)
+
+## Üçüncü taraf bileşenler
+
+- Yazılım ses çözücüsü: `org.jellyfin.media3:media3-ffmpeg-decoder` (FFmpeg tabanlı, **GPLv3**). Cihazda çözücüsü olmayan AC3/E-AC3/DTS
+  seslerini çalmak için kullanılır. GPLv3, bu bileşeni içeren uygulamanın dağıtımına koşullar getirir; uygulamayı ücretli ya da kapalı
+  kaynak dağıtmadan önce lisans durumu gözden geçirilmelidir. Bileşeni çıkarmak için `android/app/build.gradle` içindeki satırı ve
+  `IptvPlayerPlugin.java` içindeki `setExtensionRendererMode` çağrısını kaldırmak yeterlidir. Çözücü varsayılan olarak kapalıdır; Ayarlar'dan
+  açılır ve uygulama çözücüyle kapanırsa bir sonraki açılışta kendiliğinden kapatılır.

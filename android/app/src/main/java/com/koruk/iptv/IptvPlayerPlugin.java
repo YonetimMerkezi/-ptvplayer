@@ -144,6 +144,15 @@ public class IptvPlayerPlugin extends Plugin {
     private volatile String nightLevel = "off";
     // Görüntü çözücü (auto | software): "software" yazılım çözücüyü başa alır; donanım çözücüsü bozuk kare veren TV kutuları için.
     private volatile String decoderMode = "auto";
+    // Yazılım ses çözücüsü (FFmpeg eklentisi; AC3/E-AC3/DTS): Ayarlar'dan açılır, varsayılan kapalı. Esas olan yerel durumdur; JS yalnız yansıtır.
+    // "trying": çözücü açıkken oynatıcı kurulunca yazılır; yayın 12 sn sağlıklı oynayınca ya da oynatıcı düzgün bırakılınca silinir. Uygulama çözücüyü
+    // yüklerken ya da çalarken kapanırsa (yerel çökme yakalanamaz) bayrak kalır ve sonraki açılışta çözücü kendiliğinden kapatılır.
+    private static final String SOFT_AUDIO_PREFS = "iptv_soft_audio";
+    private static boolean softAudioChecked = false; // süreç başına bir kez denetlenir (etkinlik yeniden kurulunca bayrak yanlışlıkla çökme sayılmasın)
+    private volatile boolean softAudio = false;
+    private volatile boolean softAudioCrashed = false;
+    private volatile boolean softAudioTryingNow = false;
+    private final Runnable softAudioOk = () -> softAudioTrying(false);
     // Performans profili: auto | low | balanced | high. Otomatik profil cihaz belleği/CPU gücüne göre seçilir.
     private volatile String performanceMode = "auto";
     private volatile String activePerformance = "balanced";
@@ -205,6 +214,16 @@ public class IptvPlayerPlugin extends Plugin {
     @Override
     public void load() {
         activePlugin = this;
+        SharedPreferences sa = getContext().getSharedPreferences(SOFT_AUDIO_PREFS, Context.MODE_PRIVATE);
+        if (!softAudioChecked) {
+            softAudioChecked = true;
+            if (sa.getBoolean("trying", false)) {
+                // önceki oturum çözücü açıkken kapanmış: çözücü kapatılır, ayarlarda bilgi gösterilir
+                sa.edit().putBoolean("on", false).putBoolean("trying", false).putBoolean("crashed", true).commit();
+            }
+        }
+        softAudio = sa.getBoolean("on", false);
+        softAudioCrashed = sa.getBoolean("crashed", false);
         // Kamera çentiği payı değişince (dönme, klavye vb.) sayfaya bildirilir
         SafeArea.listen(px -> main.post(() -> notifyListeners("insets", insetsObject(px))));
         RemoteKeys.listen(name -> {
@@ -511,6 +530,8 @@ public class IptvPlayerPlugin extends Plugin {
         activePerformance = resolvePerformanceProfile(performanceMode);
         String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;
         lastBuffer = effectiveBuffer;
+        final boolean softExt = softAudio;
+        if (softExt) softAudioTrying(true); // çözücü yüklenirken uygulama kapanırsa bir sonraki açılışta kapatılır
         player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);
         applyVideoLimits(player);
         player.addAnalyticsListener(new AnalyticsListener() {
@@ -523,6 +544,10 @@ public class IptvPlayerPlugin extends Plugin {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY && softAudioTryingNow) {
+                    main.removeCallbacks(softAudioOk);
+                    main.postDelayed(softAudioOk, 12000); // 12 sn kapanmadan oynadıysa çözücü sağlıklı sayılır
+                }
                 emitState();
             }
 
@@ -620,6 +645,11 @@ public class IptvPlayerPlugin extends Plugin {
         // (aksi halde bazı yayıncı kodlayıcılarında görüntü hiç çizilmez ya da donar). Varsayılanda hiçbir şey değişmez.
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
         if (compatMode) extractors.setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS | DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES);
+        // Yazılım ses çözücüsü (FFmpeg eklentisi) cihazın kendi çözücülerinden SONRA denenir: cihaz biçimi çözebiliyorsa o kullanılır,
+        // çözemiyorsa (AC3/E-AC3/DTS) ses yazılımla çözülür. Kapalıyken eklenti hiç yüklenmez. Yalnız ana oynatıcıda (ses odağı isteyen);
+        // çoklu ekran kutuları (audioFocus=false) kullanmaz: çökme bayrağı yalnız ana oynatıcıda yönetilir.
+        final boolean softExt = softAudio && audioFocus;
+        final int extMode = softExt ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF;
         ExoPlayer.Builder eb;
         if (delay && (audioDelayMs != 0 || NightCompressor.isActive(nightLevel) || dialogOn)) {
             // Gecikme ve gece modu PCM ses ister: kodlu (AC3/DTS) geçiş kapatılır, ses çözülüp işlenir.
@@ -639,9 +669,9 @@ public class IptvPlayerPlugin extends Plugin {
                             .setAudioProcessors(new AudioProcessor[] {proc, night, dialog})
                             .build();
                 }
-            }.setEnableDecoderFallback(true).setMediaCodecSelector(selector));
+            }.setEnableDecoderFallback(true).setMediaCodecSelector(selector).setExtensionRendererMode(extMode));
         } else {
-            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector));
+            eb = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext()).setEnableDecoderFallback(true).setMediaCodecSelector(selector).setExtensionRendererMode(extMode));
         }
         return eb
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(base, extractors))
@@ -738,6 +768,8 @@ public class IptvPlayerPlugin extends Plugin {
         castState = "idle";
         castPos = 0;
         castDur = -1;
+        main.removeCallbacks(softAudioOk);
+        softAudioTrying(false); // oynatıcı düzgün bırakıldı: çözücü bu oturumda çökmedi
         if (player != null) {
             if (playerView != null) playerView.setPlayer(null);
             player.release();
@@ -817,6 +849,39 @@ public class IptvPlayerPlugin extends Plugin {
             applySubStyle();
             call.resolve();
         });
+    }
+
+    // Bayrak yalnız değişince yazılır (diske gereksiz yazılmasın); commit: yazma, olası çökmeden önce bitmiş olmalı.
+    private void softAudioTrying(boolean on) {
+        if (softAudioTryingNow == on) return;
+        softAudioTryingNow = on;
+        getContext().getSharedPreferences(SOFT_AUDIO_PREFS, Context.MODE_PRIVATE).edit().putBoolean("trying", on).commit();
+    }
+
+    // Yazılım ses çözücüsü açık/kapalı (kalıcı). Açık yayın yeniden kurulur (canlıda yayın yeniden açılır, filmde konum korunur).
+    @PluginMethod
+    public void setSoftAudio(final PluginCall call) {
+        final boolean on = call.getData().optBoolean("on", false);
+        final boolean changed = on != softAudio;
+        softAudio = on;
+        softAudioCrashed = false; // kullanıcı kendisi seçti: önceki çökme bilgisi geçerliliğini yitirir
+        getContext().getSharedPreferences(SOFT_AUDIO_PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", on).putBoolean("crashed", false).apply();
+        main.post(() -> {
+            if (changed && player != null && !curUrl.isEmpty()) {
+                long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
+                startPlayback(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false);
+            }
+            call.resolve();
+        });
+    }
+
+    // Yerel durum esastır: JS açılışta bunu okuyup ayarlara yansıtır (çökme sonrası kapanmış olabilir).
+    @PluginMethod
+    public void getSoftAudio(final PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("on", softAudio);
+        o.put("crashed", softAudioCrashed);
+        call.resolve(o);
     }
 
     private static String cleanDecoder(String v) {

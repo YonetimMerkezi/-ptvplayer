@@ -375,7 +375,7 @@ test('görüntü çözücü: yöntem köprüde, yazılım öncelikli seçici yal
   assert.match(sel[0], /MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'çözücü listesi varsayılan seçiciden alınmalı (donanım çözücü yedek kalır)');
   assert.match(sel[0], /startsWith\("video\/"\)\) return all/, 'ses ve diğer türlerin sırası değişmemeli');
   assert.ok(sel[0].indexOf('if (i.softwareOnly)') < sel[0].indexOf('if (!i.softwareOnly)'), 'yazılım çözücüler donanımın önüne alınmalı');
-  assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\)/, 'seçici hem ses işlemcili hem sade kurulumda uygulanmalı');
+  assert.match(kaynak, /setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\.setExtensionRendererMode\(extMode\)\);\s*\} else \{\s*eb = new ExoPlayer\.Builder\(getContext\(\), new DefaultRenderersFactory\(getContext\(\)\)\.setEnableDecoderFallback\(true\)\.setMediaCodecSelector\(selector\)\.setExtensionRendererMode\(extMode\)\)/, 'seçici ve yazılım ses çözücüsü kipi hem ses işlemcili hem sade kurulumda uygulanmalı');
   assert.match(kaynak, /"software"\.equals\(decoderMode\) \? SOFTWARE_FIRST[\s\S]*?"hardware"\.equals\(decoderMode\) \? HARDWARE_FIRST[\s\S]*?compatMode \? SOFTWARE_FIRST_SD : MediaCodecSelector\.DEFAULT/, 'otomatik kip varsayılan seçiciyi kullanmalı; uyumlu mod yazılım çözücüyü yalnız H.264/MPEG-2 için başa alır, kullanıcının "yazılım" ayarı hepsini');
   assert.match(kaynak, /SOFTWARE_FIRST_SD[\s\S]*?"video\/avc"\.equals\(mimeType\)[\s\S]*?"video\/mpeg2"\.equals\(mimeType\)[\s\S]*?SOFTWARE_FIRST\.getDecoderInfos[\s\S]*?MediaCodecSelector\.DEFAULT\.getDecoderInfos/, 'HEVC (UHD) uyumlu modda donanım çözücüde kalmalı: yazılım çözücü yetişemez');
   assert.match(kaynak, /changed && player != null && !curUrl\.isEmpty\(\)\) \{[\s\S]*?startPlayback\(curUrl/, 'kip değişince açık yayın yeniden kurulmalı');
@@ -507,8 +507,8 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
   // aynı yayına yeniden bağlanmada (keepRec) uyumlu mod sürer; başka yayına geçince kapanır
   assert.match(kaynak, /if \(!keepRec\) compat = false;/);
   // iç yeniden kurulumlar canlı bilgisini korur (progressive .ts için Media3 canlı olduğunu bilmez)
-  assert.equal((kaynak.match(/startPlayback\(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false\)/g) || []).length, 4);
-  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 5);
+  assert.equal((kaynak.match(/startPlayback\(curUrl, lastMime, pos, lastHeaders, lastBuffer, true, lastLive, false\)/g) || []).length, 5); // setDecoder, setSoftAudio, gece modu, diyalog, performans
+  assert.equal((kaynak.match(/\(lastLive \|\| player\.isCurrentMediaItemLive\(\)\) \? 0L/g) || []).length, 6);
   // JS'ten gelen bayraklar okunuyor
   assert.match(kaynak, /optBoolean\("live", false\)/);
   assert.match(kaynak, /optBoolean\("compat", false\)/);
@@ -543,4 +543,30 @@ test('Android performans tanılaması RAM, CPU, Android sürümü ve donanım vi
   assert.match(kaynak, /private long availableRamMb\(\)[\s\S]*?am\.getMemoryInfo\(info\)[\s\S]*?info\.availMem/ , "anlık boş RAM ölçülmeli");
   assert.match(kaynak, /if \(available < 350\) return 1;[\s\S]*?if \(available < 1200\) return Math\.min\(profileLimit, 4\)/, "bellek baskısında eşzamanlı ekran sayısı azaltılmalı");
   assert.match(kaynak, /result\.put\("availableRamMb", availableRamMb\(\)\)/, "anlık boş RAM tanılamada gösterilmeli");
+});
+
+test('yazılım ses çözücüsü: varsayılan kapalı, ayardan açılır; çökme koruması bayrağı yazılır, sağlıklı oynayınca/bırakılınca silinir, açılışta çözücüyü kapatır', async () => {
+  const pl = nativePlugin('IptvPlayer', { Capacitor: { isNativePlatform: () => true, nativePromise() {}, addListener() {} } });
+  assert.match(kaynak, /public void setSoftAudio\(/, 'setSoftAudio Java\'da yok');
+  assert.match(kaynak, /public void getSoftAudio\(/, 'getSoftAudio Java\'da yok');
+  assert.equal(typeof pl.setSoftAudio, 'function', 'setSoftAudio köprüde yok');
+  assert.equal(typeof pl.getSoftAudio, 'function', 'getSoftAudio köprüde yok');
+  assert.match(kaynak, /private volatile boolean softAudio = false;/, 'çözücü varsayılan kapalı olmalı');
+  assert.match(kaynak, /softExt \? DefaultRenderersFactory\.EXTENSION_RENDERER_MODE_ON : DefaultRenderersFactory\.EXTENSION_RENDERER_MODE_OFF/, 'kapalıyken eklenti hiç yüklenmemeli');
+  // çoklu ekran kutuları (ses odağı istemeyen) çözücüyü kullanmaz: bayrak yalnız ana oynatıcıda yönetilir
+  assert.match(kaynak, /final boolean softExt = softAudio && audioFocus;/);
+  // bayrak oynatıcı kurulmadan ÖNCE yazılır, commit ile (çökmeden önce diske ulaşmalı)
+  const k = kaynak.indexOf('if (softExt) softAudioTrying(true);');
+  assert.ok(k > 0 && k < kaynak.indexOf('player = buildExo(headers, true'), 'bayrak buildExo\'dan önce yazılmalı');
+  assert.match(kaynak, /putBoolean\("trying", on\)\.commit\(\)/, 'bayrak commit ile yazılmalı');
+  assert.match(kaynak, /state == Player\.STATE_READY && softAudioTryingNow[\s\S]*?postDelayed\(softAudioOk, 12000\)/, 'sağlıklı oynama 12 sn sonra bayrağı silmeli');
+  const rel = kaynak.match(/private void releasePlayer\(\) \{[\s\S]*?\n    \}/);
+  assert.ok(rel && /softAudioTrying\(false\)/.test(rel[0]), 'düzgün bırakılınca bayrak silinmeli');
+  const load = kaynak.match(/public void load\(\) \{[\s\S]*?softAudioCrashed = sa\.getBoolean\("crashed", false\);/);
+  assert.ok(load, 'load() çözücü durumunu okumalı');
+  assert.match(load[0], /getBoolean\("trying", false\)[\s\S]*?putBoolean\("on", false\)[\s\S]*?putBoolean\("crashed", true\)/, 'bayrak kalmışsa çözücü kapatılmalı');
+  assert.match(load[0], /if \(!softAudioChecked\)/, 'denetim süreç başına bir kez olmalı (etkinlik yeniden kurulunca yanlış alarm olmasın)');
+  const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/app.js'), 'utf8');
+  assert.match(app, /nativePlugin\.getSoftAudio\(\)\.then/, 'açılışta yerel durum okunmalı');
+  assert.ok(!/nativePlugin\.setSoftAudio\(\{ on: store\.pref/.test(app), 'JS açılışta yerele geri yazmamalı (çökme döngüsü olur)');
 });
