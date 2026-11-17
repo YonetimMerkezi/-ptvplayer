@@ -1,6 +1,6 @@
 // Uygulama: kaynaklar, katalog, listeler, detay sayfaları, favoriler, rehber.
 import { esc, fmtDuration, fmtClock, debounce, fold, maskUrl } from './util.js';
-import { guideBlocks } from './guide.js';
+import { guideBlocks, guideNameParts, guideCatIconName } from './guide.js';
 import { createStore } from './store.js';
 import { createNet } from './net.js';
 import { loadFreeData, matchFree, mergeEpgData } from './epg-free.js';
@@ -3528,9 +3528,29 @@ const GUIDE_CHUNK = 30; // bir seferde çizilen kanal satırı
 function guideRowHtml(it, ws, we, now) {
   const blocks = guideBlocks(S.epg.listFor(it), ws, we, now);
   const cells = blocks.length
-    ? blocks.map(({ p, m, d, cls }) => `<div class="tl-prog${cls}" role="button" tabindex="0" style="--m:${m.toFixed(2)};--d:${d.toFixed(2)}" data-ch="${esc(it.id)}" data-s="${p.s}" data-e="${p.e}" aria-label="${esc(p.t || 'Program')}, ${fmtClock(p.s)} – ${fmtClock(p.e)}"><span><b>${esc(p.t || '—')}</b><small>${fmtClock(p.s)} – ${fmtClock(p.e)}</small></span></div>`).join('')
+    ? blocks.map(({ p, m, d, cls }) => {
+      const pct = cls === ' now' ? Math.min(100, Math.max(0, ((now - p.s) / Math.max(1, p.e - p.s)) * 100)).toFixed(1) : 0;
+      return `<div class="tl-prog${cls}" role="button" tabindex="0" style="--m:${m.toFixed(2)};--d:${d.toFixed(2)};--p:${pct}%" data-ch="${esc(it.id)}" data-s="${p.s}" data-e="${p.e}" aria-label="${esc(p.t || 'Program')}, ${fmtClock(p.s)} – ${fmtClock(p.e)}"><span><b>${esc(p.t || '—')}</b><small>${fmtClock(p.s)} – ${fmtClock(p.e)}</small></span><i class="tl-pr"><u></u></i></div>`;
+    }).join('')
     : `<div class="tl-prog none" style="--m:0;--d:${GUIDE_SPAN}"><span><b>Program bilgisi yok</b></span></div>`;
-  return `<div class="tl-row"><button class="tl-ch" data-ch="${esc(it.id)}" aria-label="${esc(it.name)}: günlük yayın akışı"><span class="tl-logo">${logo(it.logo, it.name)}</span><span class="tl-name">${esc(it.name)}</span></button><div class="tl-track">${cells}</div></div>`;
+  const [nm, qual] = guideNameParts(it.name);
+  return `<div class="tl-row"><button class="tl-ch" data-ch="${esc(it.id)}" aria-label="${esc(it.name)}: günlük yayın akışı"><span class="tl-logo">${logo(it.logo, it.name)}</span><span class="tl-name"><b>${esc(nm)}</b>${qual ? `<small>${esc(qual)}</small>` : ''}</span></button><div class="tl-track">${cells}</div></div>`;
+}
+
+// Kategori satırı simgesi: adına göre (index.html simgeleri); "4K" metin rozetidir.
+function guideCatIcon(c) {
+  const n = guideCatIconName(c.name, { id: c.id, folder: !!c.folder });
+  return n === '4k' ? '<span class="gc-4k">4K</span>' : icon(n);
+}
+
+// "Tümü", "Favoriler", "Son izlenen": kategori olmadan doğrudan zaman çizelgesine açılan görünümler
+const GUIDE_VIEWS = [{ id: '__all', name: 'Tümü' }, { id: '__fav', name: 'Favoriler' }, { id: '__recent', name: 'Son izlenen' }];
+const GUIDE_DAYS = 7; // gün seçicide bugünden başlayarak gösterilen gün sayısı
+const GUIDE_DAY_SHOW = 3; // aynı anda görünen gün düğmesi
+
+function guideItems(id) {
+  if (id === '__fav') return store.favs(sid()).filter((f) => f.kind === 'live').map((f) => resolve(f, 'live')).filter(Boolean);
+  return itemsOfGroup('live', id);
 }
 
 function guideAxisHtml(ws) {
@@ -3590,9 +3610,15 @@ function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null
 function guidePage() {
   openPage({
     title: 'TV Rehberi',
+    sub: 'Tüm kanallar ve yayın akışı',
     cls: 'guide-pg',
-    html: '<div class="guide-tools"><input id="guide-q" type="search" placeholder="Kanal veya kategori ara…" autocomplete="off"><button class="btn sm ghost" id="guide-mode" aria-pressed="false">Program ara</button><button class="btn sm ghost" id="guide-refresh">EPG yenile</button></div><div class="guide-now"><span id="guide-now"></span><span class="guide-nav"><button class="btn sm ghost" id="guide-back" aria-label="3 saat geri">‹ 3 sa</button><button class="btn sm ghost" id="guide-today">Şimdi</button><button class="btn sm ghost" id="guide-fwd" aria-label="3 saat ileri">3 sa ›</button></span></div><div id="guide-list" class="guide-categories"></div>',
-    mount: (body) => {
+    html: `<div class="gd-search" id="guide-search"><label class="gd-sbox">${icon('search')}<input id="guide-q" type="search" placeholder="Kanal, kategori veya program ara…" autocomplete="off" aria-label="Kanal, kategori veya program ara"></label><button class="gd-fbtn" id="guide-mode" data-g="mode" aria-pressed="false" aria-label="Program ara" title="Program ara">${icon('filter')}</button></div>
+      <div class="chips gd-views" id="guide-views" role="group" aria-label="Görünüm"><button class="chip on" data-view="">${icon('guide')} Kategoriler</button><button class="chip" data-view="__all">${icon('tv')} Tümü</button><button class="chip" data-view="__fav">${icon('star')} Favoriler</button><button class="chip" data-view="__recent">${icon('clock')} Son İzlenen</button></div>
+      <div class="guide-now" id="guide-nowbar">${icon('tv')}<span id="guide-now"></span></div>
+      <div class="gd-days" id="guide-days" hidden></div>
+      <div class="chips gd-shift" id="guide-shift" hidden><button class="chip" id="guide-back" aria-label="3 saat geri">${icon('chev-l')} 3 sa</button><button class="chip on" id="guide-today">Şimdi</button><button class="chip" id="guide-fwd" aria-label="3 saat ileri">3 sa ${icon('chev-r')}</button></div>
+      <div id="guide-list" class="guide-categories"></div>`,
+    mount: (body, api) => {
       const q = $('#guide-q', body);
       const list = $('#guide-list', body);
       const nowLabel = $('#guide-now', body);
@@ -3606,6 +3632,11 @@ function guidePage() {
       let progHits = [];
       let visIds = null; // gizli/kilitli kategorilerdeki kanallar program aramasında çıkmaz
       let categories = categoryRows('live').filter((r) => !r.special && r.count > 0);
+      let dayOff = 0; // zaman çizelgesinde seçili gün (0: bugün)
+      let dayBase = 0; // gün şeridindeki ilk gün
+      let searchOpen = false; // zaman çizelgesinde arama satırı açık mı
+      let refreshing = false;
+      let headKey = ''; // üst çubuğun hangi görünümde çizildiği: 'list' ya da 'tl:<kategori>'
       const kbd = () => document.documentElement.classList.contains('kbd');
       const scroller = () => $('.tl-scroll', list);
       const ppm = () => {
@@ -3614,19 +3645,68 @@ function guidePage() {
       };
       const nowX = () => ((Date.now() - ws) / 60000) * ppm();
       const clock = () => {
-        nowLabel.textContent = 'ŞİMDİ · ' + fmtClock(Date.now()) + (expanded || progMode ? '' : '  ·  Kategori seçerek yayın akışını görüntüleyin');
+        nowLabel.innerHTML = '<b class="gn-l">ŞİMDİ</b><time>' + fmtClock(Date.now()) + '</time>' + (expanded || progMode ? '' : '<i class="gn-sep"></i><span class="gn-h">Yayın akışını kategori seçerek görüntüleyin</span>');
       };
-      // Zaman ilerledikçe şimdi çizgisi ve blokların şimdi/geçmiş durumu güncellenir
+      // "Şimdi" düğmesi, görünüm şimdiye yakınken vurgulanır
+      const syncToday = () => {
+        const sc = scroller();
+        const b = $('#guide-today', body);
+        if (b) b.classList.toggle('on', !!sc && dayOff === 0 && Math.abs(sc.scrollLeft - Math.max(0, nowX() - 16)) < 24 * ppm());
+      };
+      // Zaman ilerledikçe şimdi çizgisi, blokların şimdi/geçmiş durumu ve ilerleme çubukları güncellenir
       const tickNow = () => {
         clock();
         const t = $('.tl', list);
         if (!t) return;
         const now = Date.now();
         t.style.setProperty('--now', ((now - ws) / 60000).toFixed(2));
+        t.classList.toggle('no-now', now < ws || now > ws + GUIDE_SPAN * 60000);
+        const tag = $('.tl-tag', t);
+        if (tag) tag.dataset.t = fmtClock(now);
         $$('.tl-prog[data-s]', t).forEach((b) => {
-          b.classList.toggle('now', Number(b.dataset.s) <= now && Number(b.dataset.e) > now);
-          b.classList.toggle('past', Number(b.dataset.e) <= now);
+          const s0 = Number(b.dataset.s);
+          const e0 = Number(b.dataset.e);
+          const live = s0 <= now && e0 > now;
+          b.classList.toggle('now', live);
+          b.classList.toggle('past', e0 <= now);
+          if (live) b.style.setProperty('--p', Math.min(100, Math.max(0, ((now - s0) / Math.max(1, e0 - s0)) * 100)).toFixed(1) + '%');
         });
+        syncToday();
+      };
+      // Üst çubuk: kategori listesinde simge + arama/yenile; zaman çizelgesinde kategori simgesi + ara/gün/seçenekler
+      const drawActions = (tl) => {
+        api.setActions(tl
+          ? `<button class="icon-btn pg-hb" data-g="search" aria-label="Kanal ara">${icon('search')}</button><button class="icon-btn pg-hb" data-g="cal" aria-label="Gün seç">${icon('cal')}</button><button class="icon-btn pg-hb" data-g="more" aria-label="Seçenekler">${icon('dots')}</button>`
+          : `<button class="icon-btn pg-hb" data-g="search" aria-label="Ara">${icon('search')}</button><button class="icon-btn pg-hb${refreshing ? ' spin' : ''}" data-g="refresh" aria-label="EPG yenile"${refreshing ? ' disabled' : ''}>${icon('refresh')}</button>`);
+      };
+      const drawDays = () => {
+        const base = new Date();
+        base.setHours(0, 0, 0, 0);
+        const cells = [];
+        for (let d = dayBase; d < Math.min(GUIDE_DAYS, dayBase + GUIDE_DAY_SHOW); d++) {
+          const t = new Date(base);
+          t.setDate(t.getDate() + d);
+          const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString('tr-TR', { weekday: 'short' });
+          const date = t.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) + (d === 0 ? ' ' + t.toLocaleDateString('tr-TR', { weekday: 'short' }) : '');
+          cells.push(`<button class="gd-day${d === dayOff ? ' on' : ''}" data-day="${d}"><b>${esc(name)}</b><small>${esc(date)}</small></button>`);
+        }
+        $('#guide-days', body).innerHTML = `<button class="gd-arr" data-days="-1" aria-label="Önceki günler"${dayBase <= 0 ? ' disabled' : ''}>${icon('chev-l')}</button>${cells.join('')}<button class="gd-arr" data-days="1" aria-label="Sonraki günler"${dayBase + GUIDE_DAY_SHOW >= GUIDE_DAYS ? ' disabled' : ''}>${icon('chev-r')}</button>`;
+      };
+      const layout = (tl, cat, term) => {
+        const key = tl ? 'tl:' + cat.id : 'list';
+        $('#guide-search', body).hidden = tl && !searchOpen && !term;
+        $('#guide-views', body).hidden = tl;
+        $('#guide-nowbar', body).hidden = tl;
+        $('#guide-days', body).hidden = !tl;
+        $('#guide-shift', body).hidden = !tl;
+        if (key !== headKey) {
+          headKey = key;
+          api.setTitle(tl ? cat.name : 'TV Rehberi');
+          api.setSub(tl ? 'Yayın akışı' : 'Tüm kanallar ve yayın akışı');
+          api.setLead(`<span class="pg-ico" aria-hidden="true">${tl ? guideCatIcon(cat) : icon('guide')}</span>`);
+          drawActions(tl);
+        }
+        if (tl) drawDays();
       };
       const moreRows = () => {
         const sc = scroller();
@@ -3642,44 +3722,58 @@ function guidePage() {
         const old = scroller();
         if (keepScroll && old) scrollX = old.scrollLeft;
         const term = fold(q.value.trim());
-        ws = Math.floor((Date.now() - 45 * 60000) / (GUIDE_STEP * 60000)) * GUIDE_STEP * 60000;
         const now = Date.now();
-        const cat = expanded && categories.find((c) => c.id === expanded);
+        if (dayOff) {
+          const d0 = new Date(now);
+          d0.setHours(0, 0, 0, 0);
+          d0.setDate(d0.getDate() + dayOff);
+          ws = d0.getTime();
+        } else ws = Math.floor((now - 45 * 60000) / (GUIDE_STEP * 60000)) * GUIDE_STEP * 60000;
+        const cat = expanded && (categories.find((c) => c.id === expanded) || GUIDE_VIEWS.find((v) => v.id === expanded));
         if (expanded && !cat) {
           expanded = null;
           if (catLayer) popLayer('guide-cat');
         }
-        list.classList.toggle('tlmode', !!cat && !progMode);
+        const tlMode = !!cat && !progMode;
+        list.classList.toggle('tlmode', tlMode);
+        layout(tlMode, cat, term);
         if (progMode) {
           rows = [];
           drawPrograms(term);
           return;
         }
         if (cat) {
-          const all = itemsOfGroup('live', cat.id);
+          const all = guideItems(cat.id);
           rows = term ? all.filter((it) => fold(it.name).includes(term)) : all;
           if (term && !rows.length && fold(cat.name).includes(term)) rows = all; // kategori adıyla eşleşti: tüm kanalları göster
+          api.setSub(rows.length + ' kanal · Yayın akışı');
           const we = ws + GUIDE_SPAN * 60000;
-          const timeline = rows.length
-            ? `<div class="tl" style="--span:${GUIDE_SPAN};--now:${((now - ws) / 60000).toFixed(2)}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-head"><div class="tl-corner"></div><div class="tl-axis">${guideAxisHtml(ws)}</div></div><div class="tl-body">${rows.slice(0, shown).map((it) => guideRowHtml(it, ws, we, now)).join('')}</div>${rows.length > shown ? `<button class="tl-more btn sm ghost">Daha fazla kanal (${rows.length - shown})</button>` : ''}<div class="tl-nowline"></div></div></div></div>`
+          const noNow = now < ws || now > we;
+          list.innerHTML = rows.length
+            ? `<div class="tl${noNow ? ' no-now' : ''}" style="--span:${GUIDE_SPAN};--now:${((now - ws) / 60000).toFixed(2)}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-head"><div class="tl-corner"></div><div class="tl-axis">${guideAxisHtml(ws)}<i class="tl-tag" data-t="${fmtClock(now)}"></i></div></div><div class="tl-body">${rows.slice(0, shown).map((it) => guideRowHtml(it, ws, we, now)).join('')}</div>${rows.length > shown ? `<button class="tl-more btn sm ghost">Daha fazla kanal (${rows.length - shown})</button>` : ''}<div class="tl-nowline"></div></div></div></div>`
             : '<div class="empty">Eşleşen kanal bulunamadı.</div>';
-          list.innerHTML = `<button class="guide-category-head open" data-back aria-label="Kategorilere dön"><span class="chev">‹</span><span class="guide-category-icon">${icon('folder')}</span><span class="guide-category-title">${esc(cat.name)}</span><span class="guide-category-count">${rows.length} kanal</span></button>${timeline}`;
         } else {
           rows = [];
           const filtered = categories.filter((c) => !term || fold(c.name).includes(term) ||
             itemsOfGroup('live', c.id).some((it) => fold(it.name).includes(term)));
           list.innerHTML = filtered.map((c) => '<button class="guide-category-head" data-category="' + esc(c.id) + '">' +
-            '<span class="guide-category-icon">' + icon('folder') + '</span><span class="guide-category-title">' + esc(c.name) + '</span>' +
-            '<span class="guide-category-count">' + c.count + ' kanal</span><span class="chev">›</span></button>').join('') ||
+            '<span class="guide-category-icon">' + guideCatIcon(c) + '</span><span class="guide-category-title">' + esc(c.name) + '</span>' +
+            '<span class="guide-category-count">' + c.count + ' kanal</span><span class="chev">' + icon('chev-r') + '</span></button>').join('') ||
             '<div class="empty">Kategori veya kanal bulunamadı.</div>';
         }
         clock();
         const sc = scroller();
         if (sc) {
-          sc.scrollLeft = scrollX == null ? Math.max(0, nowX() - 16) : scrollX;
+          sc.scrollLeft = scrollX == null ? (dayOff ? 0 : Math.max(0, nowX() - 16)) : scrollX;
+          let raf = 0;
           sc.addEventListener('scroll', () => {
             if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 160) moreRows();
+            if (!raf) raf = requestAnimationFrame(() => {
+              raf = 0;
+              syncToday();
+            });
           }, { passive: true });
+          syncToday();
         }
       };
       const dayWord = (ts) => {
@@ -3707,6 +3801,9 @@ function guidePage() {
         expanded = null;
         shown = GUIDE_CHUNK;
         scrollX = null;
+        dayOff = 0;
+        dayBase = 0;
+        searchOpen = false;
         if (!body.isConnected) return;
         draw();
         const back = id && $('[data-category="' + CSS.escape(id) + '"]', list);
@@ -3716,6 +3813,8 @@ function guidePage() {
         expanded = id;
         shown = GUIDE_CHUNK;
         scrollX = null;
+        dayOff = 0;
+        dayBase = 0;
         if (!catLayer) {
           catLayer = true;
           pushLayer('guide-cat', closeCat);
@@ -3812,7 +3911,6 @@ function guidePage() {
           const ch = S.idx.live.get(h.id);
           return ch && guideProgramSheet(ch, h.p, [ch], 0);
         }
-        if (e.target.closest('[data-back]')) return popLayer('guide-cat');
         const head = e.target.closest('[data-category]');
         if (head) return openCat(head.dataset.category);
         if (e.target.closest('.tl-more')) {
@@ -3854,25 +3952,34 @@ function guidePage() {
       $('#guide-back', body).addEventListener('click', () => step(-1));
       $('#guide-fwd', body).addEventListener('click', () => step(1));
       $('#guide-today', body).addEventListener('click', () => {
+        if (dayOff) {
+          dayOff = 0;
+          dayBase = 0;
+          scrollX = null;
+          return draw();
+        }
         const sc = scroller();
         if (sc) sc.scrollTo({ left: Math.max(0, nowX() - 16), top: 0, behavior: 'smooth' });
       });
       const timer = setInterval(() => (body.isConnected ? tickNow() : clearInterval(timer)), 30000);
       const modeBtn = $('#guide-mode', body);
-      modeBtn.addEventListener('click', () => {
+      const toggleMode = () => {
         progMode = !progMode;
         modeBtn.setAttribute('aria-pressed', String(progMode));
         modeBtn.classList.toggle('on', progMode);
-        q.placeholder = progMode ? 'Program adı ara… (örn. haber, maç)' : 'Kanal veya kategori ara…';
+        q.placeholder = progMode ? 'Program adı ara… (örn. haber, maç)' : 'Kanal, kategori veya program ara…';
         visIds = null;
         draw(true);
         if (!progMode) scrollX = null;
-      });
-      const refreshButton = $('#guide-refresh', body);
-      refreshButton.addEventListener('click', async () => {
-        if (refreshButton.disabled) return;
-        refreshButton.disabled = true;
-        refreshButton.textContent = 'Yenileniyor…';
+      };
+      async function refreshEpg() {
+        if (refreshing) return;
+        refreshing = true;
+        const rb = $('[data-g="refresh"]', api.el);
+        if (rb) {
+          rb.classList.add('spin');
+          rb.disabled = true;
+        }
         try {
           await maybeRefreshEpg(true);
           categories = categoryRows('live').filter((r) => !r.special && r.count > 0);
@@ -3880,10 +3987,99 @@ function guidePage() {
         } catch (error) {
           toast('EPG yenilenemedi: ' + ((error && error.message) || 'Bilinmeyen hata'), 3500);
         } finally {
-          if (body.isConnected && refreshButton.isConnected) {
-            refreshButton.disabled = false;
-            refreshButton.textContent = 'EPG yenile';
+          refreshing = false;
+          const b2 = $('[data-g="refresh"]', api.el);
+          if (b2) {
+            b2.classList.remove('spin');
+            b2.disabled = false;
           }
+        }
+      }
+      function pickDay() {
+        const base = new Date();
+        base.setHours(0, 0, 0, 0);
+        const sh = openSheet({
+          title: 'Gün seç',
+          html: Array.from({ length: GUIDE_DAYS }, (_, d) => {
+            const t = new Date(base);
+            t.setDate(t.getDate() + d);
+            const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString('tr-TR', { weekday: 'long' });
+            return `<button class="list-item" data-pickday="${d}"><span class="t">${esc(name)}<small>${esc(t.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }))}</small></span>${d === dayOff ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`;
+          }).join(''),
+        });
+        sh.el.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-pickday]');
+          if (!b) return;
+          dayOff = Number(b.dataset.pickday);
+          dayBase = Math.min(Math.max(0, dayOff - 1), GUIDE_DAYS - GUIDE_DAY_SHOW);
+          scrollX = null;
+          sh.close();
+          draw();
+        });
+      }
+      function moreMenu() {
+        const sh = openSheet({
+          title: 'Seçenekler',
+          html: `<button class="list-item" data-opt="mode"><span class="t">Program ara<small>Arama kutusu kanal yerine program adlarında arar</small></span></button><button class="list-item" data-opt="refresh"><span class="t">EPG’yi yenile<small>TV rehberi verisini yeniden indirir</small></span></button>`,
+        });
+        sh.el.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-opt]');
+          if (!b) return;
+          sh.close();
+          if (b.dataset.opt === 'mode') {
+            searchOpen = true;
+            toggleMode();
+            q.focus();
+          } else refreshEpg();
+        });
+      }
+      // Üst çubuk, arama satırı, görünüm çipleri ve gün şeridi (hepsi yeniden çizilebildiği için olay yetkilendirmesi)
+      api.onBack = () => {
+        if (!expanded || progMode) return false;
+        popLayer('guide-cat');
+        return true;
+      };
+      api.el.addEventListener('click', (e) => {
+        const g = e.target.closest('[data-g]');
+        if (g) {
+          const act = g.dataset.g;
+          if (act === 'mode') return toggleMode();
+          if (act === 'refresh') return refreshEpg();
+          if (act === 'cal') return pickDay();
+          if (act === 'more') return moreMenu();
+          if (act === 'search') {
+            const bar = $('#guide-search', body);
+            if (headKey === 'list' || bar.hidden) {
+              searchOpen = true;
+              bar.hidden = false;
+              return q.focus();
+            }
+            if (!q.value) {
+              searchOpen = false;
+              bar.hidden = true;
+              return;
+            }
+            q.value = '';
+            shown = GUIDE_CHUNK;
+            searchOpen = false;
+            return draw();
+          }
+        }
+        const v = e.target.closest('[data-view]');
+        if (v) {
+          if (v.dataset.view) openCat(v.dataset.view);
+          return;
+        }
+        const dd = e.target.closest('[data-day]');
+        if (dd && dd.closest('#guide-days')) {
+          dayOff = Number(dd.dataset.day);
+          scrollX = null;
+          return draw();
+        }
+        const da = e.target.closest('[data-days]');
+        if (da) {
+          dayBase = Math.min(Math.max(0, dayBase + Number(da.dataset.days)), GUIDE_DAYS - GUIDE_DAY_SHOW);
+          drawDays();
         }
       });
       draw();

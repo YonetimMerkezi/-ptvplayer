@@ -70,8 +70,8 @@ export function openToday(env) {
   const page = openPage({
     title: `${dayLabel(day)} TV’de`,
     sub: dayDate(day),
-    lead: `<span class="td-ico" aria-hidden="true">${icon('tv')}</span>`,
-    actions: `<button class="icon-btn td-hb" id="td-search" aria-label="Ara" aria-pressed="false">${icon('search')}</button><button class="icon-btn td-hb" id="td-cal" aria-label="Gün seç">${icon('cal')}</button>`,
+    lead: `<span class="pg-ico" aria-hidden="true">${icon('tv')}</span>`,
+    actions: `<button class="icon-btn pg-hb" id="td-search" aria-label="Ara" aria-pressed="false">${icon('search')}</button><button class="icon-btn pg-hb" id="td-cal" aria-label="Gün seç">${icon('cal')}</button>`,
     cls: 'td-pg',
     html: `<div class="td-kinds" id="td-kinds" role="group" aria-label="Tür"></div>
       <div class="td-sbar" id="td-sbar" hidden><input id="td-s" type="search" placeholder="Program veya kanal ara…" autocomplete="off" aria-label="Program veya kanal ara"></div>

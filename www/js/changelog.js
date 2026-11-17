@@ -27,6 +27,7 @@ export const CHANGELOG = [
       'Oynatıcı: düğmeler ve pencereler yenilendi; açık düğmenin yazısı görünür, “Yayın bilgisi” penceresinde başlık ve kapat (X) düğmesi var, dikeyde düğmelerin altında durur',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
       'Bugün TV’de ekranı yenilendi: büyük başlık ve tarih, sayaçlı Spor / Film / Dizi sekmeleri, saat, ŞİMDİ rozeti ve ilerleme çubuklu program kartları; renkler seçtiğiniz tema rengine uyar. Üstteki düğmelerle program ya da kanal araması ve gün seçimi yapılır',
+      'TV Rehberi yenilendi: üstte başlık, arama ve yenile düğmeleri; Kategoriler / Tümü / Favoriler / Son İzlenen çipleri; kategori simgeleri ve kanal sayıları. Zaman çizelgesinde gün seçici (bugünden 7 gün), 3 saat kaydırma, şimdi etiketi, kanal logosu ve kalite satırı, ilerleme çubuklu program kutuları; renkler seçtiğiniz temaya uyar',
     ],
   },
   {

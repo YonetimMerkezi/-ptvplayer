@@ -65,7 +65,8 @@ export function openSheet({ title, html = '', mount, full = false, className = '
 
 // Tam ekran sayfa (film/dizi ayrıntısı, genel arama, kanal seçici): alt sayfadan farklı olarak tüm ekranı kaplar;
 // geri tuşu/geri oku onu kapatır, altındaki sayfa olduğu gibi kalır.
-// sub verilirse üst çubuk zengin görünür: başlığın altında açıklama satırı; lead başlığın önünde simge, actions sağda düğmeler.
+// sub verilirse üst çubuk zengin görünür: başlığın altında açıklama satırı; lead başlığın önünde simge, actions sağda düğmeler
+// (setLead / setActions ile sonradan değişir). api.onBack: geri okuna basılınca true dönerse sayfa kapanmaz (sayfa içi adım geri alınır).
 export function openPage({ title = '', html = '', mount, cls = '', sub = null, lead = '', actions = '' }) {
   const id = 'page' + ++seq;
   const el = document.createElement('div');
@@ -73,16 +74,20 @@ export function openPage({ title = '', html = '', mount, cls = '', sub = null, l
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', title || 'Sayfa');
   const head = sub == null ? `<h3>${esc(title)}</h3>` : `<div class="pg-ttl"><h3>${esc(title)}</h3><p class="pg-sub">${esc(sub)}</p></div>`;
-  el.innerHTML = `<header class="pg-bar${sub == null ? '' : ' pg-bar-rich'}"><button class="icon-btn" data-close aria-label="Geri">${icon('back')}</button>${lead}${head}${actions}</header><div class="pg-body">${html}</div>`;
+  const rich = sub != null;
+  el.innerHTML = `<header class="pg-bar${rich ? ' pg-bar-rich' : ''}"><button class="icon-btn" data-close aria-label="Geri">${icon('back')}</button>${rich ? `<span class="pg-lead">${lead}</span>` : ''}${head}${rich ? `<span class="pg-act">${actions}</span>` : ''}</header><div class="pg-body">${html}</div>`;
   $('#sheets').append(el);
   pushLayer(id, () => removeLayerWithMotion(el, 'is-closing'));
   el.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) popLayer(id);
+    if (!e.target.closest('[data-close]')) return;
+    if (api.onBack && api.onBack()) return;
+    popLayer(id);
   });
   const body = $('.pg-body', el);
   const api = {
     el,
     body,
+    onBack: null,
     close: () => popLayer(id),
     setTitle: (t) => {
       $('h3', el).textContent = t;
@@ -90,6 +95,14 @@ export function openPage({ title = '', html = '', mount, cls = '', sub = null, l
     setSub: (t) => {
       const n = $('.pg-sub', el);
       if (n) n.textContent = t;
+    },
+    setLead: (h) => {
+      const n = $('.pg-lead', el);
+      if (n) n.innerHTML = h;
+    },
+    setActions: (h) => {
+      const n = $('.pg-act', el);
+      if (n) n.innerHTML = h;
     },
   };
   if (mount) mount(body, api);

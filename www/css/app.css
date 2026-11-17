@@ -644,10 +644,17 @@ html.native-preview #player { display: none; }
 html.native-playing #sheets .pg:not(.over-player) { visibility: hidden; }
 .pg-bar { display: flex; align-items: center; gap: 6px; min-height: var(--bar-h); padding: 0 8px; flex: none; }
 .pg-bar h3 { flex: 1; min-width: 0; margin: 0; font-size: 1.125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-bar-rich { min-height: 78px; gap: 10px; padding: 6px 12px 6px 4px; }
+.pg-bar-rich { min-height: 74px; gap: 8px; padding: 6px 10px 6px 2px; }
 .pg-ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pg-ttl h3 { flex: none; font-size: 1.25rem; font-weight: 750; letter-spacing: -0.01em; }
-.pg-sub { margin: 0; color: var(--muted); font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-sub { margin: 0; color: var(--muted); font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-lead, .pg-act { display: contents; }
+.pg-ico { flex: none; width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; color: var(--accent); background: rgba(0, 0, 0, 0.28); border: 2px solid var(--accent); }
+.pg-ico .ic { width: 28px; height: 28px; }
+.pg-hb { width: 42px; height: 42px; border-radius: 21px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); }
+.pg-hb.on { color: var(--accent); border-color: var(--accent); }
+.pg-hb.spin .ic { animation: sp 0.8s linear infinite; }
+.pg-hb:disabled { opacity: 0.7; }
 .pg-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 28px; -webkit-overflow-scrolling: touch; }
 /* Kumanda/TV: odak halkası öğenin 5 px dışına taşar; kaydırılan gövdenin ve ekranın kenarında kesilmesin. TV'lerde ekran kenarı görüntü taşmasıyla (overscan) kırpılabildiği için sayfalarda kenar payı bırakılır. */
 html.kbd .pg-body, html.tv .pg-body { padding-top: 10px; }
@@ -880,39 +887,68 @@ html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 2p
 html.tv #pl-tv, html.tv #mv-cast { display: none; }
 
 /* TV rehberi: kategoriler, kanal logoları ve canlı zaman çizelgesi */
-.guide-pg .pg-body { display:flex; flex-direction:column; overflow:hidden; padding-bottom:8px; }
-.guide-tools { display:flex; flex-wrap:wrap; gap:8px; padding:0 0 10px; }
-.guide-tools input { flex:1 1 160px; min-width:0; min-height:44px; border-radius:10px; border:1px solid var(--line); background:var(--raised); color:var(--text); padding:0 12px; font:inherit; }
-.guide-now { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--muted); font-size:.78rem; padding:2px 4px 10px; }
-.guide-nav { display:flex; gap:6px; flex:none; }
-.guide-categories { flex:1; min-height:0; display:flex; flex-direction:column; gap:8px; padding-bottom:8px; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+.guide-pg .pg-body { display:flex; flex-direction:column; overflow:hidden; padding:4px 12px 8px; }
+.gd-search { display:flex; align-items:center; gap:10px; flex:none; padding:4px 0 10px; }
+.gd-sbox { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:50px; padding:0 14px; border-radius:16px; background:var(--surface); border:1px solid var(--line); color:var(--muted); }
+.gd-sbox:focus-within { border-color:var(--accent); }
+.gd-sbox .ic { width:22px; height:22px; flex:none; }
+.gd-sbox input { flex:1; min-width:0; min-height:46px; border:0; background:transparent; color:var(--text); padding:0; font:inherit; outline:none; box-shadow:none; }
+.gd-fbtn { flex:none; width:50px; height:50px; border-radius:16px; display:grid; place-items:center; background:var(--surface); border:1px solid var(--line); color:var(--text); }
+.gd-fbtn.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+.guide-pg .chips { gap:5px; padding:4px 4px 10px; margin:0 -4px; }
+.guide-pg .chip { min-height:38px; padding:0 9px; display:inline-flex; align-items:center; gap:4px; font-size:.78rem; border-radius:19px; }
+.guide-pg .chip .ic { width:15px; height:15px; }
+.guide-now { flex:none; display:flex; align-items:center; gap:10px; min-height:46px; margin:0 0 10px; padding:0 14px; border-radius:16px; border:1px solid var(--line); background:var(--accent-soft); color:var(--muted); font-size:.875rem; }
+.guide-now > .ic { width:24px; height:24px; color:var(--accent); flex:none; }
+#guide-now { display:flex; align-items:center; gap:10px; min-width:0; }
+.gn-l { color:var(--accent); font-weight:800; letter-spacing:.02em; }
+#guide-now time { color:var(--text); font-weight:750; font-size:1.0625rem; font-variant-numeric:tabular-nums; }
+.gn-sep { width:1px; height:22px; background:var(--line); flex:none; }
+.gn-h { min-width:0; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gd-days { flex:none; display:flex; align-items:stretch; gap:8px; padding:4px 0 10px; }
+.gd-day { flex:1 1 0; min-width:0; min-height:54px; padding:6px 4px; border-radius:16px; background:var(--surface); border:1px solid var(--line); color:var(--muted); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; }
+.gd-day b { font-size:.9375rem; font-weight:700; color:var(--text); }
+.gd-day small { font-size:.75rem; white-space:nowrap; }
+.gd-day.on { background:var(--accent-soft); border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--text); }
+.gd-arr { flex:none; width:40px; border-radius:14px; display:grid; place-items:center; background:var(--surface); border:1px solid var(--line); color:var(--text); }
+.gd-arr .ic { width:22px; height:22px; }
+.gd-arr:disabled { opacity:.35; }
+.guide-categories { flex:1; min-height:0; display:flex; flex-direction:column; gap:9px; padding:2px 0 8px; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
 .guide-categories.tlmode { overflow:hidden; gap:6px; padding-bottom:0; }
-.guide-category-head { display:flex; flex:none; align-items:center; gap:10px; width:100%; min-height:58px; padding:9px 13px; text-align:left; border:1px solid var(--line); border-radius:13px; background:color-mix(in srgb,var(--surface) 82%,transparent); }
-.guide-category-head.open { min-height:48px; padding-top:5px; padding-bottom:5px; border-color:var(--accent); }
-.guide-category-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:9px; color:var(--accent); background:var(--accent-soft); flex:none; }
-.guide-category-icon .ic { width:20px; height:20px; }
-.guide-category-title { flex:1; min-width:0; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.guide-category-count { color:var(--muted); font-size:.78rem; white-space:nowrap; }
-.guide-category-head .chev { color:var(--muted); font-size:1.25rem; padding-left:4px; }
+.guide-category-head { display:flex; flex:none; align-items:center; gap:12px; width:100%; min-height:58px; padding:8px 14px; text-align:left; border:1px solid var(--line); border-radius:16px; background:color-mix(in srgb,var(--surface) 82%,transparent); }
+.guide-category-head:active { border-color:var(--accent); }
+.guide-category-icon { width:32px; height:32px; display:grid; place-items:center; color:var(--accent); flex:none; }
+.guide-category-icon .ic { width:28px; height:28px; }
+.gc-4k { display:grid; place-items:center; min-width:32px; height:22px; padding:0 4px; border:2px solid currentColor; border-radius:6px; font-size:.75rem; font-weight:800; line-height:1; letter-spacing:.02em; }
+.guide-category-title { flex:1; min-width:0; font-weight:700; font-size:1.0625rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.guide-category-count { color:var(--muted); font-size:.8125rem; white-space:nowrap; }
+.guide-category-head .chev { display:grid; place-items:center; color:var(--text); }
+.guide-category-head .chev .ic { width:22px; height:22px; }
+.guide-categories .prog-row { padding:12px 14px; margin:0 0 9px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.05); align-items:center; }
+.guide-categories .prog-row time { width:56px; color:var(--text); font-weight:800; font-size:1.0625rem; }
+.guide-categories .prog-row b { font-weight:750; }
 /* Zaman çizelgesi: sabit kanal sütunu + yatay kayan zaman ekseni; konumlar dakika (--m, --d) ve ölçek (--tl-ppm = px/dk) ile */
-.tl { --tl-ppm:4; --tl-ch:118px; --tl-row:60px; position:relative; flex:1; min-height:0; display:flex; flex-direction:column; border:1px solid var(--line); border-radius:13px; overflow:hidden; background:color-mix(in srgb,var(--surface) 82%,transparent); }
+.tl { --tl-ppm:4; --tl-ch:128px; --tl-row:66px; position:relative; flex:1; min-height:0; display:flex; flex-direction:column; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:color-mix(in srgb,var(--surface) 82%,transparent); }
 html.tv .tl { --tl-ppm:5; --tl-ch:176px; --tl-row:76px; }
-.tl-scroll { flex:1; min-height:0; overflow:auto; position:relative; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; scroll-padding-left:var(--tl-ch); scroll-padding-top:30px; }
+.tl-scroll { flex:1; min-height:0; overflow:auto; position:relative; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; scroll-padding-left:var(--tl-ch); scroll-padding-top:48px; }
 .tl-inner { position:relative; width:calc(var(--tl-ch) + var(--span) * var(--tl-ppm) * 1px); }
-.tl-head { display:flex; position:sticky; top:0; z-index:5; height:30px; background:var(--surface); border-bottom:1px solid var(--line); }
+.tl-head { display:flex; position:sticky; top:0; z-index:5; height:48px; background:var(--surface); border-bottom:1px solid var(--line); }
 .tl-corner { flex:none; position:sticky; left:0; z-index:6; width:var(--tl-ch); background:var(--surface); border-right:1px solid var(--line); }
 .tl-axis { position:relative; flex:none; width:calc(var(--span) * var(--tl-ppm) * 1px); }
-.tl-tick { position:absolute; top:0; bottom:0; left:calc(var(--m) * var(--tl-ppm) * 1px); padding:7px 0 0 5px; border-left:1px solid var(--line); color:var(--muted); font-size:.7rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.tl-tick { position:absolute; top:0; bottom:0; left:calc(var(--m) * var(--tl-ppm) * 1px); padding:7px 0 0 6px; border-left:1px solid var(--line); color:var(--text); font-size:.8125rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .tl-tick.half { border-left-style:dotted; opacity:.7; }
 .tl-row { display:flex; height:var(--tl-row); border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent); }
-.tl-ch { flex:none; position:sticky; left:0; z-index:3; display:flex; align-items:center; gap:6px; width:var(--tl-ch); box-sizing:border-box; padding:4px 6px; text-align:left; background:var(--surface); border-right:1px solid var(--line); }
-.tl-logo { width:30px; height:30px; flex:none; display:grid; place-items:center; }
-.tl-logo .logo { width:28px; height:28px; object-fit:contain; }
-.tl-name { min-width:0; font-size:.72rem; font-weight:650; line-height:1.15; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:break-word; }
-html.tv .tl-logo, html.tv .tl-logo .logo { width:44px; height:44px; }
-html.tv .tl-name { font-size:.9rem; }
+.tl-ch { flex:none; position:sticky; left:0; z-index:3; display:flex; align-items:center; gap:8px; width:var(--tl-ch); box-sizing:border-box; padding:4px 8px; text-align:left; background:var(--surface); border-right:1px solid var(--line); }
+.tl-logo { width:40px; height:40px; flex:none; display:grid; place-items:center; border-radius:11px; background:#fff; padding:3px; }
+.tl-logo .logo { width:100%; height:100%; border-radius:8px; background:none; color:#475569; object-fit:contain; }
+.tl-name { min-width:0; display:flex; flex-direction:column; gap:1px; line-height:1.15; }
+.tl-name b { font-size:.8125rem; font-weight:750; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:break-word; }
+.tl-name small { color:var(--muted); font-size:.75rem; }
+html.tv .tl-logo { width:52px; height:52px; }
+html.tv .tl-name b { font-size:1rem; }
+html.tv .tl-name small { font-size:.85rem; }
 .tl-track { position:relative; flex:none; width:calc(var(--span) * var(--tl-ppm) * 1px); background-image:linear-gradient(to right, color-mix(in srgb,var(--line) 75%,transparent) 1px, transparent 1px); background-size:calc(30 * var(--tl-ppm) * 1px) 100%; }
-.tl-prog { position:absolute; top:5px; bottom:5px; left:calc(var(--m) * var(--tl-ppm) * 1px); width:calc(var(--d) * var(--tl-ppm) * 1px - 3px); box-sizing:border-box; border:1px solid var(--line); border-radius:8px; background:var(--raised); cursor:pointer; text-align:left; }
+.tl-prog { position:absolute; top:5px; bottom:5px; left:calc(var(--m) * var(--tl-ppm) * 1px); width:calc(var(--d) * var(--tl-ppm) * 1px - 3px); box-sizing:border-box; border:1px solid var(--line); border-radius:10px; background:var(--raised); cursor:pointer; text-align:left; }
 /* Başlık, blok kısmen kaydırılmış olsa da kanal sütununun hemen yanında görünür kalır */
 .tl-prog > span { position:sticky; left:calc(var(--tl-ch) + 6px); display:block; width:fit-content; max-width:calc(100% - 4px); box-sizing:border-box; padding:4px 7px; overflow:hidden; }
 .tl-prog b { display:block; font-size:.78rem; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -920,6 +956,12 @@ html.tv .tl-name { font-size:.9rem; }
 html.tv .tl-prog b { font-size:.92rem; }
 html.tv .tl-prog small { font-size:.76rem; }
 .tl-prog.now { background:var(--accent-soft); border-color:var(--accent); }
+.tl-pr { display:none; position:absolute; left:8px; right:8px; bottom:6px; height:4px; border-radius:2px; background:rgba(255,255,255,.16); overflow:hidden; pointer-events:none; }
+.tl-prog.now .tl-pr { display:block; }
+.tl-pr u { display:block; height:100%; width:var(--p,0%); border-radius:2px; background:var(--accent); text-decoration:none; }
+.tl-tag { position:absolute; bottom:4px; left:calc(var(--now, 0) * var(--tl-ppm) * 1px); transform:translateX(-50%); padding:2px 9px; border-radius:11px; background:var(--accent); color:var(--accent-ink); font-style:normal; font-size:.75rem; font-weight:800; line-height:1.3; white-space:nowrap; pointer-events:none; }
+.tl-tag::before { content:attr(data-t); }
+.tl.no-now .tl-tag, .tl.no-now .tl-nowline { display:none; }
 .tl-prog.past { opacity:.55; }
 .tl-prog.none { cursor:default; background:transparent; border-style:dashed; opacity:.7; }
 html.kbd .tl-prog:focus, html.kbd .tl-ch:focus { outline:3px solid var(--ring); outline-offset:-3px; box-shadow:inset 0 0 0 5px var(--ring-edge); }
@@ -933,8 +975,6 @@ html.kbd .tl-prog:focus { background:var(--ring-bg); box-shadow:inset 0 0 0 5px 
 .gp-desc.muted { color:var(--muted); }
 .gp-btns { display:flex; gap:8px; flex-wrap:wrap; }
 html.tv .guide-category-head { min-height:68px; }
-html.tv .guide-category-head.open { min-height:56px; }
-.guide-category-head.open .chev { padding:0 2px 0 0; }
 html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); background:var(--ring-bg); }
 /* Yayın kalitesi: kanal seçici düzeni (.pk-pg) üstüne sonuç şeridi; liste tek kaydırma alanı */
 .health-pg .hint { margin:0 0 8px; }
@@ -960,7 +1000,6 @@ html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px v
 .pl-warn { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .pl-warn p { flex: 1; margin: 0; font-size: 0.8125rem; color: var(--muted); }
 .pl-row .t .ic { width: 1.1em; height: 1.1em; margin-right: 6px; vertical-align: -0.15em; color: var(--accent); }
-.guide-tools .btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .gp-btns .btn .ic { margin-right: 6px; }
 
 /* Yayın kalitesi: kayıtlı (eski) sonuç soluk görünür */
@@ -1066,12 +1105,8 @@ html[data-lite] .mq { text-overflow: ellipsis; }
   .sp-top #sp-days { order: 3; flex: 1 1 100%; -webkit-mask-image: none; mask-image: none; }
 }
 /* bugün TV'de ekranı */
-.td-pg::before { content: ''; position: absolute; top: 0; right: 0; width: 78%; height: 180px; background: radial-gradient(ellipse at 100% 0%, var(--accent) 0%, transparent 68%); opacity: 0.26; pointer-events: none; }
-.td-pg > * { position: relative; }
-.td-ico { flex: none; width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; color: var(--accent); background: rgba(0, 0, 0, 0.28); border: 2px solid var(--accent); }
-.td-ico .ic { width: 30px; height: 30px; }
-.td-hb { width: 46px; height: 46px; border-radius: 23px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); }
-.td-hb.on { color: var(--accent); border-color: var(--accent); }
+.td-pg::before, .guide-pg::before { content: ''; position: absolute; top: 0; right: 0; width: 78%; height: 180px; background: radial-gradient(ellipse at 100% 0%, var(--accent) 0%, transparent 68%); opacity: 0.26; pointer-events: none; }
+.td-pg > *, .guide-pg > * { position: relative; }
 .td-pg .pg-body { display: flex; flex-direction: column; overflow: hidden; padding: 4px 12px 0; }
 .td-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: none; padding: 6px 4px 10px; margin: 0 -4px; }
 .td-k { min-width: 0; min-height: 52px; padding: 0 8px; border-radius: 26px; display: flex; align-items: center; justify-content: center; gap: 7px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 1rem; font-weight: 650; }
