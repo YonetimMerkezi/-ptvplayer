@@ -28,6 +28,7 @@ export const CHANGELOG = [
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
       'Bugün TV’de ekranı yenilendi: büyük başlık ve tarih, sayaçlı Spor / Film / Dizi sekmeleri, saat, ŞİMDİ rozeti ve ilerleme çubuklu program kartları; renkler seçtiğiniz tema rengine uyar. Üstteki düğmelerle program ya da kanal araması ve gün seçimi yapılır',
       'TV Rehberi yenilendi: üstte başlık, arama ve yenile düğmeleri; Kategoriler / Tümü / Favoriler / Son İzlenen çipleri; kategori simgeleri ve kanal sayıları. Zaman çizelgesinde gün seçici (bugünden 7 gün), 3 saat kaydırma, şimdi etiketi, kanal logosu ve kalite satırı, ilerleme çubuklu program kutuları; renkler seçtiğiniz temaya uyar',
+      'Ana ekranda artık son izlediklerin görünür: “Son izlenen kanallar”, “Son izlenen filmler” ve “Son izlenen diziler” ayrı satırlar olarak gelir (en yenisi başta); kanala dokununca doğrudan açılır, “Tümünü gör” tam listeye götürür. Diziler de artık son izlenenlere kaydedilir',
     ],
   },
   {

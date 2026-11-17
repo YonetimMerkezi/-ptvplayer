@@ -68,7 +68,7 @@ import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
-import { homeContinue, statusText } from './home-extras.js';
+import { homeContinue, homeRecent, statusText } from './home-extras.js';
 import { cleanTitle } from './titleclean.js';
 import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
@@ -398,6 +398,7 @@ function resolve(entry, kind) {
   const hit = m.get(entry.id);
   if (hit) return hit;
   const f = fold(entry.name);
+  if (!f) return null;
   return S.cat[CAT_KEY[kind]].find((i) => (i.f || fold(i.name)) === f) || null;
 }
 
@@ -656,7 +657,7 @@ function isFixedList(g) {
 }
 
 function recentItems(kind) {
-  return store.recents(sid()).filter((r) => r.kind === kind).map((r) => resolve(r, kind)).filter(Boolean);
+  return homeRecent(kind, store.recents(sid()), store.progressAll(sid()), (k, e) => resolve(e, k), 500);
 }
 
 // Kategori düzeni (sıra, gizleme, klasörler)
@@ -1572,7 +1573,7 @@ function card(it, i, attrs = `data-i="${i}"`, meta = null) {
   const pct = p && p.dur > 0 ? Math.round((p.pos / p.dur) * 100) : 0;
   const ph = esc(it.name.slice(0, 2).toUpperCase());
   const img = it.logo ? posterImg(it.logo) : '';
-  return `<div class="card" role="button" tabindex="0" ${attrs}><div class="poster"><div class="ph">${ph}</div>${img}${isFav(it) ? `<span class="fav">${icon('star-on')}</span>` : ''}${pct ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}${meta && pct ? `<span class="pct">%${pct}</span>` : ''}</div><div class="cap">${meta ? `<span class="cap-full">${esc(it.name)}</span><span class="cap-clean">${esc(meta.title)}</span><small class="cap-m">${esc(meta.sub)}</small>` : esc(it.name)}</div></div>`;
+  return `<div class="card${it.kind === 'live' ? ' is-live' : ''}" role="button" tabindex="0" ${attrs}><div class="poster"><div class="ph">${ph}</div>${img}${isFav(it) ? `<span class="fav">${icon('star-on')}</span>` : ''}${pct ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ''}${meta && pct ? `<span class="pct">%${pct}</span>` : ''}</div><div class="cap">${meta ? `<span class="cap-full">${esc(it.name)}</span><span class="cap-clean">${esc(meta.title)}</span><small class="cap-m">${esc(meta.sub)}</small>` : esc(it.name)}</div></div>`;
 }
 
 // arama
@@ -1703,7 +1704,7 @@ function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const bgAudio = !!store.pref('backgroundAudio', !!item.audio);
   targets = targets.map((target) => ({ ...target, bgAudio, title: item.name }));
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
-  if (item.kind !== 'series' && !isRec && !item.localMedia) store.pushRecent(sid(), item);
+  if (!isRec && !item.localMedia) store.pushRecent(sid(), item);
   // Film nereden açılırsa açılsın (son izlenenler, bağlantı, indirilenler) oynatıcının altında önerilen filmler listesi olsun
   if (!ctx && item.kind === 'movie' && !isRec) ctx = movieCtx(item);
   // KÖK NEDEN DÜZELTMESİ: yerel katman müziği (audioOnly) video saymasın (PiP açılmasın, medya oturumu açılsın); önceki/sonraki düğmeleri
@@ -2764,6 +2765,7 @@ function renderHome(v) {
   const rowCards = (list) =>
     list
       .map(({ kind, it }, i) => {
+        if (kind === 'live') return card(it, i, `data-hk="live" data-hid="${esc(it.id)}"`, { title: it.name, sub: 'Canlı TV' });
         const ct = cleanTitle(it.name, it.year);
         const sub = [kind === 'series' ? 'Dizi' : 'Film', ct.year].filter(Boolean).join(' · ');
         return card(it, i, `data-hk="${kind}" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub });
@@ -2781,7 +2783,13 @@ function renderHome(v) {
     .slice(0, 12)
     .map((it) => ({ kind: 'movie', it }));
   const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
-  const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') + homeRow('✨ Son eklenen filmler', fresh, 'movies');
+  // Son izlenenler: canlı kanal, film ve dizi ayrı satırlarda (en yeni önce); boş olan satır çıkmaz
+  const lastSeen = (kind) => recentItems(kind).slice(0, 12).map((it) => ({ kind, it }));
+  const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') +
+    homeRow('📺 Son izlenen kanallar', lastSeen('live'), 'recent') +
+    homeRow('🎬 Son izlenen filmler', lastSeen('movie'), 'recent-movie') +
+    homeRow('📚 Son izlenen diziler', lastSeen('series'), 'recent-series') +
+    homeRow('✨ Son eklenen filmler', fresh, 'movies');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   v.innerHTML = `<div class="home">
     <div class="home-top"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
@@ -2818,7 +2826,7 @@ function renderHome(v) {
     const hc = e.target.closest('[data-hid]');
     if (hc) {
       const it = S.idx[CAT_KEY[hc.dataset.hk]].get(hc.dataset.hid);
-      if (it) return hc.dataset.hk === 'series' ? openSeries(it) : openMovie(it);
+      if (it) return hc.dataset.hk === 'live' ? playLive([it], 0) : hc.dataset.hk === 'series' ? openSeries(it) : openMovie(it);
     }
     if (e.target.closest('#h-set')) return setTab('sources');
     if (e.target.closest('#h-bell')) return plansSheet();
@@ -2838,6 +2846,11 @@ function goTo(go) {
   if (go === 'recent') {
     setTab('live');
     return showRecent();
+  }
+  if (go === 'recent-movie' || go === 'recent-series') {
+    const kind = go === 'recent-movie' ? 'movie' : 'series';
+    setTab(kind === 'movie' ? 'movies' : 'series');
+    return enterGroup(kind, '__recent');
   }
   if (kidActive() && (go === 'rec' || go === 'multi' || go === 'dl')) return; // çocuk modunda kayıtlar, indirilenler ve çoklu ekran yok
   if (go === 'local') return openLibrary();
@@ -5858,7 +5871,7 @@ function castItem(item, ep, { startMs = 0, ctx = null, closePlayer = false } = {
   if (!needPro('cast')) return;
   const targets = targetsOf(item, ep);
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
-  if (item.kind !== 'series' && item.kind !== 'recording') store.pushRecent(sid(), item);
+  if (item.kind !== 'recording') store.pushRecent(sid(), item);
   const live = item.kind === 'live';
   let idx = ctx && live ? ctx.index : -1;
   castUi.sendToTv({

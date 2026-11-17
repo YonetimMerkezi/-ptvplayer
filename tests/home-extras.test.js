@@ -34,3 +34,31 @@ test('statusText: liste durum özeti', () => {
   assert.equal(statusText({ live: 12, vod: 5, lists: 2 }), '12 Canlı TV · 5 VOD · 2 liste');
   assert.equal(statusText(), '0 Canlı TV · 0 VOD · 0 liste');
 });
+
+import { homeRecent } from '../www/js/home-extras.js';
+
+test('homeRecent: canlı ve film yalnız kendi türünden, en yeni önce, katalogda olmayan atlanır', () => {
+  const recents = [
+    { id: 'a', kind: 'live', at: 5 },
+    { id: 'm1', kind: 'movie', at: 9 },
+    { id: 'b', kind: 'live', at: 7 },
+    { id: 'gone', kind: 'live', at: 8 },
+  ];
+  const lookup = (k, e) => (e.id === 'gone' ? undefined : { id: e.id, k });
+  assert.deepEqual(homeRecent('live', recents, {}, lookup).map((x) => x.id), ['b', 'a']);
+  assert.deepEqual(homeRecent('movie', recents, {}, lookup).map((x) => x.id), ['m1']);
+});
+
+test('homeRecent: diziler bölüm izlemelerinden de gelir, aynı dizi bir kez, sınır uygulanır', () => {
+  const recents = [{ id: 's1', kind: 'series', at: 10 }];
+  const progress = {
+    e1: { kind: 'episode', parent: 's2', at: 30 },
+    e2: { kind: 'episode', parent: 's1', at: 20 },
+    e3: { kind: 'episode', parent: 's3', at: 5 },
+    m: { kind: 'movie', id: 'x', at: 99 },
+  };
+  const lookup = (k, e) => ({ id: e.id });
+  assert.deepEqual(homeRecent('series', recents, progress, lookup).map((x) => x.id), ['s2', 's1', 's3']);
+  assert.deepEqual(homeRecent('series', recents, progress, lookup, 2).map((x) => x.id), ['s2', 's1']);
+  assert.deepEqual(homeRecent('series', null, null, lookup), []);
+});

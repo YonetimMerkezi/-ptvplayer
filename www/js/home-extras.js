@@ -29,5 +29,32 @@ export function homeContinue(progress, lookup, max = 10) {
   return out;
 }
 
+// "Son izlenen" satırları: kind = 'live' | 'movie' | 'series'. recents = son izlenenler kaydı, progress = ilerleme kayıtları (dizi için
+// bölüm izlemeleri de sayılır: bu özellikten önce izlenen diziler kayıtta olmasa da görünsün). En yeni önce, her yapım bir kez.
+// lookup(kind, id|kayıt) → katalog öğesi ya da undefined. Dönüş: [katalog öğesi, …]
+export function homeRecent(kind, recents, progress, lookup, max = 12) {
+  const cand = [];
+  for (const r of Array.isArray(recents) ? recents : []) {
+    if (r && r.kind === kind && r.id) cand.push({ at: Number(r.at) || 0, entry: r });
+  }
+  if (kind === 'series') {
+    for (const p of Array.isArray(progress) ? progress : Object.values(progress || {})) {
+      if (p && p.kind === 'episode' && p.parent) cand.push({ at: Number(p.at) || 0, entry: { id: p.parent, name: '' } });
+    }
+  }
+  cand.sort((a, b) => b.at - a.at);
+  const seen = new Set();
+  const out = [];
+  for (const { entry } of cand) {
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    const it = lookup(kind, entry);
+    if (!it) continue;
+    out.push(it);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 // "0 Canlı TV · 0 VOD · 0 liste" biçiminde liste durum özeti.
 export const statusText = ({ live = 0, vod = 0, lists = 0 } = {}) => `${live} Canlı TV · ${vod} VOD · ${lists} liste`;

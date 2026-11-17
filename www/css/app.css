@@ -1657,6 +1657,9 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 .home-row-h button { color: var(--accent); font-size: 0.875rem; min-height: 36px; }
 .home-row-s { display: flex; gap: 10px; overflow-x: auto; padding: 12px 12px 14px; margin: -12px -12px -8px; scroll-padding: 0 12px; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; } /* iç boşluk: odaktaki kutunun büyümesi ve halkası şeridin kenarında kırpılmaz; eksi kenar boşluğu hizayı korur */
 .home-row-s .card { flex: 0 0 112px; width: 112px; scroll-snap-align: start; }
+/* Canlı kanal kutusu: logo kare, ortada ve tam görünür (afiş gibi kırpılmaz) */
+.home-row-s .card.is-live .poster { flex: none; aspect-ratio: 1 / 1; }
+.home-row-s .card.is-live .poster img { position: absolute; left: 10px; top: 10px; width: calc(100% - 20px); height: calc(100% - 20px); object-fit: contain; }
 .home-status { flex: none; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
 .home-status .ic { width: 30px; height: 30px; flex: none; color: var(--accent); }
 .home-status b { display: block; font-size: 1rem; font-weight: 650; }
@@ -2035,6 +2038,7 @@ html.tv [data-scroll] {
   .home-row-s { gap: 18px; }
   .home-row-s .card { flex: 0 0 clamp(230px, 19vw, 320px); width: clamp(230px, 19vw, 320px); background: transparent; }
   .home-row-s .card .poster { flex: none; aspect-ratio: 16 / 9; border-radius: 14px; }
+  .home-row-s .card.is-live .poster { aspect-ratio: 16 / 9; }
   .home-row-s .card .cap { height: auto; border: 0; padding: 10px 2px 2px; font-size: 1.05rem; font-weight: 700; }
   .home-row-s .cap-full { display: none; }
   .home-row-s .cap-clean { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
