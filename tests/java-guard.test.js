@@ -646,3 +646,30 @@ test('Google Play şartları: hedef SDK 36+, ön plan hizmetleri Android 15 sür
   const cfg = JSON.parse(readFileSync(join(kok, 'capacitor.config.json'), 'utf8'));
   assert.equal(cfg.plugins.SystemBars.insetsHandling, 'disable', 'Capacitor 8 kenar boşluğunu kendisi yönetmemeli: uygulama tam ekran ve çentiği kendi yönetiyor');
 });
+
+test('Google Play abonelikleri: Billing yalnız Play sürümünde, doğrudan APK\'da boş uygulama; arayüz köprüsü tam', () => {
+  const gradle = readFileSync(join(kok, 'android/app/build.gradle'), 'utf8');
+  const surum = /playImplementation "com\.android\.billingclient:billing:(\d+)\./.exec(gradle);
+  assert.ok(surum && Number(surum[1]) >= 8, 'Play, Billing Library 8 ve üstünü ister; yalnız play sürümüne eklenmeli');
+  assert.ok(!/^\s*implementation "com\.android\.billingclient/m.test(gradle), 'doğrudan APK Billing kitaplığı taşımaz');
+  const dizin = join(kok, 'android/app/src');
+  const play = readFileSync(join(dizin, 'play/java/com/koruk/iptv/PlayBilling.java'), 'utf8');
+  const direkt = readFileSync(join(dizin, 'direct/java/com/koruk/iptv/PlayBilling.java'), 'utf8');
+  assert.ok(!/com\.android\.billingclient/.test(direkt), 'doğrudan sürüm Billing sınıflarına dokunmamalı (derlenmez)');
+  assert.match(play, /enableAutoServiceReconnection\(\)/);
+  assert.match(play, /PendingPurchasesParams/, 'parametresiz enablePendingPurchases() 8.0\'da kaldırıldı');
+  assert.match(play, /acknowledgePurchase\(/, '3 gün içinde onaylanmayan abonelik Play tarafından iade edilir');
+  assert.match(play, /PurchaseState\.PURCHASED/, 'bekleyen ödeme üyelik açmamalı');
+  assert.ok(!/includeSuspendedSubscriptions/.test(play), 'askıya alınmış abonelik erişim vermez');
+  for (const yontem of ['products', 'state', 'buy', 'manage']) {
+    assert.match(play, new RegExp('void ' + yontem + '\\('), 'play: ' + yontem);
+    assert.match(direkt, new RegExp('void ' + yontem + '\\('), 'direct: ' + yontem);
+  }
+  for (const m of ['billingProducts', 'billingState', 'billingBuy', 'billingManage']) {
+    assert.match(kaynak, new RegExp('public void ' + m + '\\('), 'eklenti: ' + m);
+    assert.match(readFileSync(join(kok, 'www/js/bridge.js'), 'utf8'), new RegExp(m + ": call\\('" + m + "'\\)"), 'köprü: ' + m);
+  }
+  const app = readFileSync(join(kok, 'www/js/app.js'), 'utf8');
+  assert.match(app, /setBillingReady\(isPlay\(\)\)/, 'üyelik kilitleri yalnız Play sürümünde açılır');
+});
+

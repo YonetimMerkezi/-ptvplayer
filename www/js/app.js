@@ -72,7 +72,8 @@ import { createLibrary } from './library-ui.js';
 import { homeContinue, homeRecent, statusText } from './home-extras.js';
 import { cleanTitle } from './titleclean.js';
 import { hueOf } from './music-order.js';
-import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
+import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, setBillingReady, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
+import { PRODUCT_IDS, PLAY_PRODUCTS, nextEnt, offerText } from './billing.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { createWarm, uniqueEntries } from './warm.js';
@@ -132,6 +133,40 @@ setProGate((feature, silent) => {
   if (!silent) memberSheet(feature);
   return false;
 });
+// Google Play aboneliği: etkin abonelik listesi Play'den okunur (açılışta ve uygulama öne gelince); hak değişirse ekran yenilenir.
+// Sorgu başarısızsa (çevrimdışı) son hak tolerans süresince korunur. Yalnız Play sürümünde çalışır.
+let billingBusy = false;
+let billingAgain = false;
+async function syncBilling() {
+  if (!BILLING_READY || !nativePlugin) return;
+  if (billingBusy) {
+    billingAgain = true; // sorgu sürerken yeni istek geldi (ör. satın alma bitti): bitince bir kez daha sor
+    return;
+  }
+  billingBusy = true;
+  try {
+    let ids = null;
+    try {
+      const r = await nativePlugin.billingState();
+      ids = Array.isArray(r && r.active) ? r.active : [];
+    } catch {
+      ids = null;
+    }
+    const cur = store.pref('mem.ent', null);
+    const next = nextEnt({ ids, current: cur });
+    if (next || cur) store.setPref('mem.ent', next);
+    if ((next && next.tier) !== (cur && cur.tier)) {
+      applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
+      renderTab();
+    }
+  } finally {
+    billingBusy = false;
+    if (billingAgain) {
+      billingAgain = false;
+      syncBilling();
+    }
+  }
+}
 const themeAllowed = (id) => (themeById(id).multi && !proOk('themes') ? DEFAULT_THEME : id);
 applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
 // Hafif mod (animasyon/gölge/bulanıklık kapalı) ve devam çubuklarını gizleme: kök öğede işaret, CSS uygular.
@@ -5735,11 +5770,45 @@ function memberSheet(feature = '') {
     html:
       (f ? `<p class="mem-need">${icon('lock')}<span><b>${esc(f.name)}</b> Pro üyelikle açılır.</span></p>` : '') +
       `<div class="mem-st mem-${st.tier}"><b>${esc(memOn() ? TIERS[st.tier] : 'Tüm özellikler açık')}</b><span>${esc(memOn() ? stateText(st) : 'Üyelik sistemi henüz devrede değil')}</span></div>` +
-      `<div class="mem-plan"><h4>Standart <small>yıllık</small></h4><p class="hint">Canlı TV, film ve dizi, favoriler, TV rehberi ve tek kaynak. ${TRIAL_DAYS} günlük deneme bittikten sonra uygulamayı kullanmak için gerekir.</p>${st.tier === 'standard' || st.tier === 'pro' ? '<p class="mem-have">Üyeliğiniz var</p>' : buy('standard', 'Standart üyelik al')}</div>` +
-      `<div class="mem-plan mem-pro"><h4>Pro <small>yıllık</small></h4><p class="hint">Standart üyeliğin her şeyi ve aşağıdaki özellikler.</p><ul class="mem-feats">${PRO_FEATURES.map((x) => `<li${f && f.id === x.id ? ' class="on"' : ''}><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></li>`).join('')}</ul>${st.tier === 'pro' ? '<p class="mem-have">Pro üyeliğiniz var</p>' : buy('pro', 'Pro üyelik al')}</div>` +
-      (BILLING_READY ? '' : '<p class="hint">Satın alma, uygulamanın Google Play sürümüyle açılacak.</p>') +
+      `<div class="mem-plan"><h4>Standart <small>yıllık</small></h4><p class="hint">Canlı TV, film ve dizi, favoriler, TV rehberi ve tek kaynak. ${TRIAL_DAYS} günlük deneme bittikten sonra uygulamayı kullanmak için gerekir.</p><p class="mem-price" data-price="standard"></p>${st.tier === 'standard' || st.tier === 'pro' ? '<p class="mem-have">Üyeliğiniz var</p>' : buy('standard', 'Standart üyelik al')}</div>` +
+      `<div class="mem-plan mem-pro"><h4>Pro <small>yıllık</small></h4><p class="hint">Standart üyeliğin her şeyi ve aşağıdaki özellikler.</p><p class="mem-price" data-price="pro"></p><ul class="mem-feats">${PRO_FEATURES.map((x) => `<li${f && f.id === x.id ? ' class="on"' : ''}><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></li>`).join('')}</ul>${st.tier === 'pro' ? '<p class="mem-have">Pro üyeliğiniz var</p>' : buy('pro', 'Pro üyelik al')}</div>` +
+      (BILLING_READY
+        ? `<p class="hint">Abonelik yıllık yenilenir. Google Play'de Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz; iptal edince dönem sonuna kadar kullanırsınız.</p>${st.play ? '<button class="btn" data-manage>Aboneliği yönet</button>' : ''}`
+        : '<p class="hint">Satın alma, uygulamanın Google Play sürümüyle açılacak.</p>') +
       (admin ? `<div class="sel-row"><span>Önizleme (yönetici)<small>Kilitli hâli yalnız bu cihazda dener; diğer kullanıcılar etkilenmez</small></span><select id="mem-pv">${optionsHtml(PREVIEWS, memPreview())}</select></div>` : ''),
     mount: (body) => {
+      if (BILLING_READY && nativePlugin) {
+        // Fiyatlar ve deneme teklifi Play'den gelir (bölgeye göre para birimi); gelmezse düğmeler yine de dener.
+        nativePlugin.billingProducts({ ids: PRODUCT_IDS }).then((r) => {
+          for (const tier of ['standard', 'pro']) {
+            const p = ((r && r.products) || []).find((x) => x.id === PLAY_PRODUCTS[tier]);
+            const el = $(`[data-price="${tier}"]`, body);
+            if (p && el) el.textContent = offerText(p);
+          }
+        }).catch(() => {});
+        body.addEventListener('click', async (e) => {
+          const manage = e.target.closest('[data-manage]');
+          if (manage) return nativePlugin.billingManage().catch((err) => toast(String((err && err.message) || err)));
+          const b = e.target.closest('[data-buy]');
+          if (!b || b.disabled) return;
+          b.disabled = true;
+          try {
+            const r = await nativePlugin.billingBuy({ id: PLAY_PRODUCTS[b.dataset.buy] });
+            if (r && r.result === 'pending') toast('Ödemeniz onay bekliyor; onaylanınca üyeliğiniz açılır');
+            else if (r && r.result === 'canceled') toast('Satın alma iptal edildi');
+            await syncBilling();
+            if (r && (r.result === 'purchased' || r.result === 'owned')) {
+              toast('Üyeliğiniz etkin');
+              sh.close();
+              if (memOn() && memState().tier !== 'expired') renderTab();
+            }
+          } catch (err) {
+            toast(String((err && err.message) || err));
+          } finally {
+            b.disabled = false;
+          }
+        });
+      }
       const pv = $('#mem-pv', body);
       if (pv) {
         pv.addEventListener('change', () => {
@@ -6211,6 +6280,7 @@ document.addEventListener('visibilitychange', () => {
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
   refreshManaged();
+  syncBilling();
 });
 setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
 setInterval(() => {
@@ -6337,6 +6407,8 @@ function warmStart(tries = 0) {
 
 (async function boot() {
   await loadDist(nativePlugin); // Google Play sürümünde güncelleme/yönetici/davet kodu/FFmpeg yok: ilk ekran çizilmeden öğrenilir
+  setBillingReady(isPlay()); // üyelik kilitleri ve satın alma yalnız Google Play sürümünde devrede; doğrudan APK tamamen açık
+  syncBilling();
   if (lockEnabled()) lockApp(); // açılışta şifre ekranı
   const src = store.activeSource();
   if (!src) {

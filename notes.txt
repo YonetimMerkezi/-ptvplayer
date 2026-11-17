@@ -1,9 +1,4 @@
-TV rehberi ekranı: tüm kanallar aranabilir; her kanal için şu anki ve sonraki program gösterilir. Kanal seçildiğinde gün bazlı ayrıntılı program akışı açılır.
-Yayın kalitesi ekranı: seçilen kanalın bağlantı süresi, HTTP yanıtı ve medya biçimi kontrol edilir. Bu test görüntü/codec uyumluluğunu garanti etmez.
-Uygulama içi güncelleme denetimi: sürüm manifesti her kontrolde önbellek kırıcı sorgu parametresiyle istenir; CDN/WebView kaynaklı eski version.json yanıtı riski azaltılır.
-Küçük oynatıcı düzeltmesi: Android yerel video görüntüsünün film kartları ve gezinme katmanı tarafından örtülmesi giderildi. Küçük oynatıcı alanı uygulama arayüzünden ayrılır; büyütme ve kapatma denetimleri korunur.
-Harici oynatıcı desteği: Android oynatma ekranından kurulu harici oynatıcılar seçilebilir. Özel HTTP başlığı gerektiren yayınlar harici oynatıcıya aktarılamaz.
-Gelişmiş TV rehberi: kanal programları günlere ayrılır; Bugün ve diğer yayın günleri seçilebilir. Şu an yayınlanan program vurgulanır, açıklamalar gösterilir. Kumanda ve dokunmatik kullanım desteklenir.
-Yayın sağlık kontrolü altyapısı: bağlantı süresi, HTTP yanıtı ve medya türü tanılama yardımcıları eklendi.
-Medya biçimi algılama: HLS, DASH, MP4, MKV, TS, MOV, AVI, WMV, FLV ve RTSP adresleri tanınır.
-Bu aşamada tanılama çekirdeği hazırlanmıştır; kullanıcı arayüzü, gerçek codec testi ve harici oynatıcı seçimi sonraki geliştirme adımlarında tamamlanacaktır.
+• Film ve dizi ekranı “Netflix gibi” ayarında kategoriler yeniden yatay kayan satırlar olarak açılır; her satırın üstünde kategori adı görünür
+• TV vitrini: odaktaki yapımın arka plan görseli artık güvenilir biçimde yüklenir; başlıkta yalnız ad yazar, bölüm ve tarih alt satırda
+• Odak halkası kutunun çevresinde tam görünür: satırlarda, kategori içinde ve ana ekrandaki “Son eklenen filmler” satırında kırpılmaz, ekran dışına taşmaz
+• TV’de kutular daha büyük ve afişler doğru or

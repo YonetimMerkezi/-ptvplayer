@@ -2287,6 +2287,34 @@ public class IptvPlayerPlugin extends Plugin {
         ApkUpdate.install(getContext(), call, main, updateDir());
     }
 
+    // Google Play abonelikleri (yalnız Play sürümünde gerçek; doğrudan APK'da reddedilir). Ayrıntı: PlayBilling.
+    private PlayBilling playBilling;
+
+    private PlayBilling billing() {
+        if (playBilling == null) playBilling = new PlayBilling(getContext(), main);
+        return playBilling;
+    }
+
+    @PluginMethod
+    public void billingProducts(final PluginCall call) {
+        main.post(() -> billing().products(call));
+    }
+
+    @PluginMethod
+    public void billingState(final PluginCall call) {
+        main.post(() -> billing().state(call));
+    }
+
+    @PluginMethod
+    public void billingBuy(final PluginCall call) {
+        main.post(() -> billing().buy(call, getActivity()));
+    }
+
+    @PluginMethod
+    public void billingManage(final PluginCall call) {
+        main.post(() -> billing().manage(call));
+    }
+
     // Dağıtım türü: Google Play sürümünde uygulama içi güncelleme, yönetici paneli, davet kodlu listeler ve FFmpeg ses çözücüsü yoktur.
     @PluginMethod
     public void distInfo(final PluginCall call) {

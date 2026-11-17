@@ -1,9 +1,13 @@
 // Üyelik: 1 haftalık deneme → yıllık Standart üyelik (uygulamayı kullanmak için) → yıllık Pro üyelik (Pro özellikleri için).
 // Burada yalnız saf mantık var; saklama, ekranlar ve satın alma app.js'tedir.
-// Satın alma Google Play faturalandırmasıyla yapılacak. O bağlanana kadar BILLING_READY kapalıdır: hiçbir kilit çalışmaz, uygulama bugünkü
-// gibi tamamen açıktır. Kilitli hâl yalnız yönetici önizlemesiyle (Ayarlar > Üyelik, yönetici açıkken) o cihazda denenir.
+// Satın alma Google Play faturalandırmasıyla yapılır (billing.js). Faturalandırma yalnız Google Play sürümünde vardır: orada açılışta
+// setBillingReady(true) çağrılır. Doğrudan dağıtılan APK'da kapalı kalır: hiçbir kilit çalışmaz, uygulama tamamen açıktır.
+// Kilitli hâl ayrıca yönetici önizlemesiyle (Ayarlar > Üyelik, yönetici açıkken) o cihazda denenir.
 
-export const BILLING_READY = false;
+export let BILLING_READY = false;
+export const setBillingReady = (v) => {
+  BILLING_READY = !!v;
+};
 export const TRIAL_DAYS = 7;
 export const TRIAL_HAS_PRO = true; // deneme süresinde Pro özellikleri de açık: kullanıcı neyi satın alacağını görür
 const DAY_MS = 86400000;
@@ -37,7 +41,7 @@ export const normalizePreview = (v) => (PREVIEWS.some(([k]) => k === v) ? v : ''
 // Kilitler çalışıyor mu? Faturalandırma bağlandıysa herkeste; değilse yalnız önizleme seçilmiş cihazda.
 export const enforced = (preview = '') => BILLING_READY || !!normalizePreview(preview);
 
-// Üyelik durumu. start: denemenin başladığı an (ms); ent: satın alınmış hak { tier: 'standard' | 'pro', until: ms } ya da null.
+// Üyelik durumu. start: denemenin başladığı an (ms); ent: satın alınmış hak { tier: 'standard' | 'pro', until: ms, play?: true } ya da null.
 // Dönen: { tier, until, daysLeft } — daysLeft: bitişe kalan tam gün sayısı (yukarı yuvarlanır), bitmişse 0.
 export function memberState({ start = 0, ent = null, preview = '', now = Date.now() } = {}) {
   const pv = normalizePreview(preview);
@@ -45,7 +49,11 @@ export function memberState({ start = 0, ent = null, preview = '', now = Date.no
   if (pv === 'trial') return { tier: 'trial', until: now + 5 * DAY_MS, daysLeft: 5 };
   if (pv === 'standard' || pv === 'pro') return { tier: pv, until: now + 200 * DAY_MS, daysLeft: 200 };
   const left = (until) => Math.max(0, Math.ceil((until - now) / DAY_MS));
-  if (ent && (ent.tier === 'standard' || ent.tier === 'pro') && Number(ent.until) > now) return { tier: ent.tier, until: Number(ent.until), daysLeft: left(Number(ent.until)) };
+  if (ent && (ent.tier === 'standard' || ent.tier === 'pro') && Number(ent.until) > now) {
+    const r = { tier: ent.tier, until: Number(ent.until), daysLeft: left(Number(ent.until)) };
+    if (ent.play) r.play = true; // Google Play aboneliği: bitiş tarihi Play'dedir, buradaki süre yalnız çevrimdışı tolerans
+    return r;
+  }
   const s = Number(start) > 0 && Number(start) <= now ? Number(start) : now; // saat geri alınmışsa deneme uzamaz: bugünden sayılır
   const until = s + TRIAL_DAYS * DAY_MS;
   return until > now ? { tier: 'trial', until, daysLeft: left(until) } : { tier: 'expired', until, daysLeft: 0 };
@@ -60,6 +68,7 @@ export const canUse = (feature, st) => (isProFeature(feature) ? canUsePro(st) : 
 export function stateText(st) {
   if (st.tier === 'trial') return `Deneme süresi: ${st.daysLeft} gün kaldı`;
   if (st.tier === 'expired') return 'Deneme süresi doldu';
+  if (st.play) return `${TIERS[st.tier]} üyelik etkin`;
   return `${TIERS[st.tier]} üyelik: ${st.daysLeft} gün kaldı`;
 }
 

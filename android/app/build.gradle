@@ -92,6 +92,8 @@ dependencies {
     // media3Version ile aynı tutulmalı ("+1" yapı numarasıdır). Lisansı GPLv3'tür; bu yüzden ve 16 KB sayfa şartını karşılamadığı için
     // yalnız doğrudan dağıtılan APK'da bulunur, Google Play paketine girmez (oynatıcı eklentiyi ada göre arar; yoksa yok sayar).
     directImplementation "org.jellyfin.media3:media3-ffmpeg-decoder:${media3Version}+1"
+    // Google Play abonelikleri (Standart, Pro). Play, yeni uygulama ve güncellemelerde Billing Library 8 ve üstünü ister. Yalnız Play sürümünde.
+    playImplementation "com.android.billingclient:billing:9.1.0"
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
     implementation "androidx.tvprovider:tvprovider:1.0.0"
     testImplementation "junit:junit:$junitVersion"

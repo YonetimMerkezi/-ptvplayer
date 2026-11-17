@@ -231,6 +231,8 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 .mem-plan.mem-pro { border-color: var(--accent); }
 .mem-plan h4 { margin: 0 0 6px; font-size: 1.125rem; }
 .mem-plan h4 small { margin-left: 6px; color: var(--muted); font-size: 0.8125rem; font-weight: 500; }
+.mem-price { margin: 0 0 10px; font-weight: 600; }
+.mem-price:empty { display: none; }
 .mem-plan .btn { width: 100%; }
 .mem-plan .btn:disabled { opacity: 0.5; }
 .mem-have { margin: 0; color: var(--accent); font-weight: 700; }

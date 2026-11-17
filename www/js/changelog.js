@@ -30,6 +30,7 @@ export const CHANGELOG = [
       'TV Rehberi yenilendi: üstte başlık, arama ve yenile düğmeleri; Kategoriler / Tümü / Favoriler / Son İzlenen çipleri; kategori simgeleri ve kanal sayıları. Zaman çizelgesinde gün seçici (bugünden 7 gün), 3 saat kaydırma, şimdi etiketi, kanal logosu ve kalite satırı, ilerleme çubuklu program kutuları; renkler seçtiğiniz temaya uyar',
       'Ana ekranda artık son izlediklerin görünür: “Son izlenen kanallar”, “Son izlenen filmler” ve “Son izlenen diziler” ayrı satırlar olarak gelir (en yenisi başta); kanala dokununca doğrudan açılır, “Tümünü gör” tam listeye götürür. Diziler de artık son izlenenlere kaydedilir',
       'Telefonda dikey Netflix görünümünde vitrin büyüdü: film konusu 5 satıra kadar gösterilir (küçük ekranlarda 4 ya da 3 satır), başlık ve künye kırpılmaz',
+      'Uygulama Google Play’e hazırlanıyor: Play sürümünde Standart ve Pro yıllık abonelik Google Play üzerinden alınır, deneme teklifi ve fiyat üyelik ekranında görünür. Bu APK sürümü olduğu gibi tamamen açık kalır',
     ],
   },
   {
