@@ -10,5 +10,11 @@
     "captureInput": false,
     "webContentsDebuggingEnabled": false,
     "backgroundColor": "#000000"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable",
+      "hidden": true
+    }
   }
 }

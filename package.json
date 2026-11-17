@@ -9,9 +9,9 @@
     "sync": "node scripts/build-www.mjs && npx cap sync android"
   },
   "dependencies": {
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
     "hls.js": "1.5.17"
   },
   "type": "module"

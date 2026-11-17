@@ -4,14 +4,14 @@ apply plugin: 'com.android.application'
 def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
 
 android {
-    namespace "com.koruk.iptv"
+    namespace = "com.koruk.iptv"
     // Yazılım ses çözücüsü (media3-ffmpeg-decoder) çekirdek kitaplık uyarlamasını (desugaring) şart koşar.
     compileOptions {
         coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
-    compileSdk rootProject.ext.compileSdkVersion
+    compileSdk = rootProject.ext.compileSdkVersion
     // BuildConfig.PLAY: Google Play sürümünde true (distInfo ile arayüze bildirilir).
     buildFeatures {
         buildConfig true
@@ -26,7 +26,7 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
     // Doğrudan dağıtılan APK her derlemede aynı anahtarla imzalanır; Android ancak aynı imzalı APK'yı mevcut uygulamanın üstüne günceller.
