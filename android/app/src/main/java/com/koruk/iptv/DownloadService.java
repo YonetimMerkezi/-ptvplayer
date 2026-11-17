@@ -62,8 +62,11 @@ public class DownloadService extends Service {
     }
 
     // Android 15+: veri eşitleme ön plan hizmetinin süre sınırı doldu; indirme bırakılır, sırada kalır ve uygulama açılınca sürer.
+    @Override
     public void onTimeout(int startId, int fgsType) {
         Downloads.interrupt();
+        stopForeground(true); // sistem hizmetin hemen durmasını ister
+        stopSelf();
     }
 
     @Override

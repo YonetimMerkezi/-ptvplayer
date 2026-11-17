@@ -91,6 +91,15 @@ public class RecordService extends Service {
         return START_NOT_STICKY;
     }
 
+    // Android 15+: veri eşitleme ön plan hizmetinin süre sınırı (6 saat) doldu. Sistem hizmetin hemen durmasını ister, aksi halde uygulama çöker.
+    // Kayıt durdurulur; o ana kadar yazılan dosya oynatılabilir kalır.
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        stopFlag = true;
+        stopForeground(true);
+        stopSelf();
+    }
+
     private static HttpURLConnection open(String url, String headersJson) throws IOException {
         String cur = url;
         for (int hop = 0; hop < 6; hop++) {

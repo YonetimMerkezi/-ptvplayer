@@ -634,3 +634,15 @@ test('QR eşleştirme: tarayıcı yöntemi köprüde, bağımlılık ve manifest
   assert.ok(/com\.google\.mlkit\.vision\.DEPENDENCIES/.test(manifest), 'tarayıcı modülü önceden indirilsin');
   assert.ok(!/android\.permission\.CAMERA/.test(manifest), 'kamera izni gerekmez (Google tarayıcısı kendi arayüzünü kullanır)');
 });
+
+test('Google Play şartları: hedef SDK 36+, ön plan hizmetleri Android 15 süre sınırında durur', () => {
+  const vars = readFileSync(join(kok, 'android/variables.gradle'), 'utf8');
+  assert.ok(Number(/targetSdkVersion = (\d+)/.exec(vars)[1]) >= 36, 'Play yeni uygulama ve güncellemelerde API 36 hedefi ister');
+  assert.ok(Number(/compileSdkVersion = (\d+)/.exec(vars)[1]) >= 36);
+  for (const f of ['RecordService.java', 'DownloadService.java']) {
+    const kod = readFileSync(join(kok, 'android/app/src/main/java/com/koruk/iptv/', f), 'utf8');
+    assert.match(kod, /@Override\s+public void onTimeout\(int startId, int fgsType\) \{[\s\S]*?stopSelf\(\);/, f + ': dataSync süre sınırında hizmet durmalı (yoksa çöker)');
+  }
+  const cfg = JSON.parse(readFileSync(join(kok, 'capacitor.config.json'), 'utf8'));
+  assert.equal(cfg.plugins.SystemBars.insetsHandling, 'disable', 'Capacitor 8 kenar boşluğunu kendisi yönetmemeli: uygulama tam ekran ve çentiği kendi yönetiyor');
+});
