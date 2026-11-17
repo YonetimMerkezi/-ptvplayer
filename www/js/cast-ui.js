@@ -1,6 +1,8 @@
 // Telefondan TV'ye oynatma: ekranlar. Telefonda "TV'de oynat" seçici + uzaktan kumanda sayfası,
 // TV'de Ayarlar › Telefondan oynat (eşleştirme kodu) ve gelen oynatma isteğinin karşılanması.
-import { CAST_PORT, CODE_LEN, buildCast, parseCast, parseRemoteCmd, createDevices, mergeDevices, pairResult, sendResult, syncResult, createRemote } from './cast.js';
+import { CAST_PORT, CODE_LEN, buildCast, parseCast, parseRemoteCmd, createDevices, mergeDevices, pairResult, sendResult, syncResult, createRemote, pairLink, parsePairLink, pickLanIp } from './cast.js';
+import { qrSvg } from './qr.js';
+import { needPro } from './membership.js';
 import { SLEEP_OPTIONS, fmtRemaining } from './sleep.js';
 import { NIGHT_LEVELS, nightLabel } from './night.js';
 import { makeSnapshot, parseSnapshot, applySnapshot, emptyAdded, addedTotal, describeAdded, syncMessage } from './sync.js';
@@ -39,6 +41,32 @@ export function createCastUI(deps) {
     return dev;
   }
 
+  // TV'nin ekranındaki QR kodu tarar: kodu ve TV'nin adresini içerdiğinden adres aramadan, kod yazmadan eşleşir. → cihaz | null (vazgeçildi/başarısız)
+  async function scanAndPair() {
+    let r;
+    try {
+      r = await plugin.scanQr();
+    } catch {
+      toast('QR tarayıcı açılamadı. TV’deki kodu elle girin.', 4000);
+      return null;
+    }
+    if (!r || !r.text) return null; // taramadan vazgeçildi
+    const p = parsePairLink(r.text);
+    if (!p) {
+      toast('Bu QR kodu TV eşleştirme kodu değil', 3500);
+      return null;
+    }
+    const d = { id: p.id, name: p.name, host: p.host, port: p.port };
+    const res = pairResult(await request(d, '/pair', 'POST', '', { code: p.code, name: store.pref('cast.name', '') }));
+    if (!res.ok) {
+      toast(res.msg, 4000);
+      return null;
+    }
+    const dev = { id: res.id || d.id, name: res.name || d.name, host: d.host, port: d.port, token: res.token };
+    devices.save(dev);
+    return dev;
+  }
+
   // TV seçtirir: kayıtlı TV'ler hemen, ağdakiler arama bitince listelenir. Seçilen eşleşmemişse kod istenir. → cihaz | null
   // manage=true (Ayarlar › Telefondan oynat): yalnız eşleştirme/kaldırma; seçim bir şey göndermez, ekran açık kalır.
   function chooseTv(title = 'TV’de oynat', manage = false) {
@@ -55,7 +83,7 @@ export function createCastUI(deps) {
       };
       const sh = openSheet({
         title,
-        html: '<div id="cs-list"></div><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="TV’nin IP adresi (örn. 192.168.1.20)" autocomplete="off"><button class="btn" id="cs-ipgo">Ekle</button></div><p class="hint">' + (manage ? 'Önce TV’de Ayarlar › Telefondan oynat ekranını açın; 6 haneli kod orada görünür. Sonra buradan TV’ye dokunup kodu girin. ' : '') + 'Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı eşleştirme kodunu gösterir.</p>',
+        html: (plugin.scanQr ? '<button class="btn" id="cs-qr" style="width:100%;margin-bottom:10px">TV’deki QR kodu tara</button>' : '') + '<div id="cs-list"></div><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="TV’nin IP adresi (örn. 192.168.1.20)" autocomplete="off"><button class="btn" id="cs-ipgo">Ekle</button></div><p class="hint">' + (manage ? 'Önce TV’de Ayarlar › Telefondan oynat ekranını açın (liste olmayan TV’de ilk ekrandaki “Telefondan al”); QR kod ve 6 haneli kod orada görünür. Sonra QR kodu tarayın ya da buradan TV’ye dokunup kodu girin. ' : '') + 'Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı QR kodu ve eşleştirme kodunu gösterir.</p>',
         mount: (body, api) => {
           const box = body.querySelector('#cs-list');
           const draw = () => {
@@ -98,6 +126,18 @@ export function createCastUI(deps) {
           };
           body.addEventListener('click', async (e) => {
             if (e.target.closest('#cs-again')) return search();
+            if (e.target.closest('#cs-qr')) {
+              if (!needPro('tvlink')) return; // Pro özelliği: Pro sayfası açılır
+              const dev = await scanAndPair();
+              if (!dev) return;
+              if (manage) {
+                toast(`${dev.name} ile eşleşti`);
+                return search();
+              }
+              api.close();
+              finish(dev);
+              return;
+            }
             const fg = e.target.closest('[data-forget]');
             if (fg) {
               const d = list[Number(fg.dataset.forget)];
@@ -574,8 +614,9 @@ export function createCastUI(deps) {
           let h = `<button class="chk${on ? ' on' : ''}" id="rc-on" role="switch" aria-checked="${on}"><i>${icon('check')}</i><span class="t">Bu cihaz telefondan oynatmayı kabul etsin<small>Telefondaki uygulamadan film ve kanal gönderilir, buradan kumanda edilir. Telefon ve cihaz aynı Wi‑Fi ağında olmalı.</small></span></button>`;
           if (on && info && info.running) {
             h += `<div class="sect">Eşleştirme</div>`;
+            const link = leftSec() > 0 ? pairLink({ ip: pickLanIp(info.ips), port: info.port, id: info.id, name: info.name, code }) : '';
             h += leftSec() > 0
-              ? `<div class="cast-code" aria-live="polite">${fmtCode(code)}</div><p class="hint">Telefonda bir filmi açıp “TV’de oynat”a dokunun, bu cihazı seçin ve kodu girin. Kod <b id="rc-left"></b> süreyle geçerli, tek kullanımlık.</p><button class="btn g" id="rc-new">Yeni kod</button>`
+              ? `${link ? `<div class="cast-qr" role="img" aria-label="Eşleştirme QR kodu">${qrSvg(link)}</div>` : ''}<div class="cast-code" aria-live="polite">${fmtCode(code)}</div><p class="hint">Listenizi bu cihaza aktarmak için telefonda Ayarlar › Yedekle / geri yükle › TV ile eşitle’ye, film göndermek için bir filmde “TV’de oynat”a dokunun; bu cihazı seçip QR kodu tarayın ya da kodu girin. Kod <b id="rc-left"></b> süreyle geçerli, tek kullanımlık.</p><button class="btn g" id="rc-new">Yeni kod</button>`
               : `<p class="hint">Yeni bir telefon eşleştirmek için kod üretin.</p><button class="btn" id="rc-new">Kod göster</button>`;
             const paired = info.paired || [];
             h += `<div class="sect">Eşleşmiş telefonlar</div>`;

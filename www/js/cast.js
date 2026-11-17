@@ -112,6 +112,42 @@ export function parseJson(text) {
   }
 }
 
+// ---- QR ile eşleştirme ----
+// TV, eşleştirme kodunu ve kendi yerel adresini bir bağlantıya koyup QR olarak gösterir; telefon taratınca adres aramadan ve kod yazmadan eşleşir.
+// Bağlantı yalnız yerel ağ adreslerini (10.x, 192.168.x, 172.16–31.x) taşır; başka adres kabul edilmez.
+export const PAIR_SCHEME = 'iptvpro://pair';
+const isLanIp = (h) => {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(h || ''));
+  if (!m) return false;
+  const [a, b, c, d] = m.slice(1).map(Number);
+  if ([a, b, c, d].some((n) => n > 255)) return false;
+  return a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
+};
+export const pickLanIp = (ips) => (Array.isArray(ips) ? ips.map(String).find(isLanIp) : '') || '';
+
+export function pairLink({ ip, port, id, name, code }) {
+  if (!isLanIp(ip) || !(Number(port) >= 1024 && Number(port) <= 65535) || !new RegExp(`^\\d{${CODE_LEN}}$`).test(String(code || ''))) return '';
+  const q = new URLSearchParams({ h: ip, p: String(port), i: String(id || '').slice(0, 64), c: String(code), n: String(name || '').slice(0, 24) });
+  return `${PAIR_SCHEME}?${q.toString()}`;
+}
+
+// Taranan metin eşleştirme bağlantısı mı? → { host, port, code, id, name } | null
+export function parsePairLink(text) {
+  const s = String(text || '').trim();
+  if (!s.startsWith(PAIR_SCHEME + '?')) return null;
+  let q;
+  try {
+    q = new URLSearchParams(s.slice(PAIR_SCHEME.length + 1));
+  } catch {
+    return null;
+  }
+  const host = q.get('h') || '';
+  const port = Number(q.get('p'));
+  const code = q.get('c') || '';
+  if (!isLanIp(host) || !(port >= 1024 && port <= 65535) || !new RegExp(`^\\d{${CODE_LEN}}$`).test(code)) return null;
+  return { host, port, code, id: (q.get('i') || '').slice(0, 64), name: (q.get('n') || 'TV').slice(0, 24) || 'TV' };
+}
+
 export function pairResult(r) {
   if (r && r.status === 200) {
     const j = parseJson(r.body);

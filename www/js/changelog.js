@@ -23,6 +23,7 @@ export const CHANGELOG = [
       'Ses: Ayarlar > Oynatıcı’da “Yazılım ses çözücüsü (deneysel)”; açılınca cihazın çözemediği AC3/E-AC3/DTS sesli yayınlar uygulamanın kendi çözücüsüyle çalınır, uygulama kapanırsa kendiliğinden kapanır',
       'Canlı yayın: yavaş açılan ya da veri yavaş gelen kanallarda (özellikle “UHD” kanallar) 7 sn’de bir baştan bağlanma döngüsü giderildi; veri geliyorsa yayın beklenir, yeniden açılışa ilk açılış kadar süre tanınır',
       'Afişler, kanal logoları, takım simgeleri ve bayraklar cihazda saklanır (en çok 160 MB); aynı görsel her açılışta yeniden inmez. Wi-Fi’dayken uygulama açıldıktan sonra favori, devam eden ve son eklenen filmlerin afişleri ile içerik uyarıları ve bugünün maçlarının takım simgeleri arka planda önceden indirilir (Ayarlar’dan kapatılabilir, önbellek temizlenebilir)',
+      'Listeyi TV’ye aktar (Pro): liste olmayan TV’nin ilk ekranında “Telefondan al” ile QR kod ve 6 haneli kod gösterilir; telefonda Ayarlar > Yedekle / geri yükle > TV ile eşitle’de “TV’deki QR kodu tara” (ya da kodu girerek) eşleşince liste, favoriler ve kaldığın yer TV’ye geçer; aynı Wi-Fi gerekir',
       'Oynatıcı: düğmeler ve pencereler yenilendi; açık düğmenin yazısı görünür, “Yayın bilgisi” penceresinde başlık ve kapat (X) düğmesi var, dikeyde düğmelerin altında durur',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
     ],

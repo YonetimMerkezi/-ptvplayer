@@ -58,6 +58,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // TV eşleştirme QR kodunu okur (Google kod tarayıcısı: Play hizmetleri sağlar, kamera izni ve uygulama içi kamera kodu gerekmez)
+    implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
     implementation "androidx.media3:media3-exoplayer:$media3Version"
     implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
     implementation "androidx.media3:media3-ui:$media3Version"

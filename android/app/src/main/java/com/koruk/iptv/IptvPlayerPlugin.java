@@ -895,6 +895,36 @@ public class IptvPlayerPlugin extends Plugin {
         call.resolve(o);
     }
 
+    // TV'nin gösterdiği eşleştirme QR kodunu okur: Google'ın kod tarayıcısı (Play hizmetleri), kamera izni gerektirmez.
+    // Yanıt { text } (vazgeçilirse boş); tarayıcı yoksa (Play hizmetleri olmayan cihaz) reddedilir ve JS kodu elle girdirir.
+    @PluginMethod
+    public void scanQr(final PluginCall call) {
+        final android.app.Activity act = getActivity();
+        if (act == null) {
+            call.reject("unavailable");
+            return;
+        }
+        try {
+            com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions opts = new com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                    .build();
+            com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(act, opts).startScan()
+                    .addOnSuccessListener(b -> {
+                        JSObject o = new JSObject();
+                        o.put("text", b.getRawValue() == null ? "" : b.getRawValue());
+                        call.resolve(o);
+                    })
+                    .addOnCanceledListener(() -> {
+                        JSObject o = new JSObject();
+                        o.put("text", "");
+                        call.resolve(o);
+                    })
+                    .addOnFailureListener(e -> call.reject("unavailable"));
+        } catch (Throwable t) {
+            call.reject("unavailable");
+        }
+    }
+
     // Görsel önbelleği (ImageCache): önceden indirme yalnız ölçüsüz (Wi-Fi/ethernet) ağda yapılır; JS her parçadan önce bunu sorar.
     private boolean unmeteredNet() {
         try {

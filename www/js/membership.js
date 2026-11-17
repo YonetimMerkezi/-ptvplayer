@@ -22,6 +22,7 @@ export const PRO_FEATURES = [
   ['seriesfollow', 'Dizi takibi', 'Takip ettiğin dizilerin yeni bölümleri'],
   ['teamfollow', 'Takım takibi', 'Takımının maçlarını kaçırma'],
   ['cast', 'TV’den oynatma ve kontrol', 'Telefondan TV’ye gönder, telefondan yönet'],
+  ['tvlink', 'Listeyi TV’ye aktar', 'QR kod ya da kodla telefondaki listeyi TV’ye aktar'],
   ['kid', 'Çocuk kilidi', 'Şifreli çocuk profili'],
   ['profiles', 'Profiller', 'Her aile üyesine ayrı favoriler ve izleme listesi'],
 ].map(([id, name, desc]) => ({ id, name, desc }));

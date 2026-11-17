@@ -2573,7 +2573,7 @@ function sourceForm(edit) {
   const sh = openSheet({
     full: true, // TV'de tam sayfa
     title: edit ? 'Kaynağı düzenle' : 'Kaynak ekle',
-    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button><button data-t="code">Kod</button></div>
+    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button><button data-t="code">Kod</button>${!edit && nativePlugin && isTvUi() ? '<button data-t="phone">Telefondan al</button>' : ''}</div>
 <form id="f" autocomplete="off">
 <div data-for="xtream m3u file"><label class="field"><span>Ad (isteğe bağlı)</span><input name="name" value="${v('name')}" placeholder="Örn. Evdeki liste"></label></div>
 <div data-for="m3u"><label class="field"><span>M3U / M3U8 liste bağlantısı</span><input name="url" inputmode="url" value="${v('url')}" placeholder="http://…/liste.m3u"></label></div>
@@ -2583,6 +2583,7 @@ function sourceForm(edit) {
 <div data-for="file"><label class="field"><span>M3U / M3U8 dosyası</span><input name="file" type="file"><small>${edit && edit.local ? `Kayıtlı dosya: ${esc(edit.fileName || edit.name)}. Değiştirmek için yeni dosya seçin.` : 'Telefondaki liste dosyasını seçin.'}</small></label></div>
 <div data-for="xtream m3u file"><label class="field"><span>TV rehberi (XMLTV) bağlantısı — isteğe bağlı</span><input name="epgUrl" inputmode="url" value="${v('epgUrl')}" placeholder="Boş bırakırsanız kaynaktaki adres kullanılır"><small>.xml veya .xml.gz olabilir.</small></label></div>
 <div data-for="code"><label class="field"><span>Davet kodu</span><input name="code" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="24" placeholder="ABCD-EFGH-JKMN-PQRS"><small>Size liste veren kişinin gönderdiği 16 harflik kod.</small></label></div>
+<div data-for="phone"><p class="hint">Listenizi telefondan aktarın: telefondaki uygulamada Ayarlar › Yedekle / geri yükle › TV ile eşitle’ye dokunun, bu ekrandaki QR kodu tarayın (ya da 6 haneli kodu girin). Liste ve favorileriniz buraya gelir. Telefon ve TV aynı Wi‑Fi ağında olmalı.</p><button class="btn" type="button" id="f-phone" style="width:100%">QR kodu ve kodu göster</button></div>
 <p class="err-text" id="f-err" hidden></p>
 <button class="btn" id="f-go" type="submit" style="width:100%">Kaydet ve yükle</button>
 </form>`,
@@ -2594,8 +2595,11 @@ function sourceForm(edit) {
         $$('#f-type button', body).forEach((b) => b.classList.toggle('on', b.dataset.t === t));
         $$('[data-for]', body).forEach((d) => (d.hidden = !d.dataset.for.split(' ').includes(t)));
         $('#f-go', body).textContent = t === 'code' ? 'Kodu doğrula ve yükle' : 'Kaydet ve yükle';
+        $('#f-go', body).hidden = t === 'phone';
       };
       setType(type);
+      const fphone = $('#f-phone', body);
+      if (fphone) fphone.addEventListener('click', () => needPro('tvlink') && castUi.receiverSheet()); // Pro özelliği
       $('#f-type', body).addEventListener('click', (e) => {
         const b = e.target.closest('[data-t]');
         if (b) setType(b.dataset.t);

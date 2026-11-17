@@ -63,6 +63,7 @@ export function nativePlugin(name, win = globalThis.window) {
     setDecoder: call('setDecoder'),
     setSoftAudio: call('setSoftAudio'),
     getSoftAudio: call('getSoftAudio'),
+    scanQr: call('scanQr'),
     imageCacheInfo: call('imageCacheInfo'),
     warmImages: call('warmImages'),
     clearImageCache: call('clearImageCache'),

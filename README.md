@@ -46,3 +46,6 @@ Yerelde: JDK 17 + Android SDK kurulu olmalı, sonra `cd android && ./gradlew ass
   kaynak dağıtmadan önce lisans durumu gözden geçirilmelidir. Bileşeni çıkarmak için `android/app/build.gradle` içindeki satırı ve
   `IptvPlayerPlugin.java` içindeki `setExtensionRendererMode` çağrısını kaldırmak yeterlidir. Çözücü varsayılan olarak kapalıdır; Ayarlar'dan
   açılır ve uygulama çözücüyle kapanırsa bir sonraki açılışta kendiliğinden kapatılır.
+- TV eşleştirme QR kodu: `qrcode-generator` (MIT, `www/js/qrcode-lib.js`, lisans başlığı dosyada) QR üretir; telefonda okuma için Google'ın
+  kod tarayıcısı (`com.google.android.gms:play-services-code-scanner`, Play hizmetleri) kullanılır, kamera izni gerekmez. Play hizmetleri olmayan
+  cihazlarda tarama açılmaz, eşleştirme kodu elle girilir. Özellik Pro üyeliğe bağlıdır (`tvlink`).

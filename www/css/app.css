@@ -870,6 +870,8 @@ html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 2p
 .cast-add { display: flex; gap: 8px; margin: 14px 0 6px; }
 .cast-add input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
 .cast-add input:focus { outline: none; border-color: var(--accent); }
+.cast-qr { width: min(260px, 60vw); margin: 12px auto 4px; border-radius: 14px; overflow: hidden; background: #fff; line-height: 0; }
+.cast-qr svg { display: block; width: 100%; height: auto; }
 .cast-code { font-size: 3rem; font-weight: 800; letter-spacing: 0.1em; text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; padding: 12px 0 6px; }
 html.tv #pl-tv, html.tv #mv-cast { display: none; }
 

@@ -596,3 +596,17 @@ test('görsel önbelleği: WebView istemcisi bağlı, yalnız dış adresli gör
   assert.ok(warm && /unmeteredNet\(\)/.test(warm[0]), 'önden indirme ölçülü ağda çalışmamalı');
   assert.ok(/isActiveNetworkMetered\(\)/.test(kaynak), 'ölçüsüz ağ denetimi');
 });
+
+// ---- TV eşleştirme QR kodu ----
+test('QR eşleştirme: tarayıcı yöntemi köprüde, bağımlılık ve manifest tanımlı, vazgeçme/yokluk ayrı bildirilir', () => {
+  const m = kaynak.match(/public void scanQr\([\s\S]*?\n    }\n/);
+  assert.ok(m, 'scanQr yöntemi yok');
+  assert.ok(/GmsBarcodeScanning\.getClient\(act, opts\)/.test(m[0]) && /FORMAT_QR_CODE/.test(m[0]), 'yalnız QR biçimi, Google kod tarayıcısı');
+  assert.ok(/addOnCanceledListener/.test(m[0]) && /o\.put\("text", ""\)/.test(m[0]), 'vazgeçilirse boş metin (hata değil)');
+  assert.ok(/call\.reject\("unavailable"\)/.test(m[0]), 'tarayıcı yoksa reddedilir: JS kodu elle girdirir');
+  const gradle = readFileSync(join(androidDizin, '../../build.gradle'), 'utf8');
+  assert.ok(/play-services-code-scanner:\d/.test(gradle), 'kod tarayıcı bağımlılığı');
+  const manifest = readFileSync(join(androidDizin, 'AndroidManifest.xml'), 'utf8');
+  assert.ok(/com\.google\.mlkit\.vision\.DEPENDENCIES/.test(manifest), 'tarayıcı modülü önceden indirilsin');
+  assert.ok(!/android\.permission\.CAMERA/.test(manifest), 'kamera izni gerekmez (Google tarayıcısı kendi arayüzünü kullanır)');
+});
