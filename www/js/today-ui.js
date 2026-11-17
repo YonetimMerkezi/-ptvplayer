@@ -174,6 +174,10 @@ export function openToday(env) {
       truncated: kind === 'film' ? resFilm.truncated : resAll.truncated,
     };
     q('#td-kinds').innerHTML = KINDS.map(([id, label]) => `<button class="td-k${id === kind ? ' on' : ''}" data-kind="${id}"${id === kind ? ' data-autofocus aria-pressed="true"' : ' aria-pressed="false"'}>${icon(KIND_ICON[id])}<span>${label}</span><small>${res.counts[id]}</small></button>`).join('');
+    // Sekme adları sığmıyorsa (dar ekran, büyük yazı ölçeği) simgeler gizlenir; adın kırpılması simgeden önemlidir.
+    const kindsEl = q('#td-kinds');
+    kindsEl.classList.remove('compact');
+    if ([...kindsEl.querySelectorAll('.td-k span')].some((n) => n.scrollWidth > n.clientWidth)) kindsEl.classList.add('compact');
     q('#td-opts').innerHTML =
       `<button class="chip${day === 0 ? ' on' : ''}" data-day="0">${icon('cal')} Bugün</button><button class="chip${day === 1 ? ' on' : ''}" data-day="1">${icon('cal')} Yarın</button>` +
       (day >= 2 ? `<button class="chip on" data-day="${day}">${icon('cal')} ${esc(dayLabel(day))}</button>` : '') +
