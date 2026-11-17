@@ -74,6 +74,7 @@ import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
 import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
+import { createWarm, uniqueEntries } from './warm.js';
 import { estimateAdvisories, ESTIMATE_LABEL, ESTIMATE_ICON } from './advisory-estimate.js';
 import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
 
@@ -1913,6 +1914,14 @@ const advisorySmart = (warning) => {
 };
 const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
 
+// Bir filmin katalog eşleşmesi (yerel katalog/Cinemeta + Worker/TMDB) ve uyarı aramasında kullanılacak künye. Ayrıntı sayfası ile önden indirme aynı yolu kullanır.
+async function resolveAdvisoryMeta(it, info) {
+  const [meta, wk] = await Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), lookupMeta(net, store, it, info || null).catch(() => null)]);
+  const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
+  const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '', originalTitle: wk.ot || '' } : baseMeta;
+  return { meta, wk, advisoryMeta };
+}
+
 // ctx: { genres, plot } — sağlayıcının verdiği tür ve özet; doğrulanmış kayıt olmayan içerikler için tahmini uyarılar buradan (ve
 // Worker'ın verdiği TMDB türleri ile anahtar kelimelerinden) çıkarılır. Tahminler ayrı ve "Tahmini" etiketiyle gösterilir.
 async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 'movie', ctx = null) {
@@ -2016,10 +2025,8 @@ function openMovie(it) {
         if (advStarted) return;
         advStarted = true;
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
-        Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), lookupMeta(net, store, it, info || null).catch(() => null)]).then(([meta, wk]) => {
+        resolveAdvisoryMeta(it, info).then(({ meta, wk, advisoryMeta }) => {
           if (!body.isConnected) return;
-          const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
-          const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '', originalTitle: wk.ot || '' } : baseMeta;
           const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
           loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk, 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
           if (info) {
@@ -4067,6 +4074,7 @@ function playerSheet() {
       `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Otomatik cihazın seçimini kullanır. Donanım öncelikli Mi Stick gibi TV kutularında ilk deneme; görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
       (nativePlugin ? `<div class="sel-row"><span>Yazılım ses çözücüsü (deneysel)<small>Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.${store.pref('set.softAudioCrashed', false) ? ' Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.' + (store.pref('set.softAudioInfo', '') ? '<br>Kapanma kaydı: ' + esc(String(store.pref('set.softAudioInfo', ''))) : '') : ''}</small></span><select id="g-saud">${optionsHtml([['off', 'Kapalı'], ['on', 'Açık']], store.pref('set.softAudio', 'off') === 'on' ? 'on' : 'off')}</select></div>` : '') +
+      (warm ? `<div class="sel-row"><span>Önceden indirme (Wi-Fi)<small>Wi-Fi’dayken uygulama açıldıktan sonra favori, devam eden ve son eklenen filmlerin afişleri, içerik uyarıları ve bugünün maçlarının takım simgeleri arka planda indirilir. Mobil veride indirmez.</small></span><select id="g-warm">${optionsHtml([['on', 'Açık'], ['off', 'Kapalı']], store.pref('set.warm', 'on') === 'off' ? 'off' : 'on')}</select></div><div class="sel-row"><span>Görsel önbelleği<small id="g-ic-s">Hesaplanıyor…</small></span><button class="btn sm ghost" id="g-ic">Temizle</button></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
       `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
       `<div class="sel-row"><span>Canlı yayın biçimi<small>Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır</small></span><select id="g-lfmt">${optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)))}</select></div>` +
@@ -4159,6 +4167,13 @@ function playerSheet() {
         store.setPref('set.softAudioCrashed', false);
         if (nativePlugin && nativePlugin.setSoftAudio) nativePlugin.setSoftAudio({ on }).catch(() => toast('Yazılım ses çözücüsü uygulanamadı', 2500));
       });
+      const gwarm = $('#g-warm', body);
+      if (gwarm) {
+        gwarm.addEventListener('change', (e) => store.setPref('set.warm', e.target.value === 'off' ? 'off' : 'on'));
+        const paintIc = () => nativePlugin.imageCacheInfo().then((i) => { const el = $('#g-ic-s', body); if (el) el.textContent = `${i.count || 0} görsel · ${fmtBytes(i.bytes || 0)} (afişler, logolar, takım simgeleri; en çok 160 MB)`; }).catch(() => {});
+        paintIc();
+        $('#g-ic', body).addEventListener('click', () => nativePlugin.clearImageCache().then(() => { toast('Görsel önbelleği temizlendi'); paintIc(); }).catch(() => toast('Temizlenemedi', 2500)));
+      }
       $('#g-rc', body).addEventListener('change', (e) => store.setPref('set.reconnect', normalizeReconnect(e.target.value)));
       $('#g-stall', body).addEventListener('change', (e) => store.setPref('set.stall', normalizeStall(e.target.value)));
       $('#g-lfmt', body).addEventListener('change', (e) => {
@@ -6073,6 +6088,38 @@ if (nativePlugin) setTimeout(() => dlLoad().then(() => engine.dl.resumeAll(false
 initNav();
 window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdate, restoreUpd, refreshManaged, watchExpiry }; // hata ayıklama ve uçtan uca testler için
 
+// Önden indirme (yalnız Wi-Fi gibi ölçüsüz ağda, açılıştan sonra): favori, devam eden ve son eklenen filmlerin afişleri ile içerik uyarıları ve bugünün maçlarının
+// takım simgeleri cihaza iner. Görseller yerel görsel önbelleğine, uyarılar her zamanki önbelleğe girer; ayrıntı sayfaları ve spor ekranı bunları bekletmeden gösterir.
+const warm = nativePlugin && nativePlugin.warmImages ? createWarm({ native: nativePlugin, store, net }) : null;
+async function warmAdvise(it) {
+  const info = await loadVodInfo(S.source, net, it).catch(() => null);
+  const { advisoryMeta } = await resolveAdvisoryMeta(it, info);
+  await loadMovieAdvisories(net, store, advisoryMeta, it);
+}
+function warmStart(tries = 0) {
+  if (!warm || !S.source || store.pref('set.warm', 'on') === 'off') return;
+  const c = S.cat;
+  if (!c || !(c.live.length + c.movies.length + c.series.length)) {
+    if (tries < 4) setTimeout(() => warmStart(tries + 1), 20000); // liste henüz yüklenmediyse biraz sonra yeniden bak
+    return;
+  }
+  const favs = store.favs(sid()).slice(0, 60).map((f) => ({ kind: f.kind, it: resolve(f, f.kind) })).filter((e) => e.it);
+  const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
+  const seen = new Set();
+  const fresh = newestItems(visibleAll('movie'))
+    .filter((it) => {
+      const ct = cleanTitle(it.name, it.year);
+      const k = `${ct.key}|${ct.year || ''}`;
+      return !ct.key || (!seen.has(k) && !!seen.add(k));
+    })
+    .slice(0, 24)
+    .map((it) => ({ kind: 'movie', it }));
+  const entries = uniqueEntries(cont, favs, fresh);
+  warm
+    .run({ items: entries.map((e) => e.it), movies: entries.filter((e) => e.kind === 'movie').map((e) => e.it), advise: warmAdvise, busy: () => !!player && player.state().status !== 'idle' })
+    .catch(() => {});
+}
+
 (async function boot() {
   if (lockEnabled()) lockApp(); // açılışta şifre ekranı
   const src = store.activeSource();
@@ -6087,4 +6134,5 @@ window.__iptv = { S, store, net, setVersion: (v) => (VERSION = v), checkForUpdat
   setTimeout(() => refreshManaged({ launch: true }), 4000); // davet koduyla gelen listeler hâlâ geçerli mi
   setTimeout(() => maybeWhatsNew(), 1800);
   await activate(src.id);
+  setTimeout(() => warmStart(), 15000); // arayüz yerleştikten sonra, arka planda
 })();

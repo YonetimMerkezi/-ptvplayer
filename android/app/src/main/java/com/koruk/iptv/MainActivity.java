@@ -54,6 +54,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(IptvPlayerPlugin.class);
         super.onCreate(savedInstanceState);
 
+        // Görsel önbelleği: afiş, logo, rozet ve bayrak resimleri cihazda kalır (ImageCache); WebView istemcisi Capacitor'unkiyle aynıdır, yalnız görsel istekleri önce önbelleğe sorar.
+        ImageCache.init(getApplicationContext());
+        if (getBridge() != null) getBridge().setWebViewClient(new ImageWebViewClient(getBridge()));
+
         // Capacitor çekirdeği geri tuşunu işlemez (bunu @capacitor/app eklentisi yapar); işlenmezse uygulama
         // doğrudan kapanır. Sayfadaki katmanlar (oynatıcı, alt sayfalar, kategori içi) WebView geçmişine
         // eklenir; geri tuşu geçmişte bir adım geri gider, geçmiş bitince uygulamadan çıkılır.

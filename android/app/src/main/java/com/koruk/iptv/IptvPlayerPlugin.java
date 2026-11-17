@@ -895,6 +895,52 @@ public class IptvPlayerPlugin extends Plugin {
         call.resolve(o);
     }
 
+    // Görsel önbelleği (ImageCache): önceden indirme yalnız ölçüsüz (Wi-Fi/ethernet) ağda yapılır; JS her parçadan önce bunu sorar.
+    private boolean unmeteredNet() {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo ni = cm == null ? null : cm.getActiveNetworkInfo();
+            return ni != null && ni.isConnected() && !cm.isActiveNetworkMetered();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @PluginMethod
+    public void imageCacheInfo(final PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("bytes", ImageCache.bytes());
+        o.put("count", ImageCache.count());
+        o.put("unmetered", unmeteredNet());
+        call.resolve(o);
+    }
+
+    // urls: önbellekte olmayanlar sırayla indirilir (en çok 40); ölçülü ağa geçilmişse hiçbiri indirilmez. Yanıt: { added }.
+    @PluginMethod
+    public void warmImages(final PluginCall call) {
+        final List<String> raw = new ArrayList<>();
+        JSArray arr = call.getArray("urls");
+        if (arr != null) for (int i = 0; i < arr.length(); i++) raw.add(arr.optString(i, ""));
+        final List<String> urls = ImageCache.clean(raw, 40);
+        if (urls.isEmpty() || !unmeteredNet()) {
+            JSObject o = new JSObject();
+            o.put("added", 0);
+            call.resolve(o);
+            return;
+        }
+        new Thread(() -> {
+            JSObject o = new JSObject();
+            o.put("added", ImageCache.warm(urls));
+            call.resolve(o);
+        }, "img-warm").start();
+    }
+
+    @PluginMethod
+    public void clearImageCache(final PluginCall call) {
+        ImageCache.clear();
+        call.resolve();
+    }
+
     // Telefondan hata kaydı alınamadığı için kapanma nedeni uygulamanın içinde yakalanır: Java hatası çökmeden hemen önce yazılır; yerel çökme
     // (ve diğer kapanmalar) sonraki açılışta Android'in çıkış kaydından okunur. Yalnız kısa bir özet tutulur.
     private void installCrashRecorder() {

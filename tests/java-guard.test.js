@@ -576,3 +576,23 @@ test('yazılım ses çözücüsü: varsayılan kapalı, ayardan açılır; çök
   assert.match(app, /nativePlugin\.getSoftAudio\(\)\.then/, 'açılışta yerel durum okunmalı');
   assert.ok(!/nativePlugin\.setSoftAudio\(\{ on: store\.pref/.test(app), 'JS açılışta yerele geri yazmamalı (çökme döngüsü olur)');
 });
+
+// ---- görsel önbelleği ----
+test('görsel önbelleği: WebView istemcisi bağlı, yalnız dış adresli görsel istekleri önbelleğe girer, önden indirme yalnız ölçüsüz ağda', () => {
+  const act = oku_('MainActivity.java');
+  assert.ok(/ImageCache\.init\(/.test(act) && /setWebViewClient\(new ImageWebViewClient\(/.test(act), 'MainActivity görsel önbelleğini ve istemciyi kurmuyor');
+  const istemci = oku_('ImageWebViewClient.java');
+  assert.ok(/extends BridgeWebViewClient/.test(istemci) && /super\.shouldInterceptRequest\(view, request\)/.test(istemci), 'Capacitor istemcisi korunmalı (yerel dosyalar ona ait)');
+  const ic = oku_('ImageCache.java');
+  assert.ok(/equalsIgnoreCase\(r\.getMethod\(\)\)/.test(ic) && /"GET"/.test(ic), 'yalnız GET istekleri');
+  assert.ok(/host\.equals\("localhost"\)/.test(ic), 'uygulamanın kendi (localhost) dosyalarına karışılmamalı');
+  assert.ok(/startsWith\("image\/"\)/.test(ic), 'yalnız Accept: image/* istekleri');
+  assert.ok(/header\(h, "Range"\) != null/.test(ic), 'Range isteklerine karışılmamalı');
+  assert.ok(/getCacheDir\(\)/.test(ic), 'önbellek sistem önbellek klasöründe durmalı (Android yer açabilsin)');
+  assert.ok(/MAX_BYTES/.test(ic) && /MAX_ITEM/.test(ic) && /TTL_MS/.test(ic), 'boyut ve süre sınırları');
+  assert.ok(/createTempFile\("dl_"/.test(ic), 'geçici dosya öneki en az 3 karakter');
+  assert.ok(/return null;/.test(ic) && /catch \(Throwable t\) \{\s*return null;/.test(ic), 'indirilemezse null: WebView görseli kendisi dener');
+  const warm = kaynak.match(/public void warmImages\([\s\S]*?\n    }\n/);
+  assert.ok(warm && /unmeteredNet\(\)/.test(warm[0]), 'önden indirme ölçülü ağda çalışmamalı');
+  assert.ok(/isActiveNetworkMetered\(\)/.test(kaynak), 'ölçüsüz ağ denetimi');
+});
