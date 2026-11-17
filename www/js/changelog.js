@@ -26,6 +26,7 @@ export const CHANGELOG = [
       'Listeyi TV’ye aktar (Pro): liste olmayan TV’nin ilk ekranında “Telefondan al” ile QR kod ve 6 haneli kod gösterilir; telefonda Ayarlar > Yedekle / geri yükle > TV ile eşitle’de “TV’deki QR kodu tara” (ya da kodu girerek) eşleşince liste, favoriler ve kaldığın yer TV’ye geçer; aynı Wi-Fi gerekir',
       'Oynatıcı: düğmeler ve pencereler yenilendi; açık düğmenin yazısı görünür, “Yayın bilgisi” penceresinde başlık ve kapat (X) düğmesi var, dikeyde düğmelerin altında durur',
       'Müzik çalar: telefonda şarkı açınca dikey müzik çalar ekranı açılır; tam ekran renkli arka plan, kapak, karışık çalma ve tekrarlama düğmeleri, sıradaki şarkılar',
+      'Bugün TV’de ekranı yenilendi: büyük başlık ve tarih, sayaçlı Spor / Film / Dizi sekmeleri, saat, ŞİMDİ rozeti ve ilerleme çubuklu program kartları; renkler seçtiğiniz tema rengine uyar. Üstteki düğmelerle program ya da kanal araması ve gün seçimi yapılır',
     ],
   },
   {

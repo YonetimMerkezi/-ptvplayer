@@ -2,7 +2,7 @@
 // Modül ilk kullanımda yüklenir (app.js openToday).
 import { needPro } from './membership.js';
 import { esc, fmtClock, fold } from './util.js';
-import { $, icon, logo, openPage } from './ui.js';
+import { $, icon, logo, openPage, openSheet } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf } from './today.js';
 import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
@@ -11,6 +11,8 @@ import { makePlan, planId } from './plan.js';
 import { loadFilmSchedule } from './today-film-source.js';
 
 const KIND_EMPTY = { spor: 'spor', film: 'film', dizi: 'dizi' };
+const KIND_ICON = { spor: 'ball', film: 'movie', dizi: 'tv' };
+const DAYS = 3; // rehber en çok bugünden başlayarak üç gün (entries) gösterilir
 
 // env: { liveItems(): görünür canlı kanallar, epgReady(), listFor(item): kanalın programları, epgBetween(from, to), programSheet(item, p),
 //        channels(): seçili kanal no listesi, setChannels(ids), openFlow?(): Dizi akışı ekranını açar, now? }
@@ -19,6 +21,7 @@ export function openToday(env) {
   let kind = 'spor';
   let day = 0;
   let past = false;
+  let term = ''; // üst çubuktaki arama: program ya da kanal adı
   let sel = normalizeChannels(env.channels());
   const savedFilmChannels = env.filmChannels ? env.filmChannels() : null;
   let filmSel = savedFilmChannels == null || (Array.isArray(savedFilmChannels) && savedFilmChannels.length === 0) ? null : normalizeChannels(savedFilmChannels);
@@ -61,10 +64,17 @@ export function openToday(env) {
     if (root.isConnected) draw();
   }
 
+  const dayLabel = (d) => (d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : new Date(dayStart(now(), d)).toLocaleDateString('tr-TR', { weekday: 'long' }));
+  const dayDate = (d) => new Date(dayStart(now(), d)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' });
+
   const page = openPage({
-    title: 'Bugün TV’de',
+    title: `${dayLabel(day)} TV’de`,
+    sub: dayDate(day),
+    lead: `<span class="td-ico" aria-hidden="true">${icon('tv')}</span>`,
+    actions: `<button class="icon-btn td-hb" id="td-search" aria-label="Ara" aria-pressed="false">${icon('search')}</button><button class="icon-btn td-hb" id="td-cal" aria-label="Gün seç">${icon('cal')}</button>`,
     cls: 'td-pg',
-    html: `<div class="chips" id="td-kinds" role="group" aria-label="Tür"></div>
+    html: `<div class="td-kinds" id="td-kinds" role="group" aria-label="Tür"></div>
+      <div class="td-sbar" id="td-sbar" hidden><input id="td-s" type="search" placeholder="Program veya kanal ara…" autocomplete="off" aria-label="Program veya kanal ara"></div>
       <div class="td-bar"><div class="chips" id="td-opts" role="group" aria-label="Süzgeç"></div></div>
       <div id="td-list" class="td-list"></div>`,
     mount: () => {},
@@ -139,7 +149,9 @@ export function openToday(env) {
   function draw() {
     const t = now();
     const ready = env.epgReady() || !!seriesData || (kind === 'film' && day === 0 && filmSource.loaded);
-    const allEntries = entries();
+    const needle = fold(term.trim());
+    const match = (x) => !needle || fold(`${(x.p && x.p.t) || ''} ${x.channel || ''}`).includes(needle);
+    const allEntries = entries().filter(match);
     const externalFilmDay = day === 0 && filmSource.loaded && filmSource.entries.length > 0;
     const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id))) : [];
     // Tüm EPG kanallarını tara: ulusal kanalların yanında Sinema TV, beIN Movies,
@@ -153,7 +165,7 @@ export function openToday(env) {
         .filter((x) => filmSel == null || filmSel.includes(String(x.id)))
       : [];
     const filmKey = (x) => `${String(x.id)}|${Number(x.p && x.p.s)}|${fold(String(x.p && x.p.t || ''))}`;
-    const filmEntries = [...new Map([...selectedEpgFilms, ...selectedExternalFilms].map((x) => [filmKey(x), x])).values()];
+    const filmEntries = [...new Map([...selectedEpgFilms, ...selectedExternalFilms].filter(match).map((x) => [filmKey(x), x])).values()];
     const resAll = ready ? todayRows({ entries: allEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const resFilm = ready ? todayRows({ entries: filmEntries, kind: 'film', now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const res = {
@@ -161,13 +173,15 @@ export function openToday(env) {
       counts: { ...resAll.counts, film: resFilm.counts.film },
       truncated: kind === 'film' ? resFilm.truncated : resAll.truncated,
     };
-    q('#td-kinds').innerHTML = KINDS.map(([id, label]) => `<button class="chip${id === kind ? ' on' : ''}" data-kind="${id}"${id === kind ? ' data-autofocus' : ''}>${label}<small>${res.counts[id]}</small></button>`).join('');
+    q('#td-kinds').innerHTML = KINDS.map(([id, label]) => `<button class="td-k${id === kind ? ' on' : ''}" data-kind="${id}"${id === kind ? ' data-autofocus aria-pressed="true"' : ' aria-pressed="false"'}>${icon(KIND_ICON[id])}<span>${label}</span><small>${res.counts[id]}</small></button>`).join('');
     q('#td-opts').innerHTML =
-      `<button class="chip${day === 0 ? ' on' : ''}" data-day="0">Bugün</button><button class="chip${day === 1 ? ' on' : ''}" data-day="1">Yarın</button>` +
-      (day === 0 ? `<button class="chip${past ? ' on' : ''}" data-past aria-pressed="${past}">Bitenler</button>` : '') +
-      `<button class="chip" data-pick>${icon('tv')} Kanallar<small>${sel.length ? sel.length : 'Tümü'}</small></button>` +
+      `<button class="chip${day === 0 ? ' on' : ''}" data-day="0">${icon('cal')} Bugün</button><button class="chip${day === 1 ? ' on' : ''}" data-day="1">${icon('cal')} Yarın</button>` +
+      (day >= 2 ? `<button class="chip on" data-day="${day}">${icon('cal')} ${esc(dayLabel(day))}</button>` : '') +
+      (day === 0 ? `<button class="chip${past ? ' on' : ''}" data-past aria-pressed="${past}">${icon('check')} Bitenler</button>` : '') +
+      `<button class="chip" data-pick>${icon('tv')} Kanallar${sel.length ? `<small>${sel.length}</small>` : ''}${icon('down')}</button>` +
       (kind === 'film' ? `<button class="chip" data-film-pick>Film kanalları<small>${filmSel == null ? 'Otomatik' : filmSel.length}</small></button>` : '');
-    page.setTitle(`${day ? 'Yarın' : 'Bugün'} TV’de · ${new Date(dayStart(t, day)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`);
+    page.setTitle(`${dayLabel(day)} TV’de`);
+    page.setSub(dayDate(day));
     const el = q('#td-list');
     if (!ready) {
       el.innerHTML = epgLoading
@@ -177,7 +191,11 @@ export function openToday(env) {
     }
     if (!res.rows.length) {
       const what = KIND_EMPTY[kind];
-      el.innerHTML = `<div class="empty"><h3>${day ? 'Yarın' : 'Bugün'} ${what} programı yok</h3><p>${sel.length ? 'Seçili kanallarda bulunamadı. “Kanallar” düğmesinden başka kanal seçebilir ya da tümünü gösterebilirsiniz.' : 'Rehberde bu türde program bulunamadı.'}${day === 0 && !past ? ' Bitenleri görmek için “Bitenler”e dokunun.' : ''}</p></div>`;
+      if (needle) {
+        el.innerHTML = `<div class="empty"><h3>Sonuç yok</h3><p>“${esc(term.trim())}” ile eşleşen ${what} programı bulunamadı.</p></div>`;
+        return;
+      }
+      el.innerHTML = `<div class="empty"><h3>${esc(dayLabel(day))} ${what} programı yok</h3><p>${sel.length ? 'Seçili kanallarda bulunamadı. “Kanallar” düğmesinden başka kanal seçebilir ya da tümünü gösterebilirsiniz.' : 'Rehberde bu türde program bulunamadı.'}${day === 0 && !past ? ' Bitenleri görmek için “Bitenler”e dokunun.' : ''}</p></div>`;
       return;
     }
     const map = byId();
@@ -190,9 +208,10 @@ export function openToday(env) {
         const it = map.get(id);
         if (!it) return '';
         const mins = Math.max(1, Math.round((p.e - p.s) / 60000));
+        const pct = Math.min(100, Math.max(0, Math.round(((t - p.s) / Math.max(1, p.e - p.s)) * 100)));
         return `<div class="td-r ${state}" role="button" tabindex="0" data-i="${i}">
-          <div class="td-t"><time>${fmtClock(p.s)}</time>${state === 'now' ? '<b class="td-now">ŞİMDİ</b>' : `<small>${p.u ? '' : `${mins} dk`}</small>`}</div>
-          <div class="td-m"><b>${esc(p.t || 'Program')}</b><span>${esc(it.name)}${p.c ? ` · ${esc(p.c.split(' / ')[0])}` : ''}</span></div>${logo(it.logo, it.name)}</div>`;
+          <div class="td-t"><time>${fmtClock(p.s)}</time>${state === 'now' ? `<b class="td-now">${icon('play')}ŞİMDİ</b>` : `<small>${p.u ? '' : `${mins} dk`}</small>`}</div>
+          <div class="td-m"><b>${esc(p.t || 'Program')}</b><span>${esc(it.name)}${p.c ? ` · ${esc(p.c.split(' / ')[0])}` : ''}</span>${state === 'now' ? `<i class="td-pr" style="--p:${pct}%" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><u></u></i>` : ''}</div>${logo(it.logo, it.name)}<span class="td-dots" aria-hidden="true">${icon('dots')}</span></div>`;
       })
       .join('');
     el.innerHTML = sourceNote + html + (res.truncated ? '<p class="hint td-more">Çok program var; ilk 400 gösteriliyor. Kanalları seçerek daraltın.</p>' : '');
@@ -263,7 +282,42 @@ export function openToday(env) {
     render();
   }
 
+  function pickDay() {
+    const sh = openSheet({
+      title: 'Gün seç',
+      html: Array.from({ length: DAYS }, (_, d) => `<button class="list-item" data-pickday="${d}"><span class="t">${esc(dayLabel(d))}<small>${esc(dayDate(d))}</small></span>${d === day ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`).join(''),
+    });
+    sh.el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pickday]');
+      if (!b) return;
+      day = Number(b.dataset.pickday);
+      if (day) past = false;
+      sh.close();
+      draw();
+    });
+  }
+
+  function toggleSearch() {
+    const bar = q('#td-sbar');
+    const on = bar.hidden;
+    bar.hidden = !on;
+    q('#td-search').classList.toggle('on', on);
+    q('#td-search').setAttribute('aria-pressed', String(on));
+    if (on) return q('#td-s').focus();
+    if (term) {
+      term = '';
+      q('#td-s').value = '';
+      draw();
+    }
+  }
+  q('#td-s').addEventListener('input', (e) => {
+    term = e.target.value;
+    draw();
+  });
+
   root.addEventListener('click', (e) => {
+    if (e.target.closest('#td-search')) return toggleSearch();
+    if (e.target.closest('#td-cal')) return pickDay();
     const k = e.target.closest('[data-kind]');
     if (k) {
       kind = k.dataset.kind;
