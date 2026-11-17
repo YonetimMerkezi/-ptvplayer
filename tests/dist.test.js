@@ -35,3 +35,13 @@ test('Play sürümünde güncelleme, yönetici paneli, davet kodu ve FFmpeg ayar
   assert.match(app, /async function refreshManaged\([^)]*\) \{\s*if \(isPlay\(\) \|\|/, 'davet kodlu listeler Play sürümünde eşitlenmez');
   assert.match(app, /nativePlugin && !isPlay\(\) \? `<div class="sel-row"><span>Yazılım ses çözücüsü/, 'FFmpeg ayarı Play sürümünde yok');
 });
+
+test('Gizlilik politikası: Ayarlar\'daki bağlantı depodaki gerçek dosyaya gider; metin Play\'in istediği başlıkları taşır', () => {
+  const m = /id="privacy-link" href="([^"]+)"/.exec(app);
+  assert.ok(m, 'Ayarlar\'da gizlilik bağlantısı olmalı (Play şartı)');
+  const dosya = /\/blob\/main\/([^/]+)$/.exec(m[1]);
+  assert.ok(dosya, 'bağlantı deponun ana dalındaki dosyayı göstermeli');
+  const metin = readFileSync(join(kok, dosya[1]), 'utf8');
+  for (const b of ['Cihazınızda tutulan veriler', 'Üyelik ve ödeme', 'Çocuklar', 'Saklama ve silme', 'İletişim', 'Privacy Policy']) assert.ok(metin.includes(b), 'başlık eksik: ' + b);
+  for (const ana of ['translate.googleapis.com', 'Cloudflare Workers', 'Google Play', 'GitHub']) assert.ok(metin.includes(ana), 'veri akışı anılmalı: ' + ana);
+});

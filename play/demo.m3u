@@ -1,0 +1,7 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="demo1" group-title="Deneme",Deneme Yayını 1 (Apple test akışı)
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8
+#EXTINF:-1 tvg-id="demo2" group-title="Deneme",Deneme Yayını 2 (Mux test akışı)
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 tvg-id="demo3" group-title="Deneme",Deneme Yayını 3 (Akamai test akışı)
+https://cdn.bitmovin.com/content/assets/sintel/hls/playlist.m3u8
