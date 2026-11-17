@@ -151,6 +151,7 @@ public class IptvPlayerPlugin extends Plugin {
     private static boolean softAudioChecked = false; // süreç başına bir kez denetlenir (etkinlik yeniden kurulunca bayrak yanlışlıkla çökme sayılmasın)
     private volatile boolean softAudio = false;
     private volatile boolean softAudioCrashed = false;
+    private volatile String softAudioInfo = ""; // kapanma nedeni özeti (Ayarlar'da gösterilir)
     private volatile boolean softAudioTryingNow = false;
     private final Runnable softAudioOk = () -> softAudioTrying(false);
     // Performans profili: auto | low | balanced | high. Otomatik profil cihaz belleği/CPU gücüne göre seçilir.
@@ -218,12 +219,18 @@ public class IptvPlayerPlugin extends Plugin {
         if (!softAudioChecked) {
             softAudioChecked = true;
             if (sa.getBoolean("trying", false)) {
-                // önceki oturum çözücü açıkken kapanmış: çözücü kapatılır, ayarlarda bilgi gösterilir
-                sa.edit().putBoolean("on", false).putBoolean("trying", false).putBoolean("crashed", true).commit();
+                // önceki oturum çözücü açıkken kapanmış: çözücü kapatılır, ayarlarda bilgi ve kapanma nedeni gösterilir
+                String info = sa.getString("crash_java", "");
+                if (info.isEmpty()) info = lastExitSummary();
+                sa.edit().putBoolean("on", false).putBoolean("trying", false).putBoolean("crashed", true).putString("info", info).remove("crash_java").commit();
+            } else if (sa.contains("crash_java")) {
+                sa.edit().remove("crash_java").apply();
             }
+            installCrashRecorder();
         }
         softAudio = sa.getBoolean("on", false);
         softAudioCrashed = sa.getBoolean("crashed", false);
+        softAudioInfo = sa.getString("info", "");
         // Kamera çentiği payı değişince (dönme, klavye vb.) sayfaya bildirilir
         SafeArea.listen(px -> main.post(() -> notifyListeners("insets", insetsObject(px))));
         RemoteKeys.listen(name -> {
@@ -865,7 +872,8 @@ public class IptvPlayerPlugin extends Plugin {
         final boolean changed = on != softAudio;
         softAudio = on;
         softAudioCrashed = false; // kullanıcı kendisi seçti: önceki çökme bilgisi geçerliliğini yitirir
-        getContext().getSharedPreferences(SOFT_AUDIO_PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", on).putBoolean("crashed", false).apply();
+        softAudioInfo = "";
+        getContext().getSharedPreferences(SOFT_AUDIO_PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", on).putBoolean("crashed", false).putString("info", "").apply();
         main.post(() -> {
             if (changed && player != null && !curUrl.isEmpty()) {
                 long pos = (lastLive || player.isCurrentMediaItemLive()) ? 0L : Math.max(0L, player.getCurrentPosition());
@@ -881,7 +889,99 @@ public class IptvPlayerPlugin extends Plugin {
         JSObject o = new JSObject();
         o.put("on", softAudio);
         o.put("crashed", softAudioCrashed);
+        o.put("info", softAudioInfo);
         call.resolve(o);
+    }
+
+    // Telefondan hata kaydı alınamadığı için kapanma nedeni uygulamanın içinde yakalanır: Java hatası çökmeden hemen önce yazılır; yerel çökme
+    // (ve diğer kapanmalar) sonraki açılışta Android'in çıkış kaydından okunur. Yalnız kısa bir özet tutulur.
+    private void installCrashRecorder() {
+        final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        final Context app = getContext().getApplicationContext();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                StringBuilder sb = new StringBuilder("[").append(t.getName()).append("] ").append(e.getClass().getSimpleName());
+                if (e.getMessage() != null) sb.append(": ").append(e.getMessage());
+                StackTraceElement[] st = e.getStackTrace();
+                for (int i = 0; i < st.length && i < 4; i++) {
+                    sb.append(" <- ").append(st[i].getClassName().replaceAll("^.*\\.", "")).append('.').append(st[i].getMethodName());
+                }
+                Throwable c = e.getCause();
+                if (c != null) {
+                    sb.append(" | neden: ").append(c.getClass().getSimpleName());
+                    if (c.getMessage() != null) sb.append(": ").append(c.getMessage());
+                }
+                String text = sb.length() > 400 ? sb.substring(0, 400) : sb.toString();
+                app.getSharedPreferences(SOFT_AUDIO_PREFS, Context.MODE_PRIVATE).edit().putString("crash_java", text).commit();
+            } catch (Throwable ignored) {
+                // kayıt tutulamadıysa çökme olduğu gibi sürer
+            }
+            if (prev != null) prev.uncaughtException(t, e);
+        });
+    }
+
+    private String lastExitSummary() {
+        if (Build.VERSION.SDK_INT < 30) return "Android " + Build.VERSION.SDK_INT + ": çıkış kaydı yok";
+        try {
+            return exitSummary30();
+        } catch (Throwable t) {
+            return "çıkış kaydı okunamadı: " + t.getClass().getSimpleName();
+        }
+    }
+
+    @android.annotation.TargetApi(30)
+    private String exitSummary30() throws IOException {
+        ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+        List<android.app.ApplicationExitInfo> list = am == null ? null : am.getHistoricalProcessExitReasons(getContext().getPackageName(), 0, 1);
+        if (list == null || list.isEmpty()) return "çıkış kaydı yok";
+        android.app.ApplicationExitInfo info = list.get(0);
+        int reason = info.getReason();
+        String name = reason == android.app.ApplicationExitInfo.REASON_CRASH ? "CRASH (Java)"
+                : reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE ? "CRASH_NATIVE"
+                : reason == android.app.ApplicationExitInfo.REASON_ANR ? "ANR"
+                : reason == android.app.ApplicationExitInfo.REASON_LOW_MEMORY ? "LOW_MEMORY"
+                : reason == android.app.ApplicationExitInfo.REASON_SIGNALED ? "SIGNALED"
+                : reason == android.app.ApplicationExitInfo.REASON_EXIT_SELF ? "EXIT_SELF" : "sebep " + reason;
+        StringBuilder sb = new StringBuilder(name).append(" durum=").append(info.getStatus());
+        String d = info.getDescription();
+        if (d != null && !d.isEmpty()) sb.append(" ").append(d);
+        if (reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE) {
+            InputStream in = info.getTraceInputStream();
+            if (in != null) {
+                try {
+                    // yerel çökme kaydı (protobuf): içindeki okunur dizgelerden kitaplık/işlev adlarını ve sinyali ayıkla
+                    byte[] buf = new byte[512 * 1024];
+                    int n = 0;
+                    int r;
+                    while (n < buf.length && (r = in.read(buf, n, buf.length - n)) > 0) n += r;
+                    java.util.LinkedHashSet<String> keep = new java.util.LinkedHashSet<>();
+                    int start = -1;
+                    for (int k = 0; k <= n; k++) {
+                        boolean printable = k < n && buf[k] >= 32 && buf[k] < 127;
+                        if (printable) {
+                            if (start < 0) start = k;
+                        } else {
+                            if (start >= 0 && k - start >= 5) {
+                                String str = new String(buf, start, k - start, java.nio.charset.StandardCharsets.US_ASCII);
+                                if (str.contains(".so") || str.startsWith("Java_") || str.contains("ffmpeg") || str.contains("avcodec") || str.startsWith("SIG")) {
+                                    keep.add(str.length() > 80 ? str.substring(0, 80) : str);
+                                }
+                            }
+                            start = -1;
+                        }
+                    }
+                    int count = 0;
+                    sb.append(" iz:");
+                    for (String str : keep) {
+                        if (count++ >= 8) break;
+                        sb.append(' ').append(str).append(';');
+                    }
+                } finally {
+                    in.close();
+                }
+            }
+        }
+        return sb.length() > 400 ? sb.substring(0, 400) : sb.toString();
     }
 
     private static String cleanDecoder(String v) {
