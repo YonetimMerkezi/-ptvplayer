@@ -2275,92 +2275,24 @@ public class IptvPlayerPlugin extends Plugin {
         return new File(getContext().getCacheDir(), "update");
     }
 
-    // Yeni sürümün APK'sını önbelleğe indirir; ilerleme "apkProgress" olayıyla bildirilir.
+    // Yeni sürümün APK'sını önbelleğe indirir; ilerleme "apkProgress" olayıyla bildirilir. Gerçek iş ApkUpdate'te (src/direct); Play sürümünde reddeder.
     @PluginMethod
     public void downloadApk(final PluginCall call) {
-        final String url = call.getData().optString("url", "");
-        if (url.isEmpty()) {
-            call.reject("url gerekli");
-            return;
-        }
-        io.execute(() -> {
-            HttpURLConnection conn = null;
-            File dir = updateDir();
-            File part = new File(dir, "iptv-update.part");
-            File out = new File(dir, "iptv-update.apk");
-            try {
-                //noinspection ResultOfMethodCallIgnored
-                dir.mkdirs();
-                conn = connect(url, null);
-                long total = conn.getContentLengthLong();
-                try (InputStream src = conn.getInputStream(); OutputStream os = new FileOutputStream(part)) {
-                    byte[] buf = new byte[64 * 1024];
-                    long done = 0;
-                    long lastEmit = 0;
-                    int n;
-                    while ((n = src.read(buf)) > 0) {
-                        os.write(buf, 0, n);
-                        done += n;
-                        long now = System.currentTimeMillis();
-                        if (now - lastEmit > 250) {
-                            lastEmit = now;
-                            JSObject p = new JSObject();
-                            p.put("loaded", done);
-                            p.put("total", total);
-                            notifyListeners("apkProgress", p);
-                        }
-                    }
-                }
-                if (total > 0 && part.length() != total) throw new IOException("İndirme yarım kaldı");
-                if (out.exists() && !out.delete()) throw new IOException("Eski güncelleme dosyası silinemedi");
-                if (!part.renameTo(out)) throw new IOException("Güncelleme dosyası yazılamadı");
-                JSObject r = new JSObject();
-                r.put("path", out.getAbsolutePath());
-                r.put("size", out.length());
-                call.resolve(r);
-            } catch (Exception e) {
-                //noinspection ResultOfMethodCallIgnored
-                part.delete();
-                call.reject(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            } finally {
-                if (conn != null) conn.disconnect();
-            }
-        });
+        ApkUpdate.download(getContext(), call, io, updateDir(), url -> connect(url, null), (event, data) -> notifyListeners(event, data));
     }
 
-    // İndirilen APK için Android kurulum ekranını açar. "Bilinmeyen uygulamaları yükle" izni yoksa izin ekranını açar.
+    // İndirilen APK için Android kurulum ekranını açar (src/direct); Play sürümünde reddeder.
     @PluginMethod
     public void installApk(final PluginCall call) {
-        final String path = call.getData().optString("path", "");
-        main.post(() -> {
-            try {
-                Context ctx = getContext();
-                File f = new File(path);
-                String dirPath = updateDir().getCanonicalPath() + File.separator;
-                if (!f.isFile() || !f.getCanonicalPath().startsWith(dirPath)) {
-                    call.reject("Güncelleme dosyası bulunamadı");
-                    return;
-                }
-                JSObject r = new JSObject();
-                if (Build.VERSION.SDK_INT >= 26 && !ctx.getPackageManager().canRequestPackageInstalls()) {
-                    Intent s = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.getPackageName()));
-                    s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    ctx.startActivity(s);
-                    r.put("needsPermission", true);
-                    call.resolve(r);
-                    return;
-                }
-                Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", f);
-                Intent i = new Intent(Intent.ACTION_VIEW);
-                i.setDataAndType(uri, "application/vnd.android.package-archive");
-                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-                ctx.startActivity(i);
-                r.put("needsPermission", false);
-                call.resolve(r);
-            } catch (Exception e) {
-                call.reject(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            }
-        });
+        ApkUpdate.install(getContext(), call, main, updateDir());
+    }
+
+    // Dağıtım türü: Google Play sürümünde uygulama içi güncelleme, yönetici paneli, davet kodlu listeler ve FFmpeg ses çözücüsü yoktur.
+    @PluginMethod
+    public void distInfo(final PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("play", BuildConfig.PLAY);
+        call.resolve(r);
     }
 
     private static void copy(InputStream in, File dest) throws IOException {

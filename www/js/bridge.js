@@ -43,6 +43,7 @@ export function nativePlugin(name, win = globalThis.window) {
     planLaunch: call('planLaunch'),
     downloadApk: call('downloadApk'),
     installApk: call('installApk'),
+    distInfo: call('distInfo'),
     deleteFile: call('deleteFile'),
     saveText: call('saveText'),
     shareText: call('shareText'),

@@ -12,6 +12,10 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     compileSdk rootProject.ext.compileSdkVersion
+    // BuildConfig.PLAY: Google Play sürümünde true (distInfo ile arayüze bildirilir).
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.koruk.iptv"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -25,7 +29,7 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // Her derleme aynı anahtarla imzalanır; Android ancak aynı imzalı APK'yı mevcut uygulamanın üstüne günceller.
+    // Doğrudan dağıtılan APK her derlemede aynı anahtarla imzalanır; Android ancak aynı imzalı APK'yı mevcut uygulamanın üstüne günceller.
     signingConfigs {
         iptv {
             storeFile file('iptv.keystore')
@@ -33,15 +37,36 @@ android {
             keyAlias 'iptv'
             keyPassword 'iptvplayer'
         }
+        // Google Play'e yüklenen paketin yükleme anahtarı. CI'de PLAY_KEYSTORE_* ortam değişkenleri (GitHub gizli değişkenleri) verilirse onlar
+        // kullanılır; verilmezse şimdilik depodaki anahtar kullanılır. APK anahtarından ayrı tutulur: gizli değişkene geçmek APK güncellemesini bozmaz.
+        upload {
+            storeFile file(System.getenv('PLAY_KEYSTORE_FILE') ?: 'iptv.keystore')
+            storePassword System.getenv('PLAY_KEYSTORE_PASSWORD') ?: 'iptvplayer'
+            keyAlias System.getenv('PLAY_KEY_ALIAS') ?: 'iptv'
+            keyPassword System.getenv('PLAY_KEY_PASSWORD') ?: 'iptvplayer'
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.iptv
         }
         release {
-            signingConfig signingConfigs.iptv
+            signingConfig signingConfigs.upload
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    // direct: APK olarak doğrudan dağıtım (uygulama içi güncelleme, yönetici paneli, davet kodlu listeler, FFmpeg ses çözücüsü var).
+    // play: Google Play paketi (bunların hiçbiri yok; güncellemeyi Play yapar).
+    flavorDimensions "dist"
+    productFlavors {
+        direct {
+            dimension "dist"
+            buildConfigField "boolean", "PLAY", "false"
+        }
+        play {
+            dimension "dist"
+            buildConfigField "boolean", "PLAY", "true"
         }
     }
 }
@@ -64,8 +89,9 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
     implementation "androidx.media3:media3-ui:$media3Version"
     // Yazılım ses çözücüsü (FFmpeg): cihazda çözücüsü olmayan AC3/E-AC3/DTS seslerini çalar. Jellyfin'in hazır derlemesi; sürümü
-    // media3Version ile aynı tutulmalı ("+1" yapı numarasıdır). Lisansı GPLv3'tür.
-    implementation "org.jellyfin.media3:media3-ffmpeg-decoder:${media3Version}+1"
+    // media3Version ile aynı tutulmalı ("+1" yapı numarasıdır). Lisansı GPLv3'tür; bu yüzden ve 16 KB sayfa şartını karşılamadığı için
+    // yalnız doğrudan dağıtılan APK'da bulunur, Google Play paketine girmez (oynatıcı eklentiyi ada göre arar; yoksa yok sayar).
+    directImplementation "org.jellyfin.media3:media3-ffmpeg-decoder:${media3Version}+1"
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
     implementation "androidx.tvprovider:tvprovider:1.0.0"
     testImplementation "junit:junit:$junitVersion"

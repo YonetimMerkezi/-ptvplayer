@@ -60,6 +60,7 @@ import { recordResult, lastResult, pruneHist, hideChannels, restoreChannels, app
 import { KID_KINDS, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAllowed, setAllowed, pruneAllow, hasAllowed, countAllowed, kidActiveOf } from './kid.js';
 import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
+import { isPlay, loadDist } from './dist.js';
 import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
@@ -2316,7 +2317,7 @@ function renderSources(v) {
       return `<div class="src ${act ? 'active' : ''}"><h4>${esc(s.name)}${act ? '<span class="badge">Etkin</span>' : ''}</h4>${lines.map((l) => `<p>${l}</p>`).join('')}<div class="btns">${act ? '<button class="btn sm" data-a="refresh">Yenile</button>' : `<button class="btn sm" data-a="use" data-id="${esc(s.id)}">Kullan</button>`}${s.managed ? '' : `<button class="btn sm ghost" data-a="edit" data-id="${esc(s.id)}">Düzenle</button>`}<button class="btn sm danger" data-a="del" data-id="${esc(s.id)}">Sil</button></div></div>`;
     })
     .join('');
-  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${kidActive() ? '' : `<button class="set-tile" data-set="profiles">${icon('home')}<span>${store.profileId() ? `Profil: ${esc(store.profile().name)}` : 'Profiller'}</span></button>`}${memOn() || store.pref('adm.on', false) ? `<button class="set-tile" data-set="member">${icon('star-on')}<span>Üyelik</span></button>` : ''}${store.pref('adm.on', false) ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button></div>`;
+  const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${kidActive() ? '' : `<button class="set-tile" data-set="profiles">${icon('home')}<span>${store.profileId() ? `Profil: ${esc(store.profile().name)}` : 'Profiller'}</span></button>`}${memOn() || store.pref('adm.on', false) ? `<button class="set-tile" data-set="member">${icon('star-on')}<span>Üyelik</span></button>` : ''}${store.pref('adm.on', false) && !isPlay() ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}${isPlay() ? '' : `<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button>`}</div>`;
   v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
@@ -2326,6 +2327,7 @@ let verTaps = 0;
 let verTapAt = 0;
 function verTap() {
   const now = Date.now();
+  if (isPlay()) return;
   verTaps = now - verTapAt < 1500 ? verTaps + 1 : 1;
   verTapAt = now;
   if (verTaps < 7) return;
@@ -2574,7 +2576,7 @@ function sourceForm(edit) {
   const sh = openSheet({
     full: true, // TV'de tam sayfa
     title: edit ? 'Kaynağı düzenle' : 'Kaynak ekle',
-    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button><button data-t="code">Kod</button>${!edit && nativePlugin && isTvUi() ? '<button data-t="phone">Telefondan al</button>' : ''}</div>
+    html: `<div class="seg" id="f-type" style="padding:0 0 12px"><button data-t="xtream">Xtream</button><button data-t="m3u">M3U bağlantısı</button><button data-t="file">Dosyadan</button>${isPlay() ? '' : '<button data-t="code">Kod</button>'}${!edit && nativePlugin && isTvUi() ? '<button data-t="phone">Telefondan al</button>' : ''}</div>
 <form id="f" autocomplete="off">
 <div data-for="xtream m3u file"><label class="field"><span>Ad (isteğe bağlı)</span><input name="name" value="${v('name')}" placeholder="Örn. Evdeki liste"></label></div>
 <div data-for="m3u"><label class="field"><span>M3U / M3U8 liste bağlantısı</span><input name="url" inputmode="url" value="${v('url')}" placeholder="http://…/liste.m3u"></label></div>
@@ -4286,7 +4288,7 @@ function playerSheet() {
       (nativePlugin ? '<button class="btn ghost sm" id="g-perf-info" type="button">Cihaz performans bilgilerini görüntüle</button>' : '') +
       `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
       (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Otomatik cihazın seçimini kullanır. Donanım öncelikli Mi Stick gibi TV kutularında ilk deneme; görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
-      (nativePlugin ? `<div class="sel-row"><span>Yazılım ses çözücüsü (deneysel)<small>Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.${store.pref('set.softAudioCrashed', false) ? ' Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.' + (store.pref('set.softAudioInfo', '') ? '<br>Kapanma kaydı: ' + esc(String(store.pref('set.softAudioInfo', ''))) : '') : ''}</small></span><select id="g-saud">${optionsHtml([['off', 'Kapalı'], ['on', 'Açık']], store.pref('set.softAudio', 'off') === 'on' ? 'on' : 'off')}</select></div>` : '') +
+      (nativePlugin && !isPlay() ? `<div class="sel-row"><span>Yazılım ses çözücüsü (deneysel)<small>Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.${store.pref('set.softAudioCrashed', false) ? ' Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.' + (store.pref('set.softAudioInfo', '') ? '<br>Kapanma kaydı: ' + esc(String(store.pref('set.softAudioInfo', ''))) : '') : ''}</small></span><select id="g-saud">${optionsHtml([['off', 'Kapalı'], ['on', 'Açık']], store.pref('set.softAudio', 'off') === 'on' ? 'on' : 'off')}</select></div>` : '') +
       (warm ? `<div class="sel-row"><span>Önceden indirme (Wi-Fi)<small>Wi-Fi’dayken uygulama açıldıktan sonra favori, devam eden ve son eklenen filmlerin afişleri, içerik uyarıları ve bugünün maçlarının takım simgeleri arka planda indirilir. Mobil veride indirmez.</small></span><select id="g-warm">${optionsHtml([['on', 'Açık'], ['off', 'Kapalı']], store.pref('set.warm', 'on') === 'off' ? 'off' : 'on')}</select></div><div class="sel-row"><span>Görsel önbelleği<small id="g-ic-s">Hesaplanıyor…</small></span><button class="btn sm ghost" id="g-ic">Temizle</button></div>` : '') +
       `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
       `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
@@ -4618,7 +4620,7 @@ player.on((st) => {
 // Davet koduyla gelen kaynakları yönetici dosyasıyla eşitler: değişiklikler uygulanır, erişimi biten kaynaklar kaldırılır.
 let mgBusy = false;
 async function refreshManaged({ launch = false, force = false } = {}) {
-  if (mgBusy || !store.sources().some((s) => s.managed && s.code)) return;
+  if (isPlay() || mgBusy || !store.sources().some((s) => s.managed && s.code)) return;
   if (!force && !shouldAutoCheck(store.pref('mg.at', 0), Date.now(), launch ? LAUNCH_MS : CHECK_MS)) return;
   mgBusy = true;
   try {
@@ -5013,7 +5015,7 @@ function restoreUpd() {
 
 // launch: açılışta denetler (yalnız son denetim bir dakikadan eskiyse); uygulamaya geri dönüşlerde 6 saatte bir.
 async function checkForUpdate({ manual = false, launch = false } = {}) {
-  if (updBusy) return;
+  if (updBusy || isPlay()) return; // Play sürümünü Google Play günceller
   if (!nativePlugin) return manual ? toast('Güncelleme yalnızca Android uygulamasında kullanılır') : undefined;
   if (!manual && !shouldAutoCheck(store.pref('upd.at', 0), Date.now(), launch ? LAUNCH_CHECK_MS : AUTO_CHECK_MS)) return;
   updBusy = true;
@@ -6334,6 +6336,7 @@ function warmStart(tries = 0) {
 }
 
 (async function boot() {
+  await loadDist(nativePlugin); // Google Play sürümünde güncelleme/yönetici/davet kodu/FFmpeg yok: ilk ekran çizilmeden öğrenilir
   if (lockEnabled()) lockApp(); // açılışta şifre ekranı
   const src = store.activeSource();
   if (!src) {

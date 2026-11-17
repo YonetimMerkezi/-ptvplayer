@@ -95,17 +95,41 @@ test('çoklu ekran: her kutu ayrı oynatıcı, yalnız seçili kutu sesli, sesli
   assert.match(kaynak, /handleOnDestroy[\s\S]*?stopAllSlots\(\)/);
 });
 
-test('uygulama içi güncelleme: APK yalnız kendi önbellek klasöründen kurulur, izin ve dosya sağlayıcı tanımlı', () => {
-  const m = kaynak.match(/public void installApk[\s\S]*?\n    }\n/);
-  assert.ok(m, 'installApk bulunamadı');
+const kok = join(dirname(fileURLToPath(import.meta.url)), '..');
+const javaPaket = 'android/app/src/%s/java/com/koruk/iptv/ApkUpdate.java';
+
+test('uygulama içi güncelleme (doğrudan APK): APK yalnız kendi önbellek klasöründen kurulur, izin ve dosya sağlayıcı tanımlı', () => {
+  const direct = readFileSync(join(kok, javaPaket.replace('%s', 'direct')), 'utf8');
+  const m = direct.match(/static void install[\s\S]*?\n    }\n/);
+  assert.ok(m, 'install bulunamadı');
   assert.match(m[0], /getCanonicalPath\(\)\.startsWith\(dirPath\)/, 'yol kısıtı yok: rastgele dosya kurulabilirdi');
   assert.match(m[0], /canRequestPackageInstalls\(\)[\s\S]*ACTION_MANAGE_UNKNOWN_APP_SOURCES/);
   assert.match(m[0], /application\/vnd\.android\.package-archive/);
   assert.match(m[0], /getPackageName\(\) \+ "\.fileprovider"/);
-  const manifest = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/AndroidManifest.xml'), 'utf8');
-  assert.match(manifest, /REQUEST_INSTALL_PACKAGES/, 'kurulum izni yok');
+  assert.match(direct, /static void download[\s\S]*apkProgress/);
+  const manifest = readFileSync(join(kok, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
   assert.match(manifest, /\$\{applicationId\}\.fileprovider/);
-  assert.match(kaynak, /downloadApk[\s\S]*apkProgress/);
+  assert.match(readFileSync(join(kok, 'android/app/src/direct/AndroidManifest.xml'), 'utf8'), /REQUEST_INSTALL_PACKAGES/, 'doğrudan sürümde kurulum izni yok');
+  // eklenti işi ApkUpdate'e devreder
+  assert.match(kaynak, /public void downloadApk[\s\S]*?ApkUpdate\.download\(/);
+  assert.match(kaynak, /public void installApk[\s\S]*?ApkUpdate\.install\(/);
+});
+
+test('Google Play sürümü: kendini indirip kurma kodu, kurulum izni ve FFmpeg pakette yok', () => {
+  const play = readFileSync(join(kok, javaPaket.replace('%s', 'play')), 'utf8');
+  assert.doesNotMatch(play, /package-archive|canRequestPackageInstalls|REQUEST_INSTALL|FileProvider|HttpURLConnection\s+conn/, 'Play sürümünde APK kurma kodu olmamalı');
+  assert.match(play, /static void download[\s\S]*call\.reject\(/);
+  assert.match(play, /static void install[\s\S]*call\.reject\(/);
+  const main = readFileSync(join(kok, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+  assert.doesNotMatch(main, /REQUEST_INSTALL_PACKAGES/, 'ortak manifestte kurulum izni olmamalı (Play sürümüne sızar)');
+  const gradle = readFileSync(join(kok, 'android/app/build.gradle'), 'utf8');
+  assert.match(gradle, /directImplementation "org\.jellyfin\.media3:media3-ffmpeg-decoder/);
+  assert.doesNotMatch(gradle, /^\s*implementation "org\.jellyfin/m, 'FFmpeg yalnız directImplementation olmalı');
+  assert.match(gradle, /play \{[\s\S]*?buildConfigField "boolean", "PLAY", "true"/);
+  assert.match(gradle, /direct \{[\s\S]*?buildConfigField "boolean", "PLAY", "false"/);
+  assert.match(gradle, /release \{\s*signingConfig signingConfigs\.upload/, 'Play paketi yükleme anahtarıyla imzalanmalı');
+  assert.match(gradle, /debug \{\s*signingConfig signingConfigs\.iptv/, 'APK anahtarı değişmemeli: kullanıcılar üstüne güncelliyor');
+  assert.match(kaynak, /public void distInfo[\s\S]*?BuildConfig\.PLAY/);
 });
 
 test('derleme akışı her sürümde version.json yayınlıyor (uygulama içi güncelleme buna bakar)', () => {

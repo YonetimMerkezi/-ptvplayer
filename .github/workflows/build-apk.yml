@@ -48,7 +48,7 @@ jobs:
           chmod +x gradlew
           # Maven/Google depolarından kütüphane indirirken geçici ağ hataları olabiliyor; 3 kez denenir.
           for deneme in 1 2 3; do
-            ./gradlew assembleDebug --no-daemon --stacktrace && exit 0
+            ./gradlew assembleDirectDebug --no-daemon --stacktrace && exit 0
             echo "Derleme $deneme. denemede başarısız oldu; 20 sn sonra yeniden denenecek."
             sleep 20
           done
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: iptv-oynatici-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/direct/debug/app-direct-debug.apk
           if-no-files-found: error
 
       # Sabit indirme bağlantısı: telefonda bu adresi açıp APK'yı eskisinin üstüne kurabilirsin.
@@ -67,7 +67,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk iptv-oynatici.apk
+          cp android/app/build/outputs/apk/direct/debug/app-direct-debug.apk iptv-oynatici.apk
           # Uygulama içi güncelleme bu dosyayı okur (www/js/update.js): numara gradle versionCode ile aynıdır.
           jq -n --argjson code "${{ github.run_number }}" --arg name "1.0.${{ github.run_number }}" \
             --argjson size "$(stat -c %s iptv-oynatici.apk)" --arg notes "$(cat notes.txt 2>/dev/null || echo "Derleme ${{ github.run_number }} (${GITHUB_SHA::7})")" \
@@ -87,3 +87,60 @@ jobs:
             gh release create latest iptv-oynatici.apk version.json --target "${{ github.sha }}" --latest \
               --title "$TITLE" --notes "$NOTES"
           fi
+
+  # Google Play paketi (AAB): FFmpeg, uygulama içi güncelleme, yönetici paneli ve kurulum izni olmadan. Ayrı iş olduğundan burada bir hata
+  # APK yayınını engellemez. Paketi Play Console'a elle yükle: Actions > bu çalışma > iptv-play-aab.
+  # Yükleme anahtarı: GitHub gizli değişkenleri PLAY_KEYSTORE_BASE64, PLAY_KEYSTORE_PASSWORD, PLAY_KEY_ALIAS, PLAY_KEY_PASSWORD verilirse
+  # onlarla, verilmezse şimdilik depodaki anahtarla imzalanır.
+  aab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Web dosyalarını hazırla ve Android'e aktar
+        run: |
+          npm run build:web
+          npx cap sync android
+
+      - name: Yükleme anahtarı (gizli değişken verilmişse)
+        env:
+          PLAY_KEYSTORE_BASE64: ${{ secrets.PLAY_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$PLAY_KEYSTORE_BASE64" ]; then
+            echo "$PLAY_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+            echo "PLAY_KEYSTORE_FILE=$RUNNER_TEMP/upload.keystore" >> "$GITHUB_ENV"
+          fi
+
+      - name: Play paketini (AAB) derle
+        working-directory: android
+        env:
+          PLAY_KEYSTORE_PASSWORD: ${{ secrets.PLAY_KEYSTORE_PASSWORD }}
+          PLAY_KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
+          PLAY_KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          for deneme in 1 2 3; do
+            ./gradlew bundlePlayRelease --no-daemon --stacktrace && exit 0
+            echo "Derleme $deneme. denemede başarısız oldu; 20 sn sonra yeniden denenecek."
+            sleep 20
+          done
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iptv-play-aab
+          path: android/app/build/outputs/bundle/playRelease/app-play-release.aab
+          if-no-files-found: error
