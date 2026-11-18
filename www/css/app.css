@@ -130,6 +130,56 @@ html[data-multi] :is(.set-pg, .theme-picker-page) { --pc: var(--p0); }
 html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page) {
   --accent: var(--pc); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--pc) 18%, transparent); --sel: color-mix(in srgb, var(--pc) 42%, #000);
 }
+/* Çok renkli temalarda sayfa içi dağılım: bir sayfadaki çipler, günler, program/maç satırları, kategori ve kaynak kartları, başlıklar tek sayfa rengi yerine
+   paletin altı rengini sırayla alır (yeşil, mavi, pembe, turuncu, turkuaz, mor). --k öğenin kendi rengidir; "benimse" kuralı onu --accent'e çevirir, böylece seçili
+   dolgu, rozet, ilerleme çubuğu ve simge o öğenin renginde çıkar. Sanal liste satırları sıra numarasından .k0…k5 sınıfını alır (app.js kc). Dolgu üstündeki yazı
+   hep koyu kalır (sarı gibi açık dolguda beyaz yazı olmaz). */
+html[data-multi] .k0 { --k: var(--p1); }
+html[data-multi] .k1 { --k: var(--p4); }
+html[data-multi] .k2 { --k: var(--p6); }
+html[data-multi] .k3 { --k: var(--p2); }
+html[data-multi] .k4 { --k: var(--p5); }
+html[data-multi] .k5 { --k: var(--p3); }
+html[data-multi] :is(.chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row):nth-child(6n+1) { --k: var(--p1); }
+html[data-multi] :is(.chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row):nth-child(6n+2) { --k: var(--p4); }
+html[data-multi] :is(.chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row):nth-child(6n+3) { --k: var(--p6); }
+html[data-multi] :is(.chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row):nth-child(6n+4) { --k: var(--p2); }
+html[data-multi] :is(.chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row):nth-child(6n+5) { --k: var(--p5); }
+html[data-multi] :is(.chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row):nth-child(6n+6) { --k: var(--p3); }
+html[data-multi] .td-k[data-kind=spor] { --k: var(--p1); }
+html[data-multi] .td-k[data-kind=film] { --k: var(--p2); }
+html[data-multi] .td-k[data-kind=dizi] { --k: var(--p3); }
+html[data-multi] #fseg [data-k=live] { --k: var(--p5); }
+html[data-multi] #fseg [data-k=movie] { --k: var(--p2); }
+html[data-multi] #fseg [data-k=series] { --k: var(--p3); }
+html[data-multi] :is(.td-k, .chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row, .row:is(.k0, .k1, .k2, .k3, .k4, .k5), .cat-tile):not(.set-card *) { --accent: var(--k, var(--pc)); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--k, var(--pc)) 20%, transparent); }
+/* çipler, türler, günler: pasif olan da kendi renginin çizgisini, simgesini ve hafif zeminini taşır; seçili olan o renkle dolar */
+html[data-multi] :is(.chips .chip, .seg button, .td-k):not(.on) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: color-mix(in srgb, var(--accent) 55%, var(--text)); }
+html[data-multi] :is(.chips .chip, .td-k):not(.on) .ic { color: var(--accent); }
+html[data-multi] :is(.chips .chip, .td-k).on .ic { color: var(--accent-ink); }
+html[data-multi] .td-k:not(.on) small { background: var(--accent-soft); color: var(--accent); }
+html[data-multi] .gd-day:not(.on) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+html[data-multi] .gd-day b { color: var(--accent); }
+/* program, maç, kategori, kanal ve kaynak satırları */
+html[data-multi] .td-r { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, rgba(255, 255, 255, 0.04)); }
+html[data-multi] .td-r.now { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, rgba(255, 255, 255, 0.05)); }
+html[data-multi] .td-r .td-m { border-left-color: color-mix(in srgb, var(--accent) 75%, transparent); }
+html[data-multi] .td-t time { color: var(--accent); }
+html[data-multi] .sp-m { background: color-mix(in srgb, var(--accent) 8%, rgba(255, 255, 255, 0.05)); box-shadow: inset 3px 0 0 var(--accent); }
+html[data-multi] .sp-m.on { background: color-mix(in srgb, var(--accent) 16%, rgba(255, 255, 255, 0.06)); }
+html[data-multi] .guide-category-head { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 13%, color-mix(in srgb, var(--surface) 82%, transparent)); }
+html[data-multi] .guide-category-count { color: var(--accent); }
+html[data-multi] .row:is(.k0, .k1, .k2, .k3, .k4, .k5) { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 80%, transparent); }
+html[data-multi] .row.cat .n, html[data-multi] .row.cat .chev, html[data-multi] .row .num { color: var(--accent); }
+html[data-multi] .cat-tile { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+html[data-multi] .src { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+html[data-multi] .src.active { border-color: var(--accent); }
+/* başlıklar */
+html[data-multi] .sect { color: var(--accent); }
+html[data-multi] .sect::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+html[data-multi] .home-section-head b { color: var(--pc); }
+html[data-multi] .home-tools-head b { color: var(--p6); }
+html[data-multi] .home-row-h b { color: var(--accent); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { font-size: calc(16px * var(--fs)); }
 html, body { margin: 0; height: 100%; background: var(--bg-grad) no-repeat, var(--bg); background-attachment: fixed; color: var(--text); overflow: hidden; overscroll-behavior: none; }

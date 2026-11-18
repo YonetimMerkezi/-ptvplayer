@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 132,
+    title: 'Sayfaların içi de çok renkli',
+    items: [
+      'Renkli temalarda artık her sayfanın içinde farklı renkler var: Bugün TV’de’nin Spor, Film ve Dizi sekmeleri, gün çipleri, program satırları, TV rehberi kategorileri, spor maçları, kanal ve kategori listeleri, kaynak kartları ve başlıklar paletin farklı renklerini sırayla alır',
+      'Seçili öğe kendi rengiyle dolar, rozet ve ilerleme çubuğu satırın rengini taşır; dolgu üstündeki yazı hep koyudur',
+    ],
+  },
+  {
     id: 131,
     title: 'Renkli temalar tüm uygulamaya yayıldı',
     items: [

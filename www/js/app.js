@@ -237,6 +237,9 @@ applyCaption(store.pref('set.caption', DEFAULT_CAPTION), document);
 let VERSION = 'geliştirme';
 import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.tab === 'sources' && S.source) renderTab(); }).catch(() => {});
 
+// Çok renkli temalarda liste öğeleri sırayla paletin altı rengini alır (CSS: html[data-multi] .k0…k5); diğer temalarda etkisizdir.
+const kc = (i) => ' k' + (i % 6);
+
 const S = {
   linkErr: false, // son liste yenilemesi başarısız mı (ana ekrandaki bağlantı durumu için)
   source: null,
@@ -900,7 +903,7 @@ function catRow(c, i) {
   const folderIc = c.folder ? icon('folder') : '';
   const lockIc = c.locked ? icon('lock') : '';
   if (!S.catEdit || c.special) {
-    return `<div class="row cat${c.special ? ' special' : ''}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${lockIc}${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
+    return `<div class="row cat${c.special ? ' special' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${lockIc}${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
   }
   const move_ = S.catFilter
     ? ''
@@ -1605,7 +1608,7 @@ function liveRow(it, i) {
   const sub = bad ? 'Çalışmıyor olabilir' : nn.now ? nn.now.t : it.group || '';
   const sel = split && S.pv && S.pv.id === it.id;
   const num = split && setting('numbers') ? `<span class="num">${it.num || i + 1}</span>` : '';
-  return `<div class="row${sel ? ' sel' : ''}${bad ? ' bad' : ''}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
+  return `<div class="row${sel ? ' sel' : ''}${bad ? ' bad' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}">${num}${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(sub)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}</div><button class="act ${fav ? 'on' : ''}" data-fav aria-label="Favori">${icon(fav ? 'star-on' : 'star')}</button><button class="act" data-epg aria-label="Program rehberi">${icon('list')}</button></div>`;
 }
 
 function categoryTile(c, i) {
@@ -1614,7 +1617,7 @@ function categoryTile(c, i) {
     const move_ = S.catFilter ? '' : `<button class="cat-tile-act" data-act="top" aria-label="En üste al">${icon('top')}</button><button class="cat-tile-act" data-act="up" aria-label="Yukarı">${icon('up')}</button><button class="cat-tile-act" data-act="down" aria-label="Aşağı">${icon('down')}</button>`;
     return `<div class="cat-tile editing${c.hidden ? ' hidden' : ''}" role="button" tabindex="0" data-i="${i}"><span class="cat-tile-ic">${folderIc}</span><b>${esc(c.name)}</b><small>${c.count} öğe</small><div class="cat-tile-actions"><button class="cat-tile-act" data-act="eye" aria-label="${c.hidden ? 'Göster' : 'Gizle'}">${icon(c.hidden ? 'eye-off' : 'eye')}</button><button class="cat-tile-act" data-act="lock" aria-label="${c.lockSet ? 'Kilidi kaldır' : 'Şifreyle kilitle'}">${icon(c.lockSet ? 'lock' : 'lock-open')}</button>${move_}</div></div>`;
   }
-  return `<div class="cat-tile${c.hidden ? ' hidden' : ''}" role="button" tabindex="0" data-i="${i}"><span class="cat-tile-ic">${folderIc}</span><b>${esc(c.name)}</b><small>${c.count} öğe</small>${c.locked ? '<span class="cat-tile-lock">Kilitli</span>' : ''}</div>`;
+  return `<div class="cat-tile${c.hidden ? ' hidden' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}"><span class="cat-tile-ic">${folderIc}</span><b>${esc(c.name)}</b><small>${c.count} öğe</small>${c.locked ? '<span class="cat-tile-lock">Kilitli</span>' : ''}</div>`;
 }
 function liveTile(it, i) {
   const fav = isFav(it);
@@ -3594,13 +3597,13 @@ function channelPicker(onPick, { guide = false } = {}) {
         const nn = S.epg.nowNext(it);
         const now = nn.now ? `${fmtClock(nn.now.s)} · ${nn.now.t}` : 'Program bilgisi yok';
         const next = nn.next ? `Sonra ${fmtClock(nn.next.s)} · ${nn.next.t}` : '';
-        return `<div class="row gd" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(now)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}${next ? `<div class="sub nx"><span class="mq-i">${esc(next)}</span></div>` : ''}</div></div>`;
+        return `<div class="row gd${kc(i)}" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(now)}</span></div>${nn.now ? `<div class="bar"><i style="width:${Math.round(nn.progress * 100)}%"></i></div>` : ''}${next ? `<div class="sub nx"><span class="mq-i">${esc(next)}</span></div>` : ''}</div></div>`;
       };
       const list = new VirtualList($('#pk-list', body), {
         rowH: scaled(guide ? 88 : 60),
         render: guide
           ? guideRow
-          : (it, i) => `<div class="row" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(it.group || '')}</span></div></div></div>`,
+          : (it, i) => `<div class="row${kc(i)}" role="button" tabindex="0" data-i="${i}">${logo(it.logo, it.name)}<div class="meta"><div class="nm"><span class="mq-i">${esc(it.name)}</span></div><div class="sub"><span class="mq-i">${esc(it.group || '')}</span></div></div></div>`,
         onTap: (i) => {
           const it = items[i];
           if (!it) return;

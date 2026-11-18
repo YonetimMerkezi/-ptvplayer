@@ -141,3 +141,28 @@ test('çok renkli temalarda vurgu rengi bölüme göre: her sekme ve her tam say
   // Dolgu üstü yazı koyu kalır
   assert.match(css, /--accent: var\(--pc\); --accent-ink: #0a1118;/);
 });
+
+test('çok renkli temalarda sayfa içi renk dağılımı: öğeler paletin altı rengini sırayla alır, koyu yazı korunur, liste satırlarına sıra sınıfı yazılır', () => {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '../www');
+  const app = readFileSync(join(dir, 'js/app.js'), 'utf8');
+  const sira = ['p1', 'p4', 'p6', 'p2', 'p5', 'p3'];
+  sira.forEach((p, i) => {
+    assert.ok(css.includes(`html[data-multi] .k${i} { --k: var(--${p}); }`), `.k${i} rengi yok`);
+    assert.match(css, new RegExp(`html\\[data-multi\\] :is\\([^\\n]*\\):nth-child\\(6n\\+${i + 1}\\) \\{ --k: var\\(--${p}\\); \\}`), `${i + 1}. sıra döngüsü yok`);
+  });
+  // Bugün TV'de türleri ve Favoriler sekmeleri kendi rengini taşır
+  for (const [k, p] of [['spor', 'p1'], ['film', 'p2'], ['dizi', 'p3']]) assert.ok(css.includes(`html[data-multi] .td-k[data-kind=${k}] { --k: var(--${p}); }`), `tür rengi yok: ${k}`);
+  for (const k of ['live', 'movie', 'series']) assert.match(css, new RegExp(`html\\[data-multi\\] #fseg \\[data-k=${k}\\] \\{ --k: var\\(--p[0-8]\\); \\}`), `Favoriler rengi yok: ${k}`);
+  // --k → --accent çevirisi: ayar kartlarının içi kartın rengini korur, dolgu üstü yazı koyu
+  const benimse = css.match(/html\[data-multi\] :is\(([^\n]*)\):not\(\.set-card \*\) \{ --accent: var\(--k, var\(--pc\)\); --accent-ink: #0a1118;/);
+  assert.ok(benimse, 'benimseme kuralı yok');
+  for (const c of ['.td-k', '.chips .chip', '.seg button', '.gd-day', '.td-r', '.guide-category-head', '.sp-m', '.src', '.sect', '.home-row', '.cat-tile']) assert.ok(benimse[1].includes(c), `renk dağılımına girmeyen öğe: ${c}`);
+  // Sanal liste satırları sıra sınıfı alır: kategori, kanal, rehber kanalı
+  assert.match(app, /const kc = \(i\) => ' k' \+ \(i % 6\);/);
+  assert.ok((app.match(/\$\{kc\(i\)\}/g) || []).length >= 5, 'liste satırlarında kc(i) kullanılmalı');
+  // Sarı (p7) dolguda beyaz yazı olmaz: dağılım kurallarında beyaz yazı yok
+  const blok = css.slice(css.indexOf('/* Çok renkli temalarda sayfa içi dağılım'), css.indexOf('* { box-sizing'));
+  assert.ok(blok.length > 2500);
+  assert.doesNotMatch(blok, /color:\s*#fff\b|color:\s*white/i, 'dağılım kurallarında beyaz yazı olmamalı');
+});
+
