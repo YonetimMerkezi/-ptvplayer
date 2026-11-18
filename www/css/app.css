@@ -131,6 +131,27 @@ html[data-multi] .rd-pg { --pc: var(--p6); }
 html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page, .rd-pg) {
   --accent: var(--pc); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--pc) 18%, transparent); --sel: color-mix(in srgb, var(--pc) 42%, #000);
 }
+/* Canlı TV kategorileri: gerçekçi görselli geniş kart (www/img/cat/*.webp; kategori adına göre cat-art.js seçer). Görsel sağda, sola doğru kartın koyu rengine erir. */
+.row.cat.vis, .cat-tile.vis { --vis-bg: color-mix(in srgb, var(--accent) 14%, #070b14); position: relative; overflow: hidden; background: var(--vis-bg); box-shadow: none; }
+.row.cat.vis { height: calc(100% - 10px); margin: 5px 0; padding: 0 10px 0 30px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 20px; }
+.row.cat.vis::before { content: ''; position: absolute; left: 12px; top: 24%; bottom: 24%; width: 4px; border-radius: 3px; background: var(--accent); z-index: 2; }
+.row.cat.vis::after, .cat-tile.vis::after { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.row.cat.vis::after { background: linear-gradient(90deg, var(--vis-bg) 0%, var(--vis-bg) 20%, color-mix(in srgb, var(--vis-bg) 50%, transparent) 44%, transparent 78%); }
+.row.cat.vis .cat-art { position: absolute; right: 0; top: 0; width: 82%; height: 100%; object-fit: cover; object-position: right center; z-index: 0; pointer-events: none; }
+.row.cat.vis .meta, .row.cat.vis .chev { position: relative; z-index: 2; }
+.row.cat.vis .nm { font-size: 1.125rem; font-weight: 800; color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); }
+.row.cat.vis.special .nm { color: #fff; }
+.row.cat.vis .sub { margin-top: 3px; color: color-mix(in srgb, var(--accent) 55%, #fff); font-weight: 600; text-shadow: 0 1px 5px rgba(0, 0, 0, 0.7); }
+.row.cat.vis .chev { color: #fff; opacity: 0.85; }
+.cat-tile.vis { align-items: flex-start; justify-content: flex-end; gap: 2px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.cat-tile.vis .cat-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right center; z-index: 0; pointer-events: none; }
+.cat-tile.vis::after { background: linear-gradient(0deg, color-mix(in srgb, var(--vis-bg) 92%, transparent) 0%, color-mix(in srgb, var(--vis-bg) 45%, transparent) 55%, transparent 100%); }
+.cat-tile.vis b, .cat-tile.vis small, .cat-tile.vis .cat-tile-lock { position: relative; z-index: 2; }
+.cat-tile.vis b { color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); }
+.cat-tile.vis small { color: color-mix(in srgb, var(--accent) 55%, #fff); font-weight: 600; }
+html[data-multi] .row.cat.vis:is(.k0, .k1, .k2, .k3, .k4, .k5) { box-shadow: none; }
+html[data-multi] .cat-tile.vis { background: var(--vis-bg); }
+
 /* Ana ekran film önerisi: tür çipleri ve öneri satırı */
 .hp-chips { margin: -2px -12px 0; padding: 4px 12px 8px; }
 .hp-chips .chip { flex: none; white-space: nowrap; }

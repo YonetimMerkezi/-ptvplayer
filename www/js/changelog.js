@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 135,
+    title: 'Canlı TV kategorileri görselli',
+    items: [
+      'Canlı TV’de her kategori kendi gerçekçi görseliyle geniş kart oldu: spor, sinema, haber, çocuk, müzik, dini, belgesel, dizi, 4K, ulusal, yabancı, eğlence ve diğerleri',
+      'Kategori adına göre görsel kendiliğinden seçilir; tanınmayan adlar genel görseli alır. Liste ve ızgara görünümünde çalışır, internet gerekmez',
+      'Renkli temalarda kartın rengi ve sol çubuğu temayla uyumlu; düzenleme modunda eski sade satırlar durur',
+    ],
+  },
+  {
     id: 134,
     title: 'Ne izleyeceğine karar veremedin mi?',
     items: [
