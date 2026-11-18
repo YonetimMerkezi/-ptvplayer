@@ -4599,10 +4599,14 @@ function reportInput() {
     .map(([id, at]) => ({ name: names.get(String(id)) || 'Kanal ' + id, at }));
   const hv = Object.values(store.pref(histKey(), {}) || {});
   const hist = { ok: hv.filter((r) => r[0] === 1).length, fail: hv.filter((r) => r[0] === 0).length, unknown: hv.filter((r) => r[0] === -1).length };
+  // Üyelik: gerçek durum (yönetici önizlemesi sayılmaz). Satın alma bağlı değilse (doğrudan APK) üyelik yoktur.
+  const mem = BILLING_READY ? memberState({ start: Number(store.pref('mem.start', 0)), ent: store.pref('mem.ent', null) }) : null;
   return {
     version: VERSION,
     tv: isTvUi(),
     deviceId: deviceId(store),
+    tier: mem ? mem.tier : '',
+    tierDays: mem ? mem.daysLeft : 0,
     sources: store.sources(),
     counts: { live: S.cat.live.length, movie: S.cat.movies.length, series: S.cat.series.length },
     bad,

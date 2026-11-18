@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hostOf, scrub, pushError, buildReport, encodeReport, decodeReport, describeReport, summarize, REPORT_PREFIX, MAX_CHARS, MAX_ERRORS } from '../www/js/report.js';
+import { hostOf, scrub, pushError, buildReport, encodeReport, decodeReport, describeReport, summarize, tierText, REPORT_PREFIX, MAX_CHARS, MAX_ERRORS } from '../www/js/report.js';
 
 const NOW = Date.UTC(2026, 10, 10);
 const input = (over = {}) => ({
@@ -116,4 +116,41 @@ test('decodeAll: art arda yapıştırılan raporlar ayrı ayrı çözülür, boz
   const all = decodeAll(`Ali:\n${a}\n\nVeli:\n${b}\nbozuk ${REPORT_PREFIX}xxx.`);
   assert.deepEqual(all.map((r) => r.id), ['a1b2c3d4e5f6', 'b1b2c3d4e5f6']);
   assert.deepEqual(decodeAll('rapor yok'), []);
+});
+
+test('rapor: üyelik katmanı yalnız bilinen değerlerle girer, gidiş-dönüşte korunur, özette sayılır', () => {
+  const rep = buildReport(input({ tier: 'pro', tierDays: 200 }), NOW);
+  assert.equal(rep.m, 'pro');
+  assert.equal(rep.md, 200);
+  const back = decodeReport(encodeReport(rep));
+  assert.equal(back.m, 'pro');
+  assert.equal(back.md, 200);
+  assert.match(describeReport(back), /Üyelik: Pro \(200 gün kaldı\)/);
+  // bilinmeyen / sahte değer atılır; üyelik bildirilmediyse "Bilinmiyor"
+  assert.equal(buildReport(input({ tier: 'admin' }), NOW).m, '');
+  assert.equal(buildReport(input({ tier: '__proto__' }), NOW).m, '');
+  assert.equal(buildReport(input({ tierDays: -5 }), NOW).md, 0);
+  assert.equal(buildReport(input({ tierDays: 1e9 }), NOW).md, 9999);
+  assert.match(describeReport(buildReport(input(), NOW)), /Üyelik: Bilinmiyor\n/);
+  assert.equal(tierText(buildReport(input({ tier: 'expired' }), NOW)), 'Süresi doldu');
+  assert.doesNotMatch(describeReport(buildReport(input({ tier: 'expired', tierDays: 0 }), NOW)), /gün kaldı/);
+  // dışarıdan gelen sahte rapor yeniden süzülür
+  const forged = decodeReport(encodeReport({ ...rep, m: 'pro' }).replace(/^/, ''));
+  assert.equal(forged.m, 'pro');
+  const dirty = decodeReport(REPORT_PREFIX + Buffer.from(JSON.stringify({ r: 1, at: NOW, id: 'a1b2c3d4e5f6', m: 'süper', md: 'x' })).toString('base64url') + '.');
+  assert.equal(dirty.m, '');
+  assert.equal(dirty.md, 0);
+  // özet: aynı cihazın en yeni raporu sayılır
+  const mk = (id, at, tier) => buildReport(input({ deviceId: id, tier, bad: [], errors: [] }), at);
+  const s = summarize([mk('a1b2c3d4e5f6', 1, 'trial'), mk('a1b2c3d4e5f6', 5, 'pro'), mk('b1b2c3d4e5f6', 3, 'standard'), mk('c1b2c3d4e5f6', 2, 'standard'), mk('d1b2c3d4e5f6', 2, '')]);
+  assert.deepEqual(s.tiers, { pro: 1, standard: 2, '': 1 });
+});
+
+test('uygulama: rapora gerçek üyelik durumu girer (yönetici önizlemesi değil), satın alma bağlı değilse boş', async () => {
+  const { readFileSync } = await import('node:fs');
+  const app = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8');
+  const fn = app.slice(app.indexOf('function reportInput() {'), app.indexOf('function reportSheet() {'));
+  assert.match(fn, /BILLING_READY \? memberState\(\{ start: Number\(store\.pref\('mem\.start', 0\)\), ent: store\.pref\('mem\.ent', null\) \}\) : null/);
+  assert.doesNotMatch(fn, /preview/, 'önizleme gerçek durum sayılmaz');
+  assert.match(fn, /tier: mem \? mem\.tier : ''/);
 });

@@ -3,11 +3,17 @@
 // Kimlik bilgileri (kullanıcı adı, şifre, tam liste adresi) rapora ASLA girmez: yalnız beyaz listedeki alanlar alınır,
 // serbest metinler (hata iletisi) adreslerden ve gizli değerlerden arındırılır. Saf mantık; depo/ağ yok.
 import { b64, unb64, normDevice } from './managed.js';
+import { TIERS } from './membership.js';
 
 export const REPORT_PREFIX = 'IPTVRAPOR1:';
 export const MAX_CHARS = 9000;
 export const MAX_ERRORS = 30;
 const MAX_BAD = 40;
+
+// Üyelik katmanı (rapora yalnız bu değerler girer; boş: bilinmiyor ya da üyelik sistemi kapalı, ör. doğrudan APK).
+const tierOf = (v) => (Object.prototype.hasOwnProperty.call(TIERS, v) ? v : '');
+const daysOf = (v) => Math.max(0, Math.min(9999, Math.round(Number(v)) || 0));
+export const tierText = (r) => (r.m ? TIERS[r.m] : 'Bilinmiyor');
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -37,7 +43,7 @@ export function pushError(list, e, now = Date.now()) {
 }
 
 // Rapor nesnesi (kısa anahtarlar; yalnız beyaz liste).
-// input: { version, tv, deviceId, sources:[{type,url|server,managed}], counts:{live,movie,series}, bad:[{name,at}], errors:[…], hist:{ok,fail,unknown} }
+// input: { version, tv, deviceId, tier, tierDays, sources:[{type,url|server,managed}], counts:{live,movie,series}, bad:[{name,at}], errors:[…], hist:{ok,fail,unknown} }
 export function buildReport(input, now = Date.now()) {
   const src = (Array.isArray(input.sources) ? input.sources : []).slice(0, 10).map((s) => ({
     t: s.type === 'xtream' ? 'xtream' : s.local ? 'dosya' : 'm3u',
@@ -52,6 +58,8 @@ export function buildReport(input, now = Date.now()) {
     v: clip(input.version, 20),
     tv: input.tv ? 1 : 0,
     id: normDevice(input.deviceId).slice(0, 12),
+    m: tierOf(input.tier),
+    md: daysOf(input.tierDays),
     s: src,
     n: { l: Number(c.live) || 0, m: Number(c.movie) || 0, d: Number(c.series) || 0 },
     q: { ok: Number(h.ok) || 0, fail: Number(h.fail) || 0, unk: Number(h.unknown) || 0 },
@@ -94,6 +102,8 @@ function cleanReport(j) {
     v: clip(j.v, 20),
     tv: j.tv ? 1 : 0,
     id: normDevice(j.id).slice(0, 12),
+    m: tierOf(j.m),
+    md: daysOf(j.md),
     s: arr(j.s).slice(0, 10).map((s) => ({ t: s && (s.t === 'xtream' || s.t === 'dosya') ? s.t : 'm3u', h: clip(o(s).h, 60), g: o(s).g ? 1 : 0 })),
     n: { l: n(o(j.n).l), m: n(o(j.n).m), d: n(o(j.n).d) },
     q: { ok: n(o(j.q).ok), fail: n(o(j.q).fail), unk: n(o(j.q).unk) },
@@ -127,6 +137,7 @@ export function decodeReport(text) {
 export function describeReport(r) {
   const lines = [
     `Sürüm: ${r.v || '?'} · ${r.tv ? 'TV' : 'Telefon'} · Cihaz kimliği: ${r.id}`,
+    `Üyelik: ${tierText(r)}${r.m && r.m !== 'expired' && r.md ? ` (${r.md} gün kaldı)` : ''}`,
     `Liste: ${r.s.map((s) => `${s.t}${s.h ? ' (' + s.h + ')' : ''}${s.g ? ' [kodlu]' : ''}`).join(', ') || '—'}`,
     `Kanal ${r.n.l} · Film ${r.n.m} · Dizi ${r.n.d}`,
     `Yayın denetimi: ${r.q.ok} çalışıyor, ${r.q.fail} çalışmıyor, ${r.q.unk} doğrulanamadı`,
@@ -142,18 +153,20 @@ export function summarize(reports) {
   for (const r of reports) if (!byDev.has(r.id) || byDev.get(r.id).at < r.at) byDev.set(r.id, r);
   const latest = [...byDev.values()];
   const versions = {};
+  const tiers = {}; // üyelik dağılımı; '' (bilinmiyor) dahil
   const fails = new Map();
   let tvs = 0;
   for (const r of latest) {
     versions[r.v || '?'] = (versions[r.v || '?'] || 0) + 1;
     if (r.tv) tvs++;
+    tiers[r.m] = (tiers[r.m] || 0) + 1;
     const seen = new Set();
     for (const b of r.bad) seen.add(b.n);
     for (const e of r.e) if (e.n) seen.add(e.n);
     for (const n of seen) if (n) fails.set(n, (fails.get(n) || 0) + 1);
   }
   const top = [...fails.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr')).slice(0, 15).map(([name, devices]) => ({ name, devices }));
-  return { devices: latest.length, tvs, versions, top };
+  return { devices: latest.length, tvs, versions, tiers, top };
 }
 
 // Birden çok rapor art arda yapıştırılmış olabilir: hepsini ayrı ayrı çözer (geçersizler atlanır).

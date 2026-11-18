@@ -5,7 +5,8 @@ import { esc } from './util.js';
 import { $, $$, icon, toast, openPage, openSheet, fmtAgo } from './ui.js';
 import { createGithub, loadVault, publish, sealToken, openToken } from './admin.js';
 import { newUser, userStatus, extendUser, addBlocked, inviteText, cleanSourceInput, expiryFrom } from './vault.js';
-import { decodeAll, describeReport, summarize } from './report.js';
+import { decodeAll, describeReport, summarize, tierText } from './report.js';
+import { TIERS } from './membership.js';
 import { fmtDeviceId } from './managed.js';
 import { THEMES, DEFAULT_THEME, DEFAULT_PRO_THEMES, proThemeIds, previewUrl } from './theme.js';
 
@@ -141,9 +142,10 @@ ${THEMES.filter((t) => t.id !== DEFAULT_THEME)
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button class="btn" id="rp-add">İçe aktar</button><button class="btn ghost" id="rp-paste">Panodan yapıştır</button></div>
 <div class="sect">Özet</div>
 <p>${sum.devices} cihaz (${sum.tvs} TV) · ${Object.entries(sum.versions).map(([k, n]) => `${esc(k)}: ${n}`).join(', ') || 'rapor yok'}</p>
+${sum.devices ? `<p>Üyelik: ${[...Object.keys(TIERS), ''].filter((k) => sum.tiers[k]).map((k) => `${k ? TIERS[k] : 'Bilinmiyor'} ${sum.tiers[k]}`).join(' · ')}</p>` : ''}
 ${sum.top.length ? `<div class="sect">En çok hata veren kanallar</div>${sum.top.map((t) => `<p>${esc(t.name)} <small style="color:var(--muted)">${t.devices} cihaz</small></p>`).join('')}` : ''}
 <div class="sect">Cihazlar</div>
-${devs.map((r) => `<button class="list-item" data-a="rview" data-id="${esc(r.id)}"><span class="t">${esc(fmtDeviceId(r.id))}<small>${esc(r.v || '?')} · ${r.tv ? 'TV' : 'Telefon'} · ${fmtAgo(r.at)} · çalışmıyor: ${r.bad.length}</small></span></button>`).join('') || '<p style="color:var(--muted)">Henüz rapor yok.</p>'}
+${devs.map((r) => `<button class="list-item" data-a="rview" data-id="${esc(r.id)}"><span class="t">${esc(fmtDeviceId(r.id))}<small>${esc(tierText(r))} · ${esc(r.v || '?')} · ${r.tv ? 'TV' : 'Telefon'} · ${fmtAgo(r.at)} · çalışmıyor: ${r.bad.length}</small></span></button>`).join('') || '<p style="color:var(--muted)">Henüz rapor yok.</p>'}
 ${reports.length ? '<button class="btn ghost sm" id="rp-clear" style="margin-top:12px">Raporları temizle</button>' : ''}`;
       };
 

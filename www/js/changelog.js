@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 122,
+    title: 'Sorun raporuna üyelik durumu eklendi',
+    items: [
+      'Sorun raporu artık üyelik durumunu da içerir (Deneme, Standart, Pro, Süresi doldu); gönderilmeden önce önizlemede görünür',
+      'Yönetici panelindeki Raporlar sekmesi üyelik dağılımını ve her cihazın üyelik durumunu gösterir',
+    ],
+  },
+  {
     id: 121,
     title: 'Yeni tema sayfası',
     items: [
