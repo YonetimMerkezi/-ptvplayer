@@ -61,6 +61,7 @@ import { KID_KINDS, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAll
 import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { isPlay, loadDist } from './dist.js';
+import { finishIntro } from './intro.js';
 import { redeem, syncManaged, fetchConfig, giftFor, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { BIND_URL, subId, bestToken, callClaim, nextBind, bindAllowed, bindDue } from './devbind.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
@@ -542,6 +543,7 @@ async function activate(id, { force = false } = {}) {
   S.epg = new EpgView(await store.cache.get('epg:' + id));
   renderTop();
   renderTab();
+  finishIntro(); // açılış animasyonu: arayüz ilk kez çizildi
   const stale = !cached || Date.now() - cached.fetchedAt > staleCatalogMs();
   if (force || stale) await refreshCatalog({ quiet: !!cached && !force });
   else maybeRefreshEpg();
@@ -6523,6 +6525,7 @@ function warmStart(tries = 0) {
     renderTop();
     S.tab = 'home';
     renderTab();
+    finishIntro();
     return sourceForm();
   }
   setTimeout(() => checkForUpdate({ launch: true }), 2500); // açılışta yeni sürüm var mı bak; varsa üstte şerit çıkar

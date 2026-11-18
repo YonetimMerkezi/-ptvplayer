@@ -5,9 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0f1420">
 <title>Iptv Player Pro</title>
+<script>
+// Açılış animasyonu yalnız soğuk açılışta oynar; sayfa yenilemesinde (kaynak değişimi, yedek geri yükleme) atlanır.
+try { var nv = performance.getEntriesByType('navigation')[0]; if (nv && nv.type !== 'navigate') document.documentElement.classList.add('intro-skip'); } catch (e) {}
+</script>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+<div id="intro" aria-hidden="true"><div class="in-logo"><img src="img/intro-logo.webp" alt="" decoding="sync"></div></div>
 <script>
 // Açılışta bir betik hatası olursa sessiz kalmak yerine ekranda göster.
 (function () {

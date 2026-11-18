@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 126,
+    title: 'Açılış animasyonu',
+    items: [
+      'Uygulama açılırken logo belirir ve üzerinden ışık geçer; arayüz hazır olunca kendiliğinden kalkar (yaklaşık 1,3 saniye)',
+      'Sayfa yenilenince (liste değiştirme, yedek geri yükleme) tekrar oynamaz; sistemde “animasyonları kaldır” açıksa gösterilmez',
+    ],
+  },
+  {
     id: 125,
     title: 'Hediye üyelik ve cihaz kimliği',
     items: [
