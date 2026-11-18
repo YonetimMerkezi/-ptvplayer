@@ -1,0 +1,93 @@
+name: webOS derle
+
+# LG webOS TV sürümü (webos/): ES5'e derlenir, Chromium 38 denetiminden geçirilir, IPK paketlenir.
+# IPK sabit adresten indirilir: https://github.com/${{ github.repository }}/releases/download/webos/iptv-player-webos.ipk
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'webos/**'
+      - 'www/js/xtream.js'
+      - 'www/js/m3u.js'
+      - 'www/js/util.js'
+      - 'tests/webos.test.js'
+      - '.github/workflows/webos.yml'
+  pull_request:
+    paths:
+      - 'webos/**'
+      - 'www/js/xtream.js'
+      - 'www/js/m3u.js'
+      - 'www/js/util.js'
+      - 'tests/webos.test.js'
+      - '.github/workflows/webos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iptv-webos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webos/package-lock.json
+
+      - name: Birim testleri (webOS)
+        run: node --test tests/webos.test.js
+
+      - name: Bağımlılıklar
+        working-directory: webos
+        run: npm ci
+
+      - name: Derle (ES5, Chromium 38)
+        working-directory: webos
+        env:
+          WEBOS_VERSION: 1.0.${{ github.run_number }}
+        run: npm run build
+
+      - name: ES5 / Chromium 38 denetimi
+        working-directory: webos
+        run: npm run check
+
+      - name: IPK paketle
+        working-directory: webos
+        run: |
+          npm install --no-save --no-audit --no-fund @webos-tools/cli
+          mkdir -p dist/ipk
+          npx ares-package --no-minify dist/app dist/service -o dist/ipk
+          ls -la dist/ipk
+          cp dist/ipk/*.ipk dist/iptv-player-webos.ipk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iptv-player-webos-ipk
+          path: webos/dist/iptv-player-webos.ipk
+          if-no-files-found: error
+
+      - name: Sürümü yayınla (webos)
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp webos/dist/iptv-player-webos.ipk iptv-player-webos.ipk
+          cp webos/KURULUM.md webos-kurulum.md
+          TITLE="LG webOS TV sürümü 1.0.${{ github.run_number }}"
+          NOTES="$(printf 'LG webOS TV için paket (IPK). Kurulum: webos-kurulum.md dosyasına bakın.\n\nDerleme %s (%s). Bu sürüm webOS 3.x (2016-2017) ve üstü için sade arayüzlüdür.' "${{ github.run_number }}" "${GITHUB_SHA::7}")"
+          RELEASE_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.tag_name == "webos") | .id' | head -n 1)"
+          if [ -n "$RELEASE_ID" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$RELEASE_ID" -X PATCH \
+              -f name="$TITLE" -f body="$NOTES" -F draft=false -F prerelease=false -f make_latest=false >/dev/null
+            gh release upload webos iptv-player-webos.ipk webos-kurulum.md --clobber
+          else
+            gh release create webos iptv-player-webos.ipk webos-kurulum.md --target "${{ github.sha }}" --latest=false \
+              --title "$TITLE" --notes "$NOTES"
+          fi

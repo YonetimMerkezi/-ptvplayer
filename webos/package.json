@@ -1,0 +1,20 @@
+{
+  "name": "iptv-player-webos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Iptv Player Pro: LG webOS TV (3.x ve üstü) sade sürümü",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check-es5.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "acorn": "^8.14.0",
+    "core-js": "^3.39.0",
+    "esbuild": "^0.24.0",
+    "regenerator-runtime": "^0.14.1",
+    "terser": "^5.36.0"
+  }
+}

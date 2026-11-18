@@ -1,0 +1,6 @@
+{
+  "name": "com.koruk.iptv.webos.service",
+  "version": "1.0.0",
+  "description": "Iptv Player Pro: ağ isteklerini TV içinde (CORS olmadan) yapan JS servisi",
+  "main": "service.js"
+}

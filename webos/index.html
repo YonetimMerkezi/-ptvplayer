@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Iptv Player Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<link rel="stylesheet" href="css/tv.css">
+<script>
+// Uygulama betiği çalışmazsa (eski motorda söz dizimi sorunu gibi) TV'de konsol olmadığı için hata ekranda görünsün.
+window.onerror = function (m, f, l) {
+  var b = document.getElementById('boot');
+  if (b) b.innerHTML = 'Uygulama başlatılamadı<br><small>' + String(m).replace(/</g, '&lt;') + ' (' + String(f || '').split('/').pop() + ':' + l + ')<br>Sürüm __VERSION__</small>';
+};
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="boot">Iptv Player Pro yükleniyor…</div>
+<script src="js/app.js"></script>
+</body>
+</html>

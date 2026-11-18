@@ -14,3 +14,4 @@ android/capacitor-cordova-android-plugins/
 mock/media/
 tests/e2e/shots/
 notes.txt
+webos/dist/

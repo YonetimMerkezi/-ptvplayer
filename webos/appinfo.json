@@ -1,0 +1,15 @@
+{
+  "id": "com.koruk.iptv.webos",
+  "version": "1.0.0",
+  "vendor": "Koruk",
+  "type": "web",
+  "main": "index.html",
+  "title": "Iptv Player Pro",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgImage": "splash.png",
+  "splashBackground": "splash.png",
+  "resolution": "1920x1080",
+  "disallowScrollingInMainFrame": true,
+  "requiredACG": []
+}

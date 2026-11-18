@@ -1,0 +1,14 @@
+{
+  "id": "com.koruk.iptv.webos.service",
+  "description": "Iptv Player Pro ağ servisi",
+  "services": [
+    {
+      "name": "com.koruk.iptv.webos.service",
+      "description": "HTTP GET (yönlendirme, gzip) ve parça parça okuma",
+      "commands": [
+        { "name": "fetch", "description": "Adresi indirir; ilk parçayı ve kimliği döndürür" },
+        { "name": "read", "description": "İndirilmiş yanıttan sıradaki parçayı verir" }
+      ]
+    }
+  ]
+}
