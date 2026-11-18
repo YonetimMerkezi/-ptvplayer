@@ -237,7 +237,9 @@ export function createPlayerUI({ engine, player, env }) {
       }
       gest.swallow = true;
       const st = player.state();
-      if (m === 'h') {
+      if (m === 'h' && musicNow) {
+        gest.mode = 'swipe'; // müzik çalar: yatay kaydırma şarkı değiştirir
+      } else if (m === 'h') {
         if (st.live || !(st.dur > 0)) {
           gest.mode = 'none';
           return hud('info', 'Canlı yayında sarma yok');
@@ -250,7 +252,9 @@ export function createPlayerUI({ engine, player, env }) {
         gest.start = levels[gest.kind];
       }
     }
-    if (gest.mode === 'h') {
+    if (gest.mode === 'swipe') {
+      dragArt(dx);
+    } else if (gest.mode === 'h') {
       const st = player.state();
       const sec = seekDelta(dx, gest.videoRect.width);
       gest.target = seekTarget(gest.base, sec, st.dur);
@@ -266,6 +270,54 @@ export function createPlayerUI({ engine, player, env }) {
       }
       hud(gest.kind === 'brightness' ? 'sun' : 'audio', `${gest.kind === 'brightness' ? 'Parlaklık' : 'Ses'} ${Math.round(v * 100)}%`, v);
     }
+  }
+
+  // Müzik çalar: yukarı kaydırınca üst alan (küçük kapak, düğmeler, ilerleme) küçülür ve şarkı listesi büyür; listenin başında
+  // aşağı çekince ya da yukarı kaydırmayı geri alınca eski haline döner. Durum şarkılar arasında korunur, çalar kapanınca sıfırlanır.
+  let musicCompact = false;
+  function setMusicCompact(on) {
+    if (musicCompact === on) return;
+    musicCompact = on;
+    root.classList.toggle('music-min', musicNow && on);
+  }
+
+  // Müzik çalar: kapak parmakla birlikte kayar; yeterince uzağa ya da hızlı bırakılırsa şarkı değişir (sola: sonraki, sağa: önceki).
+  // Kaydırma yetmezse kapak yerine döner. Kapak, yeni şarkı için karşı taraftan kayarak gelir.
+  const musicArt = () => q('#pl-music .pm-art');
+  function dragArt(dx) {
+    const a = musicArt();
+    a.style.transition = 'none';
+    a.style.setProperty('--sx', dx * 0.7 + 'px');
+    a.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 480));
+  }
+  function finishSwipe(dx, ended) {
+    const a = musicArt();
+    const w = (gest.videoRect && gest.videoRect.width) || 360;
+    const dir = dx < 0 ? 1 : -1;
+    const fast = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - gest.t0) > 0.5;
+    const can = ended && !!ctx && Array.isArray(ctx.items) && ctx.items.length > 1 && (Math.abs(dx) > Math.max(60, w * 0.18) || fast);
+    const settled = () => setTimeout(() => (a.style.transition = ''), 280); // satır içi geçiş kalmasın: küçülme animasyonu CSS'ten gelir
+    if (!can) {
+      a.style.transition = 'transform .18s ease-out, opacity .18s ease-out';
+      a.style.setProperty('--sx', '0px');
+      a.style.opacity = '';
+      settled();
+      return;
+    }
+    a.style.transition = 'transform .14s ease-in, opacity .14s ease-in';
+    a.style.setProperty('--sx', -dir * w * 0.7 + 'px');
+    a.style.opacity = '0';
+    setTimeout(() => {
+      go(dir);
+      a.style.transition = 'none';
+      a.style.setProperty('--sx', dir * w * 0.35 + 'px');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        a.style.transition = 'transform .22s ease-out, opacity .22s ease-out';
+        a.style.setProperty('--sx', '0px');
+        a.style.opacity = '';
+        settled();
+      }));
+    }, 140);
   }
 
   // Denetimleri aç/kapat: kaydırmadan hemen sonraki dokunuşta tarayıcı "tıklama" üretmeyebiliyor
@@ -285,6 +337,7 @@ export function createPlayerUI({ engine, player, env }) {
       gest.tapAt = Date.now();
       toggleUi();
     }
+    if (gest.mode === 'swipe') finishSwipe(e.clientX - gest.x0, e.type === 'pointerup');
     if (gest.mode === 'h' && gest.target != null) player.seek(gest.target);
     if (gest.mode === 'v') {
       applyLevel(gest.kind, levels[gest.kind]);
@@ -489,7 +542,9 @@ export function createPlayerUI({ engine, player, env }) {
     document.body.classList.toggle('live-mode', live);
     document.body.classList.toggle('vod-mode', !live);
     musicNow = isMusic(st.item);
+    if (!musicNow) musicCompact = false;
     root.classList.toggle('music', musicNow);
+    root.classList.toggle('music-min', musicNow && musicCompact);
     const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
@@ -1661,6 +1716,31 @@ export function createPlayerUI({ engine, player, env }) {
     render(st);
   });
   q('#pl-info-fav').addEventListener('click', () => q('#pl-fav').click());
+  // Alt alanda yukarı kaydırma / yukarı sürükleme: üst alan küçülür; listenin başında aşağı çekme: yeniden büyür.
+  {
+    const below = q('#pl-below');
+    const row = q('#pl-vod-shelf-row');
+    let ty = null;
+    row.addEventListener('scroll', () => {
+      if (musicNow && row.scrollTop > 12) setMusicCompact(true);
+    }, { passive: true });
+    below.addEventListener('touchstart', (e) => {
+      ty = e.touches.length === 1 ? e.touches[0].clientY : null;
+    }, { passive: true });
+    below.addEventListener('touchmove', (e) => {
+      if (!musicNow || ty == null) return;
+      const y = e.touches[0].clientY;
+      if (row.scrollTop > 0) return void (ty = y); // liste kayıyor: çekme ancak listenin başında sayılır
+      if (y - ty < -24) setMusicCompact(true), (ty = y);
+      else if (y - ty > 48) setMusicCompact(false), (ty = y);
+    }, { passive: true });
+    below.addEventListener('touchend', () => (ty = null), { passive: true });
+    below.addEventListener('wheel', (e) => {
+      if (!musicNow) return;
+      if (e.deltaY > 0) setMusicCompact(true);
+      else if (e.deltaY < 0 && row.scrollTop <= 0) setMusicCompact(false);
+    }, { passive: true });
+  }
   // Müzik çalarda uzun şarkı adı kısaltılır; başlığa dokununca tamamı görünür, tekrar dokununca kısalır.
   q('#pl-info-name').addEventListener('click', () => {
     if (musicNow) q('#pl-info-name').parentElement.classList.toggle('open');

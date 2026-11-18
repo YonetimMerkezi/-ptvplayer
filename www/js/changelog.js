@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 120,
+    title: 'Müzik çalar: kaydırarak şarkı değiştirme, yukarı kaydırınca büyüyen liste',
+    items: [
+      'Müzik çalarda kapağı sola kaydırınca sonraki, sağa kaydırınca önceki şarkı açılır',
+      'Şarkı listesini yukarı kaydırınca çalar alanı küçülür ve liste büyür; listenin başında aşağı çekince eski haline döner',
+    ],
+  },
+  {
     id: 119,
     title: 'Harici oynatıcıya aktarma hatası düzeltildi',
     items: [
