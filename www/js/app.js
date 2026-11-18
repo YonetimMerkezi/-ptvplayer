@@ -73,6 +73,8 @@ import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
+import { loadDetail, peopleOf, searchPerson, buildTitleIndex, findInLibrary } from './cinemeta.js';
+import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, homeRecent, statusText } from './home-extras.js';
@@ -2106,15 +2108,104 @@ async function paintMovieAdvisories(body, meta, failure = '', kind = 'movie', ct
   });
 }
 
+// ---- fragman, oyuncu kartları, oyuncu sayfası ve listede olmayan yapımın bilgi ekranı (Cinemeta; cinemeta.js veri, title-ui.js HTML) ----
+// Listeyle eşleştirme: ad dizini katalog değişince yenilenir; IMDb dizini ekranlar açıldıkça dolar (Türkçe adlı kayıtlar için).
+let libIdx = { stamp: '', src: '', movie: null, series: null, byImdb: new Map() };
+function libraryIndex() {
+  const mv = visibleAll('movie');
+  const sr = visibleAll('series');
+  const src = S.source ? S.source.id : '';
+  const stamp = `${src}:${mv.length}:${sr.length}`;
+  if (libIdx.stamp !== stamp) libIdx = { stamp, src, movie: buildTitleIndex(mv), series: buildTitleIndex(sr), byImdb: libIdx.src === src ? libIdx.byImdb : new Map() };
+  return libIdx;
+}
+const inLibrary = (film) => {
+  const ix = libraryIndex();
+  return findInLibrary(film, { titleIndex: film.type === 'series' ? ix.series : ix.movie, imdbIndex: ix.byImdb });
+};
+const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı iframe'e takılır; çocuk modunda dış video yok
+
+// Fragman ve oyuncu kartlarını boyar. detail yoksa (IMDb eşleşmesi ya da ağ yok) yalnız sağlayıcının oyuncu listesi kartlanır.
+function paintTitleExtras(body, detail, provider, { trailer, people, auto = true }) {
+  if (!body.isConnected) return;
+  const tr = $(trailer, body);
+  const pp = $(people, body);
+  if (tr) {
+    tr.innerHTML = detail && detail.trailers.length && trailerOn() ? trailerHtml(detail.trailers, { auto: auto && setting('trailerAuto'), origin: location.origin }) : '';
+    if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
+  }
+  if (pp) pp.innerHTML = kidActive() ? '' : peopleHtml(peopleOf(detail, provider));
+}
+
+// Kütüphane öğesinin ekranında: IMDb kimliği çözülünce ayrıntıyı alır, onDetail ile boyar.
+function loadTitleExtras(it, imdbId, type, onDetail) {
+  if (imdbId) libraryIndex().byImdb.set(imdbId, it);
+  if (!imdbId) return onDetail(null);
+  loadDetail({ net, cache: store.cache, imdbId, type }).catch(() => null).then(onDetail);
+}
+
+const personOf = (b) => ({ name: b.dataset.person, role: (b.querySelector('small') || {}).textContent || '' });
+
+// Oyuncu sayfası: kişinin film ve dizileri; listede olanlar "Oynat", olmayanlar soluk "Listende yok".
+function openActor(name, role = '') {
+  return openPage({
+    cls: 'dt-pg ac-pg',
+    title: name,
+    html: actorLoadingHtml(name),
+    mount: async (body) => {
+      let found;
+      try {
+        found = await searchPerson({ net, cache: store.cache, name });
+      } catch {
+        if (body.isConnected) body.innerHTML = emptyHtml('Yapımlar alınamadı', 'İnternet bağlantınızı kontrol edin.');
+        return;
+      }
+      if (!body.isConnected) return;
+      const films = [...found.movies, ...found.series].map((f) => ({ ...f, inLib: !!inLibrary(f) })).sort((a, b) => b.year - a.year);
+      body.innerHTML = actorHtml(name, role, films);
+      body.addEventListener('click', (e) => {
+        const c = e.target.closest('[data-film]');
+        const film = c && films.find((f) => f.imdbId === c.dataset.film);
+        if (film) openTitleInfo(film);
+      });
+    },
+  });
+}
+
+// Bir yapımın ekranı: listedeyse kendi film/dizi ekranı (Oynat), değilse "Listende yok" bilgi ekranı (önce fragman).
+function openTitleInfo(film) {
+  const own = inLibrary(film);
+  if (own) return film.type === 'series' ? openSeries(own) : openMovie(own);
+  return openPage({
+    cls: 'dt-pg',
+    html: titleInfoHtml(film, null, true),
+    mount: (body) => {
+      body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-person]');
+        if (b) openActor(personOf(b).name, personOf(b).role);
+      });
+      loadDetail({ net, cache: store.cache, imdbId: film.imdbId, type: film.type }).catch(() => null).then((detail) => {
+        if (!body.isConnected) return;
+        body.innerHTML = titleInfoHtml(film, detail);
+        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people' });
+      });
+    },
+  });
+}
+
 function openMovie(it) {
   const p = store.progress(sid(), it.id);
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   return openPage({
     cls: 'dt-pg',
-    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
+    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><div class="dt-tr" id="mv-trailer"></div><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><div class="dt-pp" id="mv-people"></div><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
     mount: (body) => {
       paintMovieAdvisories(body, null);
       $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
+      body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-person]');
+        if (b) openActor(personOf(b).name, personOf(b).role);
+      });
       $('#mv-similar-row', body).addEventListener('click', (e) => {
         const b = e.target.closest('[data-similar]');
         if (!b) return;
@@ -2150,6 +2241,8 @@ function openMovie(it) {
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
         resolveAdvisoryMeta(it, info).then(({ meta, advisoryMeta }) => {
           if (!body.isConnected) return;
+          const provider = { cast: (info && info.cast) || it.cast, director: (info && info.director) || it.director };
+          loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail) => paintTitleExtras(body, detail, provider, { trailer: '#mv-trailer', people: '#mv-people' }));
           const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
           loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
           if (info) {
@@ -2242,6 +2335,12 @@ function openSeries(it) {
       if (dlUi) watchDl(body, paintDl);
       // İçerik uyarıları (dizi): sayfa her yeniden çizildiğinde (sezon/favori) son durum yeniden boyanır.
       let adv = { meta: null, failure: '', wk: null };
+      // Fragman ve oyuncu kartları: sayfa yeniden çizilince fragman yeniden başlamasın diye otomatik oynatma yalnız ilk boyamada olur.
+      const extras = { detail: null, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director } };
+      const paintExtras = () => {
+        paintTitleExtras(body, extras.detail, extras.provider, { trailer: '#sr-trailer', people: '#sr-people', auto: !extras.shown });
+        if (extras.detail && extras.detail.trailers.length && trailerOn()) extras.shown = true;
+      };
       const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
       const draw = () => {
         const p = progressOf(it);
@@ -2258,9 +2357,10 @@ function openSeries(it) {
           })
           .join('');
         const scroll = body.scrollTop;
-        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
+        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><div class="dt-tr" id="sr-trailer"></div><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-pp" id="sr-people"></div><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
         body.scrollTop = scroll;
         paintAdv();
+        paintExtras();
         if (dlUi) paintDl();
         const c = $('#sr-cont', body);
         if (c) c.addEventListener('click', () => play(cont));
@@ -2273,6 +2373,8 @@ function openSeries(it) {
         });
       };
       body.addEventListener('click', (e) => {
+        const pp = e.target.closest('[data-person]');
+        if (pp) return openActor(personOf(pp).name, personOf(pp).role);
         const s = e.target.closest('[data-s]');
         if (s) {
           season = Number(s.dataset.s);
@@ -2288,6 +2390,7 @@ function openSeries(it) {
       // Cinemeta (IMDb kimliği) + Screenwise; KTB film sitesi diziler için kullanılmaz.
       loadSeriesMetadata(net, it, store).catch(() => null).then((meta) => {
         if (!body.isConnected) return;
+        loadTitleExtras(it, meta && meta.imdbId, 'series', (detail) => { extras.detail = detail; paintExtras(); });
         const parsed = parseMovieCatalogTitle(it.name || '');
         const base = meta || { title: parsed.title || it.name, year: yearOf(info.year || it.year) || parsed.year || 0 };
         const advisoryMeta = { ...base, kind: 'series' };
@@ -4701,6 +4804,7 @@ function generalSheet() {
         selRow('g-cap', 'Kutudaki ad', 'Afişin altında kaç satır görünsün', optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))),
         chkRow('showProg', 'Devam çubukları', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi'),
         chkRow('epThumbs', 'Bölüm küçük resimleri', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar sıkışık olur'),
+        chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Film ve dizi ekranında fragman sessiz başlar, “Sesi aç” ile açılır; kapalıyken küçük resme dokununca oynar. TV’de ve çocuk modunda fragman gösterilmez'),
       ]) +
       setCard('Görünüm ve cihaz', 'gear', [
         selRow('g-fs', 'Yazı boyutu', '', optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))),

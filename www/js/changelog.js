@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 137,
+    title: 'Fragman, oyuncular ve oyuncu sayfası',
+    items: [
+      'Film ve dizi ekranında önce afiş görünür, ardından fragman sessiz başlar; “Sesi aç” ile sesi açarsın. Açılmazsa “YouTube’da aç” bağlantısı hazır',
+      'Genel ayarlar › Film ve diziler › “Fragmanı otomatik oynat” ile otomatik başlamayı kapatabilirsin; kapalıyken küçük resme dokununca oynar. TV ekranında ve çocuk modunda fragman gösterilmez',
+      'Yönetmen ve oyuncular kaydırılabilir kartlar oldu; bir oyuncuya dokununca diğer film ve dizileri listelenir: listendekiler “Oynat”, olmayanlar soluk “Listende yok” (dokununca bilgi ekranı ve fragman açılır)',
+    ],
+  },
+  {
     id: 136,
     title: 'Radyo: önce listendeki kanallar',
     items: [

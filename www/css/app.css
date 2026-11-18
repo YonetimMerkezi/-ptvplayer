@@ -128,7 +128,8 @@ html[data-multi] :is(.sp-pg, .sd-pg, .sf-pg) { --pc: var(--p3); }
 html[data-multi] .health-pg { --pc: var(--p8); }
 html[data-multi] :is(.set-pg, .theme-picker-page) { --pc: var(--p0); }
 html[data-multi] .rd-pg { --pc: var(--p6); }
-html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page, .rd-pg) {
+html[data-multi] .ac-pg { --pc: var(--p2); }
+html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page, .rd-pg, .ac-pg) {
   --accent: var(--pc); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--pc) 18%, transparent); --sel: color-mix(in srgb, var(--pc) 42%, #000);
 }
 /* Canlı TV kategorileri: gerçekçi görselli geniş kart (www/img/cat/*.webp; kategori adına göre cat-art.js seçer). Görsel sağda, sola doğru kartın koyu rengine erir. */
@@ -195,7 +196,7 @@ html[data-multi] .td-k[data-kind=dizi] { --k: var(--p3); }
 html[data-multi] #fseg [data-k=live] { --k: var(--p5); }
 html[data-multi] #fseg [data-k=movie] { --k: var(--p2); }
 html[data-multi] #fseg [data-k=series] { --k: var(--p3); }
-html[data-multi] :is(.td-k, .chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row, .row:is(.k0, .k1, .k2, .k3, .k4, .k5), .cat-tile):not(.set-card *) { --accent: var(--k, var(--pc)); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--k, var(--pc)) 20%, transparent); }
+html[data-multi] :is(.td-k, .chips .chip, .seg button, .gd-day, .td-r, .guide-category-head, .sp-m, .src, .sect, .home-row, .row:is(.k0, .k1, .k2, .k3, .k4, .k5), .cat-tile, .ac-card):not(.set-card *) { --accent: var(--k, var(--pc)); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--k, var(--pc)) 20%, transparent); }
 /* çipler, türler, günler: pasif olan da kendi renginin çizgisini, simgesini ve hafif zeminini taşır; seçili olan o renkle dolar */
 html[data-multi] :is(.chips .chip, .seg button, .td-k):not(.on) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: color-mix(in srgb, var(--accent) 55%, var(--text)); }
 html[data-multi] :is(.chips .chip, .td-k):not(.on) .ic { color: var(--accent); }
@@ -899,6 +900,41 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .mv-similar-card b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .8125rem; line-height: 1.3; }
 .mv-similar-card small { color: var(--muted); font-size: .7rem; }
 .dt-load { color: var(--muted); }
+/* Fragman, oyuncu kartları ve oyuncu sayfası (title-ui.js). Kart yuvarlakları addan renk alır; yazı açık tonda koyu zeminde. */
+.dt-tr:empty, .dt-pp:empty { display: none; }
+.tr { max-width: 560px; margin: 4px 0 16px; }
+.tr-box { position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); }
+.tr-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.tr-thumb { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: pointer; }
+.tr-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
+.tr-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.tr-play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink, #0a1118); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); }
+.tr-play .ic { width: 30px; height: 30px; }
+.tr-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tr-bar .btn { min-height: 36px; }
+.pp { margin: 4px 0 16px; min-width: 0; }
+.pp-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 12px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.pp-card { flex: 0 0 92px; min-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--text); text-align: center; scroll-snap-align: start; cursor: pointer; }
+.pp-card:focus-visible, .ac-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pp-av { flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; font-size: 1.125rem; font-weight: 800; background: hsl(var(--h) 38% 22%); color: hsl(var(--h) 85% 84%); border: 2px solid hsl(var(--h) 55% 46%); }
+.pp-av.lg { width: 72px; height: 72px; font-size: 1.5rem; }
+.pp-card b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%; font-size: 0.75rem; line-height: 1.25; overflow-wrap: anywhere; }
+.pp-card small { color: var(--muted); font-size: 0.6875rem; }
+.ac { max-width: 1100px; margin: 0 auto; }
+.ac-head { display: flex; align-items: center; gap: 14px; margin: 6px 0 16px; }
+.ac h2 { margin: 4px 0 10px; font-size: 1.0625rem; color: var(--accent); }
+.ac h2 small { color: var(--muted); font-weight: 600; }
+.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.ac-card { min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: var(--text); text-align: left; cursor: pointer; }
+.ac-card.off { opacity: 0.5; }
+.ac-card.off:hover, .ac-card.off:focus-visible { opacity: 0.85; }
+.ac-poster { position: relative; display: grid; place-items: center; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 8px; background: var(--surface); color: var(--muted); font-weight: 700; }
+.ac-poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ac-card b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.8125rem; line-height: 1.3; overflow-wrap: anywhere; }
+.ac-card small { color: var(--muted); font-size: 0.7rem; }
+.ac-card em { display: flex; align-items: center; gap: 4px; font-style: normal; font-size: 0.75rem; font-weight: 700; color: var(--accent); }
+.ac-card em .ic { width: 14px; height: 14px; }
+.ac-card.off em { color: var(--muted); font-weight: 600; }
 .dt-eps .chips { padding-left: 0; padding-right: 0; }
 .dt-eps-h, .epi-th { display: none; }
 /* Yatay / geniş ekran (TV, tablet, yatay telefon): film = ayrıntılar solda, büyük afiş sağda;
@@ -909,7 +945,9 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
   /* afiş: görünen yüksekliğe tam sığar (2:3), genişliği yüksekliğinden gelir; ekran genişliğinin ~%37'sini aşmaz */
   .dt-pos { position: sticky; top: 4px; justify-self: end; width: auto; height: min(calc(100vh - var(--bar-h) - var(--safe-t) - var(--safe-b) - 36px), 56vw); aspect-ratio: 2 / 3; border-radius: 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55); }
   .dt-t { font-size: clamp(1.375rem, 3vw, 2.75rem); font-weight: 800; line-height: 1.1; }
-  .dt-sp .dt { grid-template-columns: minmax(0, 1fr) minmax(220px, 36%) auto; grid-template-areas: "head eps pos" "plot eps pos" "facts eps pos" "rest eps pos"; grid-template-rows: auto auto auto 1fr; }
+  .dt-sp .dt { grid-template-columns: minmax(0, 1fr) minmax(220px, 36%) auto; grid-template-areas: "head eps pos" "trl eps pos" "plot eps pos" "facts eps pos" "rest eps pos"; grid-template-rows: auto auto auto auto 1fr; }
+  .dt-sp .dt-tr { grid-area: trl; }
+  .dt-sp .dt-pp { grid-area: rest; }
   .dt-sp .dt-body { display: contents; }
   .dt-sp .dt-body h2 { display: none; }
   .dt-sp .dt-plot { grid-area: plot; margin: 0; }
