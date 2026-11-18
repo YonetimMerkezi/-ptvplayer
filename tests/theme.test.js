@@ -121,3 +121,23 @@ test('tema sayfası: Uygula düğmesi yok, dokununca hemen uygulanır; Pro kilid
   assert.doesNotMatch(css, /\.theme-apply-bar|\.theme-preview/, 'eski çizimli önizleme ve Uygula çubuğu CSS\'i kalmamalı');
   assert.match(css, /\.theme-pro \{[^}]*background:#facc15; color:#1a1300/, 'sarı dolguda koyu yazı');
 });
+
+test('çok renkli temalarda vurgu rengi bölüme göre: her sekme ve her tam sayfa bir renge bağlı, sekme işareti yazılıyor', () => {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '../www');
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  const app = readFileSync(join(dir, 'js/app.js'), 'utf8');
+  const tabs = [...html.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
+  for (const t of [...tabs, 'multi']) assert.match(css, new RegExp(`html\\[data-multi\\]\\[data-sec=${t}\\] \\{ --pc: var\\(--p[0-8]\\); \\}`), `bölüm rengi yok: ${t}`);
+  assert.match(app, /document\.documentElement\.dataset\.sec = S\.source \? S\.tab : 'home'/);
+  // Tüm openPage sınıfları: ya renge bağlı ya da bilerek bulunduğu sekmenin rengini alır (dt-*: film/dizi ayrıntısı); st-pg, sp-pg'den; td-pick, td-pg'den gelir
+  const bilerek = new Set(['dt-pg', 'dt-sp', 'st-pg', 'td-pick']);
+  const dosyalar = ['app.js', 'ui.js', 'today-ui.js', 'sports-ui.js', 'sports-table-ui.js', 'sports-detail-ui.js', 'series-flow-ui.js', 'library-ui.js', 'cast-ui.js'];
+  const sinif = new Set();
+  for (const f of dosyalar) for (const m of readFileSync(join(dir, 'js', f), 'utf8').matchAll(/cls: '([^']*)'/g)) m[1].split(/\s+/).forEach((c) => c && sinif.add(c));
+  assert.ok(sinif.size >= 15, 'sayfa sınıfları bulunamadı');
+  const secici = css.match(/html\[data-multi\]\[data-sec\], html\[data-multi\] :is\(([^)]*)\) \{/);
+  assert.ok(secici, 'sayfa vurgu kuralı yok');
+  for (const c of sinif) assert.ok(bilerek.has(c) || secici[1].includes('.' + c), `sayfa rengi tanımsız: ${c} (CSS'e ekleyin ya da testte bilerek ayırın)`);
+  // Dolgu üstü yazı koyu kalır
+  assert.match(css, /--accent: var\(--pc\); --accent-ink: #0a1118;/);
+});

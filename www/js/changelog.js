@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 131,
+    title: 'Renkli temalar tüm uygulamaya yayıldı',
+    items: [
+      'Renkli kartlar, Dolu renk, Neon cam ve Gün batımı temalarında vurgu rengi artık bölüme göre değişir: Canlı TV turkuaz, Filmler turuncu, Favoriler sarı, Bugün TV’de mavi, TV rehberi turkuaz ve benzeri',
+      'Seçili sekme, chip, ŞİMDİ rozeti, ilerleme çubuğu ve ana düğmeler her yerde mor yerine bulundukları bölümün rengiyle görünür',
+    ],
+  },
+  {
     id: 130,
     title: 'Yönetici paneli bağlantısı',
     items: [

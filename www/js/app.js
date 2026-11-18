@@ -665,6 +665,7 @@ function setTab(tab) {
 
 function renderTab() {
   applyMotionProfile();
+  document.documentElement.dataset.sec = S.source ? S.tab : 'home'; // çok renkli temalarda vurgu rengi bölüme göre (CSS: html[data-multi][data-sec])
   if (kidActive() && (S.tab === 'sources' || S.tab === 'multi')) S.tab = 'home'; // çocuk modunda ayarlar ve çoklu ekran yok
   S.list && S.list.destroy();
   S.list = null;

@@ -111,6 +111,25 @@ html[data-theme="solid"][data-multi] .set-tile { border: 0; color: #fff; backgro
 html[data-theme="solid"][data-multi] .set-tile .ic { color: #fff; }
 html[data-multi] .set-tile[data-set=update] { --tc: var(--p2); }
 html[data-multi] .set-tile .ic { color: var(--tc, var(--accent)); }
+/* Çok renkli temalarda vurgu rengi bölüme göre değişir: sekmeler (html[data-sec], app.js renderTab yazar) ve tam sayfalar kendi paletlerinden
+   rengini alır; chip, rozet, ilerleme çubuğu, düğme ve sayfa parıltısı tek (mor) vurgu yerine bölümün rengiyle çıkar. Dolgu üstündeki yazı hep koyu
+   (sarı gibi açık dolguda beyaz yazı olmaz). Ana kutular ve ayar kartları kendi --accent kurallarıyla bunun üstüne yazar. */
+html[data-multi][data-sec] { --pc: var(--p4); }
+html[data-multi][data-sec=home] { --pc: var(--p1); }
+html[data-multi][data-sec=live] { --pc: var(--p5); }
+html[data-multi][data-sec=movies] { --pc: var(--p2); }
+html[data-multi][data-sec=series] { --pc: var(--p3); }
+html[data-multi][data-sec=favs] { --pc: var(--p7); }
+html[data-multi][data-sec=sources] { --pc: var(--p0); }
+html[data-multi][data-sec=multi] { --pc: var(--p6); }
+html[data-multi] :is(.td-pg, .lb-pg) { --pc: var(--p4); }
+html[data-multi] :is(.guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell) { --pc: var(--p5); }
+html[data-multi] :is(.sp-pg, .sd-pg, .sf-pg) { --pc: var(--p3); }
+html[data-multi] .health-pg { --pc: var(--p8); }
+html[data-multi] :is(.set-pg, .theme-picker-page) { --pc: var(--p0); }
+html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page) {
+  --accent: var(--pc); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--pc) 18%, transparent); --sel: color-mix(in srgb, var(--pc) 42%, #000);
+}
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { font-size: calc(16px * var(--fs)); }
 html, body { margin: 0; height: 100%; background: var(--bg-grad) no-repeat, var(--bg); background-attachment: fixed; color: var(--text); overflow: hidden; overscroll-behavior: none; }
