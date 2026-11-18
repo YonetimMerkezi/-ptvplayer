@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#071219">
+<title>IPTV Player Pro</title>
+<link rel="stylesheet" href="css/tv.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">▶</span><span>IPTV <b>PLAYER PRO</b></span></div>
+    <div class="top-hint">LG webOS 3.0 · TV TEST SÜRÜMÜ</div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">TELEVİZYON İÇİN TASARLANDI</div>
+        <h1>Favori yayınların<br><span>tek ekranda.</span></h1>
+        <p>M3U / M3U8 kanal listeni ekle, kumandayla gezin ve yayını başlat.</p>
+        <div class="actions">
+          <button id="open-playlist" class="primary focused">＋ Kaynak ekle</button>
+          <button id="demo-play" class="secondary">Test ekranı</button>
+        </div>
+      </div>
+      <div class="hero-art"><div class="screen"><div class="screen-glow"></div><div class="play-disc">▶</div><div class="screen-label">LIVE TV</div></div></div>
+    </section>
+    <section class="content">
+      <div class="section-head"><div><span class="eyebrow">KÜTÜPHANE</span><h2>Kanallar</h2></div><span id="channel-count" class="count">Henüz kaynak eklenmedi</span></div>
+      <div id="channels" class="channels"><div class="empty">Başlamak için “Kaynak ekle” seçeneğini kullanın.</div></div>
+    </section>
+  </main>
+  <footer><span>▲▼ Gezin · OK Seç · BACK Geri</span><span id="status">Hazır</span></footer>
+</div>
+<div id="source-dialog" class="overlay hidden">
+  <div class="dialog">
+    <div class="eyebrow">YENİ KAYNAK</div><h2>M3U bağlantısı ekle</h2>
+    <p>Yalnızca erişim hakkınız bulunan yayın listelerini ekleyin.</p>
+    <input id="playlist-url" type="text" placeholder="https://ornek.com/liste.m3u" autocomplete="off">
+    <div class="dialog-actions"><button id="cancel-source" class="secondary">Vazgeç</button><button id="save-source" class="primary">Yükle</button></div>
+    <div id="source-error" class="error"></div>
+  </div>
+</div>
+<div id="player" class="player hidden">
+  <video id="video" autoplay playsinline></video>
+  <div class="player-shade"></div>
+  <div class="player-top"><span id="playing-name">IPTV Player Pro</span><span>BACK: Geri</span></div>
+  <div id="player-message" class="player-message">Yayın yükleniyor…</div>
+  <div class="player-controls"><button id="prev-channel" class="secondary">◀ Önceki</button><button id="toggle-play" class="primary">Ⅱ Duraklat</button><button id="next-channel" class="secondary">Sonraki ▶</button><button id="close-player" class="secondary">✕ Kapat</button></div>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
