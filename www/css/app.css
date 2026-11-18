@@ -131,6 +131,11 @@ html[data-multi] .rd-pg { --pc: var(--p6); }
 html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page, .rd-pg) {
   --accent: var(--pc); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--pc) 18%, transparent); --sel: color-mix(in srgb, var(--pc) 42%, #000);
 }
+/* Ana ekran film önerisi: tür çipleri ve öneri satırı */
+.hp-chips { margin: -2px -12px 0; padding: 4px 12px 8px; }
+.hp-chips .chip { flex: none; white-space: nowrap; }
+.hp-picks .home-row-h button { flex: none; white-space: nowrap; }
+.hp-picks .hint { margin: 4px 2px 8px; color: var(--muted); font-size: 0.8125rem; }
 /* Radyo & Müzik: sayfa, istasyon satırları, kapak ve ana sayfa kartları */
 .rd-pg .pg-body { display: flex; flex-direction: column; overflow: hidden; padding: 4px 12px 0; }
 .rd-cc { flex: none; min-height: 50px; max-width: 42%; padding: 0 10px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; }

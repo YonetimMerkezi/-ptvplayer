@@ -127,6 +127,7 @@ export function mapVod(list, cats) {
     name: String(s.name || '').trim(),
     logo: s.stream_icon || '',
     group: cm.get(String(s.category_id)) || '',
+    genre: typeof s.genre === 'string' ? s.genre.trim() : '', // bazı paneller liste yanıtında türü de verir; yoksa kategori adından çıkarılır
     ext: s.container_extension || 'mp4',
     rating: num(s.rating_5based || s.rating),
     added: num(s.added),

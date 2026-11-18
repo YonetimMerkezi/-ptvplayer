@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 134,
+    title: 'Ne izleyeceğine karar veremedin mi?',
+    items: [
+      'Ana sayfada tür çipleri (Aksiyon, Komedi, Dram, Korku…) ve altında kendi film listenden öneriler var; çipler en çok filmi olan türlerden oluşur',
+      'Aynı çipe tekrar dokunur ya da “Başka öner” dersen farklı filmler gelir; izlemediklerin önce, puanı yüksekler öne çıkar',
+      '“Şaşırt beni” tüm türlerden rastgele seçer; öneriye dokununca film ekranı açılır',
+    ],
+  },
+  {
     id: 133,
     title: 'Radyo & Müzik',
     items: [

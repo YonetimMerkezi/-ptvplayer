@@ -69,6 +69,7 @@ import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versi
 import { recommendMovies } from './movie-recommendations.js';
 import { loadStations, radioItem, radioFavs, isRadioFav, toggleRadioFav, countClick, RADIO_COUNTRY_KEY } from './radio.js';
 import { radioRowHtml, homeRadio, openRadio as openRadioPage } from './radio-ui.js';
+import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
@@ -2881,6 +2882,50 @@ function tickClock() {
 
 // Ana ekran kısayol kutusunun simgesi; sayı (favori/izleme) yazıyla yarışmasın diye simgenin köşesinde rozet olur.
 const miniIc = (name, n) => `<span class="t-ic">${icon(name)}${n ? `<i class="t-n">${n > 99 ? '99+' : n}</i>` : ''}</span>`;
+// ---- Ana ekran: "Ne izleyeceğine karar veremedin mi?" — kendi film listenden türe göre öneri. Tür çipine dokun; aynı çipe yine dokunursan başka filmler gelir.
+const picksKey = (it) => {
+  const ct = cleanTitle(it.name, it.year);
+  return ct.key ? `${ct.key}|${ct.year || ''}` : it.id;
+};
+const homePick = { src: '', genre: '', ids: [], seen: new Map() };
+const pickWatched = (it) => !!(S.prog[it.id] && S.prog[it.id].pos > 0);
+function repickHome(genre) {
+  const seen = homePick.seen.get(genre) || new Set();
+  const picks = pickMovies(visibleAll('movie'), genre, { limit: 10, key: picksKey, watched: pickWatched, seen: [...seen] });
+  for (const it of picks) seen.add(it.id);
+  homePick.seen.set(genre, seen);
+  homePick.genre = genre;
+  homePick.ids = picks.map((it) => it.id);
+}
+function homePicksHtml() {
+  const movies = visibleAll('movie');
+  const chips = genreChips(movies, { key: picksKey });
+  if (!chips.length || movies.length < 8) return '';
+  if (homePick.src !== sid()) Object.assign(homePick, { src: sid(), genre: '', ids: [], seen: new Map() });
+  if (homePick.genre !== SURPRISE_ID && !chips.some((c) => c.id === homePick.genre)) repickHome(chips[0].id);
+  const idx = S.idx.movies;
+  const pickedList = () => homePick.ids.map((id) => idx.get(id)).filter(Boolean);
+  if (!pickedList().length) repickHome(homePick.genre); // liste yenilenmiş/boşalmışsa yeniden seç
+  const list = pickedList();
+  const chip = (id, label, icon) => `<button class="chip${homePick.genre === id ? ' on' : ''}" data-pick="${id}"><span aria-hidden="true">${icon}</span> ${esc(label)}</button>`;
+  const cards = list
+    .map((it, i) => {
+      const ct = cleanTitle(it.name, it.year);
+      return card(it, i, `data-hk="movie" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub: ['Film', ct.year].filter(Boolean).join(' · ') });
+    })
+    .join('');
+  return `<section class="home-row hp-picks"><div class="home-row-h"><b>🤔 Ne izleyeceğine karar veremedin mi?</b><button data-pick-again aria-label="Başka filmler öner">Başka öner</button></div><div class="chips hp-chips" role="group" aria-label="Tür">${chip(SURPRISE_ID, 'Şaşırt beni', '🎲')}${chips.map((c) => chip(c.id, c.label, c.icon)).join('')}</div>${cards ? `<div class="home-row-s">${cards}</div>` : `<p class="hint">Bu türde film yok.</p>`}</section>`;
+}
+function fillHomePicks() {
+  const el = $('#home-picks');
+  if (!el) return;
+  const sc = el.querySelector('.hp-chips');
+  const left = sc ? sc.scrollLeft : 0;
+  el.innerHTML = homePicksHtml();
+  const sc2 = el.querySelector('.hp-chips');
+  if (sc2) sc2.scrollLeft = left;
+}
+
 function renderHome(v) {
   const c = S.cat;
   const src = S.source;
@@ -2940,6 +2985,7 @@ function renderHome(v) {
       ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
     ${rows}
+    <div id="home-picks">${homePicksHtml()}</div>
     <div id="home-radio">${kidActive() || !radioHome ? '' : radioRowHtml(radioFavs(store), radioHome.items)}</div>
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
@@ -2959,6 +3005,11 @@ function renderHome(v) {
     }
     if (e.target.closest('#h-add')) return sourceForm();
     if (e.target.closest('#h-swap')) return store.sources().length ? sourceSwitcher() : sourceForm();
+    const pk = e.target.closest('[data-pick], [data-pick-again]');
+    if (pk) {
+      repickHome(pk.dataset.pick || homePick.genre); // seçili çipe yeniden dokunmak ya da "Başka öner" farklı filmler getirir
+      return fillHomePicks();
+    }
     const hc = e.target.closest('[data-hid]');
     if (hc) {
       const it = S.idx[CAT_KEY[hc.dataset.hk]].get(hc.dataset.hid);
