@@ -174,10 +174,14 @@ final class PlayBilling implements PurchasesUpdatedListener {
             }
             JSArray active = new JSArray();
             JSArray pending = new JSArray();
+            JSObject tokens = new JSObject(); // ürün kimliği → satın alma jetonu (tek cihaz kuralı: yalnız tek yönlü özeti sunucuya gider)
             for (Purchase p : list) {
                 if (p.getPurchaseState() == Purchase.PurchaseState.PURCHASED) {
                     acknowledge(p);
-                    for (String id : p.getProducts()) active.put(id);
+                    for (String id : p.getProducts()) {
+                        active.put(id);
+                        tokens.put(id, p.getPurchaseToken());
+                    }
                 } else if (p.getPurchaseState() == Purchase.PurchaseState.PENDING) {
                     for (String id : p.getProducts()) pending.put(id);
                 }
@@ -185,6 +189,7 @@ final class PlayBilling implements PurchasesUpdatedListener {
             JSObject o = new JSObject();
             o.put("active", active);
             o.put("pending", pending);
+            o.put("tokens", tokens);
             call.resolve(o);
         }));
     }

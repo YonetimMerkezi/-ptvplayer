@@ -62,6 +62,7 @@ import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { isPlay, loadDist } from './dist.js';
 import { redeem, syncManaged, fetchConfig, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
+import { BIND_URL, subId, bestToken, callClaim, nextBind, bindAllowed, bindDue } from './devbind.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
@@ -136,6 +137,56 @@ setProGate((feature, silent) => {
 // Sorgu başarısızsa (çevrimdışı) son hak tolerans süresince korunur. Yalnız Play sürümünde çalışır.
 let billingBusy = false;
 let billingAgain = false;
+// Tek cihaz kuralı: abonelik bir telefona ve bir TV'ye bağlıdır (devbind.js, server/). Başka cihaza bağlıysa bu cihazda hak verilmez
+// (mem.bind.other); sunucuya ulaşılamazsa son doğrulamadan sonra 7 gün tolerans. Adres tanımlı değilse kural kapalıdır.
+const memBind = () => store.pref('mem.bind', null);
+const bindKind = () => (isTvUi() ? 'tv' : 'phone');
+async function oneDevice(ent, ids, tokens) {
+  if (!BIND_URL) return ent;
+  let bind = memBind();
+  if (!ent || !ent.play) {
+    if (bind && Array.isArray(ids)) store.setPref('mem.bind', null); // abonelik bitti: bağlama anlamsız
+    return ent;
+  }
+  const token = Array.isArray(ids) ? bestToken(ids, tokens) : '';
+  if (token) {
+    const sub = await subId(token);
+    if (!bind || bind.s !== sub || bindDue(bind)) {
+      bind = nextBind({ bind, sub, result: await callClaim({ sub, dev: deviceId(store), kind: bindKind() }) });
+      store.setPref('mem.bind', bind);
+    }
+  }
+  return bindAllowed(bind) ? ent : null;
+}
+// "Bu cihazı kullan": üyeliği bu cihaza taşır, öteki cihaz bir sonraki yoklamasında kapanır. → 'ok' | 'limit' | 'none' | 'error' (+ limit için tarih)
+async function takeOverMembership() {
+  if (!BIND_URL || !nativePlugin) return { status: 'error' };
+  let r;
+  try {
+    r = await nativePlugin.billingState();
+  } catch {
+    return { status: 'error' };
+  }
+  const token = bestToken(Array.isArray(r && r.active) ? r.active : [], r && r.tokens);
+  if (!token) return { status: 'none' };
+  const sub = await subId(token);
+  const result = await callClaim({ sub, dev: deviceId(store), kind: bindKind(), take: true });
+  if (!result) return { status: 'error' };
+  store.setPref('mem.bind', nextBind({ bind: memBind(), sub, result }));
+  await syncBilling();
+  return { status: result.status === 'ok' ? 'ok' : result.status, next: result.next };
+}
+// Taşıma düğmeleri (üyelik penceresi ve üyelik duvarı) bunu çağırır; onTaken: taşıma başarılıysa ekranı yenilemek için.
+async function takeOverFlow(onTaken) {
+  const r = await takeOverMembership();
+  if (r.status === 'ok') {
+    toast('Üyelik bu cihaza taşındı');
+    onTaken && onTaken();
+  } else if (r.status === 'limit') {
+    toast(`Üyelik son 30 günde 2 kez taşındı. ${new Date(r.next).toLocaleDateString('tr-TR')} tarihinden sonra yeniden taşıyabilirsiniz`, 6000);
+  } else if (r.status === 'none') toast('Bu Google hesabında etkin üyelik bulunamadı', 4000);
+  else toast('Üyelik sunucusuna ulaşılamadı. İnternetinizi denetleyip yeniden deneyin', 4000);
+}
 async function syncBilling() {
   if (!BILLING_READY || !nativePlugin) return;
   if (billingBusy) {
@@ -145,14 +196,16 @@ async function syncBilling() {
   billingBusy = true;
   try {
     let ids = null;
+    let tokens = {};
     try {
       const r = await nativePlugin.billingState();
       ids = Array.isArray(r && r.active) ? r.active : [];
+      tokens = (r && r.tokens) || {};
     } catch {
       ids = null;
     }
     const cur = store.pref('mem.ent', null);
-    const next = nextEnt({ ids, current: cur });
+    const next = await oneDevice(nextEnt({ ids, current: cur }), ids, tokens);
     if (next || cur) store.setPref('mem.ent', next);
     if ((next && next.tier) !== (cur && cur.tier)) {
       applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
@@ -5775,17 +5828,19 @@ function memberSheet(feature = '') {
   const st = memState();
   const f = proFeature(feature);
   const admin = store.pref('adm.on', false);
-  const buy = (tier, label) => `<button class="btn${tier === 'pro' ? ' primary' : ''}" data-buy="${tier}"${BILLING_READY ? '' : ' disabled'}>${label}</button>`;
+  const other = !!BIND_URL && !!(memBind() && memBind().other); // abonelik başka cihaza bağlı: yeniden satın almak yerine taşıma sunulur
+  const buy = (tier, label) => (other ? '' : `<button class="btn${tier === 'pro' ? ' primary' : ''}" data-buy="${tier}"${BILLING_READY ? '' : ' disabled'}>${label}</button>`);
   const sh = openSheet({
     full: true, // TV'de tam sayfa
     title: 'Üyelik',
     html:
       (f ? `<p class="mem-need">${icon('lock')}<span><b>${esc(f.name)}</b> Pro üyelikle açılır.</span></p>` : '') +
+      (other ? `<div class="mem-other"><b>Bu üyelik başka bir cihazda kullanılıyor</b><span>Üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir. Burada kullanmak için üyeliği bu cihaza taşıyın; diğer cihazda kapanır. Ayda en çok 2 kez taşınabilir.</span><button class="btn primary" data-take>Bu cihazı kullan</button></div>` : '') +
       `<div class="mem-st mem-${st.tier}"><b>${esc(memOn() ? TIERS[st.tier] : 'Tüm özellikler açık')}</b><span>${esc(memOn() ? stateText(st) : 'Üyelik sistemi henüz devrede değil')}</span></div>` +
       `<div class="mem-plan"><h4>Standart <small>yıllık</small></h4><p class="hint">Canlı TV, film ve dizi, favoriler, TV rehberi ve tek kaynak. ${TRIAL_DAYS} günlük deneme bittikten sonra uygulamayı kullanmak için gerekir.</p><p class="mem-price" data-price="standard"></p>${st.tier === 'standard' || st.tier === 'pro' ? '<p class="mem-have">Üyeliğiniz var</p>' : buy('standard', 'Standart üyelik al')}</div>` +
       `<div class="mem-plan mem-pro"><h4>Pro <small>yıllık</small></h4><p class="hint">Standart üyeliğin her şeyi ve aşağıdaki özellikler.</p><p class="mem-price" data-price="pro"></p><ul class="mem-feats">${PRO_FEATURES.map((x) => `<li${f && f.id === x.id ? ' class="on"' : ''}><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></li>`).join('')}</ul>${st.tier === 'pro' ? '<p class="mem-have">Pro üyeliğiniz var</p>' : buy('pro', 'Pro üyelik al')}</div>` +
       (BILLING_READY
-        ? `<p class="hint">Abonelik yıllık yenilenir. Google Play'de Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz; iptal edince dönem sonuna kadar kullanırsınız.</p>${st.play ? '<button class="btn" data-manage>Aboneliği yönet</button>' : ''}`
+        ? `<p class="hint">Abonelik yıllık yenilenir. Google Play'de Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz; iptal edince dönem sonuna kadar kullanırsınız.${BIND_URL ? ' Üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir; yeni cihaza geçince üyeliği Üyelik penceresinden taşıyabilirsiniz (ayda en çok 2 kez).' : ''}</p>${st.play ? '<button class="btn" data-manage>Aboneliği yönet</button>' : ''}`
         : '<p class="hint">Satın alma, uygulamanın Google Play sürümüyle açılacak.</p>') +
       (admin ? `<div class="sel-row"><span>Önizleme (yönetici)<small>Kilitli hâli yalnız bu cihazda dener; diğer kullanıcılar etkilenmez</small></span><select id="mem-pv">${optionsHtml(PREVIEWS, memPreview())}</select></div>` : ''),
     mount: (body) => {
@@ -5799,6 +5854,16 @@ function memberSheet(feature = '') {
           }
         }).catch(() => {});
         body.addEventListener('click', async (e) => {
+          const take = e.target.closest('[data-take]');
+          if (take) {
+            take.disabled = true;
+            await takeOverFlow(() => {
+              sh.close();
+              renderTab();
+            });
+            take.disabled = false;
+            return;
+          }
           const manage = e.target.closest('[data-manage]');
           if (manage) return nativePlugin.billingManage().catch((err) => toast(String((err && err.message) || err)));
           const b = e.target.closest('[data-buy]');
@@ -5838,8 +5903,18 @@ function memberSheet(feature = '') {
 
 // Deneme bitti ve üyelik yok: sekmelerin yerinde bu ekran durur.
 function renderPaywall(v) {
-  v.innerHTML = `<div class="page mem-wall">${icon('lock')}<h2>Deneme süreniz doldu</h2><p>Iptv Player Pro’yu kullanmaya devam etmek için yıllık üyelik gerekir. Kaynaklarınız, favorileriniz ve ayarlarınız duruyor.</p><button class="btn primary" id="mw-open" data-autofocus>Üyelik seçenekleri</button></div>`;
-  v.onclick = (e) => e.target.closest('#mw-open') && memberSheet();
+  const other = !!BIND_URL && !!(memBind() && memBind().other); // üyelik var ama başka cihaza bağlı
+  v.innerHTML = other
+    ? `<div class="page mem-wall">${icon('lock')}<h2>Üyelik başka bir cihazda</h2><p>Bu üyelik şu an başka bir cihazda kullanılıyor. Üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir. Burada kullanmak için üyeliği bu cihaza taşıyın; diğer cihazda kapanır. Ayda en çok 2 kez taşınabilir.</p><button class="btn primary" id="mw-take" data-autofocus>Bu cihazı kullan</button><button class="btn ghost" id="mw-open">Üyelik seçenekleri</button></div>`
+    : `<div class="page mem-wall">${icon('lock')}<h2>Deneme süreniz doldu</h2><p>Iptv Player Pro’yu kullanmaya devam etmek için yıllık üyelik gerekir. Kaynaklarınız, favorileriniz ve ayarlarınız duruyor.</p><button class="btn primary" id="mw-open" data-autofocus>Üyelik seçenekleri</button></div>`;
+  v.onclick = async (e) => {
+    if (e.target.closest('#mw-open')) return memberSheet();
+    const t = e.target.closest('#mw-take');
+    if (!t) return;
+    t.disabled = true;
+    await takeOverFlow(() => renderTab());
+    t.disabled = false;
+  };
 }
 
 function backupSheet() {

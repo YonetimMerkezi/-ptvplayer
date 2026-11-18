@@ -223,6 +223,10 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 /* Üyelik sayfası (Ayarlar > Üyelik) ve deneme bitti ekranı */
 .mem-need { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--text); }
 .mem-need .ic { flex: none; width: 20px; height: 20px; color: var(--accent); }
+.mem-other { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: var(--accent-soft); border: 1px solid var(--accent); }
+.mem-other b { font-size: 1.0625rem; }
+.mem-other span { color: var(--muted); font-size: 0.875rem; }
+.mem-other .btn { margin-top: 6px; }
 .mem-st { display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line); }
 .mem-st b { font-size: 1.0625rem; }
 .mem-st span { color: var(--muted); font-size: 0.875rem; }
