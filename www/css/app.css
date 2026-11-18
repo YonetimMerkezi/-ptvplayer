@@ -359,6 +359,7 @@ a.btn { text-decoration: none; }
 .seg { display: flex; gap: 6px; padding: 4px 12px 10px; flex: none; }
 .seg button { flex: 1; min-height: 38px; border-radius: 19px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
 .seg button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+#adm-tabs button { font-size: 0.85rem; padding: 0 6px; } /* yönetici panelinde 4 sekme sığsın */
 
 .src { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; margin-bottom: 12px; }
 .src.active { border-color: var(--accent); }
@@ -1711,7 +1712,7 @@ html[data-theme="rose"] { --bg:#160811; --surface:#29101d; --raised:#3b192a; --l
 /* Uygulama teması: ayrı sayfa ve ana ekran küçük önizlemeleri */
 .theme-entry { align-items:center; gap:12px; }
 .theme-entry .btn { flex:0 0 auto; }
-.theme-picker-page .pg-body { padding-bottom:calc(88px + env(safe-area-inset-bottom)); }
+.theme-picker-page .pg-body { padding-top: 10px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .theme-picker-intro { color:var(--muted); font-size:.92rem; line-height:1.45; margin:4px 2px 16px; }
 .theme-choice-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }
 .theme-choice {
@@ -1720,57 +1721,29 @@ html[data-theme="rose"] { --bg:#160811; --surface:#29101d; --raised:#3b192a; --l
   background:var(--surface); color:var(--text); text-align:left;
 }
 .theme-choice.on { border:2px solid var(--accent); padding:6px; box-shadow:0 0 0 2px var(--accent-soft); }
-.theme-preview {
-  display:flex; flex-direction:column; gap:7px; aspect-ratio:1.12/1;
-  overflow:hidden; padding:8px; border-radius:10px; color:#f8fafc;
-  background:radial-gradient(120% 90% at 50% 0%,color-mix(in srgb,var(--preview-accent) 25%,var(--preview-bar)),var(--preview-bar) 72%);
-  border:1px solid color-mix(in srgb,var(--preview-accent) 55%,transparent);
+/* Gerçek ana ekran görüntüsü (img/themes/<kimlik>.webp) */
+.theme-shot { position:relative; display:block; aspect-ratio:3/4; overflow:hidden; border-radius:10px; background:var(--raised); }
+.theme-shot img { display:block; width:100%; height:100%; object-fit:cover; object-position:top; }
+.theme-choice.locked .theme-shot img { filter:saturate(.7) brightness(.82); }
+.theme-choice-foot { display:flex; align-items:center; gap:6px; min-width:0; padding:0 3px 2px; }
+.theme-choice-name { flex:1; min-width:0; font-size:.9rem; font-weight:600; }
+.theme-pro {
+  flex:none; display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:999px;
+  background:#facc15; color:#1a1300; /* sarı dolguda koyu yazı */
+  font-size:.68rem; font-weight:800; letter-spacing:.05em;
 }
-.theme-preview-head { display:flex; align-items:center; justify-content:space-between; font-size:clamp(8px,2.6vw,11px); letter-spacing:.04em; }
-.theme-preview-head span { color:var(--preview-accent); font-size:1.15em; }
-.theme-preview-tiles { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
-.theme-preview-tiles i {
-  display:grid; place-items:center; min-height:25px; border-radius:6px;
-  background:color-mix(in srgb,var(--preview-accent) 24%,#111827);
-  border:1px solid color-mix(in srgb,var(--preview-accent) 62%,transparent);
-  color:#fff; font-style:normal; font-size:14px;
-}
-.theme-preview-posters { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; flex:1; min-height:24px; }
-.theme-preview-posters i { border-radius:5px; background:linear-gradient(155deg,color-mix(in srgb,var(--preview-accent) 60%,#fff),#26334c 72%,#101827); }
-.theme-preview-nav { display:flex; justify-content:space-around; color:var(--preview-accent); font-size:12px; }
-.theme-choice-name { padding:0 3px 2px; font-size:.9rem; font-weight:600; }
+.theme-pro .ic { width:11px; height:11px; }
 .theme-choice-check {
-  position:absolute; top:11px; right:11px; display:grid; place-items:center;
-  width:23px; height:23px; border-radius:50%; background:var(--accent);
-  color:var(--accent-ink); font-weight:800; opacity:0;
+  flex:none; display:grid; place-items:center; width:22px; height:22px; border-radius:50%;
+  background:var(--accent); color:var(--accent-ink); font-size:.8rem; font-weight:800; visibility:hidden;
 }
-.theme-choice.on .theme-choice-check { opacity:1; }
-.theme-apply-bar {
-  position:sticky; bottom:0; z-index:3; display:flex; align-items:center; justify-content:space-between;
-  gap:12px; margin:16px -2px 0; padding:12px;
-  border:1px solid var(--line); border-radius:15px;
-  background:color-mix(in srgb,var(--surface) 94%,transparent);
-  backdrop-filter:blur(14px);
-}
-.theme-apply-bar div { display:flex; flex-direction:column; gap:3px; min-width:0; }
-.theme-apply-bar small { color:var(--muted); font-size:.75rem; }
-.theme-apply-bar b { font-size:.95rem; }
-.theme-apply-bar .btn { min-width:108px; }
+.theme-choice.on .theme-choice-check { visibility:visible; }
 @media (min-width:600px) {
   .theme-choice-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 @media (min-width:900px) {
   .theme-choice-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
 }
-
-
-/* Tema seçimi ayrı ayar bölümü */
-.theme-picker-page .pg-body { padding-top: 10px; }
-.theme-preview-tiles i:nth-child(2) { background: color-mix(in srgb,var(--preview-accent) 34%,#172033); }
-.theme-preview-tiles i:nth-child(3) { background: color-mix(in srgb,var(--preview-accent) 22%,#0f172a); }
-.theme-preview-tiles i:nth-child(4) { background: color-mix(in srgb,#facc15 34%,#172033); color:#facc15; }
-.theme-preview-posters i:nth-child(2) { background: linear-gradient(145deg,color-mix(in srgb,var(--preview-accent) 35%,#fff),#27334b 68%,#101827); }
-.theme-preview-posters i:nth-child(3) { background: linear-gradient(145deg,color-mix(in srgb,var(--preview-accent) 72%,#fff),#172033 70%,#090f1d); }
 .set-tile[data-set="theme"] .ic { color: var(--accent); }
 html[data-multi] .set-tile[data-set=theme] { --tc: var(--p0); }
 

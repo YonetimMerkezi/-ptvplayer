@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 121,
+    title: 'Yeni tema sayfası',
+    items: [
+      'Temalar uygulamanın gerçek ana ekran görüntüleriyle gösterilir',
+      'Uygula düğmesi kalktı: dokunduğunuz tema hemen uygulanır',
+      'Pro olan temalar kartlarında işaretlidir; Yönetici panelindeki yeni Temalar sekmesinden hangilerinin Pro olacağı seçilir',
+    ],
+  },
+  {
     id: 120,
     title: 'Müzik çalar: kaydırarak şarkı değiştirme, yukarı kaydırınca büyüyen liste',
     items: [

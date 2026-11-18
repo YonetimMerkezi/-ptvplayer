@@ -94,8 +94,9 @@ export async function openEntry(code, entry, opts = {}) {
 // Cihaz kimliği (12 hex) karşılaştırması için sadeleştirir: "ab12-CD34" → "ab12cd34".
 export const normDevice = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-f0-9]/g, '');
 
-export function buildConfig({ entries = {}, blocked = [], at = Date.now() } = {}) {
-  return { v: CONFIG_VERSION, at, blocked: [...new Set(blocked.map(normDevice).filter(Boolean))], entries };
+// pt: Pro olarak işaretlenen tema kimlikleri (yönetici paneli); verilmediyse alan yazılmaz, cihazlar varsayılanı kullanır.
+export function buildConfig({ entries = {}, blocked = [], at = Date.now(), pt = null } = {}) {
+  return { v: CONFIG_VERSION, at, blocked: [...new Set(blocked.map(normDevice).filter(Boolean))], entries, ...(Array.isArray(pt) ? { pt: pt.filter((x) => typeof x === 'string').slice(0, 64) } : {}) };
 }
 // Ağdan gelen config.json’u doğrular; bozuksa null.
 export function parseConfig(j) {
@@ -104,7 +105,7 @@ export function parseConfig(j) {
   for (const [id, e] of Object.entries(j.entries)) {
     if (/^[0-9a-f]{20}$/.test(id) && e && typeof e.s === 'string' && typeof e.i === 'string' && typeof e.c === 'string') entries[id] = { s: e.s, i: e.i, c: e.c, it: e.it };
   }
-  return { at: Number(j.at) > 0 ? Number(j.at) : 0, blocked: (Array.isArray(j.blocked) ? j.blocked : []).map(normDevice).filter(Boolean), entries };
+  return { at: Number(j.at) > 0 ? Number(j.at) : 0, blocked: (Array.isArray(j.blocked) ? j.blocked : []).map(normDevice).filter(Boolean), entries, pt: Array.isArray(j.pt) ? j.pt.filter((x) => typeof x === 'string').slice(0, 64) : null };
 }
 export async function fetchConfig(net, { bases = CONFIG_BASES, sleep } = {}) {
   let last;

@@ -1,11 +1,13 @@
-// Yönetici paneli arayüzü: kullanıcılar (davet kodları), engelli cihazlar, gelen sorun raporları.
-// Mantık admin.js / vault.js / report.js’te; burada yalnızca ekranlar var. Her değişiklik GitHub’a otomatik yayınlanır.
+// Yönetici paneli arayüzü: kullanıcılar (davet kodları), engelli cihazlar, Pro temalar, gelen sorun raporları.
+// Mantık admin.js / vault.js / report.js’te; burada yalnızca ekranlar var. Her değişiklik GitHub’a otomatik yayınlanır
+// (Pro tema seçimi hariç: işaretlemeler “Yayınla” ile tek seferde gider).
 import { esc } from './util.js';
 import { $, $$, icon, toast, openPage, openSheet, fmtAgo } from './ui.js';
 import { createGithub, loadVault, publish, sealToken, openToken } from './admin.js';
 import { newUser, userStatus, extendUser, addBlocked, inviteText, cleanSourceInput, expiryFrom } from './vault.js';
 import { decodeAll, describeReport, summarize } from './report.js';
 import { fmtDeviceId } from './managed.js';
+import { THEMES, DEFAULT_THEME, DEFAULT_PRO_THEMES, proThemeIds, previewUrl } from './theme.js';
 
 const MIN_PASS = 8;
 const MAX_REPORTS = 300;
@@ -30,6 +32,7 @@ export function openAdmin(env) {
   let tab = 'users';
   let busy = false;
   let reports = [];
+  let ptDraft = null; // yayınlanmamış Pro tema seçimi (null: kasadaki geçerli)
   let statusMsg = '';
   let statusErr = false;
 
@@ -85,7 +88,7 @@ export function openAdmin(env) {
           root.innerHTML = store.pref('adm.tok', null) ? unlockHtml() : setupHtml();
           return;
         }
-        root.innerHTML = `<div class="seg" id="adm-tabs" style="padding:0 0 12px"><button data-t="users">Kullanıcılar</button><button data-t="blocked">Engelli</button><button data-t="reports">Raporlar</button></div><div id="adm-view"></div><p class="hint" id="adm-status" style="color:var(--muted);font-size:.75rem;margin-top:16px"></p><button class="btn ghost sm" id="adm-out" style="margin-top:10px">Çıkış (token’ı bu cihazdan sil)</button>`;
+        root.innerHTML = `<div class="seg" id="adm-tabs" style="padding:0 0 12px"><button data-t="users">Kullanıcılar</button><button data-t="blocked">Engelli</button><button data-t="themes">Temalar</button><button data-t="reports">Raporlar</button></div><div id="adm-view"></div><p class="hint" id="adm-status" style="color:var(--muted);font-size:.75rem;margin-top:16px"></p><button class="btn ghost sm" id="adm-out" style="margin-top:10px">Çıkış (token’ı bu cihazdan sil)</button>`;
         $$('#adm-tabs button', root).forEach((b) => b.classList.toggle('on', b.dataset.t === tab));
         renderView();
         setStatus(statusMsg || (st.sha ? 'Yayında. Değişiklikler cihazlara birkaç dakikada ulaşır.' : 'Henüz yayınlanmadı.'), statusErr);
@@ -94,7 +97,7 @@ export function openAdmin(env) {
       function renderView() {
         const v = $('#adm-view', root);
         if (!v) return;
-        v.innerHTML = tab === 'users' ? usersHtml() : tab === 'blocked' ? blockedHtml() : reportsHtml();
+        v.innerHTML = tab === 'users' ? usersHtml() : tab === 'blocked' ? blockedHtml() : tab === 'themes' ? themesHtml() : reportsHtml();
       }
 
       const usersHtml = () => {
@@ -114,6 +117,19 @@ export function openAdmin(env) {
 <p class="err-text" id="adm-err" hidden></p>
 <button class="btn" id="bl-add" style="width:100%;margin-bottom:12px">Engelle</button>
 ${st.vault.blocked.map((b) => `<div class="list-item"><span class="t">${esc(fmtDeviceId(b.id))}<small>${esc(b.note || '')}</small></span><button class="btn sm ghost" data-a="unblock" data-id="${esc(b.id)}">Kaldır</button></div>`).join('') || '<p style="color:var(--muted)">Engelli cihaz yok.</p>'}`;
+
+      const ptNow = () => ptDraft || proThemeIds(st.vault.pt);
+      const themesHtml = () => {
+        const cur = ptNow();
+        const live = proThemeIds(st.vault.pt);
+        const dirty = cur.length !== live.length || cur.some((x) => !live.includes(x));
+        return `<p style="color:var(--muted);font-size:.8rem">İşaretlediğiniz temalar Pro olur; Pro olmayan üyeler seçemez. Yeşil varsayılan temadır, hep ücretsizdir. “Yayınla” ile seçim cihazlara gider.</p>
+${THEMES.filter((t) => t.id !== DEFAULT_THEME)
+  .map((t) => `<button class="chk${cur.includes(t.id) ? ' on' : ''}" data-a="ptoggle" data-id="${esc(t.id)}"><i>${icon('check')}</i><span class="t">${esc(t.name)}<small>${cur.includes(t.id) ? 'Pro' : 'Ücretsiz'}</small></span><img src="${esc(previewUrl(t.id))}" alt="" style="width:34px;height:45px;border-radius:6px;object-fit:cover;object-position:top"></button>`)
+  .join('')}
+<button class="btn" id="pt-save" style="width:100%;margin-top:14px"${dirty ? '' : ' disabled'}>Yayınla</button>
+<button class="btn ghost sm" id="pt-reset" style="margin-top:10px">Başlangıç seçimine dön</button>`;
+      };
 
       const reportsHtml = () => {
         const sum = summarize(reports);
@@ -321,6 +337,15 @@ ${[0, 1, 2].map((i) => srcBlock(i, srcs[i])).join('')}
             return showErr(ex.message);
           }
         }
+        if (id === 'pt-save') {
+          if (!(await commit({ ...st.vault, pt: ptNow() }, 'Pro temalar yayınlandı'))) return;
+          ptDraft = null;
+          return renderView();
+        }
+        if (id === 'pt-reset') {
+          ptDraft = [...DEFAULT_PRO_THEMES];
+          return renderView();
+        }
         if (id === 'rp-add') return importReports($('#rp-in', root).value);
         if (id === 'rp-paste') {
           const txt = await readClipboard();
@@ -338,6 +363,11 @@ ${[0, 1, 2].map((i) => srcBlock(i, srcs[i])).join('')}
         if (!b) return;
         const a = b.dataset.a;
         if (a === 'rview') return reportSheet(b.dataset.id);
+        if (a === 'ptoggle') {
+          const cur = ptNow();
+          ptDraft = cur.includes(b.dataset.id) ? cur.filter((x) => x !== b.dataset.id) : [...cur, b.dataset.id];
+          return renderView();
+        }
         if (a === 'unblock') return commit({ ...st.vault, blocked: st.vault.blocked.filter((x) => x.id !== b.dataset.id) }, 'Engel kaldırıldı');
         const u = byCode(b.dataset.c);
         if (!u) return;

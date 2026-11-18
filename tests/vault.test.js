@@ -144,3 +144,21 @@ test('GitHub: kurulum, dal oluşturma, yayın, çakışma, izin hataları', asyn
   const dead = createGithub({ token: 'TOKEN', fetchImpl: async () => { throw new TypeError('fail'); } });
   await assert.rejects(() => dead.check(), /ulaşılamadı/);
 });
+
+test('kasa: Pro tema seçimi (pt) şifreli kasada saklanır ve config.json\'a yazılır; seçim yoksa config\'te alan olmaz', async () => {
+  const empty = await buildPublish(emptyVault(NOW), { now: NOW });
+  assert.equal('pt' in empty.config, false);
+  const v = { ...emptyVault(NOW), pt: ['blue', 'neon'] };
+  const pub = await buildPublish(v, { now: NOW });
+  assert.deepEqual(pub.config.pt, ['blue', 'neon']);
+  assert.deepEqual(pub.vault.pt, ['blue', 'neon']);
+  const back = await openVault(await sealVault(pub.vault, PASS), PASS);
+  assert.deepEqual(back.pt, ['blue', 'neon']);
+  assert.equal((await openVault(await sealVault(emptyVault(NOW), PASS), PASS)).pt, null, 'eski kasa: seçim yok');
+  assert.deepEqual(parseConfig(JSON.parse(JSON.stringify(pub.config))).pt, ['blue', 'neon']);
+  // uçtan uca: yayın config.json'a pt'yi koyar
+  const fake = fakeGithub();
+  const gh = ghOf(fake);
+  await publish(gh, { vault: v, sha: null, cfgSha: undefined }, PASS, { now: NOW });
+  assert.deepEqual(JSON.parse(fake.files.get('config.json').text).pt, ['blue', 'neon']);
+});

@@ -216,3 +216,13 @@ test('cihaz kimliği: 12 hex, kalıcı, biçimli gösterim', () => {
   assert.match(fmtDeviceId(id), /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
   assert.equal(normDevice(fmtDeviceId(id)), id);
 });
+
+test('config: Pro tema listesi (pt) yazılır, okunurken ayıklanır; alan yoksa null', async () => {
+  assert.equal('pt' in buildConfig({ entries: {}, at: NOW }), false, 'verilmediyse alan yazılmaz');
+  assert.deepEqual(buildConfig({ entries: {}, at: NOW, pt: ['blue', 5, 'rose'] }).pt, ['blue', 'rose']);
+  assert.deepEqual(buildConfig({ entries: {}, at: NOW, pt: [] }).pt, [], 'boş liste: hiçbiri Pro değil');
+  assert.equal(parseConfig({ v: 1, entries: {} }).pt, null);
+  assert.deepEqual(parseConfig({ v: 1, entries: {}, pt: ['blue', 7, null, 'neon'] }).pt, ['blue', 'neon']);
+  assert.equal(parseConfig({ v: 1, entries: {}, pt: 'blue' }).pt, null);
+  assert.equal(parseConfig({ v: 1, entries: {}, pt: Array.from({ length: 200 }, (_, i) => 't' + i) }).pt.length, 64);
+});

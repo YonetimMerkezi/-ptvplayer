@@ -19,7 +19,7 @@ export const PRO_FEATURES = [
   ['dl', 'İndirme', 'Film ve dizileri çevrimdışı izle'],
   ['sources', 'Birden fazla kaynak', 'İkinci ve sonraki listeleri ekle'],
   ['rows', 'Vitrinli satırlar', 'Yatay satırlar ve TV vitrini'],
-  ['themes', 'Renkli temalar', 'Çok renkli uygulama temaları'],
+  ['themes', 'Özel temalar', 'Pro olarak işaretli uygulama temaları'],
   ['backup', 'Yedekleme', 'Yedekle, geri yükle, TV ile eşitle'],
   ['remind', 'Program hatırlatıcısı', 'Program ve maç başlamadan haber ver'],
   ['sportdetail', 'Spor ekranı detayı', 'Maç ayrıntıları, kadro ve istatistik'],

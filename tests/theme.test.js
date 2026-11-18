@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { THEMES, DEFAULT_THEME, themeById, applyTheme } from '../www/js/theme.js';
+import { THEMES, DEFAULT_THEME, DEFAULT_PRO_THEMES, themeById, applyTheme, cleanProThemes, proThemeIds, isProTheme, previewUrl } from '../www/js/theme.js';
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/css/app.css'), 'utf8');
 
@@ -76,4 +76,48 @@ test('çok renkli temalarda her sekme, her ayar kutusu ve ana kutu için renk ku
   assert.ok(sets.size >= 12);
   for (const k of sets) assert.ok(css.includes(`html[data-multi] .set-tile[data-set=${k}]`), `ayar kutusu rengi yok: ${k}`);
   for (const k of ['live', 'movie', 'series', 'today']) for (const th of ['cards', 'solid', 'neon', 'sunset']) assert.ok(css.includes(`html[data-theme="${th}"] .tile.t-${k}`), `${th}: ${k} kutusu`);
+});
+
+test('Pro temalar: işaretleme yoksa çok renkli temalar Pro, varsayılan tema hiçbir zaman Pro olamaz', () => {
+  assert.deepEqual(DEFAULT_PRO_THEMES, ['cards', 'solid', 'neon', 'sunset']);
+  assert.deepEqual(proThemeIds(null), DEFAULT_PRO_THEMES);
+  assert.deepEqual(proThemeIds(undefined), DEFAULT_PRO_THEMES);
+  assert.equal(isProTheme('neon', null), true);
+  assert.equal(isProTheme('blue', null), false);
+  // yönetici seçimi varsayılanın yerine geçer; boş liste "hiçbiri Pro değil" demektir
+  assert.deepEqual(proThemeIds(['blue', 'rose']), ['blue', 'rose']);
+  assert.deepEqual(proThemeIds([]), []);
+  assert.equal(isProTheme('neon', ['blue']), false);
+  assert.equal(isProTheme('blue', ['blue']), true);
+  // bozuk girdiler ayıklanır: bilinmeyen kimlik, metin olmayan, tekrar, varsayılan tema
+  assert.deepEqual(cleanProThemes(['blue', 'blue', 'yok', 5, null, DEFAULT_THEME, 'rose']), ['blue', 'rose']);
+  assert.equal(cleanProThemes('blue'), null);
+  assert.equal(cleanProThemes(null), null);
+  assert.equal(isProTheme(DEFAULT_THEME, [DEFAULT_THEME]), false);
+});
+
+test('her temanın kartında gerçek ana ekran görüntüsü var (scripts/theme-previews.py üretir)', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  for (const t of THEMES) {
+    assert.equal(previewUrl(t.id), `img/themes/${t.id}.webp`);
+    const f = join(root, 'www', previewUrl(t.id));
+    assert.ok(existsSync(f), `${t.id}: ${previewUrl(t.id)} yok; scripts/theme-previews.py çalıştırın`);
+    const size = statSync(f).size;
+    assert.ok(size > 4000 && size < 120000, `${t.id}: görüntü boyutu beklenmedik (${size} bayt)`);
+    assert.equal(readFileSync(f).subarray(8, 12).toString(), 'WEBP', `${t.id}: WebP değil`);
+  }
+  assert.equal(previewUrl('bozuk'), 'img/themes/green.webp', 'bilinmeyen kimlik varsayılana düşer');
+});
+
+test('tema sayfası: Uygula düğmesi yok, dokununca hemen uygulanır; Pro kilidi uygulamadan önce sorulur', () => {
+  const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../www/js/app.js'), 'utf8');
+  const sheet = app.slice(app.indexOf('function themeSheet() {'), app.indexOf('function generalSheet() {'));
+  assert.ok(sheet.length > 400);
+  assert.doesNotMatch(sheet, /theme-apply|>Uygula<|'Uygula'/, 'Uygula düğmesi kalmamalı');
+  assert.match(sheet, /needPro\('themes'\)/, 'Pro tema için üyelik sorulmalı');
+  assert.ok(sheet.indexOf("needPro('themes')") < sheet.indexOf('applyTheme('), 'kilit, uygulamadan önce denetlenmeli');
+  assert.match(sheet, /store\.setPref\('set\.theme'/, 'seçim hemen kaydedilmeli');
+  assert.doesNotMatch(sheet, /api\.close\(\)/, 'sayfa seçimle kapanmamalı');
+  assert.doesNotMatch(css, /\.theme-apply-bar|\.theme-preview/, 'eski çizimli önizleme ve Uygula çubuğu CSS\'i kalmamalı');
+  assert.match(css, /\.theme-pro \{[^}]*background:#facc15; color:#1a1300/, 'sarı dolguda koyu yazı');
 });

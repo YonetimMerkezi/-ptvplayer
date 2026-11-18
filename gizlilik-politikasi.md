@@ -30,6 +30,7 @@ Uygulamanın özellikleri için aşağıdaki hizmetlere istek gider. İsteklerde
 - **Diğer:** Film sınıflandırma bilgisi için Kültür ve Turizm Bakanlığı (filmsiniflandirma.ktb.gov.tr); hız testi için Cloudflare (speed.cloudflare.com).
 - **TV'ye aktarma, yayın gönderme:** Telefon ve TV arasındaki aktarım ve ağ cihazı bulma, yalnız yerel ağınızda olur.
 - **QR kod okuma:** Google Play hizmetlerinin kod tarayıcısı kullanılır; kamera görüntüsü uygulamada saklanmaz.
+- **Uygulama ayarı:** Hangi temaların Pro üyelik gerektirdiği, projenin GitHub deposundaki küçük bir ayar dosyasından (raw.githubusercontent.com) okunur. İstekte kimliğiniz bulunmaz.
 
 Google Play dışında dağıtılan APK sürümü ayrıca yeni sürüm denetimi için GitHub'a bağlanır. Google Play sürümünde bu yoktur.
 
@@ -97,6 +98,7 @@ To power its features the app sends requests to the services below. Requests con
 - **Other:** The Turkish Ministry of Culture and Tourism (filmsiniflandirma.ktb.gov.tr) for film classification; Cloudflare (speed.cloudflare.com) for the speed test.
 - **Sending to TV, casting:** Transfers between phone and TV and discovery of network devices happen only on your local network.
 - **QR scanning:** The Google Play services code scanner is used; no camera image is stored by the app.
+- **App setting:** Which themes require a Pro membership is read from a small settings file in the project's GitHub repository (raw.githubusercontent.com). The request contains no identity.
 
 The APK distributed outside Google Play also connects to GitHub to check for new versions. The Google Play version does not.
 

@@ -29,7 +29,7 @@ import { nativePlugin as getNativePlugin } from './bridge.js';
 import { $, $$, icon, toast, logo, openSheet, openPage, fmtAgo } from './ui.js';
 import { marquee } from './marquee.js';
 import { holeClip } from './hole.js';
-import { THEMES, DEFAULT_THEME, applyTheme, themeById } from './theme.js';
+import { THEMES, DEFAULT_THEME, applyTheme, cleanProThemes, isProTheme, previewUrl } from './theme.js';
 import { initDpad } from './dpad.js';
 import { createHero, heroModel, heroCellW } from './hero.js';
 import { Shelves, shelfSizes, ROW_CAPS, SHELF_CAP, normalizeRowCap } from './shelves.js';
@@ -61,7 +61,7 @@ import { KID_KINDS, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAll
 import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { isPlay, loadDist } from './dist.js';
-import { redeem, syncManaged, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
+import { redeem, syncManaged, fetchConfig, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
@@ -166,7 +166,10 @@ async function syncBilling() {
     }
   }
 }
-const themeAllowed = (id) => (themeById(id).multi && !proOk('themes') ? DEFAULT_THEME : id);
+// Pro temalar yönetici panelinde işaretlenir; son bilinen liste cihazda saklanır (null: hiç işaretlenmemiş, varsayılan geçerli).
+const proThemeList = () => store.pref('cfg.proThemes', null);
+const themeLocked = (id) => isProTheme(id, proThemeList()) && !proOk('themes');
+const themeAllowed = (id) => (themeLocked(id) ? DEFAULT_THEME : id);
 applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
 // Hafif mod (animasyon/gölge/bulanıklık kapalı) ve devam çubuklarını gizleme: kök öğede işaret, CSS uygular.
 const applyLiteMode = () => applyLite(store.pref('set.lite', DEFAULT_LITE), document, navigator);
@@ -4439,52 +4442,40 @@ function playerSheet() {
   });
 }
 
+// Uygulama teması: kartlar uygulamanın gerçek ana ekran görüntüleridir; dokununca tema hemen uygulanır (Uygula düğmesi yok).
+// Pro olarak işaretli temalar üyelik yetmiyorsa kilitlidir: dokununca Pro sayfası açılır, tema değişmez.
 function themeSheet() {
-  let selected = store.pref('set.theme', DEFAULT_THEME);
-  const preview = (t) => `
-    <button class="theme-choice${t.id === selected ? ' on' : ''}" type="button" data-theme-choice="${esc(t.id)}" aria-pressed="${t.id === selected}">
-      <div class="theme-preview" data-preview-theme="${esc(t.id)}" style="--preview-accent:${t.previewAccent || t.swatch};--preview-bar:${t.bar}">
-        <div class="theme-preview-head"><b>IPTV PRO</b><span>⌕　⚙</span></div>
-        <div class="theme-preview-tiles"><i>▣</i><i>▰</i><i>▶</i><i>★</i></div>
-        <div class="theme-preview-posters"><i></i><i></i><i></i></div>
-        <div class="theme-preview-nav"><i>⌂</i><i>▣</i><i>▰</i><i>★</i><i>⚙</i></div>
-      </div>
-      <span class="theme-choice-name">${esc(t.name)}</span>
-      <span class="theme-choice-check" aria-hidden="true">${t.id === selected ? '✓' : ''}</span>
+  let selected = themeAllowed(store.pref('set.theme', DEFAULT_THEME));
+  const card = (t) => {
+    const pro = isProTheme(t.id, proThemeList());
+    const lock = themeLocked(t.id);
+    return `
+    <button class="theme-choice${t.id === selected ? ' on' : ''}${lock ? ' locked' : ''}" type="button" data-theme-choice="${esc(t.id)}" aria-pressed="${t.id === selected}" aria-label="${esc(t.name + (pro ? ', Pro' : ''))}">
+      <span class="theme-shot"><img src="${esc(previewUrl(t.id))}" alt="" loading="lazy" decoding="async"></span>
+      <span class="theme-choice-foot"><span class="theme-choice-name">${esc(t.name)}</span>${pro ? `<span class="theme-pro">${lock ? icon('lock') : ''}PRO</span>` : ''}<span class="theme-choice-check" aria-hidden="true">✓</span></span>
     </button>`;
-  const page = openPage({
+  };
+  return openPage({
     title: 'Uygulama teması',
     cls: 'theme-picker-page',
     html: `
-      <p class="theme-picker-intro">Uygulamanın genel görünümünü belirleyen temayı seçin. Kartlardaki küçük ana ekran önizlemeleri tema renklerini gösterir.</p>
-      <div class="theme-choice-grid" id="theme-choice-grid">${THEMES.map(preview).join('')}</div>
-      <div class="theme-apply-bar">
-        <div><small>Seçili tema</small><b id="theme-choice-label">${esc(THEMES.find((t) => t.id === selected)?.name || 'Yeşil')}</b></div>
-        <button class="btn primary" id="theme-apply">Uygula</button>
-      </div>`,
-    mount: (body, api) => {
+      <p class="theme-picker-intro">Dokunduğunuz tema hemen uygulanır.</p>
+      <div class="theme-choice-grid" id="theme-choice-grid">${THEMES.map(card).join('')}</div>`,
+    mount: (body) => {
       $('#theme-choice-grid', body).addEventListener('click', (e) => {
-        const card = e.target.closest('[data-theme-choice]');
-        if (!card) return;
-        selected = card.dataset.themeChoice;
+        const el = e.target.closest('[data-theme-choice]');
+        if (!el || el.dataset.themeChoice === selected) return;
+        if (isProTheme(el.dataset.themeChoice, proThemeList()) && !needPro('themes')) return;
+        selected = applyTheme(el.dataset.themeChoice);
+        store.setPref('set.theme', selected);
         body.querySelectorAll('.theme-choice').forEach((x) => {
           const active = x.dataset.themeChoice === selected;
           x.classList.toggle('on', active);
           x.setAttribute('aria-pressed', String(active));
-          $('.theme-choice-check', x).textContent = active ? '✓' : '';
         });
-        $('#theme-choice-label', body).textContent = THEMES.find((t) => t.id === selected)?.name || 'Yeşil';
-      });
-      $('#theme-apply', body).addEventListener('click', () => {
-        if (themeById(selected).multi && !needPro('themes')) return;
-        const applied = applyTheme(selected);
-        store.setPref('set.theme', applied);
-        api.close();
-        toast('Uygulama teması uygulandı');
       });
     },
   });
-  return page;
 }
 
 function generalSheet() {
@@ -4648,6 +4639,26 @@ player.on((st) => {
   lastPlayErr = key;
   store.setPref('errlog', pushError(store.pref('errlog', []), { k: st.item.kind, n: st.item.name, m: st.error }));
 });
+
+// Hangi temaların Pro olduğunu yapılandırma dosyasından (yönetici panelindeki işaretleme) okur. Yalnız kilitler çalışırken sorulur;
+// ağ yoksa son bilinen liste kalır. Seçili tema Pro olduysa ve üyelik yetmiyorsa varsayılana dönülür.
+let ptBusy = false;
+async function refreshProThemes({ launch = false } = {}) {
+  if (ptBusy || !memOn() || !shouldAutoCheck(store.pref('cfg.at', 0), Date.now(), launch ? LAUNCH_MS : CHECK_MS)) return;
+  ptBusy = true;
+  try {
+    const cfg = await fetchConfig(net);
+    store.setPref('cfg.at', Date.now());
+    const next = cleanProThemes(cfg.pt);
+    if (JSON.stringify(next) === JSON.stringify(proThemeList())) return;
+    store.setPref('cfg.proThemes', next);
+    applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
+  } catch {
+    /* çevrimdışı ya da dosya yok: son bilinen liste geçerli */
+  } finally {
+    ptBusy = false;
+  }
+}
 
 // Davet koduyla gelen kaynakları yönetici dosyasıyla eşitler: değişiklikler uygulanır, erişimi biten kaynaklar kaldırılır.
 let mgBusy = false;
@@ -6277,6 +6288,7 @@ document.addEventListener('visibilitychange', () => {
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
   refreshManaged();
+  refreshProThemes();
   syncBilling();
 });
 setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
@@ -6417,6 +6429,7 @@ function warmStart(tries = 0) {
   }
   setTimeout(() => checkForUpdate({ launch: true }), 2500); // açılışta yeni sürüm var mı bak; varsa üstte şerit çıkar
   setTimeout(() => refreshManaged({ launch: true }), 4000); // davet koduyla gelen listeler hâlâ geçerli mi
+  setTimeout(() => refreshProThemes({ launch: true }), 5000); // Pro temaların güncel listesi
   setTimeout(() => maybeWhatsNew(), 1800);
   await activate(src.id);
   setTimeout(() => warmStart(), 15000); // arayüz yerleştikten sonra, arka planda

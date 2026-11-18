@@ -15,7 +15,7 @@ export async function openVault(sealed, pass, opts = {}) {
     throw new Error('Parola yanlış ya da kasa bozuk.');
   }
   if (!v || !Array.isArray(v.users)) throw new Error('Kasa biçimi tanınmadı.');
-  return { v: 1, at: Number(v.at) || 0, users: v.users, blocked: Array.isArray(v.blocked) ? v.blocked : [] };
+  return { v: 1, at: Number(v.at) || 0, users: v.users, blocked: Array.isArray(v.blocked) ? v.blocked : [], pt: Array.isArray(v.pt) ? v.pt.filter((x) => typeof x === 'string') : null };
 }
 
 const str = (v, n = 2000) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
@@ -83,7 +83,7 @@ export async function buildPublish(vault, { now = Date.now(), subtle, rand } = {
     entries[await codeId(u.code, subtle)] = sealed.e;
     users.push({ ...u, sealed });
   }
-  return { config: buildConfig({ entries, blocked: vault.blocked.map((b) => b.id), at: now }), vault: { ...vault, users, at: now } };
+  return { config: buildConfig({ entries, blocked: vault.blocked.map((b) => b.id), at: now, pt: vault.pt }), vault: { ...vault, users, at: now } };
 }
 
 // Davet metni: yeni kullanıcıya gönderilecek ileti.
