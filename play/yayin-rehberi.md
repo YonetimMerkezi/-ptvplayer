@@ -102,11 +102,27 @@ First Google Play release: live TV, TV guide, movies and series, recording and d
 https://github.com/YonetimMerkezi/-ptvplayer/blob/main/gizlilik-politikasi.md
 ```
 
-**Görseller** (klasör: `play/graphics` – depoda ve sohbette):
+**Görseller** (klasör: `play/graphics`; telefondan indirmek için "play" sürüm kaydındaki `play-gorselleri.zip`, klasör düzeniyle aynı):
 - Uygulama simgesi 512×512: `simge-512.png`
 - Öne çıkan görsel 1024×500: `ozne-cikan-gorsel-1024x500.png`
-- Telefon ekran görüntüleri (1080×1920): `telefon-1…5`
-- Android TV: ekran görüntüsü 1920×1080 `tv-1-filmler-1920x1080.jpg`, TV afişi 1280×720 `tv-afisi-1280x720.png`
+- Android TV afişi 1280×720 (zorunlu): `tv-afisi-1280x720.png`
+- Android TV ekran görüntüsü 1920×1080 (en az 1 zorunlu): `tv/tv-1-tv-modu-1920x1080.jpg`
+- Telefon ekran görüntüleri 1080×1920: `telefon/01…14` (başlıklı ve açıklamalı; her biri gerçek uygulama ekranıyla)
+
+Play telefon için **en fazla 8** görsel alır; geri kalanı site, sosyal medya ve sonraki güncellemeler için saklanır. Önerilen 8 ve sıra:
+
+| Sıra | Dosya | Anlattığı özellik |
+|---|---|---|
+| 1 | `01-canli-tv` | Canlı TV, rehber, favoriler |
+| 2 | `02-vitrinli-satirlar` | Filmler ve diziler vitrinli satırlarda |
+| 3 | `03-dizi-takibi-hatirlatma` | Dizi takibi, hatırlatma, kayıt |
+| 4 | `04-spor-ve-takip` | Maçlar, skorlar, takım takibi |
+| 5 | `06-medya-merkezi-muzik` | Medya merkezi ve müzik çalar |
+| 6 | `09-kategori-klasor` | Kategori düzenleme, sıralama, klasör |
+| 7 | `10-profiller-cocuk-kilidi` | Profiller ve çocuk kilidi |
+| 8 | `12-tv-kumanda-esitleme` | TV kumanda ve TV ile eşitleme |
+
+Yedekte kalanlar: `05-indirme`, `07-resim-icinde-resim`, `08-goruntu-cozucu`, `11-baglanti-turleri`, `13-tema-merkezi`, `14-tv-modu`. Görsellerdeki kanal, dizi, takım ve şarkı adları uydurma örnek veridir; marka ya da gerçek içerik yoktur. `07` birleşik çizimdir (PiP penceresini Android sistemi çizer; uygulama ekranının üstüne küçük yayın penceresi konmuştur).
 
 ## 4. Uygulama içeriği formları
 

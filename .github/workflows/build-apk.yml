@@ -177,7 +177,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp android/app/build/outputs/bundle/playRelease/app-play-release.aab iptv-play.aab
-          (cd play/graphics && zip -q -0 ../../play-gorselleri.zip ./*)
+          (cd play/graphics && zip -q -r -0 ../../play-gorselleri.zip .)
           TITLE="Google Play paketi 1.0.${{ github.run_number }}"
           NOTES="Play Console'a yüklenecek paket (AAB). Telefona kurulmaz. Mağaza görselleri play-gorselleri.zip içindedir. Sürüm kodu ${{ github.run_number }} (${GITHUB_SHA::7})."
           RELEASE_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.tag_name == "play") | .id' | head -n 1)"
