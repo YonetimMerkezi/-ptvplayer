@@ -4334,6 +4334,11 @@ function globalSearch() {
 // ------------------------------------------------------------------ ayarlar: genel, EPG, otomasyon
 
 const chkRow = (k, label, sub) => `<button class="chk${setting(k) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
+// Ayar kartı (başlık + satırlar). selRow: sağda seçim kutusu (uzun açıklamalı satırda stack = seçim açıklamanın altına geçer); btnRow: sağda düğme.
+const setCard = (title, ic, rows) => `<section class="set-card"><h3>${icon(ic)}<span>${esc(title)}</span></h3>${rows.join('')}</section>`;
+const rowText = (label, sub, subId) => `<span class="t">${esc(label)}${sub ? `<small${subId ? ` id="${subId}"` : ''}>${sub}</small>` : ''}</span>`;
+const selRow = (id, label, sub, opts, stack = false) => `<div class="sel-row${stack ? ' stack' : ''}">${rowText(label, esc(sub))}<select id="${id}" aria-label="${esc(label)}">${opts}</select></div>`;
+const btnRow = (id, label, sub, text, subId) => `<div class="sel-row">${rowText(label, sub && !subId ? esc(sub) : sub, subId)}<button class="btn sm ghost" id="${id}">${esc(text)}</button></div>`;
 const optionsHtml = (pairs, cur) => pairs.map(([v, t]) => `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${t}</option>`).join('');
 
 // Kumandanın renkli tuşları: oynatıcıda ve listelerde ayrı ayrı bir işe atanır.
@@ -4539,22 +4544,37 @@ function generalSheet() {
     full: true, // TV'de tam sayfa
     title: 'Genel ayarlar',
     html:
-      chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
-      chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
-      chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
-      chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi') +
-      chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
-      `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Vitrinli satırlar, telefonda Klasik. Vitrinli satırlar: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
-      `<div class="sel-row"><span>Film ve dizi kategori sırası<small>Öne çıkanlar önce: yeni eklenenler, platformlar, Türkçe içerik ve en çok izlenen türler önce; yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir</small></span><select id="g-cord">${optionsHtml(CAT_ORDERS, catOrderMode())}</select></div>` +
-      `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Vitrinli satır görünümünde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
-      `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
-      `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
-      `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +
-      `<div class="sel-row"><span>Uygulama şifresi<small id="g-lock-s">${lockEnabled() ? 'Açık' : 'Kapalı'}</small></span><button class="btn sm ghost" id="g-lock">Ayarla</button></div>` +
-      `<div class="sel-row"><span>Yedekle / geri yükle<small>Kaynaklar, favoriler, kategori düzeni, ayarlar</small></span><button class="btn sm ghost" id="g-bk">Aç</button></div>` +
-      `<div class="sel-row"><span>Cihaz kimliği<small id="g-dev-s">${esc(fmtDeviceId(deviceId(store)))}</small></span><button class="btn sm ghost" id="g-dev">Kopyala</button></div>` +
-      `<div class="sel-row"><span>Sorun raporu<small>Yöneticinize gönderilecek bilgileri önizleyin</small></span><button class="btn sm ghost" id="g-rep">Gönder</button></div>` +
-      `<div class="sel-row"><span>Yazı boyutu</span><select id="g-fs">${optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))}</select></div><div class="sel-row"><span>Son izlenen sınırı</span><select id="g-lim">${optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)}</select></div><div style="margin-top:14px"><button class="btn ghost sm" id="g-clr">Son izlenenleri temizle</button></div>`,
+      // Bölümlere ayrılmış kartlar: her satır başlığı + tek satırlık açıklaması + sağda anahtar/seçim/düğme
+      setCard('Canlı TV', 'tv', [
+        chkRow('epgRows', 'Program bilgisi', 'Kanal listesinde şu an yayındaki program ve ilerleme çubuğu'),
+        chkRow('numbers', 'Kanal numaraları', 'Yatay ekrandaki Canlı TV listesinde'),
+        chkRow('autoPreview', 'Önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran'),
+      ]) +
+      setCard('Film ve diziler', 'movie', [
+        selRow('g-mv', 'Film ve dizi ekranı', 'Otomatik: TV’de Vitrinli satırlar, telefonda Klasik. Vitrinli satırlar: yatay kayan kategoriler, üstte odaktaki yapımın vitrini', optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto'), true),
+        selRow('g-cord', 'Kategori sırası', 'Öne çıkanlar önce: yeni, platform ve Türkçe içerik üstte, yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir', optionsHtml(CAT_ORDERS, catOrderMode()), true),
+        selRow('g-rcap', 'Satırdaki yapım sayısı', 'Vitrinli satırda en çok kaç kutu dizilir; fazlası “Tümünü gör” kutusunda', optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))),
+        selRow('g-cap', 'Kutudaki ad', 'Afişin altında kaç satır görünsün', optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))),
+        chkRow('showProg', 'Devam çubukları', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi'),
+        chkRow('epThumbs', 'Bölüm küçük resimleri', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar sıkışık olur'),
+      ]) +
+      setCard('Görünüm ve cihaz', 'gear', [
+        selRow('g-fs', 'Yazı boyutu', '', optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))),
+        selRow('g-lite', 'Hafif mod', 'Animasyon, gölge ve bulanıklığı kapatır; otomatikte 2 GB ve altı bellekli cihazda açılır', optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))),
+        selRow('g-tv', 'TV modu', 'Kumanda ile kullanım: yatay, tam ekran, büyük yazı', optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))),
+      ]) +
+      setCard('Son izlenenler', 'history', [
+        selRow('g-lim', 'Saklanan sayı', 'Son izlenenler listesinin sınırı', optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)),
+        btnRow('g-clr', 'Listeyi temizle', 'Bu kaynağın son izlenenlerini siler', 'Temizle'),
+      ]) +
+      setCard('Güvenlik ve yedek', 'lock', [
+        btnRow('g-lock', 'Uygulama şifresi', lockEnabled() ? 'Açık' : 'Kapalı', 'Ayarla', 'g-lock-s'),
+        btnRow('g-bk', 'Yedekle / geri yükle', 'Kaynaklar, favoriler, kategori düzeni, ayarlar', 'Aç'),
+      ]) +
+      setCard('Destek', 'info', [
+        btnRow('g-dev', 'Cihaz kimliği', esc(fmtDeviceId(deviceId(store))), 'Kopyala', 'g-dev-s'),
+        btnRow('g-rep', 'Sorun raporu', 'Yöneticinize gönderilecek bilgileri önizleyin', 'Gönder'),
+      ]),
     mount: (body) => {
       body.addEventListener('click', (e) => {
         const c = e.target.closest('.chk');

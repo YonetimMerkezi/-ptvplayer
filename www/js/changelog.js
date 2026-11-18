@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 127,
+    title: 'Genel ayarlar yenilendi',
+    items: [
+      'Ayarlar bölümlere ayrıldı: Canlı TV, Film ve diziler, Görünüm ve cihaz, Son izlenenler, Güvenlik ve yedek, Destek',
+      'Onay kutuları anahtara döndü; açıklamalar kısaldı, seçim kutuları ve düğmeler hizalandı',
+    ],
+  },
+  {
     id: 126,
     title: 'Açılış animasyonu',
     items: [
