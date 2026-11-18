@@ -33,7 +33,7 @@ test('Play sürümünde güncelleme, yönetici paneli, davet kodu ve FFmpeg ayar
   assert.match(app, /\$\{isPlay\(\) \? '' : `<button class="set-tile" data-set="update">/, 'güncelleme karosu Play sürümünde yok');
   assert.match(app, /\$\{isPlay\(\) \? '' : '<button data-t="code">Kod<\/button>'\}/, 'davet kodu sekmesi Play sürümünde yok');
   assert.match(app, /async function refreshManaged\([^)]*\) \{\s*if \(isPlay\(\) \|\|/, 'davet kodlu listeler Play sürümünde eşitlenmez');
-  assert.match(app, /nativePlugin && !isPlay\(\) \? `<div class="sel-row"><span>Yazılım ses çözücüsü/, 'FFmpeg ayarı Play sürümünde yok');
+  assert.match(app, /!isPlay\(\) \? selRow\('g-saud', 'Yazılım ses çözücüsü/, 'FFmpeg ayarı Play sürümünde yok');
 });
 
 test('Gizlilik politikası: Ayarlar\'daki bağlantı depodaki gerçek dosyaya gider; metin Play\'in istediği başlıkları taşır', () => {

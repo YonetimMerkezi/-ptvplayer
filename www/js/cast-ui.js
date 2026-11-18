@@ -83,7 +83,11 @@ export function createCastUI(deps) {
       };
       const sh = openSheet({
         title,
-        html: (plugin.scanQr ? '<button class="btn" id="cs-qr" style="width:100%;margin-bottom:10px">TV’deki QR kodu tara</button>' : '') + '<div id="cs-list"></div><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="TV’nin IP adresi (örn. 192.168.1.20)" autocomplete="off"><button class="btn" id="cs-ipgo">Ekle</button></div><p class="hint">' + (manage ? 'Önce TV’de Ayarlar › Telefondan oynat ekranını açın (liste olmayan TV’de ilk ekrandaki “Telefondan al”); QR kod ve 6 haneli kod orada görünür. Sonra QR kodu tarayın ya da buradan TV’ye dokunup kodu girin. ' : '') + 'Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı QR kodu ve eşleştirme kodunu gösterir.</p>',
+        html:
+          (plugin.scanQr ? '<section class="set-card"><div class="sel-row"><span class="t">TV’deki QR kod<small>TV’de Ayarlar › Telefondan oynat ekranındaki kodu okutun</small></span><button class="btn sm" id="cs-qr" type="button">Tara</button></div></section>' : '') +
+          '<section class="set-card"><h3>' + icon('tv') + '<span>TV’ler</span></h3><div id="cs-list"></div></section>' +
+          '<section class="set-card"><h3>' + icon('link') + '<span>IP adresiyle ekle</span></h3><div class="cast-add"><input id="cs-ip" inputmode="decimal" placeholder="Örn. 192.168.1.20" autocomplete="off" aria-label="TV’nin IP adresi"><button class="btn" id="cs-ipgo" type="button">Ekle</button></div></section>' +
+          '<p class="set-note">' + (manage ? 'Önce TV’de Ayarlar › Telefondan oynat ekranını açın (liste olmayan TV’de ilk ekrandaki “Telefondan al”); QR kod ve 6 haneli kod orada görünür. Sonra QR kodu tarayın ya da buradan TV’ye dokunup kodu girin. ' : '') + 'Telefon ve TV aynı Wi‑Fi ağında olmalı; TV’de uygulama açık olmalı. TV’de Ayarlar › Telefondan oynat ekranı QR kodu ve eşleştirme kodunu gösterir.</p>',
         mount: (body, api) => {
           const box = body.querySelector('#cs-list');
           const draw = () => {
@@ -94,7 +98,7 @@ export function createCastUI(deps) {
                   `<div class="cast-row-d"><button class="rec-play" data-i="${i}">${icon('tv')}<span class="t">${esc(d.name)}</span><small>${d.saved ? (d.online ? 'Eşleşmiş · bağlanabilir' : 'Eşleşmiş · bulunamadı') : manage ? 'Eşleşmemiş · dokunup TV’deki kodu girin' : 'Yeni · kod gerekir'} · ${esc(d.host)}${now[d.id] && !manage ? ` · Şu an: ${esc(now[d.id].title || 'oynatılıyor')}` : ''}</small></button>${manage && d.saved && d.online ? `<button class="btn sm" data-remote="${i}">Kumanda</button>` : now[d.id] && !manage ? `<button class="icon-btn" data-remote="${i}" aria-label="Kumandayı aç">${icon('play')}</button>` : ''}${d.saved ? `<button class="icon-btn" data-forget="${i}" aria-label="Eşleşmeyi kaldır">${icon('trash')}</button>` : ''}</div>`,
               )
               .join('');
-            box.innerHTML = (rows || `<p class="hint">${searching ? 'TV aranıyor…' : 'TV bulunamadı. TV’de uygulamanın açık olduğundan ve aynı Wi‑Fi’ye bağlı olduğundan emin olun, ya da IP adresini yazın.'}</p>`) + (rows && searching ? '<p class="hint">Aranıyor…</p>' : '') + (!searching ? '<button class="btn g" id="cs-again">Yeniden ara</button>' : '');
+            box.innerHTML = (rows || `<p class="set-note">${searching ? 'TV aranıyor…' : 'TV bulunamadı. TV’de uygulamanın açık olduğundan ve aynı Wi‑Fi’ye bağlı olduğundan emin olun, ya da IP adresini yazın.'}</p>`) + (rows && searching ? '<p class="set-note">Aranıyor…</p>' : '') + (!searching ? '<div class="sel-row"><span class="t">Listede yok mu?<small>Ağı yeniden tarar</small></span><button class="btn sm ghost" id="cs-again" type="button">Yeniden ara</button></div>' : '');
           };
           const search = async () => {
             searching = true;
@@ -594,7 +598,7 @@ export function createCastUI(deps) {
     openSheet({
       full: true, // TV'de tam sayfa
       title: 'Telefondan oynat',
-      html: '<div id="rc-body"><p class="hint">Yükleniyor…</p></div>',
+      html: '<div id="rc-body"><p class="set-note">Yükleniyor…</p></div>',
       mount: (body, api) => {
         const box = body.querySelector('#rc-body');
         let code = '';
@@ -609,19 +613,18 @@ export function createCastUI(deps) {
             el.textContent = `${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}`;
           }
         };
+        const card = (title, ic, rows) => `<section class="set-card"><h3>${icon(ic)}<span>${esc(title)}</span></h3>${rows.join('')}</section>`;
         const draw = (info) => {
           const on = wantReceiver();
-          let h = `<button class="chk${on ? ' on' : ''}" id="rc-on" role="switch" aria-checked="${on}"><i>${icon('check')}</i><span class="t">Bu cihaz telefondan oynatmayı kabul etsin<small>Telefondaki uygulamadan film ve kanal gönderilir, buradan kumanda edilir. Telefon ve cihaz aynı Wi‑Fi ağında olmalı.</small></span></button>`;
+          let h = card('Alıcı', 'tv', [`<button class="chk${on ? ' on' : ''}" id="rc-on" role="switch" aria-checked="${on}"><i>${icon('check')}</i><span class="t">Bu cihaz telefondan oynatmayı kabul etsin<small>Telefondaki uygulamadan film ve kanal gönderilir, buradan kumanda edilir. Telefon ve cihaz aynı Wi‑Fi ağında olmalı.</small></span></button>`]);
           if (on && info && info.running) {
-            h += `<div class="sect">Eşleştirme</div>`;
             const link = leftSec() > 0 ? pairLink({ ip: pickLanIp(info.ips), port: info.port, id: info.id, name: info.name, code }) : '';
-            h += leftSec() > 0
-              ? `${link ? `<div class="cast-qr" role="img" aria-label="Eşleştirme QR kodu">${qrSvg(link)}</div>` : ''}<div class="cast-code" aria-live="polite">${fmtCode(code)}</div><p class="hint">Listenizi bu cihaza aktarmak için telefonda Ayarlar › Yedekle / geri yükle › TV ile eşitle’ye, film göndermek için bir filmde “TV’de oynat”a dokunun; bu cihazı seçip QR kodu tarayın ya da kodu girin. Kod <b id="rc-left"></b> süreyle geçerli, tek kullanımlık.</p><button class="btn g" id="rc-new">Yeni kod</button>`
-              : `<p class="hint">Yeni bir telefon eşleştirmek için kod üretin.</p><button class="btn" id="rc-new">Kod göster</button>`;
+            h += card('Eşleştirme', 'link', leftSec() > 0
+              ? [`<div class="cast-pair">${link ? `<div class="cast-qr" role="img" aria-label="Eşleştirme QR kodu">${qrSvg(link)}</div>` : ''}<div class="cast-code" aria-live="polite">${fmtCode(code)}</div></div>`, `<p class="set-note">Listenizi bu cihaza aktarmak için telefonda Ayarlar › Yedekle / geri yükle › TV ile eşitle’ye, film göndermek için bir filmde “TV’de oynat”a dokunun; bu cihazı seçip QR kodu tarayın ya da kodu girin. Kod <b id="rc-left"></b> süreyle geçerli, tek kullanımlık.</p>`, `<div class="sel-row"><span class="t">Kod süresi doldu mu?<small>Yeni bir eşleştirme kodu üretir</small></span><button class="btn sm ghost" id="rc-new" type="button">Yeni kod</button></div>`]
+              : [`<div class="sel-row"><span class="t">Yeni telefon eşleştir<small>Yeni bir telefon eşleştirmek için kod üretin</small></span><button class="btn sm" id="rc-new" type="button">Kod göster</button></div>`]);
             const paired = info.paired || [];
-            h += `<div class="sect">Eşleşmiş telefonlar</div>`;
-            h += paired.length ? paired.map((p) => `<div class="rec-row"><span class="rec-play"><span class="t">${esc(p.name)}</span></span><button class="icon-btn" data-un="${esc(p.id)}" aria-label="Kaldır">${icon('trash')}</button></div>`).join('') : '<p class="hint">Henüz eşleşmiş telefon yok.</p>';
-            h += `<div class="sect">Cihaz</div><p class="hint">Ad: <b>${esc(info.name || '')}</b>${info.ips && info.ips.length ? ` · Elle bağlanmak için adres: <b>${info.ips.map(esc).join(', ')}</b>` : ''}</p>`;
+            h += card('Eşleşmiş telefonlar', 'users', paired.length ? paired.map((p) => `<div class="rec-row"><span class="rec-play"><span class="t">${esc(p.name)}</span></span><button class="icon-btn" data-un="${esc(p.id)}" aria-label="Kaldır">${icon('trash')}</button></div>`) : ['<p class="set-note">Henüz eşleşmiş telefon yok.</p>']);
+            h += card('Cihaz', 'info', [`<div class="list-item"><span class="t">Ad<small>${esc(info.name || '')}</small></span></div>`, info.ips && info.ips.length ? `<div class="list-item"><span class="t">Elle bağlanmak için adres<small>${info.ips.map(esc).join(', ')}</small></span></div>` : '']);
           } else if (on) {
             h += '<p class="err-text">Alıcı açılamadı. Ağ bağlantısını kontrol edin.</p>';
           }

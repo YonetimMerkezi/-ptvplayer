@@ -211,7 +211,7 @@ test('hediye üyelik: yönetici paneli, uygulama ve gizlilik metni birlikte yeri
   assert.match(app, /gift: store\.pref\('mem\.gift', null\)/, 'üyelik durumu hediyeyi de görür');
   assert.match(app, /giftFor\(cfg, deviceId\(store\)\)/, 'config\'ten bu cihazın hediyesi alınır');
   assert.match(app, /refreshRemoteConfig\(\{ force: true \}\)/, 'Üyelik penceresi açılınca hediye hemen sorulur');
-  assert.match(app, /id="mem-devc"/, 'Üyelik penceresinde cihaz kimliği kopyalanabilir');
+  assert.match(app, /btnRow\('mem-devc'/, 'Üyelik penceresinde cihaz kimliği kopyalanabilir');
   assert.ok(!/refreshProThemes/.test(app), 'tek yapılandırma okuması: temalar ve hediye birlikte');
   const gp = oku('gizlilik-politikasi.md');
   assert.match(gp, /hediye üyelik verirse/);

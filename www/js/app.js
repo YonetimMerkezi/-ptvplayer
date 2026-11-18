@@ -2561,17 +2561,13 @@ function motionSettingsSheet() {
   const current = motionProfileChoice();
   const sh = openSheet({
     title: 'Görünüm ve animasyonlar',
-    html: `<p class="hint">Geçiş efektlerini cihazının gücüne göre seç. TV ve düşük donanımlı cihazlarda hafif mod önerilir.</p>
-      <label class="field"><span>Animasyon profili</span><select id="motion-profile">
-        <option value="auto" ${current === 'auto' ? 'selected' : ''}>Akıllı (önerilen)</option>
-        <option value="full" ${current === 'full' ? 'selected' : ''}>Tam animasyon</option>
-        <option value="light" ${current === 'light' ? 'selected' : ''}>Hafif animasyon</option>
-        <option value="off" ${current === 'off' ? 'selected' : ''}>Animasyonsuz</option>
-      </select><small id="motion-help">Akıllı mod, TV ve düşük donanımlı cihazlarda hafif geçişleri otomatik seçer.</small></label>
-      <label class="field"><span>Animasyon hızı</span><select id="motion-speed">
-        ${[[0.5,'Çok yavaş (0,5×)'],[0.75,'Yavaş (0,75×)'],[1,'Normal (1×)'],[1.25,'Biraz hızlı (1,25×)'],[1.5,'Hızlı (1,5×)'],[2,'Çok hızlı (2×)']].map(([v,label]) => `<option value="${v}" ${Number(store.pref('motion.speed',1)) === v ? 'selected' : ''}>${label}</option>`).join('')}
-      </select><small>Animasyon süresini değiştirir; profil seçimiyle birlikte çalışır.</small></label>
-      <div class="motion-preview"><span class="motion-preview-dot"></span><div><b>Sayfa geçişleri</b><small>Menüler ve açılır pencereler bu tercihe göre hareket eder.</small></div></div>`,
+    html:
+      noteRow('Geçiş efektlerini cihazının gücüne göre seç. TV ve düşük donanımlı cihazlarda hafif mod önerilir.') +
+      setCard('Animasyon', 'activity', [
+        selRow('motion-profile', 'Animasyon profili', 'Akıllı mod, TV ve düşük donanımlı cihazlarda hafif geçişleri otomatik seçer.', optionsHtml([['auto', 'Akıllı (önerilen)'], ['full', 'Tam animasyon'], ['light', 'Hafif animasyon'], ['off', 'Animasyonsuz']], current), true, 'motion-help'),
+        selRow('motion-speed', 'Animasyon hızı', 'Animasyon süresini değiştirir; profil seçimiyle birlikte çalışır.', optionsHtml([[0.5, 'Çok yavaş (0,5×)'], [0.75, 'Yavaş (0,75×)'], [1, 'Normal (1×)'], [1.25, 'Biraz hızlı (1,25×)'], [1.5, 'Hızlı (1,5×)'], [2, 'Çok hızlı (2×)']], Number(store.pref('motion.speed', 1))), true),
+      ]) +
+      '<div class="motion-preview"><span class="motion-preview-dot"></span><div><b>Sayfa geçişleri</b><small>Menüler ve açılır pencereler bu tercihe göre hareket eder.</small></div></div>',
     mount: (body) => {
       const select = $('#motion-profile', body);
       const speedSelect = $('#motion-speed', body);
@@ -4334,11 +4330,15 @@ function globalSearch() {
 // ------------------------------------------------------------------ ayarlar: genel, EPG, otomasyon
 
 const chkRow = (k, label, sub) => `<button class="chk${setting(k) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
-// Ayar kartı (başlık + satırlar). selRow: sağda seçim kutusu (uzun açıklamalı satırda stack = seçim açıklamanın altına geçer); btnRow: sağda düğme.
-const setCard = (title, ic, rows) => `<section class="set-card"><h3>${icon(ic)}<span>${esc(title)}</span></h3>${rows.join('')}</section>`;
-const rowText = (label, sub, subId) => `<span class="t">${esc(label)}${sub ? `<small${subId ? ` id="${subId}"` : ''}>${sub}</small>` : ''}</span>`;
-const selRow = (id, label, sub, opts, stack = false) => `<div class="sel-row${stack ? ' stack' : ''}">${rowText(label, esc(sub))}<select id="${id}" aria-label="${esc(label)}">${opts}</select></div>`;
-const btnRow = (id, label, sub, text, subId) => `<div class="sel-row">${rowText(label, sub && !subId ? esc(sub) : sub, subId)}<button class="btn sm ghost" id="${id}">${esc(text)}</button></div>`;
+// Ayar kartı (başlık + satırlar). Satır açıklaması düz metindir; HTML gerekiyorsa { html } verilir.
+// selRow: sağda seçim kutusu (stack = seçim kutusu açıklamanın altına geçer); btnRow: sağda düğme; numRow: sağda sayı kutusu; noteRow: kart içi not.
+const setCard = (title, ic, rows) => `<section class="set-card"><h3>${icon(ic)}<span>${esc(title)}</span></h3>${rows.filter(Boolean).join('')}</section>`;
+const subHtml = (sub) => (sub && typeof sub === 'object' ? sub.html : esc(sub || ''));
+const rowText = (label, sub, subId) => `<span class="t">${esc(label)}${sub ? `<small${subId ? ` id="${subId}"` : ''}>${subHtml(sub)}</small>` : ''}</span>`;
+const selRow = (id, label, sub, opts, stack = false, subId = '') => `<div class="sel-row${stack ? ' stack' : ''}">${rowText(label, sub, subId)}<select id="${id}" aria-label="${esc(label)}">${opts}</select></div>`;
+const btnRow = (id, label, sub, text, subId = '') => `<div class="sel-row">${rowText(label, sub, subId)}<button class="btn sm ghost" id="${id}" type="button">${esc(text)}</button></div>`;
+const numRow = (id, label, sub, attrs) => `<div class="sel-row">${rowText(label, sub)}<input id="${id}" type="number" inputmode="numeric" aria-label="${esc(label)}" ${attrs}></div>`;
+const noteRow = (text) => `<p class="set-note">${subHtml(text)}</p>`;
 const optionsHtml = (pairs, cur) => pairs.map(([v, t]) => `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${t}</option>`).join('');
 
 // Kumandanın renkli tuşları: oynatıcıda ve listelerde ayrı ayrı bir işe atanır.
@@ -4379,31 +4379,48 @@ function playerSheet() {
     full: true, // TV'de tam sayfa
     title: 'Oynatıcı ayarları',
     html:
-      (nativePlugin ? `<div class="sel-row"><span>Otomatik performans yöneticisi<small>Düşük donanımda çözünürlüğü ve yayın belleğini sınırlar. Otomatik cihazı algılar; seçim hemen uygulanır</small></span><select id="g-perf">${optionsHtml([['auto','Otomatik'],['low','Düşük'],['balanced','Dengeli'],['high','Yüksek']], store.pref('set.performance', 'auto'))}</select></div>` : '') +
-      (nativePlugin ? '<button class="btn ghost sm" id="g-perf-info" type="button">Cihaz performans bilgilerini görüntüle</button>' : '') +
-      `<div class="sel-row"><span>Yayın önbelleği<small>Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur</small></span><select id="g-buf">${optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER)))}</select></div>` +
-      (nativePlugin ? `<div class="sel-row"><span>Görüntü çözücü<small>Otomatik cihazın seçimini kullanır. Donanım öncelikli Mi Stick gibi TV kutularında ilk deneme; görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar</small></span><select id="g-dec">${optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER)))}</select></div>` : '') +
-      (nativePlugin && !isPlay() ? `<div class="sel-row"><span>Yazılım ses çözücüsü (deneysel)<small>Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.${store.pref('set.softAudioCrashed', false) ? ' Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.' + (store.pref('set.softAudioInfo', '') ? '<br>Kapanma kaydı: ' + esc(String(store.pref('set.softAudioInfo', ''))) : '') : ''}</small></span><select id="g-saud">${optionsHtml([['off', 'Kapalı'], ['on', 'Açık']], store.pref('set.softAudio', 'off') === 'on' ? 'on' : 'off')}</select></div>` : '') +
-      (warm ? `<div class="sel-row"><span>Önceden indirme (Wi-Fi)<small>Wi-Fi’dayken uygulama açıldıktan sonra favori, devam eden ve son eklenen filmlerin afişleri, içerik uyarıları ve bugünün maçlarının takım simgeleri arka planda indirilir. Mobil veride indirmez.</small></span><select id="g-warm">${optionsHtml([['on', 'Açık'], ['off', 'Kapalı']], store.pref('set.warm', 'on') === 'off' ? 'off' : 'on')}</select></div><div class="sel-row"><span>Görsel önbelleği<small id="g-ic-s">Hesaplanıyor…</small></span><button class="btn sm ghost" id="g-ic">Temizle</button></div>` : '') +
-      `<div class="sel-row"><span>Yayın koparsa<small>Oynarken bağlantı kesilirse yeniden bağlanma davranışı</small></span><select id="g-rc">${optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))}</select></div>` +
-      `<div class="sel-row"><span>Takılma bekleme süresi<small>Yayın bu kadar gelmezse yeniden bağlanılır</small></span><select id="g-stall">${optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))}</select></div>` +
-      `<div class="sel-row"><span>Canlı yayın biçimi<small>Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır</small></span><select id="g-lfmt">${optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT)))}</select></div>` +
-      chkRow('altCh', 'Açılmayan kanal yerine yedek kanalı dene', 'Listede aynı adlı başka kanal varsa otomatik denenir') +
-      chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz') +
-      chkRow('autoOrient', 'Yönü videoya göre seç', 'Dikey videolar dikey, yatay videolar yatay tam ekran açılır. Elle yön düğmesine basınca o oturumda seçiminiz geçerli olur') +
-      `<div class="sel-row"><span>Telefon oynatıcı yönü<small>Dikey: telefon dik tutulurken oynatıcı açılır. TV modu her zaman yatay kalır</small></span><select id="g-porient">${optionsHtml([['portrait','Dikey'],['landscape','Yatay']], store.pref('set.playerOrientation','landscape'))}</select></div>` +
-      (nativePlugin ? chkRow('autoFrameRate', 'Otomatik kare hızı (AFR)', 'Destekleyen Android cihaz ve ekranlarda yayın kare hızına uyum sağlar') : '') +
-      chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz') +
-      `<div class="sel-row"><span>Intro atla süresi<small>Dizi bölümünde atlama düğmesinin ileri saracağı süre (0–240 saniye; 0 kapalı)</small></span><input id="g-intro" type="number" min="0" max="240" step="1" inputmode="numeric" value="${normalizeIntro(store.pref('set.intro', DEFAULT_INTRO))}" aria-label="Intro atlama süresi saniye"></div>` +
       (nativePlugin
-        ? `<div class="sel-row"><span>Tercih edilen ses dili<small>Birden çok ses izi olan film ve yayınlarda açılışta bu dil seçilir</small></span><select id="g-alang">${optionsHtml(AUDIO_LANGS, normalizeAudioLang(store.pref('set.audioLang', 'auto')))}</select></div>` +
-          `<div class="sel-row"><span>Altyazı dili<small>Açılışta bu dilde altyazı açılır; Kapalı seçilirse hiç açılmaz</small></span><select id="g-slang">${optionsHtml(SUB_LANGS, normalizeSubLang(store.pref('set.subLang', 'auto')))}</select></div>` +
-          chkRow('subMissing', 'Altyazıyı yalnız tercih ettiğim ses yoksa aç', 'Örn. ses dili Türkçe seçiliyken film Türkçe değilse Türkçe altyazı açılır; Türkçe ses varsa açılmaz')
+        ? setCard('Performans', 'activity', [
+            selRow('g-perf', 'Otomatik performans yöneticisi', 'Düşük donanımda çözünürlüğü ve yayın belleğini sınırlar. Otomatik cihazı algılar; seçim hemen uygulanır', optionsHtml([['auto', 'Otomatik'], ['low', 'Düşük'], ['balanced', 'Dengeli'], ['high', 'Yüksek']], store.pref('set.performance', 'auto'))),
+            btnRow('g-perf-info', 'Cihaz performans bilgileri', 'Bellek, işlemci ve video çözücüleri', 'Görüntüle'),
+            selRow('g-buf', 'Yayın önbelleği', 'Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur', optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER))), true),
+            selRow('g-dec', 'Görüntü çözücü', 'Otomatik cihazın seçimini kullanır. Donanım öncelikli: Mi Stick gibi TV kutularında ilk deneme. Görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar', optionsHtml(DECODER_MODES, normalizeDecoder(store.pref('set.decoder', DEFAULT_DECODER))), true),
+            !isPlay() ? selRow('g-saud', 'Yazılım ses çözücüsü (deneysel)', { html: 'Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.' + (store.pref('set.softAudioCrashed', false) ? ' Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.' + (store.pref('set.softAudioInfo', '') ? '<br>Kapanma kaydı: ' + esc(String(store.pref('set.softAudioInfo', ''))) : '') : '') }, optionsHtml([['off', 'Kapalı'], ['on', 'Açık']], store.pref('set.softAudio', 'off') === 'on' ? 'on' : 'off'), true) : '',
+          ])
+        : setCard('Performans', 'activity', [selRow('g-buf', 'Yayın önbelleği', 'Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur', optionsHtml(BUFFER_LEVELS, normalizeBuffer(store.pref('set.buffer', DEFAULT_BUFFER))), true)])) +
+      (warm
+        ? setCard('Önbellek', 'dl', [
+            selRow('g-warm', 'Önceden indirme (Wi-Fi)', 'Wi-Fi’dayken favori, devam eden ve son eklenen filmlerin afişleri, içerik uyarıları ve bugünün maçlarının takım simgeleri arka planda indirilir. Mobil veride indirmez', optionsHtml([['on', 'Açık'], ['off', 'Kapalı']], store.pref('set.warm', 'on') === 'off' ? 'off' : 'on'), true),
+            btnRow('g-ic', 'Görsel önbelleği', 'Hesaplanıyor…', 'Temizle', 'g-ic-s'),
+          ])
         : '') +
-      (nativePlugin ? `<div class="sel-row"><span>Altyazı görünümü<small id="g-sub-s">${esc(subLabel(store.pref('sub', DEFAULT_SUB)))}</small></span><button class="btn sm ghost" id="g-sub">Ayarla</button></div>` : '') +
-      `<div class="sel-row"><span>Kumanda renkli tuşları<small>Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin</small></span><button class="btn sm ghost" id="g-rm">Ayarla</button></div>` +
-      `<div class="sect">Alt düğmelerde adı yazsın<small class="hint" style="display:block">İşaretlenenlerin simgesinin yanında adı da yazar; diğerleri yalnız simge olur. Düğmeler ortada, tek satırdadır.</small></div>` +
-      PLAYER_TOOLS.map(([id, name]) => `<button class="chk${plLabels().has(id) ? ' on' : ''}" data-pl="${id}" role="switch" aria-checked="${plLabels().has(id)}"><i>${icon('check')}</i><span class="t">${esc(name)}</span></button>`).join(''),
+      setCard('Bağlantı', 'link', [
+        selRow('g-rc', 'Yayın koparsa', 'Oynarken bağlantı kesilirse yeniden bağlanma davranışı', optionsHtml(RECONNECT_MODES, normalizeReconnect(store.pref('set.reconnect', DEFAULT_RECONNECT)))),
+        selRow('g-stall', 'Takılma bekleme süresi', 'Yayın bu kadar gelmezse yeniden bağlanılır', optionsHtml(STALL_LEVELS, normalizeStall(store.pref('set.stall', DEFAULT_STALL)))),
+        selRow('g-lfmt', 'Canlı yayın biçimi', 'Kanallar donuyor ya da bozuk görünüyorsa “TS önce”yi deneyin. Otomatik: bir kanal öteki biçimle düzgün oynarsa o kanal için hatırlanır', optionsHtml(LIVE_FORMATS, normalizeLiveFmt(store.pref('set.liveFmt', DEFAULT_LIVE_FMT))), true),
+        chkRow('altCh', 'Yedek kanalı dene', 'Açılmayan kanal yerine, listede aynı adlı başka kanal varsa otomatik denenir'),
+      ]) +
+      setCard('Oynatma', 'play', [
+        chkRow('autoNext', 'Sonraki bölümü otomatik oynat', 'Bölüm bitmeden 15 sn önce geri sayım kartı çıkar; kartta iptal edebilirsiniz'),
+        chkRow('movieNext', 'Film bitince öneri göster', 'Aynı kategoriden izlemediğiniz bir sonraki film önerilir; siz basmadan başlamaz'),
+        chkRow('autoOrient', 'Yönü videoya göre seç', 'Dikey videolar dikey, yatay videolar yatay tam ekran açılır. Elle yön düğmesine basınca o oturumda seçiminiz geçerli olur'),
+        selRow('g-porient', 'Telefon oynatıcı yönü', 'Dikey: telefon dik tutulurken oynatıcı açılır. TV modu her zaman yatay kalır', optionsHtml([['portrait', 'Dikey'], ['landscape', 'Yatay']], store.pref('set.playerOrientation', 'landscape'))),
+        nativePlugin ? chkRow('autoFrameRate', 'Otomatik kare hızı (AFR)', 'Destekleyen Android cihaz ve ekranlarda yayın kare hızına uyum sağlar') : '',
+        numRow('g-intro', 'Intro atla süresi', 'Dizi bölümünde atlama düğmesinin ileri saracağı süre (0–240 saniye; 0 kapalı)', `min="0" max="240" step="1" value="${normalizeIntro(store.pref('set.intro', DEFAULT_INTRO))}"`),
+      ]) +
+      (nativePlugin
+        ? setCard('Ses ve altyazı', 'audio', [
+            selRow('g-alang', 'Tercih edilen ses dili', 'Birden çok ses izi olan film ve yayınlarda açılışta bu dil seçilir', optionsHtml(AUDIO_LANGS, normalizeAudioLang(store.pref('set.audioLang', 'auto')))),
+            selRow('g-slang', 'Altyazı dili', 'Açılışta bu dilde altyazı açılır; Kapalı seçilirse hiç açılmaz', optionsHtml(SUB_LANGS, normalizeSubLang(store.pref('set.subLang', 'auto')))),
+            chkRow('subMissing', 'Altyazıyı yalnız tercih ettiğim ses yoksa aç', 'Örn. ses dili Türkçe seçiliyken film Türkçe değilse Türkçe altyazı açılır; Türkçe ses varsa açılmaz'),
+            btnRow('g-sub', 'Altyazı görünümü', subLabel(store.pref('sub', DEFAULT_SUB)), 'Ayarla', 'g-sub-s'),
+          ])
+        : '') +
+      setCard('Kumanda', 'tv', [btnRow('g-rm', 'Renkli tuşlar', 'Kırmızı, yeşil, sarı, mavi tuşa oynatıcıda ve listelerde yapılacak işi seçin', 'Ayarla')]) +
+      setCard('Alt düğmelerde adı yazsın', 'list', [
+        noteRow('İşaretlenenlerin simgesinin yanında adı da yazar; diğerleri yalnız simge olur. Düğmeler ortada, tek satırdadır.'),
+        ...PLAYER_TOOLS.map(([id, name]) => `<button class="chk${plLabels().has(id) ? ' on' : ''}" data-pl="${id}" role="switch" aria-checked="${plLabels().has(id)}"><i>${icon('check')}</i><span class="t">${esc(name)}</span></button>`),
+      ]),
     mount: (body) => {
       body.addEventListener('click', (e) => {
         const t = e.target.closest('[data-pl]');
@@ -4572,7 +4589,7 @@ function generalSheet() {
         btnRow('g-bk', 'Yedekle / geri yükle', 'Kaynaklar, favoriler, kategori düzeni, ayarlar', 'Aç'),
       ]) +
       setCard('Destek', 'info', [
-        btnRow('g-dev', 'Cihaz kimliği', esc(fmtDeviceId(deviceId(store))), 'Kopyala', 'g-dev-s'),
+        btnRow('g-dev', 'Cihaz kimliği', fmtDeviceId(deviceId(store)), 'Kopyala', 'g-dev-s'),
         btnRow('g-rep', 'Sorun raporu', 'Yöneticinize gönderilecek bilgileri önizleyin', 'Gönder'),
       ]),
     mount: (body) => {
@@ -4794,7 +4811,12 @@ function autoSheet() {
   openSheet({
     full: true, // TV'de tam sayfa
     title: 'Otomasyon',
-    html: `<div class="sel-row"><span>Canlı, film ve dizi listesini yenile</span><select id="a-cat">${optionsHtml([[0, 'Kapalı'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir'], [48, '2 günde bir'], [168, 'Haftada bir']], store.pref('auto.cat', 12))}</select></div><div class="sel-row"><span>TV rehberini (EPG) yenile</span><select id="a-epg">${optionsHtml([[0, 'Kapalı'], [3, '3 saatte bir'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir']], store.pref('auto.epg', 6))}</select></div><p class="hint" style="margin-top:12px">Uygulama açılırken ya da öne geldiğinde, son yenilemeden bu kadar süre geçmişse liste kendiliğinden güncellenir. İstediğiniz an ana ekrandaki yenile düğmesine de dokunabilirsiniz.</p>`,
+    html:
+      setCard('Otomatik yenileme', 'timer', [
+        selRow('a-cat', 'Canlı, film ve dizi listesi', 'Listeyi ne sıklıkla yenilesin', optionsHtml([[0, 'Kapalı'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir'], [48, '2 günde bir'], [168, 'Haftada bir']], store.pref('auto.cat', 12))),
+        selRow('a-epg', 'TV rehberi (EPG)', 'Program bilgisini ne sıklıkla yenilesin', optionsHtml([[0, 'Kapalı'], [3, '3 saatte bir'], [6, '6 saatte bir'], [12, '12 saatte bir'], [24, 'Günde bir']], store.pref('auto.epg', 6))),
+      ]) +
+      noteRow('Uygulama açılırken ya da öne geldiğinde, son yenilemeden bu kadar süre geçmişse liste kendiliğinden güncellenir. İstediğiniz an ana ekrandaki yenile düğmesine de dokunabilirsiniz.'),
     mount: (body) => {
       $('#a-cat', body).addEventListener('change', (e) => store.setPref('auto.cat', Number(e.target.value)));
       $('#a-epg', body).addEventListener('change', (e) => store.setPref('auto.epg', Number(e.target.value)));
@@ -4808,7 +4830,13 @@ function epgSettingsSheet() {
     const urls = epgSourceUrls(s, S.cat);
     const when = S.epg.data && S.epg.data.fetchedAt ? fmtAgo(S.epg.data.fetchedAt) : 'hiç';
     const status = S.epgInfo && S.epgInfo.error ? `Alınamadı: ${S.epgInfo.error}` : S.epg.ready ? `${Object.keys(S.epg.data.map).length} kanal için program var` : urls.length ? 'Henüz yüklenmedi' : 'Bu kaynakta TV rehberi adresi yok';
-    body.innerHTML = `<div class="list-item"><span class="t">${esc(s.name)}<small>${esc(status)}</small></span></div><div class="list-item"><span class="t">Son güncelleme<small>${esc(when)}</small></span></div>${urls.map((u) => `<div class="list-item"><span class="t">Adres<small style="word-break:break-all">${esc(maskUrl(u))}</small></span></div>`).join('')}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn sm" id="e-now"${urls.length ? '' : ' disabled'}>${icon('refresh')}EPG’yi şimdi yenile</button><button class="btn sm ghost" id="e-edit">Kaynağı düzenle</button></div>`;
+    const info = (label, sub, extra = '') => `<div class="list-item"><span class="t">${esc(label)}<small${extra}>${esc(sub)}</small></span></div>`;
+    body.innerHTML =
+      setCard('Kaynak', 'tv', [info(s.name, status), info('Son güncelleme', when), ...urls.map((u) => info('Adres', maskUrl(u), ' style="word-break:break-all"'))]) +
+      setCard('İşlemler', 'refresh', [
+        `<div class="sel-row">${rowText('Şimdi yenile', 'TV rehberini kaynaktan yeniden indirir')}<button class="btn sm" id="e-now" type="button"${urls.length ? '' : ' disabled'}>${icon('refresh')}Yenile</button></div>`,
+        btnRow('e-edit', 'Kaynak ayarları', 'Adı, adresi ve TV rehberi bağlantısını değiştirir', 'Düzenle'),
+      ]);
     $('#e-now', body).addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = 'Yenileniyor…';
@@ -5644,7 +5672,7 @@ function plansSheet() {
   const sh = openSheet({
     full: true, // TV'de tam sayfa
     title: 'Planlananlar',
-    html: '<div id="pl-body"><p class="hint">Yükleniyor…</p></div>',
+    html: '<div id="pl-body"><p class="set-note">Yükleniyor…</p></div>',
     mount: (body) => {
       const box = $('#pl-body', body);
       const draw = async () => {
@@ -5663,14 +5691,15 @@ function plansSheet() {
         const needs = [];
         if (st && !st.notify) needs.push('Bildirim izni kapalı: hatırlatıcı ve kayıt bildirimi görünmez.');
         if (st && st.notify && !st.exact) needs.push('Tam zamanlı alarm izni kapalı: hatırlatıcı ve kayıt birkaç dakika kayabilir.');
-        const warn = needs.length ? `<div class="pl-warn"><p>${needs.map(esc).join(' ')}</p><button class="btn sm" data-a="perm">İzni aç</button></div>` : '';
+        const warn = needs.length ? setCard('İzinler', 'bell', [`<div class="pl-warn"><p>${needs.map(esc).join(' ')}</p><button class="btn sm" data-a="perm" type="button">İzni aç</button></div>`]) : '';
         const rows = list.map((x) => {
           const fired = x.at <= now;
           const what = x.kind === 'rec' ? (fired ? 'Kayıt sürüyor ya da bitti' : 'Zamanlı kayıt') : fired ? 'Hatırlatıldı' : 'Hatırlatıcı';
           return `<div class="rec-row pl-row${fired ? ' on' : ''}"><button class="rec-play" data-open="${esc(x.id)}"><span class="t">${icon(x.kind === 'rec' ? 'rec' : 'bell')}${esc(x.title)}</span><small>${esc(x.chName)} · ${esc(planWhen(x, now))} · ${what}</small></button><button class="icon-btn" data-del="${esc(x.id)}" aria-label="Kaldır">${icon('trash')}</button></div>`;
-        }).join('');
-        const note = nativePlugin ? '' : '<p class="hint">Tarayıcıda hatırlatıcılar yalnız sayfa açıkken çalışır; zamanlı kayıt Android uygulamasındadır.</p>';
-        box.innerHTML = `${warn}${rows || '<p class="hint">Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin; Spor’da maç satırındaki zile dokunarak maç hatırlatıcısı kurabilirsiniz.</p>'}${note}`;
+        });
+        const list2 = rows.length ? setCard('Bekleyen planlar', 'timer', rows) : setCard('Bekleyen planlar', 'timer', [noteRow('Henüz plan yok. TV Rehberi’nde bir programa dokunup “Hatırlat” ya da “Kaydet”i seçin; Spor’da maç satırındaki zile dokunarak maç hatırlatıcısı kurabilirsiniz.')]);
+        const note = nativePlugin ? '' : noteRow('Tarayıcıda hatırlatıcılar yalnız sayfa açıkken çalışır; zamanlı kayıt Android uygulamasındadır.');
+        box.innerHTML = `${warn}${list2}${note}`;
       };
       body.addEventListener('click', async (e) => {
         const del = e.target.closest('[data-del]');
@@ -5799,9 +5828,9 @@ function profilesSheet() {
   const sh = openSheet({
     title: 'Profiller',
     html:
-      '<p class="hint">Her profilin favorileri, izleme listesi ve kaldığı yer ayrıdır. Kaynaklar ve ayarlar ortaktır.</p>' +
-      list.map((p) => `<div class="prof-row${p.id === cur ? ' on' : ''}"><button class="prof-pick" data-pick="${esc(p.id)}"><i class="prof-av" style="--h:${hueOf(p.name)}">${esc(p.name.slice(0, 1).toUpperCase())}</i><span>${esc(p.name)}<small>${p.id === cur ? 'Etkin profil' : 'Geçmek için dokun'}</small></span></button><button class="icon-btn" data-ren="${esc(p.id)}" aria-label="Adını değiştir">${icon('sliders')}</button>${p.id ? `<button class="icon-btn" data-del="${esc(p.id)}" aria-label="Profili sil">${icon('trash')}</button>` : ''}</div>`).join('') +
-      (full ? `<p class="hint">En çok ${store.MAX_PROFILES} profil olabilir.</p>` : `<button class="btn" id="prof-add">${icon('plus')} Profil ekle</button>`),
+      noteRow('Her profilin favorileri, izleme listesi ve kaldığı yer ayrıdır. Kaynaklar ve ayarlar ortaktır.') +
+      setCard('Profiller', 'users', list.map((p) => `<div class="prof-row${p.id === cur ? ' on' : ''}"><button class="prof-pick" data-pick="${esc(p.id)}"><i class="prof-av" style="--h:${hueOf(p.name)}">${esc(p.name.slice(0, 1).toUpperCase())}</i><span>${esc(p.name)}<small>${p.id === cur ? 'Etkin profil' : 'Geçmek için dokun'}</small></span></button><button class="icon-btn" data-ren="${esc(p.id)}" aria-label="Adını değiştir">${icon('sliders')}</button>${p.id ? `<button class="icon-btn" data-del="${esc(p.id)}" aria-label="Profili sil">${icon('trash')}</button>` : ''}</div>`)) +
+      (full ? noteRow(`En çok ${store.MAX_PROFILES} profil olabilir.`) : `<button class="btn" id="prof-add" type="button">${icon('plus')} Profil ekle</button>`),
     mount: (body) => {
       body.addEventListener('click', (e) => {
         const pick = e.target.closest('[data-pick]');
@@ -5842,7 +5871,7 @@ function profilesSheet() {
 function profileNameSheet(p) {
   const sh = openSheet({
     title: p ? 'Profil adı' : 'Yeni profil',
-    html: `<form id="prof-f" autocomplete="off"><label class="field"><span>Ad</span><input name="name" maxlength="24" value="${p ? esc(p.name) : ''}" placeholder="Örn. Elif" data-autofocus></label><button class="btn primary" type="submit">${p ? 'Kaydet' : 'Ekle'}</button></form>`,
+    html: `<form id="prof-f" autocomplete="off">${setCard('Profil', 'users', [`<label class="field"><span>Ad</span><input name="name" maxlength="24" value="${p ? esc(p.name) : ''}" placeholder="Örn. Elif" data-autofocus></label>`])}<button class="btn primary" type="submit">${p ? 'Kaydet' : 'Ekle'}</button></form>`,
     mount: (body) => {
       $('#prof-f', body).addEventListener('submit', (e) => {
         e.preventDefault();
@@ -5877,10 +5906,15 @@ function memberSheet(feature = '') {
       `<div class="mem-plan"><h4>Standart <small>yıllık</small></h4><p class="hint">Canlı TV, film ve dizi, favoriler, TV rehberi ve tek kaynak. ${TRIAL_DAYS} günlük deneme bittikten sonra uygulamayı kullanmak için gerekir.</p><p class="mem-price" data-price="standard"></p>${st.tier === 'standard' || st.tier === 'pro' ? '<p class="mem-have">Üyeliğiniz var</p>' : buy('standard', 'Standart üyelik al')}</div>` +
       `<div class="mem-plan mem-pro"><h4>Pro <small>yıllık</small></h4><p class="hint">Standart üyeliğin her şeyi ve aşağıdaki özellikler.</p><p class="mem-price" data-price="pro"></p><ul class="mem-feats">${PRO_FEATURES.map((x) => `<li${f && f.id === x.id ? ' class="on"' : ''}><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></li>`).join('')}</ul>${st.tier === 'pro' ? '<p class="mem-have">Pro üyeliğiniz var</p>' : buy('pro', 'Pro üyelik al')}</div>` +
       (BILLING_READY
-        ? `<p class="hint">Abonelik yıllık yenilenir. Google Play'de Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz; iptal edince dönem sonuna kadar kullanırsınız.${BIND_URL ? ' Üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir; yeni cihaza geçince üyeliği Üyelik penceresinden taşıyabilirsiniz (ayda en çok 2 kez).' : ''}</p>${st.play ? '<button class="btn" data-manage>Aboneliği yönet</button>' : ''}`
-        : '<p class="hint">Satın alma, uygulamanın Google Play sürümüyle açılacak.</p>') +
-      (BILLING_READY ? `<div class="sel-row"><span>Cihaz kimliği<small id="mem-dev">${esc(fmtDeviceId(deviceId(store)))}</small></span><button class="btn sm ghost" id="mem-devc">Kopyala</button></div><p class="hint">Destek ya da hediye üyelik için bu kimliği iletin; hediye üyelik bu pencere açılınca ya da uygulama açılınca kendiliğinden gelir.</p>` : '') +
-      (admin ? `<div class="sel-row"><span>Önizleme (yönetici)<small>Kilitli hâli yalnız bu cihazda dener; diğer kullanıcılar etkilenmez</small></span><select id="mem-pv">${optionsHtml(PREVIEWS, memPreview())}</select></div>` : ''),
+        ? noteRow(`Abonelik yıllık yenilenir. Google Play'de Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz; iptal edince dönem sonuna kadar kullanırsınız.${BIND_URL ? ' Üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir; yeni cihaza geçince üyeliği Üyelik penceresinden taşıyabilirsiniz (ayda en çok 2 kez).' : ''}`) + (st.play ? '<button class="btn" data-manage type="button">Aboneliği yönet</button>' : '')
+        : noteRow('Satın alma, uygulamanın Google Play sürümüyle açılacak.')) +
+      (BILLING_READY || admin
+        ? setCard('Cihaz', 'info', [
+            BILLING_READY ? btnRow('mem-devc', 'Cihaz kimliği', fmtDeviceId(deviceId(store)), 'Kopyala', 'mem-dev') : '',
+            BILLING_READY ? noteRow('Destek ya da hediye üyelik için bu kimliği iletin; hediye üyelik bu pencere açılınca ya da uygulama açılınca kendiliğinden gelir.') : '',
+            admin ? selRow('mem-pv', 'Önizleme (yönetici)', 'Kilitli hâli yalnız bu cihazda dener; diğer kullanıcılar etkilenmez', optionsHtml(PREVIEWS, memPreview()), true) : '',
+          ])
+        : ''),
     mount: (body) => {
       const dc = $('#mem-devc', body);
       if (dc) dc.addEventListener('click', async () => toast((await copyText(fmtDeviceId(deviceId(store)))) ? 'Cihaz kimliği kopyalandı' : 'Kopyalanamadı'));
@@ -5962,7 +5996,22 @@ function backupSheet() {
   if (!needPro('backup')) return;
   const sh = openSheet({
     title: 'Yedekle / geri yükle',
-    html: `<p class="hint">Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.</p><button class="list-item" id="bk-save"><span class="t">Yedeği kaydet</span></button><button class="list-item" id="bk-movies"><span class="t">Film kataloğunu dışa aktar<small>Yalnızca film bilgileri; hesap bilgileri ve yayın adresleri eklenmez</small></span></button>${nativePlugin && !isTvUi() ? '<button class="list-item" id="bk-sync"><span class="t">TV ile eşitle<small>Aynı Wi‑Fi’deki TV ile kaynak, favori (silmeler dahil), izleme ilerlemesi ve kategori düzenini karşılıklı eşitler. Favori ve ilerlemede en yeni değişiklik geçerli olur</small></span></button><button class="chk' + (store.pref('sync.auto', true) !== false ? ' on' : '') + '" id="bk-auto" role="switch" aria-checked="' + (store.pref('sync.auto', true) !== false) + '"><i>' + icon('check') + '</i><span class="t">Kendiliğinden eşitle<small>Uygulama açılınca ve öne gelince, eşleşmiş TV aynı ağdaysa sessizce eşitler</small></span></button>' : ''}<label class="field"><span>Yedekten geri yükle</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label><div id="bk-sum"></div>`,
+    html:
+      noteRow('Kaynaklar (kullanıcı adı ve parola dahil), favoriler, kategori düzeni, izleme geçmişi ve ayarlar tek dosyaya kaydedilir. Dosyayı başkasıyla paylaşmayın. Uygulama şifresi ve dosyadan eklenen listeler yedeğe girmez.') +
+      setCard('Dışa aktar', 'dl', [
+        btnRow('bk-save', 'Yedeği kaydet', 'Tüm kaynak, favori ve ayarlar tek dosyada', 'Kaydet'),
+        btnRow('bk-movies', 'Film kataloğunu dışa aktar', 'Yalnızca film bilgileri; hesap bilgileri ve yayın adresleri eklenmez', 'Aktar'),
+      ]) +
+      (nativePlugin && !isTvUi()
+        ? setCard('TV ile eşitle', 'refresh', [
+            btnRow('bk-sync', 'Şimdi eşitle', 'Aynı Wi‑Fi’deki TV ile kaynak, favori (silmeler dahil), izleme ilerlemesi ve kategori düzenini karşılıklı eşitler. Favori ve ilerlemede en yeni değişiklik geçerli olur', 'Eşitle'),
+            `<button class="chk${store.pref('sync.auto', true) !== false ? ' on' : ''}" id="bk-auto" role="switch" aria-checked="${store.pref('sync.auto', true) !== false}"><i>${icon('check')}</i><span class="t">Kendiliğinden eşitle<small>Uygulama açılınca ve öne gelince, eşleşmiş TV aynı ağdaysa sessizce eşitler</small></span></button>`,
+          ])
+        : '') +
+      setCard('Geri yükle', 'history', [
+        `<label class="field"><span>Yedek dosyası</span><input id="bk-file" type="file" accept=".json,application/json"><small>Daha önce kaydettiğiniz yedek dosyasını seçin.</small></label>`,
+        '<div class="bk-sum" id="bk-sum"></div>',
+      ]),
     mount: (body) => {
       const autoBtn = $('#bk-auto', body);
       if (autoBtn) {
@@ -6196,7 +6245,7 @@ function kidGroups(kind, title, done) {
   const LIMIT = 300;
   openSheet({
     title: `${title}: izinli kategoriler`,
-    html: `<div class="sel-row"><input id="kg-q" type="search" placeholder="Kategori ara…" autocomplete="off"></div><div class="sel-row"><button class="btn ghost sm" id="kg-all">Görünenlerin hepsini seç</button><button class="btn ghost sm" id="kg-none">Hiçbirini seçme</button></div><div id="kg-list"></div>`,
+    html: `<section class="set-card kg-tools"><div class="sel-row"><input id="kg-q" type="search" placeholder="Kategori ara…" autocomplete="off" aria-label="Kategori ara"></div><div class="sel-row kg-btns"><button class="btn ghost sm" id="kg-all" type="button">Görünenlerin hepsini seç</button><button class="btn ghost sm" id="kg-none" type="button">Hiçbirini seçme</button></div></section><section class="set-card" id="kg-list"></section>`,
     mount: (body) => {
       const list = $('#kg-list', body);
       const q = $('#kg-q', body);
@@ -6208,7 +6257,7 @@ function kidGroups(kind, title, done) {
         const on = allowSet(kidAllow(), src.id, kind);
         list.innerHTML =
           (shown.map((g, i) => `<button class="chk${on.has(g.name) ? ' on' : ''}" data-i="${i}" role="switch" aria-checked="${on.has(g.name)}"><i>${icon('check')}</i><span class="t">${esc(g.name)}<small>${g.count} öğe</small></span></button>`).join('') || '<div class="empty">Kategori yok</div>') +
-          (all.length > LIMIT ? `<p class="hint">${all.length - LIMIT} kategori daha var; aramayla daraltın.</p>` : '');
+          (all.length > LIMIT ? `<p class="set-note">${all.length - LIMIT} kategori daha var; aramayla daraltın.</p>` : '');
       };
       const save = (names) => {
         store.setPref('kid.allow', setAllowed(kidAllow(), src.id, kind, names));
@@ -6246,14 +6295,13 @@ function kidSheet() {
         const hasPin = !!(kidPinRec() && kidPinRec().hash);
         const rows = KID_KINDS.map(([k, t]) => {
           const n = countAllowed(allow, sid(), k);
-          return `<button class="list-item" data-kind="${k}"><span class="t">${t}<small>${n ? `${n} kategori izinli` : 'Hiçbiri izinli değil'}</small></span></button>`;
-        }).join('');
+          return `<button class="list-item" data-kind="${k}"><span class="t">${t}<small>${n ? `${n} kategori izinli` : 'Hiçbiri izinli değil'}</small></span><i class="chev">${icon('chev-r')}</i></button>`;
+        });
         box.innerHTML =
-          `<p class="hint">Çocuk moduna geçince yalnız seçtiğiniz kategoriler görünür; ayarlar, kaynaklar ve diğer içerikler gizlenir. Çıkmak için ayrı bir çocuk modu şifresi gerekir. Seçimler “${esc(S.source.name)}” kaynağı içindir; başka kaynak için o kaynağı seçip buraya yeniden gelin.</p>` +
-          `<div class="sect">İzinli kategoriler</div>${rows}` +
-          `<div class="sect">Şifre</div><button class="list-item" id="kd-pin"><span class="t">${hasPin ? 'Çocuk modu şifresini değiştir' : 'Çocuk modu şifresi belirle'}<small>${hasPin ? 'Önce mevcut şifre sorulur' : 'Çocuk modundan çıkmak için gerekir; uygulama şifresinden ayrıdır'}</small></span></button>` +
-          `<div style="margin-top:14px"><button class="btn" id="kd-go">${icon('lock')}Çocuk moduna geç</button></div>` +
-          (hasPin || hasAllowed(allow, sid()) ? '<div style="margin-top:10px"><button class="btn ghost sm" id="kd-reset">Çocuk profilini sıfırla</button></div>' : '');
+          noteRow(`Çocuk moduna geçince yalnız seçtiğiniz kategoriler görünür; ayarlar, kaynaklar ve diğer içerikler gizlenir. Çıkmak için ayrı bir çocuk modu şifresi gerekir. Seçimler “${esc(S.source.name)}” kaynağı içindir; başka kaynak için o kaynağı seçip buraya yeniden gelin.`) +
+          setCard('İzinli kategoriler', 'list', rows) +
+          setCard('Şifre', 'lock', [`<button class="list-item" id="kd-pin"><span class="t">${hasPin ? 'Çocuk modu şifresini değiştir' : 'Çocuk modu şifresi belirle'}<small>${hasPin ? 'Önce mevcut şifre sorulur' : 'Çocuk modundan çıkmak için gerekir; uygulama şifresinden ayrıdır'}</small></span><i class="chev">${icon('chev-r')}</i></button>`]) +
+          `<div class="set-actions"><button class="btn primary" id="kd-go" type="button">${icon('lock')}Çocuk moduna geç</button>${hasPin || hasAllowed(allow, sid()) ? '<button class="btn ghost sm" id="kd-reset" type="button">Çocuk profilini sıfırla</button>' : ''}</div>`;
       };
       box.addEventListener('click', async (e) => {
         const k = e.target.closest('[data-kind]');
@@ -6330,8 +6378,14 @@ function lockSheet() {
   const sh = openSheet({
     title: 'Uygulama şifresi',
     html: on
-      ? `<p class="hint">Uygulama açılırken ve arka plandan dönünce şifre istenir. Kategorileri kilitlemek için Ayarlar yerine kategori listesinde “Düzenle”yi kullanın. Şifreyi unutursanız uygulama verilerini Android ayarlarından silmeniz gerekir.</p><div class="sel-row"><span>Şifre isteme zamanı</span><select id="lk-after">${optionsHtml(AFTER_OPTIONS, normalizeAfter(store.pref('lock.after', DEFAULT_AFTER)))}</select></div><button class="list-item" id="lk-change"><span class="t">Şifreyi değiştir</span></button><button class="list-item" id="lk-off"><span class="t">Şifreyi kaldır</span></button>`
-      : `<p class="hint">Uygulamayı ve seçtiğiniz kategorileri (çocuk kilidi) şifreyle koruyun. Şifre ${MIN_LEN}–6 rakamdır. Şifreyi unutursanız uygulama verilerini Android ayarlarından silmeniz gerekir.</p><button class="list-item" id="lk-on"><span class="t">Şifre belirle</span></button>`,
+      ? noteRow('Uygulama açılırken ve arka plandan dönünce şifre istenir. Kategorileri kilitlemek için Ayarlar yerine kategori listesinde “Düzenle”yi kullanın. Şifreyi unutursanız uygulama verilerini Android ayarlarından silmeniz gerekir.') +
+        setCard('Şifre', 'lock', [
+          selRow('lk-after', 'Şifre isteme zamanı', 'Arka plandan dönünce ne kadar sonra yeniden sorulsun', optionsHtml(AFTER_OPTIONS, normalizeAfter(store.pref('lock.after', DEFAULT_AFTER)))),
+          btnRow('lk-change', 'Şifreyi değiştir', 'Önce mevcut şifre sorulur', 'Değiştir'),
+          btnRow('lk-off', 'Şifreyi kaldır', 'Uygulama şifresiz açılır', 'Kaldır'),
+        ])
+      : noteRow(`Uygulamayı ve seçtiğiniz kategorileri (çocuk kilidi) şifreyle koruyun. Şifre ${MIN_LEN}–6 rakamdır. Şifreyi unutursanız uygulama verilerini Android ayarlarından silmeniz gerekir.`) +
+        setCard('Şifre', 'lock', [btnRow('lk-on', 'Şifre belirle', `${MIN_LEN}–6 rakamlı uygulama şifresi`, 'Belirle')]),
     mount: (body) => {
       body.addEventListener('click', async (e) => {
         const id = e.target.closest('button') && e.target.closest('button').id;
