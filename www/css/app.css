@@ -103,6 +103,12 @@ html[data-multi] .set-tile[data-set=rec] { --tc: var(--p8); }
 html[data-multi] .set-tile[data-set=dl] { --tc: var(--p1); }
 html[data-multi] .set-tile[data-set=cast] { --tc: var(--p5); }
 html[data-multi] .set-tile[data-set=admin] { --tc: var(--p0); }
+/* Ayar karoları çok renkli temayı ana ekran karoları gibi izler: Renkli kartlar/Neon/Gün batımı kendi renginde çerçeve ve ton, Dolu renk dolu zemin (sarı karolar turuncuya çekilir: sarı üstüne beyaz yazı olmaz). */
+html[data-multi] .set-tile { border: 1px solid color-mix(in srgb, var(--tc, var(--accent)) 40%, transparent); background: color-mix(in srgb, var(--tc, var(--accent)) 12%, var(--raised)); }
+html[data-theme="neon"][data-multi] .set-tile, html[data-theme="sunset"][data-multi] .set-tile { border-color: rgba(255, 255, 255, 0.16); background: color-mix(in srgb, var(--tc, var(--accent)) 12%, rgba(14, 17, 36, 0.78)); }
+html[data-theme="solid"][data-multi] .set-tile[data-set=plans], html[data-theme="solid"][data-multi] .set-tile[data-set=member] { --tc: var(--p2); }
+html[data-theme="solid"][data-multi] .set-tile { border: 0; color: #fff; background: linear-gradient(150deg, color-mix(in srgb, var(--tc, var(--accent)) 78%, #000) 0%, color-mix(in srgb, var(--tc, var(--accent)) 36%, #000) 100%); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+html[data-theme="solid"][data-multi] .set-tile .ic { color: #fff; }
 html[data-multi] .set-tile[data-set=update] { --tc: var(--p2); }
 html[data-multi] .set-tile .ic { color: var(--tc, var(--accent)); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -700,6 +706,19 @@ html.native-preview #player { display: none; }
 .set-card input[type=file] { padding: 0; border: 0; background: transparent; color: var(--text); font-size: 0.875rem; }
 .set-card input[type=file]::file-selector-button { margin-right: 10px; padding: 8px 14px; border: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; font-family: inherit; }
 @media (min-width: 700px) { .set-card .sel-row.stack { flex-direction: row; align-items: center; } .set-card .sel-row.stack select { width: auto; max-width: 46%; } }
+/* Çok renkli temalarda ayar kartları: her kart paletten kendi rengini alır (sarı hariç: üstüne beyaz yazı olmaz); Dolu renk temasında başlık bandı dolu renktir. */
+html[data-multi] .set-card { --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 9%, var(--raised)); }
+html[data-multi] .set-card:nth-of-type(6n+1) { --accent: var(--p1); }
+html[data-multi] .set-card:nth-of-type(6n+2) { --accent: var(--p4); }
+html[data-multi] .set-card:nth-of-type(6n+3) { --accent: var(--p3); }
+html[data-multi] .set-card:nth-of-type(6n+4) { --accent: var(--p6); }
+html[data-multi] .set-card:nth-of-type(6n+5) { --accent: var(--p5); }
+html[data-multi] .set-card:nth-of-type(6n+6) { --accent: var(--p8); }
+html[data-multi] .set-card .chk, html[data-multi] .set-card .sel-row, html[data-multi] .set-card .list-item, html[data-multi] .set-card .prof-row { border-bottom-color: color-mix(in srgb, var(--accent) 24%, transparent); }
+html[data-multi] .set-card > :last-child { border-bottom: 0; }
+html[data-theme="neon"][data-multi] .set-card, html[data-theme="sunset"][data-multi] .set-card { border-color: rgba(255, 255, 255, 0.16); background: color-mix(in srgb, var(--accent) 12%, rgba(14, 17, 36, 0.78)); }
+html[data-theme="solid"][data-multi] .set-card { border: 0; background: color-mix(in srgb, var(--accent) 12%, var(--raised)); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35); }
+html[data-theme="solid"][data-multi] .set-card > h3 { margin-bottom: 4px; padding-top: 12px; padding-bottom: 10px; background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 78%, #000) 0%, color-mix(in srgb, var(--accent) 38%, #000) 100%); color: #fff; }
 
 
 /* ---- kayan adlar: satıra sığmayan kanal/kategori/program adı kesilmez, kayarak gösterilir ---- */

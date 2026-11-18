@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 129,
+    title: 'Ayarlar renkli temalara uyuyor',
+    items: [
+      'Renkli kartlar, Dolu renk, Neon cam ve Gün batımı temalarında ayar karoları ve ayar sayfalarındaki bölümler kendi renginde görünür',
+    ],
+  },
+  {
     id: 128,
     title: 'Tüm ayar sayfaları yenilendi',
     items: [
