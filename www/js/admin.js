@@ -15,19 +15,54 @@ export class ApiError extends Error {
   }
 }
 
-export function createGithub({ token, fetchImpl = (...a) => globalThis.fetch(...a), repo = REPO, base = 'https://api.github.com' }) {
+// WebView'in fetch'i takılırsa (CORS ön kontrolü, DNS, vekil) istek Android'in yerel HTTP katmanından (Capacitor çekirdek eklentisi) gider.
+// Köprü yoksa (tarayıcı, test) ya da istek yine düşerse null döner.
+async function nativeHttp(method, url, headers, body, win = globalThis) {
+  const C = win.Capacitor;
+  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.nativePromise !== 'function') return null;
+  try {
+    const r = await C.nativePromise('CapacitorHttp', 'request', { url, method, headers, data: body ? JSON.parse(body) : undefined, connectTimeout: 15000, readTimeout: 30000 });
+    return { status: r.status, json: async () => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) };
+  } catch {
+    return null;
+  }
+}
+
+export function createGithub({ token, fetchImpl = (...a) => globalThis.fetch(...a), nativeImpl = nativeHttp, repo = REPO, base = 'https://api.github.com' }) {
   const root = `${base}/repos/${repo.owner}/${repo.repo}`;
-  async function call(method, url, body) {
-    let res;
+  // Hâlâ ulaşılamıyorsa `no-cors` yoklamasıyla ayrım yapılır: yoklama da düşerse telefonun GitHub'a ağ yolu yoktur (VPN/Özel DNS/operatör);
+  // geçerse istek tarayıcı katmanında engellenmiştir.
+  const reach = async () => {
     try {
-      res = await fetchImpl(url, {
-        method,
-        headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      await fetchImpl(`${base}/zen`, { mode: 'no-cors', cache: 'no-store' });
+      return true;
     } catch {
-      throw new ApiError('GitHub’a ulaşılamadı. İnternetinizi denetleyin.', 0);
+      return false;
     }
+  };
+  let nativeOnly = false; // yerel katman bir kez işe yaradıysa sonraki istekler doğrudan oradan gider
+  async function call(method, url, body) {
+    const headers = { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) };
+    let res = null;
+    if (!nativeOnly) {
+      // Ağ hatasında yalnız GET bir kez daha denenir (yazma isteği ilk seferde ulaşmış olabilir).
+      for (let attempt = 0; !res; attempt++) {
+        try {
+          res = await fetchImpl(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+        } catch {
+          if (method === 'GET' && attempt === 0) {
+            await new Promise((r) => setTimeout(r, 700));
+            continue;
+          }
+          break;
+        }
+      }
+    }
+    if (!res) {
+      res = await nativeImpl(method, url, headers, body);
+      if (res) nativeOnly = true;
+    }
+    if (!res) throw new ApiError((await reach()) ? 'GitHub’a ulaşıldı ama yanıt okunamadı (tarayıcı engeli). Uygulamayı güncelleyip yeniden deneyin.' : 'GitHub’a ulaşılamadı. İnternetinizi denetleyin; VPN ya da Özel DNS açıksa kapatıp deneyin.', 0);
     let json = null;
     try {
       json = await res.json();

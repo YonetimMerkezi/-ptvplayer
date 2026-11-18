@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 130,
+    title: 'Yönetici paneli bağlantısı',
+    items: [
+      'Panel kilidini açarken GitHub’a bağlanılamazsa istek Android’in kendi ağ katmanından yeniden denenir',
+      'Hâlâ olmuyorsa hata nedeni ayırt edilir: telefonda GitHub açılmıyor (VPN/Özel DNS) ya da istek tarayıcı katmanında engellenmiş',
+    ],
+  },
+  {
     id: 129,
     title: 'Ayarlar renkli temalara uyuyor',
     items: [

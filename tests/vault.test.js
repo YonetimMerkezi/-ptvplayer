@@ -145,6 +145,40 @@ test('GitHub: kurulum, dal oluşturma, yayın, çakışma, izin hataları', asyn
   await assert.rejects(() => dead.check(), /ulaşılamadı/);
 });
 
+test('GitHub istemcisi: ağ hatasında GET bir kez yeniden denenir, WebView takılırsa yerel HTTP devralır, ulaşılamayınca nedeni ayırt eder', async () => {
+  const fake = fakeGithub();
+  // 1) ilk GET düşer, ikincisi geçer
+  let n = 0;
+  const flaky = createGithub({ token: 'TOKEN', fetchImpl: async (u, i) => { if (++n === 1) throw new TypeError('Failed to fetch'); return fake.fetchImpl(u, i); }, nativeImpl: async () => { throw new Error('yerel çağrılmamalı'); } });
+  assert.equal((await flaky.check()).defaultBranch, 'main');
+  assert.equal(n, 2);
+  // 2) fetch hep düşer; yerel HTTP işi alır ve sonraki istekler doğrudan oradan gider (yazma isteği tekrarlanmaz: fetch yalnız bir kez denenir)
+  let fetches = 0;
+  const viaNative = [];
+  const native = async (method, url, headers, body) => {
+    viaNative.push(method);
+    const r = await fake.fetchImpl(url, { method, headers, body });
+    return r;
+  };
+  const wv = createGithub({ token: 'TOKEN', fetchImpl: async () => { fetches++; throw new TypeError('Failed to fetch'); }, nativeImpl: native });
+  assert.equal((await wv.check()).defaultBranch, 'main');
+  const before = fetches;
+  await wv.ensureBranch();
+  assert.equal(await wv.getFile('vault.json'), null);
+  assert.equal(fetches, before, 'yerel katman çalışınca fetch\'e dönülmez');
+  assert.ok(viaNative.length >= 3);
+  // 3) hiçbiri olmaz: yoklama da düşerse ağ yok, yoklama geçerse tarayıcı engeli
+  const noNet = createGithub({ token: 'TOKEN', fetchImpl: async () => { throw new TypeError('x'); }, nativeImpl: async () => null });
+  await assert.rejects(() => noNet.check(), /ulaşılamadı.*VPN/);
+  const blocked = createGithub({ token: 'TOKEN', fetchImpl: async (u, i) => { if (i && i.mode === 'no-cors') return { type: 'opaque' }; throw new TypeError('x'); }, nativeImpl: async () => null });
+  await assert.rejects(() => blocked.check(), /tarayıcı engeli/);
+  // 4) yazma (PUT) ağ hatasında fetch ile tekrarlanmaz
+  let puts = 0;
+  const w = createGithub({ token: 'TOKEN', fetchImpl: async (u, i) => { if (i && i.method === 'PUT') { puts++; throw new TypeError('x'); } return fake.fetchImpl(u, i); }, nativeImpl: async () => null });
+  await assert.rejects(() => w.putFile('a.json', '{}', null, 'm'), /ulaşılamadı|tarayıcı/);
+  assert.equal(puts, 1);
+});
+
 test('kasa: Pro tema seçimi (pt) şifreli kasada saklanır ve config.json\'a yazılır; seçim yoksa config\'te alan olmaz', async () => {
   const empty = await buildPublish(emptyVault(NOW), { now: NOW });
   assert.equal('pt' in empty.config, false);
