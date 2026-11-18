@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 119,
+    title: 'Harici oynatıcıya aktarma hatası düzeltildi',
+    items: [
+      'Harici oynatıcı düğmesi “i is not defined” hatası verip oynatıcı seçim penceresini açmıyordu; düzeltildi',
+      'Müzikte harici oynatıcı listesinde müzik çalar uygulamaları da çıkar',
+      'Metin ayrıştırma hataları giderildi: saati yalnız “20:30” biçiminde gelen programların başlangıcı, uyarı metinlerindeki koyu yazı işaretleri ve başlık eşleştirmedeki boşluklar',
+    ],
+  },
+  {
     id: 118,
     title: 'Medya merkezi: Müzik sekmeleri, şarkı bilgisi ve kapak; m3u hatası düzeltildi',
     items: [

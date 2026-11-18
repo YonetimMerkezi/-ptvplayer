@@ -1955,7 +1955,7 @@ const advisorySmart = (warning) => {
   if (/negative.example|harmful.behavio|olumsuz örnek/.test(raw)) return { label: 'Olumsuz davranış örnekleri', icon: 'alert-triangle', level: 'Orta' };
   return { label: 'İçerik hassasiyeti', icon: 'info', level: '' };
 };
-const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
+const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\*\*/g, '').trim());
 
 // Bir filmin katalog eşleşmesi (yerel katalog/Cinemeta) ve uyarı aramasında kullanılacak künye. Ayrıntı sayfası ile önden indirme aynı yolu kullanır.
 async function resolveAdvisoryMeta(it, info) {

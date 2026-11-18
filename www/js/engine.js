@@ -26,6 +26,16 @@ export function describeError(name, http = 0) {
   return 'Yayın oynatılamadı' + (s ? ` (${s.replace(/^ERROR_CODE_/, '')})` : '');
 }
 
+// Harici oynatıcıya verilecek MIME türü: HLS ve DASH adresleri kendi türüyle, ötekiler video/* olarak aktarılır.
+export function externalMime(target) {
+  const url = String((target && target.url) || '');
+  const mime = String((target && target.mime) || '');
+  if (mime === 'hls' || /\.m3u8(\?|$)/i.test(url)) return 'application/vnd.apple.mpegurl';
+  if (mime === 'dash' || /\.mpd(\?|$)/i.test(url)) return 'application/dash+xml';
+  if (target && target.audio) return /^audio\//i.test(mime) ? mime : 'audio/*'; // müzik: müzik çalarlar da listede çıksın
+  return /^video\//i.test(mime) ? mime : 'video/*';
+}
+
 export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec = () => {}, getDelay = () => 0, getNight = () => 'off', onDl = () => {}, getDialog = () => false) {
   const handles = [];
   const add = async (name, fn) => handles.push(await plugin.addListener(name, fn));
@@ -39,7 +49,7 @@ export function createNativeEngine(plugin, on, getBuffer = () => 'high', onRec =
   return {
     kind: 'native',
     enterPip: () => plugin.enterPip(),
-    openExternal: (target) => plugin.openExternal({ url: target.url, mime: target.mime === 'hls' || /\\.m3u8(\\?|$)/i.test(target.url) ? 'application/vnd.apple.mpegurl' : target.mime === 'dash' || /\\.mpd(\\?|$)/i.test(target.url) ? 'application/dash+xml' : /^video\\//i.test(target.mime || '') ? target.mime : 'video/*' }),
+    openExternal: (target) => plugin.openExternal({ url: target.url, mime: externalMime(target) }),
     onPipChannel: (fn) => plugin.addListener('pipChannel', fn),
     // Kilit ekranı / bildirim / Bluetooth tuşlarından gelen komutlar (next, prev, close): sıra mantığı web katmanındadır.
     onMediaCmd: (fn) => plugin.addListener('mediaCmd', fn),

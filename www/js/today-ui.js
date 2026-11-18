@@ -98,7 +98,7 @@ export function openToday(env) {
       if (isSportsChannel(r.channel)) continue;
       const it = channelsByName(items, [r.channel])[0];
       if (!it || (sel.length && !sel.includes(it.id))) continue;
-      const m = /^(\\d{1,2}):(\\d{2})$/.exec(r.time || '');
+      const m = /^(\d{1,2}):(\d{2})$/.exec(r.time || '');
       const start = Number.isFinite(Number(r.startAt)) && r.startAt != null ? Number(r.startAt) : m
         ? (() => { const d = new Date(from + IST_MS); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), Number(m[1]), Number(m[2])) - IST_MS; })()
         : NaN;

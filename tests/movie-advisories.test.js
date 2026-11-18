@@ -65,7 +65,8 @@ test('Screenwise uzun rehber metnindeki kalan İngilizce ifadeler Türkçeleşti
   const text = translateScreenwiseText("This is strictly for the **older teen and adult** crowd. The R-rating isn't just for show—it is a mature, stressful thriller that will likely bore younger viewers.");
   assert.match(text, /daha büyük yaştaki gençlere ve yetişkinlere/);
   assert.match(text, /yetişkinlere yönelik/);
-  assert.match(text, /genç yaştaki izleyicileri sıkabilir/);
+  assert.match(text, /genç izleyicileri sıkabilecek/);
+  assert.doesNotMatch(text, /\*\*/, 'koyu yazı işaretleri kalmaz');
   assert.doesNotMatch(text, /older teen|younger viewers|mature, stressful thriller/i);
 });
 

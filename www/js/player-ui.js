@@ -1754,7 +1754,7 @@ export function createPlayerUI({ engine, player, env }) {
     const target = st.targets && st.targets[st.idx];
     if (!target) return toast('Oynatma adresi bulunamadı');
     if (target.headers && Object.keys(target.headers).length) return toast('Bu yayın özel başlık gerektiriyor; harici oynatıcıya aktarılamaz');
-    try { await engine.openExternal(target); showUi(false); }
+    try { await engine.openExternal({ ...target, audio: !!(st.item && st.item.audio) }); showUi(false); }
     catch (e) { toast(e && e.message ? e.message : 'Harici oynatıcı açılamadı'); }
   });
   q('#pl-tv').addEventListener('click', () => {
