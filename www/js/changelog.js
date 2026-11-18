@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 133,
+    title: 'Radyo & Müzik',
+    items: [
+      'Ana sayfadaki “İzleme listesi” kısayolunun yerine “Radyo & Müzik” geldi; izlediklerin “Son izlenen” satırlarında duruyor',
+      'Türkiye ve diğer ülkelerin radyo istasyonları: arama, tür çipleri (pop, türkü, arabesk, haber, spor…), ülke seçimi ve favoriler',
+      'Ana sayfada logolu radyo satırı: önce favorilerin, sonra en çok dinlenenler',
+      'Radyo ekran kapalıyken de çalar; müzik çalar ekranı, önceki/sonraki istasyon ve bildirim düğmeleri çalışır',
+      'Liste 24 saat saklanır; çocuk modunda radyo kapalıdır',
+    ],
+  },
+  {
     id: 132,
     title: 'Sayfaların içi de çok renkli',
     items: [

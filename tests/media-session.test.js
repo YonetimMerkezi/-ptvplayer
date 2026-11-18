@@ -50,7 +50,7 @@ test('arayüz: mediaCmd next/prev/close bağlı, canlı TV hariç; müzikte PiP 
   assert.match(ui, /item && item\.audio/);
   const app = oku('www/js/app.js');
   assert.match(app, /audioOnly: !!item\.audio/);
-  assert.match(app, /item\.kind !== 'live' && !ctx\.movie/, 'önceki/sonraki canlı TV ve önerilen filmlerde yok');
+  assert.match(app, /\(item\.kind !== 'live' \|\| isRadio\) && !ctx\.movie/, 'önceki/sonraki canlı TV ve önerilen filmlerde yok; internet radyosunda var');
 });
 
 test('servis: MediaSession, MediaStyle ve dört düğme + tüm geri çağırmalar', () => {

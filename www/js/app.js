@@ -67,6 +67,8 @@ import { BIND_URL, subId, bestToken, callClaim, nextBind, bindAllowed, bindDue }
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
+import { loadStations, radioItem, radioFavs, isRadioFav, toggleRadioFav, countClick, RADIO_COUNTRY_KEY } from './radio.js';
+import { radioRowHtml, homeRadio, openRadio as openRadioPage } from './radio-ui.js';
 import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
@@ -311,7 +313,7 @@ const pui = createPlayerUI({
     download: (st) => dlFromPlayer(st),
     epg: (it) => S.epg.nowNext(it),
     shortEpg: (it) => (S.source ? loadShortEpg(S.source, net, it, 4).catch(() => []) : Promise.resolve([])),
-    isFav: (it) => (it.localMedia && it.audio ? store.isFav(LOCAL_SRC, it.id) : !!S.source && store.isFav(S.source.id, it.id)),
+    isFav: (it) => (it.radio ? isRadioFav(store, it.id) : it.localMedia && it.audio ? store.isFav(LOCAL_SRC, it.id) : !!S.source && store.isFav(S.source.id, it.id)),
     toggleFav: (it) => toggleFav(it),
     liveCategories: () => playerCategories(),
     liveItems: (key) => (key === '__all' ? visibleAll('live') : itemsOfGroup('live', key)),
@@ -383,7 +385,7 @@ player.onProgress((pos, dur, st) => {
 
 // Açılamayan canlı kanal işaretlenir; yedek adres oynadıysa asıl kanal da işaretlenir, asıl oynarsa işaret kalkar.
 player.on((st) => {
-  if (!S.source || !st.item || st.item.kind !== 'live' || st.item.cast || !st.targets) return;
+  if (!S.source || !st.item || st.item.kind !== 'live' || st.item.cast || st.item.radio || !st.targets) return;
   if (st.status === 'error') {
     if (typeof navigator === 'undefined' || navigator.onLine !== false) markBad(st.item.id, true);
   } else if (st.status === 'playing') {
@@ -498,6 +500,13 @@ function resolve(entry, kind) {
 }
 
 function toggleFav(it) {
+  if (it.radio) { // internet radyosu: kaynak favorilerine karışmaz; Radyo & Müzik > Favoriler
+    const on = toggleRadioFav(store, it);
+    toast(on ? 'Favori radyolara eklendi' : 'Favori radyolardan çıkarıldı', 1600);
+    pui.refresh();
+    fillHomeRadio();
+    return on;
+  }
   if (it.localMedia && it.audio) { // cihazdaki şarkı: Medya merkezi > Müzik > Favoriler; kaynak favorilerine karışmaz
     const on = store.toggleFav(LOCAL_SRC, it);
     toast(on ? 'Müzik favorilerine eklendi' : 'Müzik favorilerinden çıkarıldı', 1600);
@@ -1803,21 +1812,23 @@ function playLive(items, index, meta = {}) {
 
 function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const isRec = item.kind === 'recording'; // cihazdaki kayıt: yerel dosya, kaynaktan bağımsız
+  const isRadio = !!item.radio; // internet radyosu: doğrudan adres, kaynaktan bağımsız; canlı gibi çalar ama ses (müzik çalar) ekranında açılır
   const localUrl = local || (ep && ep.dlUrl) || ''; // indirilmiş film/bölüm: ağsız yerel dosyadan oynar, ilerleme yine kaynağın öğesine yazılır
-  let targets = isRec ? [{ url: item.url, mime: 'auto' }] : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '' }] : targetsOf(item, ep);
+  let targets = isRec ? [{ url: item.url, mime: 'auto' }] : isRadio ? [{ url: item.url, mime: 'auto', live: true }] : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '' }] : targetsOf(item, ep);
   const bgAudio = !!store.pref('backgroundAudio', !!item.audio);
   targets = targets.map((target) => ({ ...target, bgAudio, title: item.name }));
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
-  if (!isRec && !item.localMedia) store.pushRecent(sid(), item);
+  if (!isRec && !isRadio && !item.localMedia) store.pushRecent(sid(), item);
+  if (isRadio) countClick({ net, id: item.id, version: VERSION }); // dizine "dinlendi" bildirimi (sıralamayı besler; sessizce başarısız olabilir)
   // Film nereden açılırsa açılsın (son izlenenler, bağlantı, indirilenler) oynatıcının altında önerilen filmler listesi olsun
   if (!ctx && item.kind === 'movie' && !isRec) ctx = movieCtx(item);
   // KÖK NEDEN DÜZELTMESİ: yerel katman müziği (audioOnly) video saymasın (PiP açılmasın, medya oturumu açılsın); önceki/sonraki düğmeleri
   // yalnız gerçek bir liste varken (müzik/video/bölüm) gösterilsin. Canlı TV ve "önerilen filmler" listesinde bu düğmeler anlamsız.
-  const navList = !!ctx && Array.isArray(ctx.items) && ctx.items.length > 1 && item.kind !== 'live' && !ctx.movie;
+  const navList = !!ctx && Array.isArray(ctx.items) && ctx.items.length > 1 && (item.kind !== 'live' || isRadio) && !ctx.movie;
   const nav = { audioOnly: !!item.audio, canPrev: navList && ctx.index > 0, canNext: navList && ctx.index < ctx.items.length - 1 };
   targets = targets.map((target) => ({ ...target, ...nav }));
   let at = startAt;
-  if (isRec) at = 0;
+  if (isRec || isRadio) at = 0;
   else if (at == null) {
     const p = store.progress(item.localMedia ? LOCAL_SRC : sid(), ep ? ep.id : item.id);
     at = p && p.pos > 0 ? Math.max(0, p.pos - 3000) : 0;
@@ -2462,6 +2473,32 @@ async function openSportsPage() {
 }
 
 // Bugün TV'de: TV rehberinden bugünün spor, film ve dizi programları (seçilen kanallara göre). Modül ilk kullanımda yüklenir.
+// ---- Radyo & Müzik (radio.js veri, radio-ui.js ekran). Liste 24 saat saklanır; ana sayfa satırı oturumda bir kez doldurulur.
+const radioCountry = () => String(store.pref(RADIO_COUNTRY_KEY, 'TR') || 'TR');
+const radioLoad = (cc, force) => loadStations({ net, cache: store.cache, country: cc, version: VERSION, force });
+let radioHome = null;
+let radioBusy = false;
+function fillHomeRadio() {
+  const el = $('#home-radio');
+  if (el) el.innerHTML = kidActive() ? '' : radioRowHtml(radioFavs(store), radioHome ? radioHome.items : []);
+}
+function ensureHomeRadio() {
+  if (kidActive() || radioBusy) return;
+  if (radioHome) return fillHomeRadio();
+  radioBusy = true;
+  radioLoad(radioCountry(), false).then((r) => { radioHome = r; }, () => {}).finally(() => { radioBusy = false; fillHomeRadio(); });
+}
+function playRadio(st, list) {
+  const items = (Array.isArray(list) && list.length ? list : [st]).map(radioItem);
+  const index = Math.max(0, items.findIndex((x) => x.id === st.id));
+  const ctx = { items, index, radio: true, play: (it, i) => startPlay(it, { ctx: { ...ctx, index: i } }) };
+  startPlay(items[index], { ctx });
+}
+function openRadio() {
+  if (kidActive()) return; // radyo içeriği süzülemediğinden çocuk modunda yok
+  openRadioPage({ store, country: radioCountry, setCountry: (cc) => { store.setPref(RADIO_COUNTRY_KEY, cc); radioHome = null; }, load: radioLoad, play: playRadio, toast });
+}
+
 async function openToday() {
   try {
     const m = await import('./today-ui.js');
@@ -2851,7 +2888,6 @@ function renderHome(v) {
   const expInfo = c.account && c.account.expires ? expiryInfo(c.account.expires) : null;
   const cnt = (n, w) => (n ? `${n} ${w}` : '');
   const favN = store.favs(sid()).length;
-  const recN = store.recents(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
   // Ana ekran satırları: kaldığın yerden devam (film + dizi) ve en son eklenen filmler; boşsa satır çıkmaz.
   const rowCards = (list) =>
@@ -2897,22 +2933,30 @@ function renderHome(v) {
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
-      <button class="tile mini t-rec" data-go="recent">${miniIc('history', recN)}<b>İzleme listesi</b></button>
+      ${kidActive() ? '' : `<button class="tile mini t-radio" data-go="radio">${miniIc('radio', radioFavs(store).length)}<b>Radyo &amp; Müzik</b></button>`}
       <button class="tile mini t-fav" data-go="favs">${miniIc('star-on', favN)}<b>Favoriler</b></button>
       <button class="tile mini t-sport" data-go="sport">${miniIc('ball')}<b>Spor</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
     </div>
     ${rows}
+    <div id="home-radio">${kidActive() || !radioHome ? '' : radioRowHtml(radioFavs(store), radioHome.items)}</div>
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
+  ensureHomeRadio();
   v.onclick = (e) => {
     if (e.target.closest('[data-refresh]')) {
       e.stopPropagation();
       return refreshCatalog();
     }
     if (e.target.closest('#h-search')) return globalSearch();
+    const rc = e.target.closest('[data-rid]');
+    if (rc) {
+      const list = homeRadio(radioFavs(store), radioHome ? radioHome.items : []);
+      const st = list.find((x) => x.id === rc.dataset.rid);
+      if (st) return playRadio(st, list);
+    }
     if (e.target.closest('#h-add')) return sourceForm();
     if (e.target.closest('#h-swap')) return store.sources().length ? sourceSwitcher() : sourceForm();
     const hc = e.target.closest('[data-hid]');
@@ -2952,6 +2996,7 @@ function goTo(go) {
   if (go === 'guide') return guidePage();
   if (go === 'sport') return openSportsPage();
   if (go === 'today') return openToday();
+  if (go === 'radio') return openRadio();
   setTab(go);
 }
 

@@ -61,7 +61,7 @@ test('boş kayıt: iletisi, listede işareti', () => {
 test('oynatıcı: kayıt da küçük ekran yerleşimini kullanır (dikey ayarda tüm ekrana gerilmez)', async () => {
   const { readFileSync } = await import('node:fs');
   const ui = readFileSync(new URL('../www/js/player-ui.js', import.meta.url), 'utf8');
-  assert.match(ui, /const hasSmallScreen = \(item\) => !!item && item\.kind !== 'live' && !item\.cast;/, 'küçük ekran canlı dışındaki her yerel öğede vardır');
+  assert.match(ui, /const hasSmallScreen = \(item\) => !!item && \(item\.kind !== 'live' \|\| !!item\.radio\) && !item\.cast;/, 'küçük ekran canlı dışındaki her yerel öğede vardır; internet radyosu canlı olsa da müzik çalar düzenindedir');
   assert.equal((ui.match(/hasSmallScreen\(/g) || []).length >= 3, true, 'çizim, yön değiştirme ve açılış aynı ölçütü kullanır');
   assert.ok(!/const vodPortrait = [^;]*'recording'/.test(ui), 'kayıt küçük ekranın dışında bırakılırsa dikey kilit var, görüntü kutusu yok: 16:9 görüntü dikey ekrana gerilir');
   assert.ok(!/b\.hidden = [^;]*'recording'/.test(ui), 'kayıtta da tam ekran/küçük ekran düğmesi görünür');

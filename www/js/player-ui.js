@@ -127,7 +127,7 @@ export function createPlayerUI({ engine, player, env }) {
   const isMusic = (item) => !!(item && item.audio && !item.cast) && !onTv();
   // Küçük ekran (üstte 16:9 video kutusu, altında denetimler) canlı dışındaki her yerel öğede vardır: film, dizi, müzik ve kayıt.
   // Kayıt bunun dışında kalınca "Dikey" ayarı ekranı dikeye kilitliyor ama kutu kurulmuyor; 16:9 görüntü tüm dikey ekrana gerilip bozuluyordu.
-  const hasSmallScreen = (item) => !!item && item.kind !== 'live' && !item.cast;
+  const hasSmallScreen = (item) => !!item && (item.kind !== 'live' || !!item.radio) && !item.cast; // radyo canlı akıştır ama müzik çalar gibi küçük ekran düzeninde açılır
   let musicNow = false;
   const orientNow = () => (musicNow ? 'portrait' : orientOverride || (autoDir ? 'landscape' : env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape'));
   const levels = { brightness: 0.5, volume: 0.5 };
@@ -384,6 +384,7 @@ export function createPlayerUI({ engine, player, env }) {
   function title(st) {
     if (st.ep) return { name: st.item.name, sub: st.ep.label || st.ep.title };
     if (st.item.cast) return { name: st.item.name, sub: 'Telefondan oynatılıyor' };
+    if (st.item.radio) return { name: st.item.name, sub: st.item.artist || 'Canlı radyo' }; // tür · biçim; kanal numarası yok
     if (st.item.kind === 'live' && ctx && ctx.items.length > 1) return { name: st.item.name, sub: 'Kanal ' + channelNumber(st.item, ctx.index) };
     if (st.item.audio) return { name: st.item.name, sub: [st.item.artist, st.item.album].filter(Boolean).join(' · ') }; // müzik: sanatçı · albüm (etiketten)
     return { name: st.item.name, sub: '' };
@@ -571,7 +572,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-info-fav').innerHTML = q('#pl-fav').innerHTML;
     q('#pl-info-fav').setAttribute('aria-label', q('#pl-fav').getAttribute('aria-label'));
     q('#pl-info-fav').style.color = q('#pl-fav').style.color;
-    q('#pl-epg').hidden = st.item.kind !== 'live' || !!st.item.cast;
+    q('#pl-epg').hidden = st.item.kind !== 'live' || !!st.item.cast || !!st.item.radio; // radyoda program rehberi yok
     if (!live && !seeking) {
       q('#pl-pos').textContent = fmtDuration(st.pos);
       q('#pl-dur').textContent = st.dur > 0 ? fmtDuration(st.dur) : '';
@@ -584,7 +585,7 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-prev').hidden = !hasNav;
     q('#pl-next').hidden = !hasNav;
     q('#pl-last').hidden = !(live && lastIndex() >= 0);
-    q('#pl-chs').hidden = !(live && chpAvailable());
+    q('#pl-chs').hidden = !(live && !st.item.radio && chpAvailable());
     q('#pl-fav').hidden = st.item.kind === 'recording' || !!st.item.cast;
     q('#pl-info-fav').hidden = q('#pl-fav').hidden;
     q('#pl-tv').hidden = !(env.canCast && env.canCast()) || st.item.kind === 'recording' || !!st.item.cast;
@@ -628,7 +629,7 @@ export function createPlayerUI({ engine, player, env }) {
     }
     renderNextUp(st);
     renderIntro(st);
-    if (st.status === 'ended' && musicNow) {
+    if (st.status === 'ended' && musicNow && !st.item.radio) {
       if (prev !== 'ended') musicGo(1, true); // bitişte bir kez: sıradaki şarkı, karışık seçim ya da tekrar
     } else if (st.status === 'ended' && ctx && ctx.autoNext && autoNextOn() && epKey(st) !== nextDismissed && ctx.index < ctx.items.length - 1) go(1);
   }
@@ -939,7 +940,8 @@ export function createPlayerUI({ engine, player, env }) {
   function renderMusicButtons() {
     const sh = q('#pl-shuffle');
     const rp = q('#pl-repeat');
-    sh.hidden = rp.hidden = !musicNow;
+    const cur = player.state().item;
+    sh.hidden = rp.hidden = !musicNow || !!(cur && cur.radio); // radyoda karışık/tekrar yok (canlı akış)
     if (!musicNow) return;
     const on = musicShuffle();
     const mode = musicRepeat();
@@ -971,7 +973,8 @@ export function createPlayerUI({ engine, player, env }) {
 
   function go(delta) {
     if (!ctx || !ctx.items || !ctx.items.length) return;
-    if (isMusic(player.state().item)) return void musicGo(delta, false);
+    const cur = player.state().item;
+    if (isMusic(cur) && !cur.radio) return void musicGo(delta, false); // radyo: canlı gibi döngüyle önceki/sonraki istasyon
     let i = ctx.index + delta;
     if (player.state().live) i = (i + ctx.items.length) % ctx.items.length;
     else if (i < 0 || i >= ctx.items.length) return;
@@ -985,7 +988,7 @@ export function createPlayerUI({ engine, player, env }) {
   let curLive = null;
   let prevLive = null;
   player.on((st) => {
-    if (st.item && st.item.kind === 'live' && (!curLive || curLive.id !== st.item.id)) {
+    if (st.item && st.item.kind === 'live' && !st.item.radio && (!curLive || curLive.id !== st.item.id)) {
       prevLive = curLive;
       curLive = st.item;
     }
@@ -1628,6 +1631,7 @@ export function createPlayerUI({ engine, player, env }) {
       bgMusic = false;
       return;
     }
+    if (st.item.radio) return; // radyo akışı bitmez; kopunca canlı yeniden bağlanma devreye girer, sıradaki istasyona geçilmez
     if (st.status !== 'ended' || bgAdvanced === st.item.id) return;
     bgAdvanced = st.item.id;
     if (!musicGo(1, true)) {

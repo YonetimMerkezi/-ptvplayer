@@ -131,7 +131,7 @@ test('çok renkli temalarda vurgu rengi bölüme göre: her sekme ve her tam say
   assert.match(app, /document\.documentElement\.dataset\.sec = S\.source \? S\.tab : 'home'/);
   // Tüm openPage sınıfları: ya renge bağlı ya da bilerek bulunduğu sekmenin rengini alır (dt-*: film/dizi ayrıntısı); st-pg, sp-pg'den; td-pick, td-pg'den gelir
   const bilerek = new Set(['dt-pg', 'dt-sp', 'st-pg', 'td-pick']);
-  const dosyalar = ['app.js', 'ui.js', 'today-ui.js', 'sports-ui.js', 'sports-table-ui.js', 'sports-detail-ui.js', 'series-flow-ui.js', 'library-ui.js', 'cast-ui.js'];
+  const dosyalar = ['app.js', 'ui.js', 'today-ui.js', 'sports-ui.js', 'sports-table-ui.js', 'sports-detail-ui.js', 'series-flow-ui.js', 'library-ui.js', 'cast-ui.js', 'radio-ui.js'];
   const sinif = new Set();
   for (const f of dosyalar) for (const m of readFileSync(join(dir, 'js', f), 'utf8').matchAll(/cls: '([^']*)'/g)) m[1].split(/\s+/).forEach((c) => c && sinif.add(c));
   assert.ok(sinif.size >= 15, 'sayfa sınıfları bulunamadı');
