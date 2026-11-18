@@ -3280,6 +3280,31 @@ public class IptvPlayerPlugin extends Plugin {
         });
     }
 
+    // Ses dosyası etiketleri (toplu, en çok 24). Girdi: {uris:[...]}. Yanıt: {tags:{uri:{title,artist,album,track,year,dur}}}.
+    @PluginMethod
+    public void libTags(final PluginCall call) {
+        final org.json.JSONArray uris = call.getData().optJSONArray("uris");
+        if (uris == null) {
+            call.reject("uris gerekli");
+            return;
+        }
+        io.execute(() -> {
+            try {
+                JSObject tags = new JSObject();
+                for (int i = 0; i < uris.length() && i < 24; i++) {
+                    String u = uris.optString(i, "");
+                    if (u.isEmpty()) continue;
+                    tags.put(u, new JSObject(MediaLibrary.tags(getContext(), Uri.parse(u)).toString()));
+                }
+                JSObject o = new JSObject();
+                o.put("tags", tags);
+                call.resolve(o);
+            } catch (Throwable e) {
+                call.reject("Etiketler okunamadı: " + String.valueOf(e.getMessage()));
+            }
+        });
+    }
+
     // Galeri için büyük fotoğraf. Yanıt: {data}.
     @PluginMethod
     public void libImage(final PluginCall call) {

@@ -251,7 +251,7 @@ const pui = createPlayerUI({
     download: (st) => dlFromPlayer(st),
     epg: (it) => S.epg.nowNext(it),
     shortEpg: (it) => (S.source ? loadShortEpg(S.source, net, it, 4).catch(() => []) : Promise.resolve([])),
-    isFav: (it) => !!S.source && store.isFav(S.source.id, it.id),
+    isFav: (it) => (it.localMedia && it.audio ? store.isFav(LOCAL_SRC, it.id) : !!S.source && store.isFav(S.source.id, it.id)),
     toggleFav: (it) => toggleFav(it),
     liveCategories: () => playerCategories(),
     liveItems: (key) => (key === '__all' ? visibleAll('live') : itemsOfGroup('live', key)),
@@ -438,6 +438,12 @@ function resolve(entry, kind) {
 }
 
 function toggleFav(it) {
+  if (it.localMedia && it.audio) { // cihazdaki şarkı: Medya merkezi > Müzik > Favoriler; kaynak favorilerine karışmaz
+    const on = store.toggleFav(LOCAL_SRC, it);
+    toast(on ? 'Müzik favorilerine eklendi' : 'Müzik favorilerinden çıkarıldı', 1600);
+    pui.refresh();
+    return on;
+  }
   const on = store.toggleFav(sid(), it);
   toast(on ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı', 1600);
   if (S.list) S.list.refreshRows();
@@ -1692,6 +1698,7 @@ function openLibrary() {
       lockEnabled: () => lockEnabled(),
       createPin: () => createPin(),
       pickFiles: () => playLocalMedia(),
+      refreshPlayer: () => pui.refresh(),
     });
   }
   library.open();

@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 118,
+    title: 'Medya merkezi: Müzik sekmeleri, şarkı bilgisi ve kapak; m3u hatası düzeltildi',
+    items: [
+      'Medya merkezine “Müzik” bölümü geldi: Şarkılar, Sanatçılar, Albümler, Favoriler ve Son çalınan sekmeleri; “Tümünü oynat” ve “Karışık” düğmeleri',
+      'Şarkı adı, sanatçı, albüm ve süre dosya etiketinden okunur; etiketi olmayan şarkı dosya adıyla görünür. Arama sanatçı ve albümü de bulur',
+      'Dosyaya gömülü kapak resimleri müzik çalarda, şarkı listesinde ve sıradaki şarkılarda görünür',
+      'Müzik çalarda yıldız şarkıyı Müzik favorilerine ekler; uzun şarkı adına dokununca adın tamamı açılır',
+      'Müzik listesine giren .m3u oynatma listesi dosyaları artık şarkı sayılmaz',
+    ],
+  },
+  {
     id: 117,
     title: 'Vitrinli satırlar film/dizi ekranı geri geldi; vitrin, odak halkası ve ana ekran düzeltmeleri',
     items: [

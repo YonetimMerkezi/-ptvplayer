@@ -1,16 +1,18 @@
 // Medya merkezi ekranı: cihaz klasörleri (küçük resimli), ağ paylaşımları (WebDAV, SMB, DLNA), arama, son eklenenler,
 // fotoğraf galerisi, müzik ve klasör kilidi. Saf mantık local-library.js'te; oynatma app.js'teki startPlay ile yapılır.
-import { esc, hashId } from './util.js';
-import { cleanName } from './local-media.js';
+import { esc, hashId, fmtDuration } from './util.js';
+import { cleanName, LOCAL_SRC } from './local-media.js';
 import { pushLayer, popLayer } from './nav.js';
 import * as L from './local-library.js';
 
 const ROOTS_KEY = 'lib.roots';
 const LOCKS_KEY = 'lib.locks';
+const PLAYS_KEY = 'lib.plays'; // son çalınan şarkılar (kimlik listesi, en yeni başta)
+const TAGS_KEY = 'lib-tags:v1';
 const INDEX_TTL = 6 * 3600 * 1000;
 const NO_NATIVE = 'Medya merkezi Android uygulamasında kullanılabilir';
 
-export function createLibrary({ plugin, store, openPage, openSheet, toast, icon, startPlay, askPin, lockEnabled, createPin, pickFiles }) {
+export function createLibrary({ plugin, store, openPage, openSheet, toast, icon, startPlay, askPin, lockEnabled, createPin, pickFiles, refreshPlayer }) {
   const indexes = new Map(); // kökId → dizin (yerel klasör ağaçları)
   const unlocked = new Set(); // oturumda şifreyle açılan kilit anahtarları
   const thumbs = new Map();
@@ -91,15 +93,80 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
     els.forEach((el) => io.observe(el));
   }
 
+  // ---- şarkı etiketleri (başlık, sanatçı, albüm): arka planda 20'şerli okunur, kalıcı önbelleğe yazılır ----
+  const tagCache = new Map(); // uri → { s, t, a, al, n, y, d }
+  const tagProg = { running: false, done: 0, total: 0 };
+  let tagsReady = null;
+  let tagsDirty = false;
+  let tagTimer = 0;
+  let tagNotified = 0;
+  let onTagsChanged = () => {};
+  const loadTags = () =>
+    tagsReady ||
+    (tagsReady = Promise.resolve(store.cache.get(TAGS_KEY))
+      .then((c) => {
+        if (c && c.tags) for (const [u, e] of Object.entries(c.tags)) tagCache.set(u, e);
+      })
+      .catch(() => {}));
+  const saveTags = () => {
+    if (!tagsDirty) return;
+    tagsDirty = false;
+    Promise.resolve(store.cache.set(TAGS_KEY, { tags: Object.fromEntries(tagCache) })).catch(() => {});
+  };
+  function applyCachedTags(idx) {
+    for (const f of idx) {
+      const e = f.kind === 'audio' ? tagCache.get(f.uri) : null;
+      if (e && e.s === L.tagSig(f)) L.applyTag(f, e);
+    }
+  }
+  async function readTags() {
+    if (tagProg.running || typeof plugin.libTags !== 'function') return;
+    const todo = allIndex().filter((f) => L.needsTag(f, tagCache));
+    if (!todo.length) return;
+    Object.assign(tagProg, { running: true, done: 0, total: todo.length });
+    try {
+      for (let i = 0; i < todo.length; i += 20) {
+        const rows = todo.slice(i, i + 20);
+        const r = await plugin.libTags({ uris: rows.map((f) => f.uri) });
+        const got = (r && r.tags) || {};
+        for (const f of rows) {
+          const e = L.tagEntry(got[f.uri], f);
+          tagCache.set(f.uri, e);
+          L.applyTag(f, e);
+        }
+        tagsDirty = true;
+        tagProg.done += rows.length;
+        if (Date.now() - tagNotified > 1500) {
+          tagNotified = Date.now();
+          onTagsChanged();
+        }
+        if ((i / 20) % 10 === 9) saveTags();
+      }
+    } catch {
+      /* okuma durdu: okunanlar kalır, kalanlar sonraki açılışta yeniden denenir */
+    } finally {
+      tagProg.running = false;
+      saveTags();
+      onTagsChanged();
+    }
+  }
+  const scheduleTags = () => {
+    clearTimeout(tagTimer);
+    tagTimer = setTimeout(readTags, 600);
+  };
+
   // ---- yerel klasör dizini ----
   async function ensureIndex(root, force = false) {
     if (!force && indexes.has(root.id)) return indexes.get(root.id);
+    await loadTags();
     const key = 'lib-index:v1:' + root.id;
     if (!force) {
       const c = await store.cache.get(key).catch(() => null);
       if (c && c.savedAt && Date.now() - c.savedAt < INDEX_TTL && Array.isArray(c.files)) {
         const idx = L.buildIndex(c.files, root.id);
+        applyCachedTags(idx);
         indexes.set(root.id, idx);
+        scheduleTags();
         return idx;
       }
     }
@@ -107,7 +174,9 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
     const files = Array.isArray(r && r.files) ? r.files : [];
     await store.cache.set(key, { savedAt: Date.now(), files }).catch(() => {});
     const idx = L.buildIndex(files, root.id);
+    applyCachedTags(idx);
     indexes.set(root.id, idx);
+    scheduleTags();
     if (r && r.truncated) toast('Klasör çok büyük: ilk 30.000 dosya listelendi', 3500);
     return idx;
   }
@@ -118,6 +187,7 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
     let url = row.uri || row.url || '';
     if (ctxRoot && ctxRoot.type === 'smb') url = (await plugin.netSmbUrl({ host: ctxRoot.host, path: row.path, user: ctxRoot.user || '', pass: ctxRoot.pass || '' })).url;
     const item = { id: row.id, name: row.title || cleanName(row.name), kind: 'movie', mime: 'auto', url, localMedia: true, audio: row.kind === 'audio' };
+    if (row.kind === 'audio') Object.assign(item, { artist: row.artist || '', album: row.album || '' });
     if (row.headers) item.headers = row.headers;
     // Şarkının kapak resmi (varsa) müzik çaların kapağında ve arka planında görünür; gelmesi beklenmez, hazır olunca eklenir.
     if (row.kind === 'audio' && row.uri) thumbOf({ uri: row.uri, kind: 'audio' }).then((d) => d && (item.logo = d)).catch(() => {});
@@ -139,17 +209,42 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
   }
 
   // rows: oynatma listesi (aynı klasör, aynı tür), i: açılacak sıra
+  // Sıradaki şarkıların kapakları: çalan şarkıya yakın olanlardan başlayarak arka planda yüklenir; kuyruk kartları gelince güncellenir.
+  let coverTimer = 0;
+  function loadCovers(rows, items, start, cover) {
+    const order = rows.map((_, k) => k).sort((a, b) => Math.abs(a - start) - Math.abs(b - start)).slice(0, 60);
+    for (const k of order) {
+      if (!rows[k].uri) continue;
+      thumbOf({ uri: rows[k].uri, kind: 'audio' }).then((d) => {
+        if (!d) return;
+        items[k].logo = d;
+        cover.rev++;
+        clearTimeout(coverTimer); // duraklatılmışken de kuyruk kartları güncellensin (çalar durum geldikçe çizilir)
+        coverTimer = setTimeout(() => refreshPlayer && refreshPlayer(), 200);
+      });
+    }
+  }
+  function notePlayed(row) {
+    if (row.kind !== 'audio' || !row.uri) return;
+    store.setPref(PLAYS_KEY, [row.id, ...store.pref(PLAYS_KEY, []).filter((x) => x !== row.id)].slice(0, 60));
+  }
+
   async function playList(rows, i, ctxRoot, siblings) {
+    const audio = !!rows[0] && rows[0].kind === 'audio';
+    const cover = { rev: 0 };
     const ctx = {
-      items: rows.map((r) => ({ id: r.id, name: r.title || cleanName(r.name), group: '' })),
+      items: rows.map((r) => ({ id: r.id, name: r.title || cleanName(r.name), group: audio ? r.artist || '' : '' })),
       index: i,
       autoNext: rows.length > 1,
-      title: rows[0] && rows[0].kind === 'audio' ? 'Sıradaki şarkılar' : 'Sıradaki videolar',
-      nextLabel: rows[0] && rows[0].kind === 'audio' ? 'Sıradaki şarkı' : 'Sıradaki video',
+      title: audio ? 'Sıradaki şarkılar' : 'Sıradaki videolar',
+      nextLabel: audio ? 'Sıradaki şarkı' : 'Sıradaki video',
+      cover,
       play: (_it, k) => open(k),
     };
+    if (audio) loadCovers(rows, ctx.items, i, cover);
     async function open(k) {
       try {
+        notePlayed(rows[k]);
         const item = await itemOf(rows[k], ctxRoot, siblings);
         ctx.index = k;
         startPlay(item, { local: item.url, ctx: { ...ctx, index: k } });
@@ -247,7 +342,7 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
   // ---- ana ekran ----
   function open() {
     if (!plugin) return toast(NO_NATIVE);
-    const st = { view: 'home', rootId: '', dir: '', q: '', remote: null, loading: false };
+    const st = { view: 'home', rootId: '', dir: '', q: '', remote: null, loading: false, mtab: 'songs', mgroup: null, mlimit: 200 };
     const pg = openPage({ title: 'Medya merkezi', cls: 'lb-pg', html: '<div class="lb"></div>' });
     const host = pg.body.querySelector('.lb');
     let token = 0;
@@ -263,6 +358,7 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
         if (st.view === 'home') html = await homeHtml();
         else if (st.view === 'search') html = searchHtml();
         else if (st.view === 'dir') html = await dirHtml();
+        else if (st.view === 'music') html = musicHtml();
         else html = await remoteHtml();
       } catch (e) {
         html = `<div class="empty"><h3>Açılamadı</h3><p>${esc(String((e && e.message) || e || ''))}</p><button class="btn" data-act="home">Geri dön</button></div>`;
@@ -283,9 +379,14 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
       const lockIc = (id) => (L.lockedBy(locks(), id, '') ? ' ' + icon('lock') : '');
       const rootCard = (r) => `<div class="lb-root"><button class="lb-rbtn" data-root="${esc(r.id)}">${icon(r.type === 'saf' ? 'folder' : 'cast')}<span><b>${esc(r.name)}${lockIc(r.id)}</b><small>${esc(r.type === 'saf' ? (indexes.get(r.id) || []).filter((f) => L.isMedia(f.kind)).length + ' dosya' : { dav: 'WebDAV', smb: 'SMB', upnp: 'DLNA / UPnP' }[r.type])}</small></span></button><button class="icon-btn" data-rootmenu="${esc(r.id)}" aria-label="Seçenekler">${icon('dots')}</button></div>`;
       const recents = L.recentAdded(allIndex(), { allow: allowFile, limit: 12 });
+      const songCount = L.songsOf(allIndex(), allowFile).length;
+      const musicCard = songCount
+        ? `<div class="lb-roots"><div class="lb-root"><button class="lb-rbtn" data-act="music">${icon('audio')}<span><b>Müzik</b><small>${songCount} şarkı · şarkılar, sanatçılar, albümler, favoriler</small></span></button></div></div>`
+        : '';
       return (
         searchBar() +
         `<div class="lb-actions"><button class="btn sm" data-act="addfolder">${icon('plus')} Klasör ekle</button><button class="btn sm ghost" data-act="pickfile">${icon('folder')} Dosya seç</button><button class="btn sm ghost" data-act="addnet">${icon('cast')} Ağ paylaşımı</button></div>` +
+        musicCard +
         (sr.length ? `<h4 class="lb-h">Cihaz klasörleri</h4><div class="lb-roots">${sr.map(rootCard).join('')}</div>` : '<p class="hint">Telefondaki ya da harici kart / USB bellekteki klasörleri ekleyin; videolar küçük resimlerle klasör klasör listelenir. Depolama izni gerekmez.</p>') +
         (net.length ? `<h4 class="lb-h">Ağ paylaşımları</h4><div class="lb-roots">${net.map(rootCard).join('')}</div>` : '') +
         (recents.length ? `<h4 class="lb-h">Son eklenenler</h4><div class="lb-grid">${recents.map(tile).join('')}</div>` : '')
@@ -295,6 +396,63 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
     function searchHtml() {
       const res = L.searchIndex(allIndex(), st.q, { allow: allowFile });
       return searchBar() + `<button class="btn sm ghost lb-back" data-act="home">${icon('back')} Medya merkezi</button><h4 class="lb-h">“${esc(st.q)}” için ${res.length} sonuç</h4>` + (res.length ? `<div class="lb-grid">${res.map(tile).join('')}</div>` : '<p class="hint">Eşleşen dosya yok. Arama yalnızca eklediğiniz cihaz klasörlerinde çalışır.</p>');
+    }
+
+    // ---- müzik: şarkılar / sanatçılar / albümler / favoriler / son çalınan ----
+    const MTABS = [['songs', 'Şarkılar'], ['artists', 'Sanatçılar'], ['albums', 'Albümler'], ['favs', 'Favoriler'], ['recent', 'Son çalınan']];
+    let musicShown = []; // ekrandaki şarkı listesi: data-song sırası bunun sırasıdır
+    const songRow = (f, i) => {
+      const sub = [f.artist, f.album].filter(Boolean).join(' · ') || f.dir.split('/').pop() || '';
+      return `<button class="lb-song" data-song="${i}"><span class="lb-th lb-sth" data-uri="${esc(f.uri || '')}" data-kind="audio"><i class="lb-kind">${icon('note')}</i></span><span class="lb-stx"><b>${esc(f.title || cleanName(f.name))}</b><small>${esc(sub)}</small></span>${f.dur ? `<em class="lb-dur">${fmtDuration(f.dur)}</em>` : ''}</button>`;
+    };
+    const groupRow = (g, type) =>
+      `<button class="lb-song lb-grp" data-gtype="${type}" data-g="${esc(g.name)}"><span class="lb-th lb-sth" data-uri="${esc((g.sample && g.sample.uri) || '')}" data-kind="audio"><i class="lb-kind">${icon(type === 'artist' ? 'users' : 'audio')}</i></span><span class="lb-stx"><b>${esc(g.name)}</b><small>${g.rows.length} şarkı${type === 'album' && g.artist ? ' · ' + esc(g.artist) : ''}</small></span><span class="lb-go">${icon('chev-r')}</span></button>`;
+
+    function musicHtml() {
+      const all = L.songsOf(allIndex(), allowFile);
+      const tabLabel = (MTABS.find((t) => t[0] === st.mtab) || MTABS[0])[1];
+      const tabs = `<div class="lb-tabs" role="tablist">${MTABS.map(([k, n]) => `<button class="btn sm${k === st.mtab ? '' : ' ghost'}" role="tab" aria-selected="${k === st.mtab}" data-mtab="${k}">${n}</button>`).join('')}</div>`;
+      const prog = tagProg.running ? `<p class="hint">Şarkı bilgileri okunuyor (${tagProg.done}/${tagProg.total})…</p>` : '';
+      const head = `<div class="lb-bar"><button class="btn sm ghost" data-act="home">${icon('back')} Geri</button><span class="lb-crumb">Müzik · ${all.length} şarkı</span></div>`;
+      let list = [];
+      let body = '';
+      if (st.mgroup) {
+        const type = st.mgroup.type;
+        const g = L.groupSongs(all, type).find((x) => x.name === st.mgroup.name);
+        list = g ? g.rows : [];
+        body = `<div class="lb-bar"><button class="btn sm ghost" data-act="mback">${icon('back')} ${esc(tabLabel)}</button><span class="lb-crumb">${esc(st.mgroup.name)}</span></div>`;
+      } else if (st.mtab === 'artists' || st.mtab === 'albums') {
+        const type = st.mtab === 'artists' ? 'artist' : 'album';
+        const groups = L.groupSongs(all, type);
+        const shown = groups.slice(0, st.mlimit);
+        musicShown = [];
+        return head + tabs + prog + (shown.length ? `<div class="lb-songs">${shown.map((g) => groupRow(g, type)).join('')}</div>` : '<p class="hint">Henüz şarkı yok.</p>') +
+          (groups.length > shown.length ? `<button class="btn sm ghost" data-act="mmore">Daha fazla göster (${groups.length - shown.length})</button>` : '');
+      } else if (st.mtab === 'favs') {
+        list = L.rowsByIds(store.favs(LOCAL_SRC).map((f) => f.id), all);
+      } else if (st.mtab === 'recent') {
+        list = L.rowsByIds(store.pref(PLAYS_KEY, []), all);
+      } else list = L.sortSongs(all);
+      musicShown = list;
+      const shown = list.slice(0, st.mlimit);
+      const empty = st.mtab === 'favs' && !st.mgroup ? 'Müzik çalarda yıldız simgesine dokunarak şarkıları favorilere ekleyin.' : st.mtab === 'recent' && !st.mgroup ? 'Henüz şarkı çalmadınız.' : 'Henüz şarkı yok.';
+      return head + tabs + prog + body +
+        (list.length ? `<div class="lb-actions"><button class="btn sm" data-act="mplay">${icon('play')} Tümünü oynat</button><button class="btn sm ghost" data-act="mshuffle">${icon('shuffle')} Karışık</button></div>` : '') +
+        (shown.length ? `<div class="lb-songs">${shown.map(songRow).join('')}</div>` : `<p class="hint">${empty}</p>`) +
+        (list.length > shown.length ? `<button class="btn sm ghost" data-act="mmore">Daha fazla göster (${list.length - shown.length})</button>` : '');
+    }
+    // Yükleniyor ekranı göstermeden yeniden çizer (etiketler geldikçe ve sekme değişince); kaydırma konumu korunur.
+    function softRender(keepScroll = true) {
+      if (!host.isConnected || st.view !== 'music') return;
+      const top = pg.body.scrollTop;
+      host.innerHTML = musicHtml();
+      pg.body.scrollTop = keepScroll ? top : 0;
+      watchThumbs(pg.body);
+    }
+    onTagsChanged = () => softRender(true);
+    function playSongs(rows, i) {
+      if (!rows[i]) return;
+      playList(rows, i, null, null);
     }
 
     async function dirHtml() {
@@ -517,7 +675,15 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
       if (act) {
         const a = act.dataset.act;
         if (a === 'home') Object.assign(st, { view: 'home', q: '' });
-        else if (a === 'addfolder') return addFolder();
+        else if (a === 'music') Object.assign(st, { view: 'music', mtab: 'songs', mgroup: null, mlimit: 200 });
+        else if (a === 'mback') return Object.assign(st, { mgroup: null, mlimit: 200 }), softRender(false);
+        else if (a === 'mmore') return (st.mlimit += 300), softRender(true);
+        else if (a === 'mplay') return playSongs(musicShown, 0);
+        else if (a === 'mshuffle') {
+          if (!musicShown.length) return;
+          store.setPref('music.shuffle', true);
+          return playSongs(musicShown, Math.floor(Math.random() * musicShown.length));
+        } else if (a === 'addfolder') return addFolder();
         else if (a === 'addnet') return addNet();
         else if (a === 'pickfile') return pickFiles();
         else if (a === 'rescan') {
@@ -547,6 +713,12 @@ export function createLibrary({ plugin, store, openPage, openSheet, toast, icon,
         }
         return render();
       }
+      const mt = t.closest('[data-mtab]');
+      if (mt) return Object.assign(st, { mtab: mt.dataset.mtab, mgroup: null, mlimit: 200 }), softRender(false);
+      const gr = t.closest('[data-g]');
+      if (gr) return Object.assign(st, { mgroup: { type: gr.dataset.gtype, name: gr.dataset.g }, mlimit: 200 }), softRender(false);
+      const sg = t.closest('[data-song]');
+      if (sg) return playSongs(musicShown, Number(sg.dataset.song));
       const rb = t.closest('[data-root]');
       if (rb) return openRoot(rb.dataset.root);
       const rm = t.closest('[data-rootmenu]');

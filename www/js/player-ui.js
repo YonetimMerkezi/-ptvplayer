@@ -329,6 +329,7 @@ export function createPlayerUI({ engine, player, env }) {
     if (st.ep) return { name: st.item.name, sub: st.ep.label || st.ep.title };
     if (st.item.cast) return { name: st.item.name, sub: 'Telefondan oynatılıyor' };
     if (st.item.kind === 'live' && ctx && ctx.items.length > 1) return { name: st.item.name, sub: 'Kanal ' + channelNumber(st.item, ctx.index) };
+    if (st.item.audio) return { name: st.item.name, sub: [st.item.artist, st.item.album].filter(Boolean).join(' · ') }; // müzik: sanatçı · albüm (etiketten)
     return { name: st.item.name, sub: '' };
   }
 
@@ -418,6 +419,7 @@ export function createPlayerUI({ engine, player, env }) {
   }
 
   let shelfSig = '';
+  let shelfRev = 0; // müzik kuyruğunda sonradan gelen kapakların sürümü (ctx.cover.rev)
   let shelfSeason = null; // listede gösterilen sezon (kullanıcı seçer; oynayan bölümün sezonu değişince ona geçer)
   let shelfCurSeason = null;
   function renderVodShelf(st) {
@@ -447,6 +449,16 @@ export function createPlayerUI({ engine, player, env }) {
     const seasonBtn = q('#pl-season');
     seasonBtn.hidden = shown == null;
     if (shown != null) seasonBtn.innerHTML = 'Sezon ' + esc(shown) + icon('down');
+    // Müzik kuyruğunda kapaklar sonradan yüklenir: liste yeniden çizilmeden (kaydırma konumu bozulmadan) kartlara eklenir.
+    const rev = ctx.cover ? ctx.cover.rev : 0;
+    if (rev !== shelfRev) {
+      shelfRev = rev;
+      row.querySelectorAll('.pl-vod-card[data-vod-index]').forEach((card) => {
+        const it = items[Number(card.dataset.vodIndex)];
+        const th = card.querySelector('.pl-vod-thumb');
+        if (it && it.logo && th && !th.querySelector('img')) th.innerHTML = '<img src="' + esc(it.logo) + '" alt="" loading="lazy">';
+      });
+    }
     const sig = (isSeries ? 's' : 'm') + '|' + currentId + '|' + shown + '|' + items.map((x) => x.id).join(',');
     if (sig === shelfSig) return;
     shelfSig = sig;
@@ -888,6 +900,7 @@ export function createPlayerUI({ engine, player, env }) {
     const key = st.item.id + '|' + (st.item.logo || '');
     if (musicArtFor === key) return;
     musicArtFor = key;
+    q('#pl-info-name').parentElement.classList.remove('open'); // yeni şarkıda başlık yeniden kısaltılır
     box.style.setProperty('--mh', String(hueOf(st.item.name)));
     for (const id of ['#pm-img', '#pm-bgimg']) {
       const im = q(id);
@@ -1648,6 +1661,10 @@ export function createPlayerUI({ engine, player, env }) {
     render(st);
   });
   q('#pl-info-fav').addEventListener('click', () => q('#pl-fav').click());
+  // Müzik çalarda uzun şarkı adı kısaltılır; başlığa dokununca tamamı görünür, tekrar dokununca kısalır.
+  q('#pl-info-name').addEventListener('click', () => {
+    if (musicNow) q('#pl-info-name').parentElement.classList.toggle('open');
+  });
   q('#pl-epg').addEventListener('click', () => env.onEpgSheet(player.state().item));
   q('#pl-epg-remind').addEventListener('click', () => {
     const st = player.state();

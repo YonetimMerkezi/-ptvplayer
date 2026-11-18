@@ -4,6 +4,7 @@ import {
   kindOfName, buildIndex, listDir, crumbs, findSubtitle, searchIndex, recentAdded, playlistOf,
   lockKey, lockedBy, toggleLock, fmtSize, normalizeDavUrl, normalizeSmbHost, davRow, upnpRow, smbRow, sortRows, findSiblingSub,
 } from '../www/js/local-library.js';
+import * as L from '../www/js/local-library.js';
 
 const rows = [
   { uri: 'u/1', name: 'Film A.mkv', kind: 'video', dir: 'Filmler', mod: 300 },
@@ -126,3 +127,60 @@ test('findSiblingSub: ağ klasöründe videonun altyazısı', () => {
   assert.equal(findSiblingSub([v, s], v).name, 'Film.srt');
   assert.equal(findSiblingSub([v], v), null);
 });
+
+test('oynatma listesi dosyaları (m3u, pls) şarkı sayılmaz; MIME audio/x-mpegurl olsa da', () => {
+  assert.equal(L.kindOfName('_migrated_.m3u', 'audio/x-mpegurl'), '');
+  assert.equal(L.kindOfName('liste.M3U8', ''), '');
+  assert.equal(L.kindOfName('liste.pls', 'audio/x-scpls'), '');
+  assert.equal(L.kindOfName('adsiz', 'audio/x-mpegurl'), '');
+  assert.equal(L.kindOfName('sarki.mp3', 'audio/mpeg'), 'audio');
+  // yerel tarama kind=audio dese bile dizine girmez (eski önbellekteki kayıtlar da elenir)
+  const idx = L.buildIndex([
+    { uri: 'content://x/1', name: '_migrated_.m3u', kind: 'audio', mime: 'audio/x-mpegurl' },
+    { uri: 'content://x/2', name: 'Sarki.mp3', kind: 'audio', mime: 'audio/mpeg' },
+  ], 'r1');
+  assert.deepEqual(idx.map((f) => f.name), ['Sarki.mp3']);
+});
+
+test('etiket: kayıt, imza ve dosya satırına işleme; başlık yoksa dosya adı kalır', () => {
+  const [a, b] = L.buildIndex([
+    { uri: 'content://x/1', name: 'Track01.mp3', kind: 'audio', size: 10, mod: 5 },
+    { uri: 'content://x/2', name: 'Eski Sarki.mp3', kind: 'audio', size: 20, mod: 6 },
+  ], 'r1');
+  const cache = new Map();
+  assert.equal(L.needsTag(a, cache), true);
+  const e = L.tagEntry({ title: '  Gül  Ağacı ', artist: 'Ezginin Günlüğü', album: 'Vurulduk', track: '3/12', year: '1988-01-01', dur: '212345' }, a);
+  assert.deepEqual(e, { s: '10:5', t: 'Gül Ağacı', a: 'Ezginin Günlüğü', al: 'Vurulduk', n: 3, y: 1988, d: 212345 });
+  cache.set(a.uri, e);
+  assert.equal(L.needsTag(a, cache), false);
+  assert.equal(L.needsTag({ ...a, mod: 6 }, cache), true, 'dosya değişince yeniden okunur');
+  L.applyTag(a, e);
+  assert.deepEqual([a.title, a.artist, a.album, a.track, a.dur], ['Gül Ağacı', 'Ezginin Günlüğü', 'Vurulduk', 3, 212345]);
+  assert.deepEqual(L.searchIndex([a], 'ezginin vurulduk').map((f) => f.id), [a.id], 'arama sanatçı ve albümü de bulur');
+  L.applyTag(b, L.tagEntry({}, b)); // etiketsiz dosya: boş kayıt, ad dosya adından
+  assert.deepEqual([b.title, b.artist, b.album], ['Eski Sarki', '', '']);
+  assert.equal(L.needsTag(b, new Map([[b.uri, L.tagEntry(null, b)]])), false, 'okunamayan dosya yeniden denenmez');
+});
+
+test('müzik grupları: sanatçı ve albüm, sıra, bilinmeyenler sonda', () => {
+  const rows = L.buildIndex([
+    { uri: 'u/1', name: 'a.mp3', kind: 'audio' }, { uri: 'u/2', name: 'b.mp3', kind: 'audio' },
+    { uri: 'u/3', name: 'c.mp3', kind: 'audio' }, { uri: 'u/4', name: 'd.mp3', kind: 'audio' },
+    { uri: 'u/5', name: 'v.mp4', kind: 'video' },
+  ], 'r');
+  const tag = (f, t, a, al, n) => L.applyTag(f, L.tagEntry({ title: t, artist: a, album: al, track: n }, f));
+  tag(rows[0], 'İkinci', 'Zeki Müren', 'Albüm B', '2');
+  tag(rows[1], 'Birinci', 'Zeki Müren', 'Albüm B', '1');
+  tag(rows[2], 'Üçüncü', 'Barış Manço', 'Albüm A', '1');
+  const songs = L.songsOf(rows);
+  assert.equal(songs.length, 4, 'video şarkı değil');
+  const artists = L.groupSongs(songs, 'artist');
+  assert.deepEqual(artists.map((g) => [g.name, g.rows.length]), [['Barış Manço', 1], ['Zeki Müren', 2], [L.UNKNOWN_ARTIST, 1]]);
+  const albums = L.groupSongs(songs, 'album');
+  assert.deepEqual(albums.map((g) => g.name), ['Albüm A', 'Albüm B', L.UNKNOWN_ALBUM]);
+  assert.deepEqual(albums[1].rows.map((r) => r.title), ['Birinci', 'İkinci'], 'albüm parça sırasına göre');
+  assert.equal(albums[1].artist, 'Zeki Müren');
+  assert.deepEqual(L.sortSongs(songs).map((r) => r.title), ['Birinci', 'd', 'İkinci', 'Üçüncü'], 'Türkçe sıralama');
+  assert.deepEqual(L.rowsByIds([rows[2].id, 'yok', rows[0].id], songs).map((r) => r.title), ['Üçüncü', 'İkinci']);
+});
+

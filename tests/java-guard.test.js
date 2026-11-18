@@ -673,3 +673,13 @@ test('Google Play abonelikleri: Billing yalnız Play sürümünde, doğrudan APK
   assert.match(app, /setBillingReady\(isPlay\(\)\)/, 'üyelik kilitleri yalnız Play sürümünde açılır');
 });
 
+
+test('müzik etiketleri: köprü, eklenti ve yerel sınıf birlikte; oynatma listeleri şarkı sayılmaz', () => {
+  const kok = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const lib = readFileSync(join(kok, 'android/app/src/main/java/com/koruk/iptv/MediaLibrary.java'), 'utf8');
+  assert.match(kaynak, /public void libTags\(/, 'eklenti: libTags');
+  assert.match(readFileSync(join(kok, 'www/js/bridge.js'), 'utf8'), /libTags: call\('libTags'\)/, 'köprü: libTags');
+  assert.match(lib, /static JSONObject tags\(Context c, Uri uri\)/, 'etiket okuyucu');
+  assert.match(lib, /getEmbeddedPicture\(\)/, 'gömülü kapak');
+  assert.match(lib, /m3u8\?\|pls/, 'yerel taramada oynatma listeleri elenir');
+});

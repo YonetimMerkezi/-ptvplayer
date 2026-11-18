@@ -7,15 +7,20 @@ const VIDEO = /\.(mp4|m4v|mkv|webm|avi|mov|wmv|flv|ts|m2ts|3gp|mpg|mpeg)$/i;
 const AUDIO = /\.(mp3|m4a|aac|flac|ogg|opus|wav|wma)$/i;
 const IMAGE = /\.(jpe?g|png|gif|webp|bmp|heic)$/i;
 const SUB = /\.(srt|vtt)$/i;
+const LIST = /\.(m3u8?|pls|cue|xspf|asx)$/i; // oynatma listesi dosyaları şarkı değildir (MIME "audio/x-mpegurl" olsa bile)
+const LIST_MIME = /mpegurl|scpls|xspf|x-ms-asx/;
+export const isListName = (name) => LIST.test(String(name || ''));
 
 // Dosya türü: video | audio | image | sub | '' (ilgisiz). Uzantı öncelikli, yoksa MIME.
 export function kindOfName(name, mime = '') {
   const n = String(name || '');
   if (SUB.test(n)) return 'sub';
+  if (LIST.test(n)) return '';
   if (VIDEO.test(n)) return 'video';
   if (AUDIO.test(n)) return 'audio';
   if (IMAGE.test(n)) return 'image';
   const m = String(mime || '').toLowerCase();
+  if (LIST_MIME.test(m)) return '';
   if (m.startsWith('video/')) return 'video';
   if (m.startsWith('audio/')) return 'audio';
   if (m.startsWith('image/')) return 'image';
@@ -30,7 +35,7 @@ export function buildIndex(rows, rootId) {
   const out = [];
   for (const r of Array.isArray(rows) ? rows : []) {
     if (!r || !r.uri || !r.name) continue;
-    const kind = r.kind || kindOfName(r.name, r.mime);
+    const kind = isListName(r.name) || LIST_MIME.test(String(r.mime || '').toLowerCase()) ? '' : r.kind || kindOfName(r.name, r.mime);
     if (!kind) continue;
     out.push({
       id: localId(r.uri),
@@ -221,4 +226,78 @@ export function findSiblingSub(rows, video) {
   const fake = rows.filter((r) => !r.dir).map((r) => ({ ...r, dir: '', rootId: 'r', uri: r.url || r.path || '', key: fold(cleanName(r.name)) }));
   const v = fake.find((r) => r.id === video.id);
   return v ? findSubtitle(fake, v) : null;
+}
+
+// ---- müzik: etiketler (başlık, sanatçı, albüm) ve gruplar ----
+export const UNKNOWN_ARTIST = 'Bilinmeyen sanatçı';
+export const UNKNOWN_ALBUM = 'Bilinmeyen albüm';
+const txt = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+
+// Etiket önbelleği dosya değişince geçersiz olsun: boyut ve değiştirilme zamanı imzası.
+export const tagSig = (f) => `${f.size || 0}:${f.mod || 0}`;
+export const needsTag = (f, cache) => {
+  if (f.kind !== 'audio' || !f.uri) return false;
+  const e = cache.get(f.uri);
+  return !(e && e.s === tagSig(f));
+};
+
+// Yerel köprünün ham etiketinden önbellek kaydı: { s, t, a, al, n, y, d }. Okunamayan dosya boş kayıt alır (yeniden denenmez).
+export function tagEntry(raw, f) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const n = parseInt(String(r.track || '').split('/')[0], 10);
+  const y = parseInt(String(r.year || '').slice(0, 4), 10);
+  return {
+    s: tagSig(f),
+    t: txt(r.title),
+    a: txt(r.artist),
+    al: txt(r.album),
+    n: n > 0 && n < 1000 ? n : 0,
+    y: y > 1000 && y < 3000 ? y : 0,
+    d: Number(r.dur) > 0 ? Math.round(Number(r.dur)) : 0,
+  };
+}
+
+// Etiketi dosya satırına işler: görünen ad etiket başlığıdır (yoksa dosya adı); arama sanatçı ve albümü de bulur.
+export function applyTag(f, e) {
+  if (!f || f.kind !== 'audio' || !e) return f;
+  f.title = e.t || cleanName(f.name);
+  f.artist = e.a || '';
+  f.album = e.al || '';
+  f.track = e.n || 0;
+  f.year = e.y || 0;
+  f.dur = e.d || 0;
+  f.key = fold([cleanName(f.name), f.title, f.artist, f.album].join(' '));
+  return f;
+}
+
+export const songsOf = (index, allow = null) => index.filter((f) => f.kind === 'audio' && (!allow || allow(f)));
+export const sortSongs = (rows) => [...rows].sort((a, b) => naturalCompare(a.title || '', b.title || ''));
+
+// Sanatçı ya da albüm grupları: [{ name, rows, artist, sample }]. Etiketsizler en sonda tek grupta toplanır.
+export function groupSongs(rows, field) {
+  const unknown = field === 'artist' ? UNKNOWN_ARTIST : UNKNOWN_ALBUM;
+  const map = new Map();
+  for (const f of rows) {
+    const name = f[field] || unknown;
+    let g = map.get(name);
+    if (!g) map.set(name, (g = { name, rows: [], artist: '', sample: null }));
+    g.rows.push(f);
+  }
+  const byTrack = (a, b) => (a.track || 1e6) - (b.track || 1e6) || naturalCompare(a.title || '', b.title || '');
+  const out = [...map.values()];
+  for (const g of out) {
+    g.rows.sort(field === 'album' ? byTrack : (a, b) => naturalCompare(a.title || '', b.title || ''));
+    g.sample = g.rows.find((r) => r.uri) || g.rows[0];
+    if (field === 'album') {
+      const names = new Set(g.rows.map((r) => r.artist).filter(Boolean));
+      g.artist = names.size === 1 ? [...names][0] : names.size > 1 ? 'Çeşitli sanatçılar' : '';
+    }
+  }
+  return out.sort((a, b) => (a.name === unknown) - (b.name === unknown) || naturalCompare(a.name, b.name));
+}
+
+// Kimlik listesinden satırlar (listedeki sırayla); dizinde olmayanlar atlanır.
+export function rowsByIds(ids, rows) {
+  const by = new Map(rows.map((r) => [r.id, r]));
+  return ids.map((id) => by.get(id)).filter(Boolean);
 }

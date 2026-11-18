@@ -42,6 +42,8 @@ final class MediaLibrary {
         String m = mime == null ? "" : mime.toLowerCase(Locale.ROOT);
         String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
         if (n.endsWith(".srt") || n.endsWith(".vtt")) return "sub";
+        // Oynatma listeleri (m3u, pls…) MIME türü "audio/x-mpegurl" olsa bile şarkı değildir.
+        if (n.matches(".*\\.(m3u8?|pls|cue|xspf|asx)$") || m.contains("mpegurl") || m.contains("scpls") || m.contains("xspf")) return null;
         if (m.startsWith("video/")) return "video";
         if (m.startsWith("audio/")) return "audio";
         if (m.startsWith("image/")) return "image";
@@ -207,6 +209,7 @@ final class MediaLibrary {
                 // sağlayıcı küçük resim vermiyor: kare alınacak
             }
             if (b == null && "video".equals(kind)) b = frameOf(c, uri, px);
+            if (b == null && "audio".equals(kind)) b = embeddedArt(c, uri, px);
             return b == null ? null : dataUrl(b, 78);
         } catch (Throwable e) {
             return null;
@@ -232,6 +235,70 @@ final class MediaLibrary {
                 // serbest bırakma hatası önemsiz
             }
         }
+    }
+
+    /** Ses dosyasının içine gömülü kapak resmi (ID3/MP4 etiketi); yoksa null. */
+    private static Bitmap embeddedArt(Context c, Uri uri, int px) {
+        MediaMetadataRetriever r = new MediaMetadataRetriever();
+        try {
+            r.setDataSource(c, uri);
+            byte[] raw = r.getEmbeddedPicture();
+            if (raw == null || raw.length == 0) return null;
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(raw, 0, raw.length, o);
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+            int sample = 1;
+            while (Math.max(o.outWidth, o.outHeight) / (sample * 2) >= px) sample *= 2;
+            BitmapFactory.Options d = new BitmapFactory.Options();
+            d.inSampleSize = sample;
+            Bitmap bmp = BitmapFactory.decodeByteArray(raw, 0, raw.length, d);
+            if (bmp == null) return null;
+            int big = Math.max(bmp.getWidth(), bmp.getHeight());
+            if (big > px) {
+                float k = (float) px / big;
+                bmp = Bitmap.createScaledBitmap(bmp, Math.max(1, Math.round(bmp.getWidth() * k)), Math.max(1, Math.round(bmp.getHeight() * k)), true);
+            }
+            return bmp;
+        } catch (Throwable e) {
+            return null;
+        } finally {
+            try {
+                r.release();
+            } catch (Exception ignored) {
+                // serbest bırakma hatası önemsiz
+            }
+        }
+    }
+
+    private static String clean(String v) {
+        return v == null ? "" : v.replaceAll("\\s+", " ").trim();
+    }
+
+    /** Ses dosyası etiketleri: {title, artist, album, track, year, dur(ms)}. Okunamayan alanlar boş kalır; hata atmaz. */
+    static JSONObject tags(Context c, Uri uri) {
+        JSONObject o = new JSONObject();
+        MediaMetadataRetriever r = new MediaMetadataRetriever();
+        try {
+            r.setDataSource(c, uri);
+            String artist = clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST));
+            if (artist.isEmpty()) artist = clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST));
+            o.put("title", clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)));
+            o.put("artist", artist);
+            o.put("album", clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)));
+            o.put("track", clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)));
+            o.put("year", clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR)));
+            o.put("dur", clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)));
+        } catch (Throwable ignored) {
+            // etiket okunamadı: boş (ya da yarım) kayıt dönülür, uygulama dosya adını gösterir
+        } finally {
+            try {
+                r.release();
+            } catch (Exception ignored) {
+                // serbest bırakma hatası önemsiz
+            }
+        }
+        return o;
     }
 
     /** Galeri için büyük fotoğraf (en uzun kenar max piksel). */

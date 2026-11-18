@@ -81,6 +81,7 @@ export function nativePlugin(name, win = globalThis.window) {
     libAddFolder: call('libAddFolder'),
     libScan: call('libScan'),
     libThumb: call('libThumb'),
+    libTags: call('libTags'),
     libImage: call('libImage'),
     libPrepareSub: call('libPrepareSub'),
     netDavList: call('netDavList'),

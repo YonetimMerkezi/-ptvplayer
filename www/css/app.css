@@ -1491,7 +1491,8 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
   #player.vod-portrait.music .big-btn.pm-btn .ic { width: 24px; height: 24px; }
   #player.vod-portrait.music .big-btn.pm-btn.on { color: #0a0e14; background: var(--gold); } /* açık: altın dolgu, koyu simge */
   #player.vod-portrait.music #pl-below { background: none; }
-  #player.vod-portrait.music .pl-info-text b { font-size: 1.25rem; }
+  #player.vod-portrait.music .pl-info-text b { font-size: 1.25rem; -webkit-line-clamp: 3; cursor: pointer; }
+  #player.vod-portrait.music .pl-info-text.open b { -webkit-line-clamp: unset; } /* başlığa dokununca uzun adın tamamı görünür */
   #player.vod-portrait.music .pl-vod-card { background: #ffffff14; border-color: #ffffff24; }
   #player.locked #pl-info { display: none; }
   .pl-info { flex: none; padding: 10px 12px 2px; }
@@ -1608,7 +1609,24 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 .lb-kind .ic { width: 14px; height: 14px; }
 .lb-folder .lb-th { background: var(--accent-soft); }
 .lb-folder .lb-kind { right: auto; left: 6px; }
-.lb-tile:focus-visible, .lb-rbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lb-tile:focus-visible, .lb-rbtn:focus-visible, .lb-song:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Müzik: sekmeler ve şarkı listesi */
+.lb-tabs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.lb-tabs::-webkit-scrollbar { display: none; }
+.lb-tabs .btn { flex: none; }
+.lb-songs { display: flex; flex-direction: column; }
+.lb-song { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 8px 4px; text-align: left; color: var(--text); border-radius: 10px; border-bottom: 1px solid var(--line); }
+.lb-sth { flex: none; width: 48px; height: 48px; aspect-ratio: 1; border-radius: 8px; }
+.lb-sth .lb-kind { inset: 0; right: auto; bottom: auto; width: 100%; height: 100%; border-radius: 0; background: none; color: var(--muted); }
+.lb-sth .lb-kind .ic { width: 22px; height: 22px; }
+.lb-sth img { z-index: 2; }
+.lb-stx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lb-stx b, .lb-stx small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-stx b { font-size: 0.9375rem; font-weight: 600; }
+.lb-stx small { color: var(--muted); font-size: 0.75rem; }
+.lb-dur { flex: none; font-style: normal; color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.lb-go { flex: none; color: var(--muted); display: grid; place-items: center; }
+.lb-go .ic { width: 18px; height: 18px; }
 .lb-bar { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .lb-crumb { color: var(--muted); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-back { align-self: flex-start; }
