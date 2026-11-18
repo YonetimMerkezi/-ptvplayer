@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { initialsOf, hueOfName, trailerHtml, wireTrailer, peopleHtml, filmCardHtml, actorHtml, actorLoadingHtml, titleInfoHtml } from '../www/js/title-ui.js';
+import { initialsOf, hueOfName, trailerHtml, wireTrailer, peopleHtml, filmCardHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from '../www/js/title-ui.js';
 
 const kaynak = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
 
@@ -156,4 +156,35 @@ test('bağlantı: oyuncu sayfası sınıfı çok renkli tema listesinde; sayfa k
   assert.doesNotMatch(css, /\.tr-play \{[^}]*color: #fff/, 'dolgu üstü yazı koyu kalır');
   const ui = kaynak('www/js/title-ui.js');
   assert.match(ui, /if \(!host\.isConnected\) return dispose\(\)/);
+});
+
+test('vizyondaki filmler: satır 12 kartla sınırlı, listedekilere "Listende" etiketi, "Tümünü gör" düğmesi; boşsa satır yok', () => {
+  const films = Array.from({ length: 20 }, (_, i) => ({ imdbId: `tt${i + 1}`, type: 'movie', name: `Film <${i}>`, year: 2026, poster: `https://p/${i}.jpg` }));
+  const h = releasesRowHtml(films, (f) => f.imdbId === 'tt2');
+  assert.equal((h.match(/class="card nw"/g) || []).length, 12);
+  assert.equal((h.match(/nw-tag/g) || []).length, 1);
+  assert.match(h, /data-nid="tt2"[^>]*>.*?Listende<\/span>/);
+  assert.match(h, /data-go="new">Tümünü gör/);
+  assert.match(h, /Film &lt;0&gt;/, 'ad kaçışlı');
+  assert.equal(releasesRowHtml([]), '');
+  assert.equal(releasesRowHtml(null), '');
+});
+
+test('vizyondaki filmler: tüm liste kartları Oynat/Listende yok etiketli; boşsa bilgi', () => {
+  const h = releasesPageHtml([{ imdbId: 'tt1', type: 'movie', name: 'A', year: 2026, poster: '', inLib: true }, { imdbId: 'tt2', type: 'movie', name: 'B', year: 2026, poster: '', inLib: false }]);
+  assert.match(h, /class="ac-card k0 lib" data-film="tt1"/);
+  assert.match(h, /class="ac-card k1 off" data-film="tt2"/);
+  assert.match(releasesPageHtml([]), /bulunamadı/);
+});
+
+test('bağlantı: vizyondaki filmler ana sayfada, çocuk modunda yok; kart bilgi ekranını açar; ekran kaynağa bağlı değil', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /<div id="home-new">\$\{kidActive\(\) \|\| !newHome \? '' : releasesRowHtml/);
+  assert.match(app, /ensureHomeNew\(\);/);
+  assert.match(app, /if \(go === 'new'\) return openNewReleases\(\)/);
+  assert.match(app, /function openNewReleases\(\) \{\n\s+if \(kidActive\(\)\) return;/);
+  assert.match(app, /const nc = e\.target\.closest\('\[data-nid\]'\)/);
+  assert.match(app, /if \(film\) return openTitleInfo\(film\)/);
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /\.nw-tag \{[^}]*color: var\(--accent-ink, #0a1118\)/, 'dolgu üstü yazı koyu');
 });

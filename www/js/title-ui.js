@@ -120,6 +120,20 @@ export function actorHtml(name, role, films) {
 
 export const actorLoadingHtml = (name) => `<div class="ac"><div class="ac-head"><span class="pp-av lg" style="--h:${hueOfName(name)}">${esc(initialsOf(name))}</span><div><h1 class="dt-t">${esc(name)}</h1></div></div><div class="empty"><div class="spinner" style="border-color:#fff3;border-top-color:var(--accent)"></div></div></div>`;
 
+// ---- vizyondaki filmler: ana sayfa satırı ve tüm liste ----
+// films: [{ imdbId, type, name, year, poster }]; inLibOf(film) → listede mi
+export function releasesRowHtml(films, inLibOf = () => false) {
+  if (!films || !films.length) return '';
+  const cards = films.slice(0, 12).map((f) => `<div class="card nw" role="button" tabindex="0" data-nid="${esc(f.imdbId)}" aria-label="${esc(f.name)}"><div class="poster"><div class="ph">${esc(initialsOf(f.name))}</div><img src="${esc(f.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">${inLibOf(f) ? '<span class="nw-tag">Listende</span>' : ''}</div><div class="cap">${esc(f.name)}</div></div>`).join('');
+  return `<section class="home-row nw-row"><div class="home-row-h"><b>🎬 Vizyondaki filmler</b><button data-go="new">Tümünü gör</button></div><div class="home-row-s">${cards}</div></section>`;
+}
+
+// films: [{ ..., inLib }]
+export function releasesPageHtml(films) {
+  if (!films || !films.length) return '<div class="ac"><div class="empty"><p>Şu an gösterilecek film bulunamadı.</p></div></div>';
+  return `<div class="ac"><p class="ac-note">Yeni çıkan filmler. Listendekiler “Oynat”; olmayanlara dokununca fragman ve bilgi açılır.</p><div class="ac-grid">${films.map((f, i) => filmCardHtml(f, i)).join('')}</div></div>`;
+}
+
 // ---- listede olmayan yapım için bilgi ekranı (Cinemeta ayrıntısından) ----
 export function titleInfoHtml(film, detail, loading = false) {
   const d = detail || {};

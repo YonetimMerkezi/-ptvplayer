@@ -73,8 +73,8 @@ import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
-import { loadDetail, peopleOf, searchPerson, buildTitleIndex, findInLibrary } from './cinemeta.js';
-import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml } from './title-ui.js';
+import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary } from './cinemeta.js';
+import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, homeRecent, statusText } from './home-extras.js';
@@ -2172,6 +2172,44 @@ function openActor(name, role = '') {
   });
 }
 
+// Vizyondaki filmler (Cinemeta "yeni çıkanlar"): ana sayfa satırı oturumda bir kez doldurulur, 6 saat saklanır; kart yapımın ekranını açar (listedeyse Oynat, değilse fragmanlı bilgi). Çocuk modunda yok.
+let newHome = null;
+let newBusy = false;
+function fillHomeNew() {
+  const el = $('#home-new');
+  if (el) el.innerHTML = kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f));
+}
+function ensureHomeNew() {
+  if (kidActive() || newBusy) return;
+  if (newHome) return fillHomeNew();
+  newBusy = true;
+  loadNewReleases({ net, cache: store.cache }).then((r) => { newHome = r; }, () => {}).finally(() => { newBusy = false; fillHomeNew(); });
+}
+function openNewReleases() {
+  if (kidActive()) return;
+  return openPage({
+    cls: 'dt-pg ac-pg',
+    title: 'Vizyondaki filmler',
+    html: actorLoadingHtml('Vizyondaki filmler'),
+    mount: async (body) => {
+      try {
+        if (!newHome) newHome = await loadNewReleases({ net, cache: store.cache });
+      } catch {
+        if (body.isConnected) body.innerHTML = emptyHtml('Filmler alınamadı', 'İnternet bağlantınızı kontrol edin.');
+        return;
+      }
+      if (!body.isConnected) return;
+      const films = newHome.films.map((f) => ({ ...f, inLib: !!inLibrary(f) }));
+      body.innerHTML = releasesPageHtml(films);
+      body.addEventListener('click', (e) => {
+        const c = e.target.closest('[data-film]');
+        const film = c && films.find((f) => f.imdbId === c.dataset.film);
+        if (film) openTitleInfo(film);
+      });
+    },
+  });
+}
+
 // Bir yapımın ekranı: listedeyse kendi film/dizi ekranı (Oynat), değilse "Listende yok" bilgi ekranı (önce fragman).
 function openTitleInfo(film) {
   const own = inLibrary(film);
@@ -3116,11 +3154,13 @@ function renderHome(v) {
     </div>
     ${rows}
     <div id="home-picks">${homePicksHtml()}</div>
+    <div id="home-new">${kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f))}</div>
     <div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
   ensureHomeRadio();
+  ensureHomeNew();
   v.onclick = (e) => {
     if (e.target.closest('[data-refresh]')) {
       e.stopPropagation();
@@ -3139,6 +3179,11 @@ function renderHome(v) {
     if (pk) {
       repickHome(pk.dataset.pick || homePick.genre); // seçili çipe yeniden dokunmak ya da "Başka öner" farklı filmler getirir
       return fillHomePicks();
+    }
+    const nc = e.target.closest('[data-nid]');
+    if (nc) {
+      const film = newHome && newHome.films.find((f) => f.imdbId === nc.dataset.nid);
+      if (film) return openTitleInfo(film);
     }
     const hc = e.target.closest('[data-hid]');
     if (hc) {
@@ -3178,6 +3223,7 @@ function goTo(go) {
   if (go === 'sport') return openSportsPage();
   if (go === 'today') return openToday();
   if (go === 'radio') return openRadio();
+  if (go === 'new') return openNewReleases();
   setTab(go);
 }
 

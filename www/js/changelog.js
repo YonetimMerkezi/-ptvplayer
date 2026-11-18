@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 138,
+    title: 'Vizyondaki filmler',
+    items: [
+      'Ana sayfada “Vizyondaki filmler” satırı: yeni çıkan filmlerin afişleri (internetten, 6 saat saklanır); “Tümünü gör” ile hepsi listelenir',
+      'Kart listendeki bir filmse kendi ekranı açılır (“Listende” etiketi, Oynat); listende yoksa “Listenizde yok” bilgi ekranı ve fragman açılır, oyuncu kartları da çalışır',
+      'Çocuk modunda satır gösterilmez',
+    ],
+  },
+  {
     id: 137,
     title: 'Fragman, oyuncular ve oyuncu sayfası',
     items: [

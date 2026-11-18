@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, MISS_TTL, DETAIL_TTL, CINEMETA } from '../www/js/cinemeta.js';
+import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
 
 const FORREST = { id: 'tt0109830', imdb_id: 'tt0109830', name: 'Forrest Gump', year: '1994', runtime: '142 min', genres: ['Drama', 'Romance'], description: 'Özet', poster: 'https://p/x.jpg', trailers: [{ source: '0jKUpBmYO1Q', type: 'Trailer' }, { source: 'm-btyJIYLyI', type: 'Trailer' }, { source: 'BADID', type: 'Trailer' }, { source: 'abcdefghijk', type: 'Clip' }], trailerStreams: [{ title: 'x', ytId: '0jKUpBmYO1Q' }, { title: 'y', ytId: 'Mj9IA9tTfio' }], cast: ['Tom Hanks', 'Robin Wright', 'Gary Sinise'], director: ['Robert Zemeckis'], links: [{ category: 'Cast', name: 'Sally Field' }, { category: 'Cast', name: 'tom hanks' }, { category: 'Genres', name: 'Drama' }] };
 const mem = () => { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) }; };
@@ -128,4 +128,51 @@ test('YouTube adresleri: gömme sessiz/otomatik başlar, köken yalnız http(s) 
   assert.equal(new URL(trailerEmbedUrl('0jKUpBmYO1Q', { muted: false })).searchParams.get('mute'), '0');
   assert.equal(trailerWatchUrl('0jKUpBmYO1Q'), 'https://www.youtube.com/watch?v=0jKUpBmYO1Q');
   assert.equal(trailerThumbUrl('0jKUpBmYO1Q'), 'https://i.ytimg.com/vi/0jKUpBmYO1Q/hqdefault.jpg');
+});
+
+const meta = (n, o = {}) => ({ id: `tt${1000 + n}`, imdb_id: `tt${1000 + n}`, type: 'movie', name: `Film ${n}`, releaseInfo: '2026', poster: `https://metahub.space/poster/${n}.jpg`, ...o });
+
+test('yeni çıkanlar: afişsiz, adsız, IMDb dışı ve yinelenen kayıtlar elenir; sıra korunur; en çok NEW_MAX', () => {
+  const json = { metas: [meta(1), meta(2, { poster: '' }), meta(3, { name: '' }), meta(1), { id: 'kitsu:5', name: 'X', poster: 'https://p/x' }, meta(4, { poster: 'http://p/düz-http' }), meta(5, { releaseInfo: '2025' })] };
+  const out = parseNewCatalog(json);
+  assert.deepEqual(out.map((f) => f.imdbId), ['tt1001', 'tt1005']);
+  assert.deepEqual(out[0], { imdbId: 'tt1001', type: 'movie', name: 'Film 1', year: 2026, poster: 'https://metahub.space/poster/1.jpg' });
+  assert.equal(parseNewCatalog({ metas: Array.from({ length: 80 }, (_, i) => meta(i)) }).length, NEW_MAX);
+  assert.deepEqual(parseNewCatalog(null), []);
+  assert.deepEqual(parseNewCatalog({ metas: 'x' }), []);
+});
+
+test('yeni çıkanlar yükleme: yıl kataloğu, 6 saat önbellek, ağ hatasında eski önbellek, yoksa hata; boş liste saklanmaz', async () => {
+  const cache = mem();
+  const urls = [];
+  const many = { metas: Array.from({ length: NEW_MIN + 3 }, (_, i) => meta(i)) };
+  const net = { json: async (u) => (urls.push(u), many) };
+  const date = new Date(2026, 5, 15);
+  const a = await loadNewReleases({ net, cache, now: 1000, date });
+  assert.equal(a.films.length, NEW_MIN + 3);
+  assert.deepEqual(urls, [`${CINEMETA}/catalog/movie/year/genre=2026.json`]);
+  await loadNewReleases({ net, cache, now: 2000, date });
+  assert.equal(urls.length, 1, 'önbellekten');
+  const down = { json: async () => { throw new Error('ağ yok'); } };
+  const stale = await loadNewReleases({ net: down, cache, now: 1000 + NEW_TTL + 1, date });
+  assert.equal(stale.stale, true);
+  assert.equal(stale.films.length, NEW_MIN + 3);
+  await assert.rejects(loadNewReleases({ net: down, cache: mem(), now: 5, date }), /ağ yok/);
+  const empty = { json: async () => ({ metas: [] }) };
+  const c2 = mem();
+  await assert.rejects(loadNewReleases({ net: empty, cache: c2, now: 5, date }), /boş/);
+  assert.equal(c2.m.size, 0);
+});
+
+test('yeni çıkanlar yükleme: yıl başında az film varsa önceki yıl da eklenir (yinelenmeden), önceki yıl hatası yoksayılır', async () => {
+  const urls = [];
+  const net = { json: async (u) => (urls.push(u), { metas: u.includes('genre=2026') ? [meta(1), meta(2)] : [meta(2), meta(3, { releaseInfo: '2025' })] }) };
+  const r = await loadNewReleases({ net, cache: null, now: 0, date: new Date(2026, 0, 10) });
+  assert.deepEqual(r.films.map((f) => f.imdbId), ['tt1001', 'tt1002', 'tt1003']);
+  assert.equal(urls.length, 2);
+  const flaky = { json: async (u) => { if (u.includes('genre=2025')) throw new Error('x'); return { metas: [meta(1)] }; } };
+  assert.equal((await loadNewReleases({ net: flaky, cache: null, date: new Date(2026, 1, 1) })).films.length, 1);
+  const late = [];
+  await loadNewReleases({ net: { json: async (u) => (late.push(u), { metas: [meta(1)] }) }, cache: null, date: new Date(2026, 8, 1) });
+  assert.equal(late.length, 1, 'yılın ilerleyen aylarında önceki yıl istenmez');
 });

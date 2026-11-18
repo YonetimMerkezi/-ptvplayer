@@ -114,6 +114,50 @@ export async function searchPerson({ net, cache = null, name, now = Date.now() }
   return value;
 }
 
+// ---- yeni çıkanlar (Cinemeta "New" kataloğu: /catalog/movie/year/genre=<yıl>.json) ----
+export const NEW_TTL = 6 * 3600000;
+export const NEW_MAX = 24;
+export const NEW_MIN = 12; // yıl başında bu kadar film yoksa önceki yıl da eklenir
+
+// Katalog → afişi olan filmler (afişsiz kart boş görünür); en çok NEW_MAX, Cinemeta'nın verdiği sırayla
+export function parseNewCatalog(json, type = 'movie') {
+  const seen = new Set();
+  const out = [];
+  for (const m of Array.isArray(json && json.metas) ? json.metas : []) {
+    const id = str(m && (m.imdb_id || m.id));
+    const name = str(m && m.name);
+    const poster = str(m && m.poster);
+    if (!IMDB_ID.test(id) || !name || !/^https:\/\//.test(poster) || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ imdbId: id, type: type === 'series' ? 'series' : 'movie', name, year: yearOf(m.releaseInfo || m.year), poster });
+    if (out.length >= NEW_MAX) break;
+  }
+  return out;
+}
+
+// 6 saat önbellekten; ağ hatasında eski önbellek (varsa) kullanılır, yoksa hata fırlatır.
+export async function loadNewReleases({ net, cache = null, now = Date.now(), date = new Date(now) } = {}) {
+  const year = date.getFullYear();
+  const key = `cinemeta:new:v1:${year}`;
+  const hit = cache ? await cache.get(key).catch(() => null) : null;
+  const ok = hit && Array.isArray(hit.films) && hit.films.length;
+  if (ok && now - Number(hit.at || 0) < NEW_TTL) return { films: hit.films, at: hit.at, stale: false };
+  const get = (y) => net.json(`${CINEMETA}/catalog/movie/year/genre=${y}.json`, { fast: true }).then((j) => parseNewCatalog(j, 'movie'));
+  try {
+    let films = await get(year);
+    if (films.length < NEW_MIN && date.getMonth() < 3) {
+      const prev = await get(year - 1).catch(() => []);
+      films = uniq([...films, ...prev], (f) => f.imdbId).slice(0, NEW_MAX);
+    }
+    if (!films.length) throw new Error('Yeni çıkanlar listesi boş geldi');
+    if (cache) await cache.set(key, { at: now, films }).catch(() => {});
+    return { films, at: now, stale: false };
+  } catch (e) {
+    if (ok) return { films: hit.films, at: hit.at, stale: true };
+    throw e;
+  }
+}
+
 // ---- kullanıcının listesiyle eşleştirme ----
 // Ad dizini: temizlenmiş ad → [{ it, year }]. Liste adları çoğunlukla özgün adla gelir; Türkçe adlı kayıtlar IMDb dizininden (imdbIndex) bulunur.
 export function buildTitleIndex(items) {
