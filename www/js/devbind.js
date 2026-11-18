@@ -5,7 +5,7 @@
 import { PLAY_PRODUCTS } from './billing.js';
 
 // Üyelik sunucusunun adresi (server/README.md). Boşken kural kapalıdır: üyelik yalnız Google Play'e bakar.
-export const BIND_URL = '';
+export const BIND_URL = 'https://iptv-uyelik.karagozyazilim12.workers.dev';
 export const GRACE_DAYS = 7; // sunucuya ulaşılamazsa son başarılı doğrulamadan sonra bu kadar gün üyelik geçerli sayılır
 export const RECHECK_MS = 3600e3; // sorun yokken en çok saatte bir sorulur (taşınan üyelik öteki cihazda en geç bu sürede kapanır)
 export const BLOCKED_RECHECK_MS = 10 * 60e3; // başka cihaza bağlıyken daha sık bakılır (taşıma hemen fark edilsin)

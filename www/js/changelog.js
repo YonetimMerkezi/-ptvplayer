@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 124,
+    title: 'Üyelik artık tek cihazda kullanılır',
+    items: [
+      'Satın alınan üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir',
+      'Yeni cihaza geçince Üyelik penceresindeki “Bu cihazı kullan” düğmesiyle üyeliği taşıyabilirsiniz; önceki cihazda kapanır (ayda en çok 2 taşıma)',
+      'Sunucuya yalnızca aboneliğin geri döndürülemez özeti, cihaz kimliği ve cihaz türü gider; internet yokken 7 gün boyunca üyelik çalışmaya devam eder',
+    ],
+  },
+  {
     id: 123,
     title: 'Kayıtlar dikey ekranda artık gerilmiyor',
     items: [
