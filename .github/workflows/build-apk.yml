@@ -169,7 +169,7 @@ jobs:
           path: android/app/build/outputs/bundle/playRelease/app-play-release.aab
           if-no-files-found: error
 
-      # Telefondan indirmek için: Play paketi (AAB) "play" adlı ön sürüm kaydına da konur (zip'siz, tek dosya). "latest" kaydına dokunmaz:
+      # Telefondan indirmek için: Play paketi (AAB, zip'siz tek dosya) ve mağaza görselleri (play/graphics, play-gorselleri.zip) "play" adlı ön sürüm kaydına da konur. "latest" kaydına dokunmaz:
       # uygulama içi güncelleme yalnız onu okur. Her çalışmada üzerine yazılır; sürüm numarası çalışma numarasıdır (Play her yüklemede artan ister).
       - name: Play paketini yayınla
         if: github.event_name != 'pull_request'
@@ -177,14 +177,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp android/app/build/outputs/bundle/playRelease/app-play-release.aab iptv-play.aab
+          (cd play/graphics && zip -q -0 ../../play-gorselleri.zip ./*)
           TITLE="Google Play paketi 1.0.${{ github.run_number }}"
-          NOTES="Play Console'a yüklenecek paket (AAB). Telefona kurulmaz. Sürüm kodu ${{ github.run_number }} (${GITHUB_SHA::7})."
+          NOTES="Play Console'a yüklenecek paket (AAB). Telefona kurulmaz. Mağaza görselleri play-gorselleri.zip içindedir. Sürüm kodu ${{ github.run_number }} (${GITHUB_SHA::7})."
           RELEASE_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.tag_name == "play") | .id' | head -n 1)"
           if [ -n "$RELEASE_ID" ]; then
             gh api "repos/${GITHUB_REPOSITORY}/releases/$RELEASE_ID" -X PATCH \
               -f name="$TITLE" -f body="$NOTES" -F draft=false -F prerelease=true >/dev/null
-            gh release upload play iptv-play.aab --clobber
+            gh release upload play iptv-play.aab play-gorselleri.zip --clobber
           else
-            gh release create play iptv-play.aab --target "${{ github.sha }}" --prerelease \
+            gh release create play iptv-play.aab play-gorselleri.zip --target "${{ github.sha }}" --prerelease \
               --title "$TITLE" --notes "$NOTES"
           fi
