@@ -94,9 +94,31 @@ export async function openEntry(code, entry, opts = {}) {
 // Cihaz kimliği (12 hex) karşılaştırması için sadeleştirir: "ab12-CD34" → "ab12cd34".
 export const normDevice = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-f0-9]/g, '');
 
+// Hediye üyelik: yöneticinin bir cihaza verdiği Standart/Pro hak. { d: cihaz kimliği (12 hex), t: 'standard' | 'pro', u: bitiş (ms) }.
+// Config herkese açıktır; içinde yalnız rastgele cihaz kimliği, tür ve tarih bulunur (ad/not yönetici kasasında kalır).
+export const GIFT_TIERS = ['standard', 'pro'];
+export function cleanGrants(list) {
+  const seen = new Set();
+  const out = [];
+  for (const g of Array.isArray(list) ? list : []) {
+    const d = normDevice(g && g.d);
+    const u = Number(g && g.u);
+    if (!/^[0-9a-f]{12}$/.test(d) || !GIFT_TIERS.includes(g.t) || !(u > 0) || seen.has(d)) continue;
+    seen.add(d);
+    out.push({ d, t: g.t, u });
+  }
+  return out.slice(0, 500);
+}
 // pt: Pro olarak işaretlenen tema kimlikleri (yönetici paneli); verilmediyse alan yazılmaz, cihazlar varsayılanı kullanır.
-export function buildConfig({ entries = {}, blocked = [], at = Date.now(), pt = null } = {}) {
-  return { v: CONFIG_VERSION, at, blocked: [...new Set(blocked.map(normDevice).filter(Boolean))], entries, ...(Array.isArray(pt) ? { pt: pt.filter((x) => typeof x === 'string').slice(0, 64) } : {}) };
+// gr: hediye üyelikler (cleanGrants).
+export function buildConfig({ entries = {}, blocked = [], at = Date.now(), pt = null, gr = [] } = {}) {
+  return { v: CONFIG_VERSION, at, blocked: [...new Set(blocked.map(normDevice).filter(Boolean))], entries, ...(Array.isArray(pt) ? { pt: pt.filter((x) => typeof x === 'string').slice(0, 64) } : {}), gr: cleanGrants(gr) };
+}
+// Bu cihaz için geçerli hediye üyelik: { tier, until } | null. Cihaz saati geri alınsa bile yayın zamanından geri gidilmez.
+export function giftFor(cfg, deviceId, now = Date.now()) {
+  const d = normDevice(deviceId);
+  const g = d && cfg && Array.isArray(cfg.gr) ? cfg.gr.find((x) => x.d === d) : null;
+  return g && g.u > Math.max(now, (cfg && cfg.at) || 0) ? { tier: g.t, until: g.u } : null;
 }
 // Ağdan gelen config.json’u doğrular; bozuksa null.
 export function parseConfig(j) {
@@ -105,7 +127,7 @@ export function parseConfig(j) {
   for (const [id, e] of Object.entries(j.entries)) {
     if (/^[0-9a-f]{20}$/.test(id) && e && typeof e.s === 'string' && typeof e.i === 'string' && typeof e.c === 'string') entries[id] = { s: e.s, i: e.i, c: e.c, it: e.it };
   }
-  return { at: Number(j.at) > 0 ? Number(j.at) : 0, blocked: (Array.isArray(j.blocked) ? j.blocked : []).map(normDevice).filter(Boolean), entries, pt: Array.isArray(j.pt) ? j.pt.filter((x) => typeof x === 'string').slice(0, 64) : null };
+  return { at: Number(j.at) > 0 ? Number(j.at) : 0, blocked: (Array.isArray(j.blocked) ? j.blocked : []).map(normDevice).filter(Boolean), entries, pt: Array.isArray(j.pt) ? j.pt.filter((x) => typeof x === 'string').slice(0, 64) : null, gr: cleanGrants(j.gr) };
 }
 export async function fetchConfig(net, { bases = CONFIG_BASES, sleep } = {}) {
   let last;

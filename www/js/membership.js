@@ -41,17 +41,23 @@ export const normalizePreview = (v) => (PREVIEWS.some(([k]) => k === v) ? v : ''
 // Kilitler çalışıyor mu? Faturalandırma bağlandıysa herkeste; değilse yalnız önizleme seçilmiş cihazda.
 export const enforced = (preview = '') => BILLING_READY || !!normalizePreview(preview);
 
-// Üyelik durumu. start: denemenin başladığı an (ms); ent: satın alınmış hak { tier: 'standard' | 'pro', until: ms, play?: true } ya da null.
+// Üyelik durumu. start: denemenin başladığı an (ms); ent: satın alınmış hak { tier: 'standard' | 'pro', until: ms, play?: true } ya da null;
+// gift: yöneticinin verdiği hediye hak { tier, until } ya da null. İkisi de geçerliyse üstün tür, eşitse uzun süre kazanır.
 // Dönen: { tier, until, daysLeft } — daysLeft: bitişe kalan tam gün sayısı (yukarı yuvarlanır), bitmişse 0.
-export function memberState({ start = 0, ent = null, preview = '', now = Date.now() } = {}) {
+export function memberState({ start = 0, ent = null, gift = null, preview = '', now = Date.now() } = {}) {
   const pv = normalizePreview(preview);
   if (pv === 'expired') return { tier: 'expired', until: now - DAY_MS, daysLeft: 0 };
   if (pv === 'trial') return { tier: 'trial', until: now + 5 * DAY_MS, daysLeft: 5 };
   if (pv === 'standard' || pv === 'pro') return { tier: pv, until: now + 200 * DAY_MS, daysLeft: 200 };
   const left = (until) => Math.max(0, Math.ceil((until - now) / DAY_MS));
-  if (ent && (ent.tier === 'standard' || ent.tier === 'pro') && Number(ent.until) > now) {
-    const r = { tier: ent.tier, until: Number(ent.until), daysLeft: left(Number(ent.until)) };
-    if (ent.play) r.play = true; // Google Play aboneliği: bitiş tarihi Play'dedir, buradaki süre yalnız çevrimdışı tolerans
+  const rank = (e) => (e.tier === 'pro' ? 2 : 1);
+  const best = [ent && { ...ent, from: 'ent' }, gift && { ...gift, from: 'gift' }]
+    .filter((e) => e && (e.tier === 'standard' || e.tier === 'pro') && Number(e.until) > now)
+    .reduce((a, b) => (!a || rank(b) > rank(a) || (rank(b) === rank(a) && Number(b.until) > Number(a.until)) ? b : a), null);
+  if (best) {
+    const r = { tier: best.tier, until: Number(best.until), daysLeft: left(Number(best.until)) };
+    if (best.from === 'gift') r.gift = true; // yönetici hediyesi: bitiş tarihi gerçektir
+    else if (best.play) r.play = true; // Google Play aboneliği: bitiş tarihi Play'dedir, buradaki süre yalnız çevrimdışı tolerans
     return r;
   }
   const s = Number(start) > 0 && Number(start) <= now ? Number(start) : now; // saat geri alınmışsa deneme uzamaz: bugünden sayılır
@@ -68,6 +74,7 @@ export const canUse = (feature, st) => (isProFeature(feature) ? canUsePro(st) : 
 export function stateText(st) {
   if (st.tier === 'trial') return `Deneme süresi: ${st.daysLeft} gün kaldı`;
   if (st.tier === 'expired') return 'Deneme süresi doldu';
+  if (st.gift) return `${TIERS[st.tier]} üyelik (hediye): ${st.daysLeft} gün kaldı`;
   if (st.play) return `${TIERS[st.tier]} üyelik etkin`;
   return `${TIERS[st.tier]} üyelik: ${st.daysLeft} gün kaldı`;
 }

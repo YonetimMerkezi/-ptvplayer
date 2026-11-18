@@ -162,3 +162,58 @@ test('kasa: Pro tema seçimi (pt) şifreli kasada saklanır ve config.json\'a ya
   await publish(gh, { vault: v, sha: null, cfgSha: undefined }, PASS, { now: NOW });
   assert.deepEqual(JSON.parse(fake.files.get('config.json').text).pt, ['blue', 'neon']);
 });
+
+test('hediye üyelik: ekle (aynı cihaza yeniden verilirse güncellenir), uzat, kaldır; config\'e yalnız aktif olanlar ve not olmadan gider', async () => {
+  const { addGrant, extendGrant, removeGrant, grantStatus, grantTierText } = await import('../www/js/vault.js');
+  let v = emptyVault(NOW);
+  assert.deepEqual(v.grants, []);
+  v = addGrant(v, { id: 'A1B2-C3D4-E5F6', tier: 'pro', days: 365, note: 'Ali amca' }, NOW);
+  assert.deepEqual(v.grants, [{ id: 'a1b2c3d4e5f6', tier: 'pro', x: NOW + 365 * DAY, note: 'Ali amca' }]);
+  assert.equal(grantTierText('pro'), 'Pro');
+  assert.equal(grantTierText('standard'), 'Standart');
+  assert.throws(() => addGrant(v, { id: 'xx', tier: 'pro', days: 30 }, NOW), /12 harf/);
+  assert.throws(() => addGrant(v, { id: 'a1b2c3d4e5f6', tier: 'gold', days: 30 }, NOW), /Standart ya da Pro/);
+  assert.throws(() => addGrant(v, { id: 'a1b2c3d4e5f6', tier: 'pro', days: 0 }, NOW), /Gün sayısı/);
+  assert.throws(() => addGrant(v, { id: 'a1b2c3d4e5f6', tier: 'pro', days: 99999 }, NOW), /Gün sayısı/);
+  // aynı cihaza yeniden: tek kayıt, yeni tür ve süre
+  v = addGrant(v, { id: 'a1b2c3d4e5f6', tier: 'standard', days: 30 }, NOW);
+  assert.equal(v.grants.length, 1);
+  assert.deepEqual([v.grants[0].tier, v.grants[0].x], ['standard', NOW + 30 * DAY]);
+  // uzat: sürüyorsa bitişten, bitmişse bugünden
+  v = extendGrant(v, 'a1b2c3d4e5f6', 30, NOW);
+  assert.equal(v.grants[0].x, NOW + 60 * DAY);
+  assert.equal(extendGrant(v, 'a1b2c3d4e5f6', 30, NOW + 100 * DAY).grants[0].x, NOW + 130 * DAY);
+  // ikinci cihaz (süresi bitmiş) + yayın
+  v = addGrant(v, { id: 'b1b2c3d4e5f6', tier: 'pro', days: 1, note: 'GIZLI-NOT' }, NOW - 5 * DAY);
+  assert.equal(grantStatus(v.grants[1], NOW), 'expired');
+  assert.equal(grantStatus(v.grants[0], NOW), 'active');
+  const { config, vault } = await buildPublish(v, { now: NOW });
+  assert.deepEqual(config.gr, [{ d: 'a1b2c3d4e5f6', t: 'standard', u: NOW + 60 * DAY }]);
+  assert.ok(!JSON.stringify(config).includes('GIZLI-NOT'), 'not herkese açık config\'e girmez');
+  assert.equal(vault.grants.length, 2, 'biten hediye kasada kalır (listede görünür)');
+  // kasa kapanıp açılınca korunur; eski kasada alan yoksa boş liste
+  const opened = await openVault(await sealVault(v, PASS), PASS);
+  assert.deepEqual(opened.grants, v.grants);
+  const old = await openVault(await sealVault({ v: 1, at: NOW, users: [], blocked: [] }, PASS), PASS);
+  assert.deepEqual(old.grants, []);
+  assert.equal(removeGrant(v, 'a1b2c3d4e5f6').grants.length, 1);
+});
+
+test('hediye üyelik: yönetici paneli, uygulama ve gizlilik metni birlikte yerinde', async () => {
+  const { readFileSync } = await import('node:fs');
+  const oku = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
+  const adm = oku('www/js/admin-ui.js');
+  assert.match(adm, /data-t="devices">Cihazlar</, 'engelli sekmesi cihazlar sekmesi oldu (hediye + engelli)');
+  assert.ok(!/blockedHtml|data-t="blocked"/.test(adm), 'eski ayrı engelli sekmesi kalmadı');
+  for (const id of ['gr-id', 'gr-tier', 'gr-days', 'gr-add']) assert.match(adm, new RegExp('id="' + id + '"'), id);
+  assert.match(adm, /a === 'gr-ext'[\s\S]*?a === 'gr-del'/, 'uzat ve kaldır');
+  const app = oku('www/js/app.js');
+  assert.match(app, /gift: store\.pref\('mem\.gift', null\)/, 'üyelik durumu hediyeyi de görür');
+  assert.match(app, /giftFor\(cfg, deviceId\(store\)\)/, 'config\'ten bu cihazın hediyesi alınır');
+  assert.match(app, /refreshRemoteConfig\(\{ force: true \}\)/, 'Üyelik penceresi açılınca hediye hemen sorulur');
+  assert.match(app, /id="mem-devc"/, 'Üyelik penceresinde cihaz kimliği kopyalanabilir');
+  assert.ok(!/refreshProThemes/.test(app), 'tek yapılandırma okuması: temalar ve hediye birlikte');
+  const gp = oku('gizlilik-politikasi.md');
+  assert.match(gp, /hediye üyelik verirse/);
+  assert.match(gp, /complimentary membership/);
+});

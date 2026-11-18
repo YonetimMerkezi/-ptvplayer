@@ -1,10 +1,10 @@
-// Yönetici paneli arayüzü: kullanıcılar (davet kodları), engelli cihazlar, Pro temalar, gelen sorun raporları.
+// Yönetici paneli arayüzü: kullanıcılar (davet kodları), cihazlar (hediye üyelik, engelli cihazlar), Pro temalar, gelen sorun raporları.
 // Mantık admin.js / vault.js / report.js’te; burada yalnızca ekranlar var. Her değişiklik GitHub’a otomatik yayınlanır
 // (Pro tema seçimi hariç: işaretlemeler “Yayınla” ile tek seferde gider).
 import { esc } from './util.js';
 import { $, $$, icon, toast, openPage, openSheet, fmtAgo } from './ui.js';
 import { createGithub, loadVault, publish, sealToken, openToken } from './admin.js';
-import { newUser, userStatus, extendUser, addBlocked, inviteText, cleanSourceInput, expiryFrom } from './vault.js';
+import { newUser, userStatus, extendUser, addBlocked, addGrant, extendGrant, removeGrant, grantStatus, grantTierText, inviteText, cleanSourceInput, expiryFrom } from './vault.js';
 import { decodeAll, describeReport, summarize, tierText } from './report.js';
 import { TIERS } from './membership.js';
 import { fmtDeviceId } from './managed.js';
@@ -51,8 +51,8 @@ export function openAdmin(env) {
           el.classList.toggle('err-text', err);
         }
       };
-      const showErr = (m) => {
-        const e = $('#adm-err', root);
+      const showErr = (m, errId = 'adm-err') => {
+        const e = $('#' + errId, root);
         if (!e) return toast(m);
         e.hidden = !m;
         e.textContent = m || '';
@@ -89,7 +89,7 @@ export function openAdmin(env) {
           root.innerHTML = store.pref('adm.tok', null) ? unlockHtml() : setupHtml();
           return;
         }
-        root.innerHTML = `<div class="seg" id="adm-tabs" style="padding:0 0 12px"><button data-t="users">Kullanıcılar</button><button data-t="blocked">Engelli</button><button data-t="themes">Temalar</button><button data-t="reports">Raporlar</button></div><div id="adm-view"></div><p class="hint" id="adm-status" style="color:var(--muted);font-size:.75rem;margin-top:16px"></p><button class="btn ghost sm" id="adm-out" style="margin-top:10px">Çıkış (token’ı bu cihazdan sil)</button>`;
+        root.innerHTML = `<div class="seg" id="adm-tabs" style="padding:0 0 12px"><button data-t="users">Kullanıcılar</button><button data-t="devices">Cihazlar</button><button data-t="themes">Temalar</button><button data-t="reports">Raporlar</button></div><div id="adm-view"></div><p class="hint" id="adm-status" style="color:var(--muted);font-size:.75rem;margin-top:16px"></p><button class="btn ghost sm" id="adm-out" style="margin-top:10px">Çıkış (token’ı bu cihazdan sil)</button>`;
         $$('#adm-tabs button', root).forEach((b) => b.classList.toggle('on', b.dataset.t === tab));
         renderView();
         setStatus(statusMsg || (st.sha ? 'Yayında. Değişiklikler cihazlara birkaç dakikada ulaşır.' : 'Henüz yayınlanmadı.'), statusErr);
@@ -98,7 +98,7 @@ export function openAdmin(env) {
       function renderView() {
         const v = $('#adm-view', root);
         if (!v) return;
-        v.innerHTML = tab === 'users' ? usersHtml() : tab === 'blocked' ? blockedHtml() : tab === 'themes' ? themesHtml() : reportsHtml();
+        v.innerHTML = tab === 'users' ? usersHtml() : tab === 'devices' ? devicesHtml() : tab === 'themes' ? themesHtml() : reportsHtml();
       }
 
       const usersHtml = () => {
@@ -112,7 +112,20 @@ export function openAdmin(env) {
         return `<button class="btn" id="adm-new" style="width:100%;margin-bottom:12px">${icon('plus')}Yeni kullanıcı</button>${cards || '<p style="color:var(--muted)">Henüz kullanıcı yok. “Yeni kullanıcı” ile bir davet kodu oluşturun.</p>'}`;
       };
 
-      const blockedHtml = () => `<p style="color:var(--muted);font-size:.8rem">Kullanıcı “Genel ayarlar › Cihaz kimliği” ile kimliğini size gönderir. Engellenen cihazdaki davet kodlu listeler bir sonraki denetimde kaldırılır.</p>
+      const grantsHtml = () => {
+        const now = Date.now();
+        const list = [...st.vault.grants].sort((a, b) => b.x - a.x);
+        return `<div class="sect">Hediye üyelik</div>
+<p style="color:var(--muted);font-size:.8rem">Kullanıcı Üyelik penceresindeki “Cihaz kimliği”ni size gönderir. Kimliği, üyelik türünü ve süreyi girin; üyelik kullanıcının cihazına uygulama açılınca ya da Üyelik penceresi açılınca gelir. Hediye cihaza bağlıdır; kullanıcı telefon değiştirirse yeni kimlik gerekir.</p>
+<label class="field"><span>Cihaz kimliği</span><input id="gr-id" autocapitalize="characters" placeholder="A1B2-C3D4-E5F6"></label>
+<label class="field"><span>Üyelik</span><select id="gr-tier"><option value="pro">Pro</option><option value="standard">Standart</option></select></label>
+<label class="field"><span>Süre</span><select id="gr-days"><option value="30">30 gün</option><option value="90">90 gün</option><option value="180">180 gün</option><option value="365" selected>1 yıl</option></select></label>
+<label class="field"><span>Not (isteğe bağlı, yalnız size görünür)</span><input id="gr-note" maxlength="100"></label>
+<p class="err-text" id="gr-err" hidden></p>
+<button class="btn" id="gr-add" style="width:100%;margin-bottom:12px">Hediye et</button>
+${list.map((g) => `<div class="src ${grantStatus(g, now) === 'active' ? 'active' : ''}"><h4>${esc(fmtDeviceId(g.id))}<span class="badge">${grantTierText(g.tier)} · ${grantStatus(g, now) === 'active' ? 'Aktif' : 'Süresi doldu'}</span></h4><p>Bitiş: ${fmtDate(g.x)}${g.note ? ` · ${esc(g.note)}` : ''}</p><div class="btns"><button class="btn sm" data-a="gr-ext" data-id="${esc(g.id)}" data-d="30">+30 gün</button><button class="btn sm" data-a="gr-ext" data-id="${esc(g.id)}" data-d="365">+1 yıl</button><button class="btn sm danger" data-a="gr-del" data-id="${esc(g.id)}">Kaldır</button></div></div>`).join('') || '<p style="color:var(--muted)">Hediye üyelik yok.</p>'}`;
+      };
+      const devicesHtml = () => `${grantsHtml()}<div class="sect" style="margin-top:20px">Engelli cihazlar</div><p style="color:var(--muted);font-size:.8rem">Kullanıcı “Genel ayarlar › Cihaz kimliği” ile kimliğini size gönderir. Engellenen cihazdaki davet kodlu listeler bir sonraki denetimde kaldırılır.</p>
 <label class="field"><span>Cihaz kimliği</span><input id="bl-id" autocapitalize="characters" placeholder="A1B2-C3D4-E5F6"></label>
 <label class="field"><span>Not (isteğe bağlı)</span><input id="bl-note" maxlength="100"></label>
 <p class="err-text" id="adm-err" hidden></p>
@@ -329,6 +342,15 @@ ${[0, 1, 2].map((i) => srcBlock(i, srcs[i])).join('')}
           });
         }
         if (id === 'adm-new') return userForm(null);
+        if (id === 'gr-add') {
+          try {
+            const next = addGrant(st.vault, { id: $('#gr-id', root).value, tier: $('#gr-tier', root).value, days: $('#gr-days', root).value, note: $('#gr-note', root).value });
+            showErr('', 'gr-err');
+            return commit(next, 'Hediye üyelik yayınlandı');
+          } catch (ex) {
+            return showErr(ex.message, 'gr-err');
+          }
+        }
         if (id === 'bl-add') {
           try {
             const next = addBlocked(st.vault, $('#bl-id', root).value, $('#bl-note', root).value);
@@ -370,6 +392,8 @@ ${[0, 1, 2].map((i) => srcBlock(i, srcs[i])).join('')}
           ptDraft = cur.includes(b.dataset.id) ? cur.filter((x) => x !== b.dataset.id) : [...cur, b.dataset.id];
           return renderView();
         }
+        if (a === 'gr-ext') return commit(extendGrant(st.vault, b.dataset.id, Number(b.dataset.d)), 'Süre uzatıldı');
+        if (a === 'gr-del') return commit(removeGrant(st.vault, b.dataset.id), 'Hediye üyelik kaldırıldı');
         if (a === 'unblock') return commit({ ...st.vault, blocked: st.vault.blocked.filter((x) => x.id !== b.dataset.id) }, 'Engel kaldırıldı');
         const u = byCode(b.dataset.c);
         if (!u) return;

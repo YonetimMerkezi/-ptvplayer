@@ -61,7 +61,7 @@ import { KID_KINDS, normalizeAllow, allowSet, filterAllowed, applyKid, toggleAll
 import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { isPlay, loadDist } from './dist.js';
-import { redeem, syncManaged, fetchConfig, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
+import { redeem, syncManaged, fetchConfig, giftFor, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { BIND_URL, subId, bestToken, callClaim, nextBind, bindAllowed, bindDue } from './devbind.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
@@ -123,7 +123,7 @@ function memState() {
     start = Date.now();
     store.setPref('mem.start', start);
   }
-  return memberState({ start, ent: store.pref('mem.ent', null), preview: memPreview() });
+  return memberState({ start, ent: store.pref('mem.ent', null), gift: store.pref('mem.gift', null), preview: memPreview() });
 }
 // Sessiz soru: özellik bu üyelikte açık mı? (kilitler kapalıysa her şey açık)
 const proOk = (feature) => !memOn() || canUse(feature, memState());
@@ -4697,23 +4697,38 @@ player.on((st) => {
   store.setPref('errlog', pushError(store.pref('errlog', []), { k: st.item.kind, n: st.item.name, m: st.error }));
 });
 
-// Hangi temaların Pro olduğunu yapılandırma dosyasından (yönetici panelindeki işaretleme) okur. Yalnız kilitler çalışırken sorulur;
-// ağ yoksa son bilinen liste kalır. Seçili tema Pro olduysa ve üyelik yetmiyorsa varsayılana dönülür.
-let ptBusy = false;
-async function refreshProThemes({ launch = false } = {}) {
-  if (ptBusy || !memOn() || !shouldAutoCheck(store.pref('cfg.at', 0), Date.now(), launch ? LAUNCH_MS : CHECK_MS)) return;
-  ptBusy = true;
+// Yönetici dosyasından (config.json) iki şey okunur: Pro olarak işaretli temalar ve bu cihaza verilmiş hediye üyelik (cihaz kimliğiyle eşleşir).
+// Yalnız kilitler çalışırken sorulur; ağ yoksa son bilinen değerler kalır. Seçili tema Pro olduysa ve üyelik yetmiyorsa varsayılana dönülür.
+// → true: hediye üyelik değişti (ekran yenilendi).
+let cfgBusy = false;
+async function refreshRemoteConfig({ launch = false, force = false } = {}) {
+  if (cfgBusy || !memOn() || (!force && !shouldAutoCheck(store.pref('cfg.at', 0), Date.now(), launch ? LAUNCH_MS : CHECK_MS))) return false;
+  cfgBusy = true;
   try {
     const cfg = await fetchConfig(net);
     store.setPref('cfg.at', Date.now());
+    let changed = false;
+    let giftChanged = false;
     const next = cleanProThemes(cfg.pt);
-    if (JSON.stringify(next) === JSON.stringify(proThemeList())) return;
-    store.setPref('cfg.proThemes', next);
-    applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
+    if (JSON.stringify(next) !== JSON.stringify(proThemeList())) {
+      store.setPref('cfg.proThemes', next);
+      changed = true;
+    }
+    const gift = giftFor(cfg, deviceId(store));
+    const had = store.pref('mem.gift', null);
+    if (JSON.stringify(gift) !== JSON.stringify(had)) {
+      store.setPref('mem.gift', gift); // dosyada yoksa kaldırılır: yönetici hediyeyi her an geri alabilir
+      changed = giftChanged = true;
+      if (gift && (!had || had.tier !== gift.tier)) toast(`Hediye üyelik etkin: ${TIERS[gift.tier]} (${memState().daysLeft} gün)`, 4000);
+    }
+    if (changed) applyTheme(themeAllowed(store.pref('set.theme', DEFAULT_THEME)));
+    if (giftChanged) renderTab();
+    return giftChanged;
   } catch {
-    /* çevrimdışı ya da dosya yok: son bilinen liste geçerli */
+    /* çevrimdışı ya da dosya yok: son bilinen değerler geçerli */
+    return false;
   } finally {
-    ptBusy = false;
+    cfgBusy = false;
   }
 }
 
@@ -5842,8 +5857,12 @@ function memberSheet(feature = '') {
       (BILLING_READY
         ? `<p class="hint">Abonelik yıllık yenilenir. Google Play'de Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz; iptal edince dönem sonuna kadar kullanırsınız.${BIND_URL ? ' Üyelik aynı anda bir telefonda ve bir TV’de kullanılabilir; yeni cihaza geçince üyeliği Üyelik penceresinden taşıyabilirsiniz (ayda en çok 2 kez).' : ''}</p>${st.play ? '<button class="btn" data-manage>Aboneliği yönet</button>' : ''}`
         : '<p class="hint">Satın alma, uygulamanın Google Play sürümüyle açılacak.</p>') +
+      (BILLING_READY ? `<div class="sel-row"><span>Cihaz kimliği<small id="mem-dev">${esc(fmtDeviceId(deviceId(store)))}</small></span><button class="btn sm ghost" id="mem-devc">Kopyala</button></div><p class="hint">Destek ya da hediye üyelik için bu kimliği iletin; hediye üyelik bu pencere açılınca ya da uygulama açılınca kendiliğinden gelir.</p>` : '') +
       (admin ? `<div class="sel-row"><span>Önizleme (yönetici)<small>Kilitli hâli yalnız bu cihazda dener; diğer kullanıcılar etkilenmez</small></span><select id="mem-pv">${optionsHtml(PREVIEWS, memPreview())}</select></div>` : ''),
     mount: (body) => {
+      const dc = $('#mem-devc', body);
+      if (dc) dc.addEventListener('click', async () => toast((await copyText(fmtDeviceId(deviceId(store)))) ? 'Cihaz kimliği kopyalandı' : 'Kopyalanamadı'));
+      refreshRemoteConfig({ force: true }).then((g) => g && sh.close()); // pencere açılınca hediye üyelik hemen sorulur
       if (BILLING_READY && nativePlugin) {
         // Fiyatlar ve deneme teklifi Play'den gelir (bölgeye göre para birimi); gelmezse düğmeler yine de dener.
         nativePlugin.billingProducts({ ids: PRODUCT_IDS }).then((r) => {
@@ -6367,7 +6386,7 @@ document.addEventListener('visibilitychange', () => {
   if (S.source && !S.loading && S.cat.fetchedAt && Date.now() - S.cat.fetchedAt > staleCatalogMs()) refreshCatalog({ quiet: true });
   checkForUpdate();
   refreshManaged();
-  refreshProThemes();
+  refreshRemoteConfig();
   syncBilling();
 });
 setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
@@ -6508,7 +6527,7 @@ function warmStart(tries = 0) {
   }
   setTimeout(() => checkForUpdate({ launch: true }), 2500); // açılışta yeni sürüm var mı bak; varsa üstte şerit çıkar
   setTimeout(() => refreshManaged({ launch: true }), 4000); // davet koduyla gelen listeler hâlâ geçerli mi
-  setTimeout(() => refreshProThemes({ launch: true }), 5000); // Pro temaların güncel listesi
+  setTimeout(() => refreshRemoteConfig({ launch: true }), 5000); // Pro temaların güncel listesi ve bu cihaza verilmiş hediye üyelik
   setTimeout(() => maybeWhatsNew(), 1800);
   await activate(src.id);
   setTimeout(() => warmStart(), 15000); // arayüz yerleştikten sonra, arka planda

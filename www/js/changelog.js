@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 125,
+    title: 'Hediye üyelik ve cihaz kimliği',
+    items: [
+      'Üyelik penceresinde cihaz kimliği ve Kopyala düğmesi var; destek ya da hediye üyelik için bu kimliği iletebilirsiniz',
+      'Yöneticinin cihazınıza verdiği hediye üyelik, uygulama açılınca ya da Üyelik penceresi açılınca kendiliğinden etkinleşir; durum metninde “hediye” ve kalan gün görünür',
+    ],
+  },
+  {
     id: 124,
     title: 'Üyelik artık tek cihazda kullanılır',
     items: [

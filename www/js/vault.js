@@ -1,10 +1,10 @@
 // Yönetici kasası: kullanıcılar (davet kodları), listeler, süreler ve engelli cihazlar. GitHub’a yalnızca yönetici
 // parolasıyla şifrelenmiş olarak yazılır (PBKDF2 300 bin tur + AES-GCM). Burada saf mantık var; ağ yok.
-import { seal, unseal, newCode, normalizeCode, sealEntry, buildConfig, codeId, toHex, normDevice } from './managed.js';
+import { seal, unseal, newCode, normalizeCode, sealEntry, buildConfig, codeId, toHex, normDevice, GIFT_TIERS } from './managed.js';
 
 export const VAULT_ITERS = 300000;
 export const DAY = 86400e3;
-export const emptyVault = (now = Date.now()) => ({ v: 1, at: now, users: [], blocked: [] });
+export const emptyVault = (now = Date.now()) => ({ v: 1, at: now, users: [], blocked: [], grants: [] });
 
 export const sealVault = (vault, pass, opts = {}) => seal(vault, pass, { ...opts, iters: VAULT_ITERS, aad: 'vault' });
 export async function openVault(sealed, pass, opts = {}) {
@@ -15,7 +15,7 @@ export async function openVault(sealed, pass, opts = {}) {
     throw new Error('Parola yanlış ya da kasa bozuk.');
   }
   if (!v || !Array.isArray(v.users)) throw new Error('Kasa biçimi tanınmadı.');
-  return { v: 1, at: Number(v.at) || 0, users: v.users, blocked: Array.isArray(v.blocked) ? v.blocked : [], pt: Array.isArray(v.pt) ? v.pt.filter((x) => typeof x === 'string') : null };
+  return { v: 1, at: Number(v.at) || 0, users: v.users, blocked: Array.isArray(v.blocked) ? v.blocked : [], grants: Array.isArray(v.grants) ? v.grants : [], pt: Array.isArray(v.pt) ? v.pt.filter((x) => typeof x === 'string') : null };
 }
 
 const str = (v, n = 2000) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
@@ -63,6 +63,26 @@ export function addBlocked(vault, id, note = '') {
   return { ...vault, blocked: [...vault.blocked, { id: n, note: str(note, 100) }] };
 }
 
+// ---- hediye üyelik: cihaz kimliğine Standart/Pro + bitiş tarihi. Not yalnız kasada kalır; config'e kimlik, tür ve tarih gider.
+export const grantTierText = (t) => (t === 'pro' ? 'Pro' : 'Standart');
+export const grantStatus = (g, now = Date.now()) => (g.x > now ? 'active' : 'expired');
+// Aynı cihaza yeniden verilirse güncellenir (tür ve süre değişir). days: bugünden itibaren gün.
+export function addGrant(vault, { id, tier, days, note = '' }, now = Date.now()) {
+  const n = normDevice(id);
+  if (!/^[0-9a-f]{12}$/.test(n)) throw new Error('Cihaz kimliği 12 harf/rakamdır (ör. A1B2-C3D4-E5F6).');
+  if (!GIFT_TIERS.includes(tier)) throw new Error('Üyelik türü Standart ya da Pro olmalı.');
+  const d = Math.floor(Number(days));
+  if (!(d >= 1 && d <= 3650)) throw new Error('Gün sayısı 1 ile 3650 arasında olmalı.');
+  const g = { id: n, tier, x: now + d * DAY, note: str(note, 100) };
+  const rest = (vault.grants || []).filter((x) => x.id !== n);
+  return { ...vault, grants: [...rest, g] };
+}
+// Süreyi uzatır: bitmişse bugünden, sürüyorsa bitişten.
+export function extendGrant(vault, id, days, now = Date.now()) {
+  return { ...vault, grants: (vault.grants || []).map((g) => (g.id === id ? { ...g, x: Math.max(g.x, now) + Number(days) * DAY } : g)) };
+}
+export const removeGrant = (vault, id) => ({ ...vault, grants: (vault.grants || []).filter((g) => g.id !== id) });
+
 const payloadOf = (u) => ({ p: 1, n: u.name, x: u.x || 0, s: u.sources });
 
 // Kasadan yayınlanacak config.json üretir. Değişmeyen girişler yeniden şifrelenmez (PBKDF2 yavaş): u.sealed önbelleğidir.
@@ -83,7 +103,8 @@ export async function buildPublish(vault, { now = Date.now(), subtle, rand } = {
     entries[await codeId(u.code, subtle)] = sealed.e;
     users.push({ ...u, sealed });
   }
-  return { config: buildConfig({ entries, blocked: vault.blocked.map((b) => b.id), at: now, pt: vault.pt }), vault: { ...vault, users, at: now } };
+  const gr = (vault.grants || []).filter((g) => grantStatus(g, now) === 'active').map((g) => ({ d: g.id, t: g.tier, u: g.x })); // biten hediye config'e girmez
+  return { config: buildConfig({ entries, blocked: vault.blocked.map((b) => b.id), at: now, pt: vault.pt, gr }), vault: { ...vault, users, at: now } };
 }
 
 // Davet metni: yeni kullanıcıya gönderilecek ileti.

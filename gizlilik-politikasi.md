@@ -40,6 +40,8 @@ Google Play dışında dağıtılan APK sürümü ayrıca yeni sürüm denetimi 
 
 Üyelik aynı anda bir telefonda ve bir TV'de kullanılabilir. Bunu denetlemek için Google Play sürümü, üyelik sunucumuza (Cloudflare Workers) aboneliğinizin geri döndürülemez bir özetini (abonelik anahtarınızın tek yönlü karması; anahtarın kendisi gönderilmez), cihaza özgü rastgele bir kimliği ve cihaz türünü (telefon ya da TV) gönderir. Ad, e-posta, hesap, konum, izleme listesi ya da kaynak bilgisi gönderilmez. Bu kayıtlar yalnızca üyeliğin hangi cihazda etkin olduğunu belirlemek için tutulur.
 
+Yönetici size hediye üyelik verirse, cihaz kimliğinizi (Üyelik penceresinde görünen rastgele kimlik) siz ona iletirsiniz. Herkese açık yapılandırma dosyasında yalnızca bu kimlik, üyelik türü ve bitiş tarihi yer alır; ad, e-posta ya da hesap bilgisi yer almaz. Uygulama bu dosyayı okuyup kendi kimliğiyle eşleşen kaydı uygular.
+
 ## İzinler
 
 - **İnternet, ağ durumu, çoklu yayın:** kaynaklara ve hizmetlere bağlanmak, yerel ağda cihaz bulmak için.
@@ -109,6 +111,8 @@ The APK distributed outside Google Play also connects to GitHub to check for new
 Membership (Standard, Pro) is a Google Play subscription. Google processes your payment details; they never reach us. The app only learns from Google Play whether your subscription is active. You can cancel at any time in Google Play > Subscriptions.
 
 Membership can be used on one phone and one TV at a time. To enforce this, the Google Play version sends our membership server (Cloudflare Workers) an irreversible digest of your subscription (a one-way hash of the subscription key; the key itself is never sent), a random device-specific ID and the device type (phone or TV). No name, email, account, location, watch history or source details are sent. These records are kept only to determine which device the membership is active on.
+
+If the administrator gives you a complimentary membership, you send them your device ID (the random ID shown in the Membership window). The publicly readable configuration file contains only that ID, the membership type and the end date; no name, email or account details. The app reads this file and applies the entry that matches its own ID.
 
 ## Permissions
 

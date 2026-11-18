@@ -226,3 +226,28 @@ test('config: Pro tema listesi (pt) yazılır, okunurken ayıklanır; alan yoksa
   assert.equal(parseConfig({ v: 1, entries: {}, pt: 'blue' }).pt, null);
   assert.equal(parseConfig({ v: 1, entries: {}, pt: Array.from({ length: 200 }, (_, i) => 't' + i) }).pt.length, 64);
 });
+
+test('hediye üyelik: config\'te cihaz kimliği + tür + bitiş; yalnız geçerli kayıtlar; cihaz yalnız kendi hakkını görür', async () => {
+  const { cleanGrants, giftFor, GIFT_TIERS } = await import('../www/js/managed.js');
+  assert.deepEqual(GIFT_TIERS, ['standard', 'pro']);
+  const gr = cleanGrants([
+    { d: 'A1B2-C3D4-E5F6', t: 'pro', u: NOW + 1000 },
+    { d: 'a1b2c3d4e5f6', t: 'standard', u: NOW + 5 }, // aynı cihaz: ilki kalır
+    { d: 'zzzz', t: 'pro', u: NOW + 1 }, // bozuk kimlik
+    { d: 'b1b2c3d4e5f6', t: 'gold', u: NOW + 1 }, // bozuk tür
+    { d: 'c1b2c3d4e5f6', t: 'pro', u: 0 }, // bitiş yok
+    null,
+  ]);
+  assert.deepEqual(gr, [{ d: 'a1b2c3d4e5f6', t: 'pro', u: NOW + 1000 }]);
+  assert.deepEqual(cleanGrants('x'), []);
+  const cfg = parseConfig(JSON.parse(JSON.stringify(buildConfig({ at: NOW, gr: [{ d: 'a1b2c3d4e5f6', t: 'pro', u: NOW + 86400e3 }] }))));
+  assert.deepEqual(cfg.gr, [{ d: 'a1b2c3d4e5f6', t: 'pro', u: NOW + 86400e3 }]);
+  assert.deepEqual(giftFor(cfg, 'A1B2-C3D4-E5F6', NOW), { tier: 'pro', until: NOW + 86400e3 });
+  assert.equal(giftFor(cfg, 'b1b2c3d4e5f6', NOW), null, 'başkasının hakkı görünmez');
+  assert.equal(giftFor(cfg, 'a1b2c3d4e5f6', NOW + 2 * 86400e3), null, 'süresi bitti');
+  assert.equal(giftFor(cfg, '', NOW), null);
+  // cihaz saati geri alınsa bile yayın zamanından geri gidilmez
+  assert.equal(giftFor({ ...cfg, at: NOW + 3 * 86400e3 }, 'a1b2c3d4e5f6', NOW - 100 * 86400e3), null);
+  // eski config'te (gr yok) hak yok
+  assert.deepEqual(parseConfig({ v: 1, at: NOW, blocked: [], entries: {} }).gr, []);
+});
