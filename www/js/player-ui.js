@@ -125,6 +125,9 @@ export function createPlayerUI({ engine, player, env }) {
   // Müzik (medya merkezindeki ses dosyaları) telefonda hep dikey müzik çalar ekranında açılır: üstte kapak, altında denetimler ve şarkı listesi.
   // TV'de ekran dönmediğinden olağan oynatıcı kalır. musicNow: açık olan öğe müzik mi.
   const isMusic = (item) => !!(item && item.audio && !item.cast) && !onTv();
+  // Küçük ekran (üstte 16:9 video kutusu, altında denetimler) canlı dışındaki her yerel öğede vardır: film, dizi, müzik ve kayıt.
+  // Kayıt bunun dışında kalınca "Dikey" ayarı ekranı dikeye kilitliyor ama kutu kurulmuyor; 16:9 görüntü tüm dikey ekrana gerilip bozuluyordu.
+  const hasSmallScreen = (item) => !!item && item.kind !== 'live' && !item.cast;
   let musicNow = false;
   const orientNow = () => (musicNow ? 'portrait' : orientOverride || (autoDir ? 'landscape' : env.pref ? env.pref('set.playerOrientation', 'landscape') : 'landscape'));
   const levels = { brightness: 0.5, volume: 0.5 };
@@ -545,7 +548,7 @@ export function createPlayerUI({ engine, player, env }) {
     if (!musicNow) musicCompact = false;
     root.classList.toggle('music', musicNow);
     root.classList.toggle('music-min', musicNow && musicCompact);
-    const vodPortrait = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast && orientNow() === 'portrait';
+    const vodPortrait = hasSmallScreen(st.item) && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
     syncOrientBtn(st.item);
@@ -1179,7 +1182,7 @@ export function createPlayerUI({ engine, player, env }) {
     const b = q('#pl-orient');
     if (!b) return;
     const it = item || player.state().item;
-    b.hidden = onTv() || !it || !!it.cast || it.kind === 'recording' || isMusic(it); // müzik çalar hep dikeydir
+    b.hidden = onTv() || !it || !!it.cast || isMusic(it); // müzik çalar hep dikeydir
     const autoPortrait = !orientOverride && autoDir === 'portrait';
     const small = !autoPortrait && !(autoDir && !orientOverride) && orientNow() === 'portrait';
     const label = autoPortrait ? 'Yatay çevir' : small ? 'Tam ekran' : 'Küçük ekran';
@@ -1194,7 +1197,7 @@ export function createPlayerUI({ engine, player, env }) {
     orientOverride = autoDir ? (autoDir === 'portrait' ? 'landscape' : 'portrait') : orientNow() === 'portrait' ? 'landscape' : 'portrait';
     autoDir = null;
     const portrait = orientOverride === 'portrait';
-    const vod = st.item.kind !== 'live' && st.item.kind !== 'recording' && !st.item.cast;
+    const vod = hasSmallScreen(st.item);
     root.classList.toggle('vod-portrait', vod && portrait);
     engine.setImmersive(true, !portrait).catch(() => {}); // yönü döndürür (yatay kilit ↔ dikey kilit)
     if (vod && !portrait && engine.kind === 'native') engine.clearRect().catch(() => {}); // küçük ekran yuvası kalkar, görüntü tüm ekranı kaplar
@@ -1210,7 +1213,7 @@ export function createPlayerUI({ engine, player, env }) {
     open = true;
     musicNow = isMusic(item);
     root.classList.toggle('music', musicNow);
-    const vodPortrait = !!item && item.kind !== 'live' && item.kind !== 'recording' && !item.cast && orientNow() === 'portrait';
+    const vodPortrait = hasSmallScreen(item) && orientNow() === 'portrait';
     root.classList.toggle('vod-portrait', vodPortrait);
     syncDock();
     syncOrientBtn(item);

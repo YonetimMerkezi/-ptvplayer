@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 123,
+    title: 'Kayıtlar dikey ekranda artık gerilmiyor',
+    items: [
+      '“Telefon oynatıcı yönü: Dikey” seçiliyken kayıt izlerken görüntü tüm ekrana gerilip bozuluyordu; artık video üstte doğru oranda, denetimler altta açılır',
+      'Kayıt oynatırken de Tam ekran / Küçük ekran düğmesi kullanılabilir',
+    ],
+  },
+  {
     id: 122,
     title: 'Sorun raporuna üyelik durumu eklendi',
     items: [
