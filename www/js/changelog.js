@@ -31,6 +31,7 @@ export const CHANGELOG = [
       'Ana ekranda artık son izlediklerin görünür: “Son izlenen kanallar”, “Son izlenen filmler” ve “Son izlenen diziler” ayrı satırlar olarak gelir (en yenisi başta); kanala dokununca doğrudan açılır, “Tümünü gör” tam listeye götürür. Diziler de artık son izlenenlere kaydedilir',
       'Telefonda dikey Netflix görünümünde vitrin büyüdü: film konusu 5 satıra kadar gösterilir (küçük ekranlarda 4 ya da 3 satır), başlık ve künye kırpılmaz',
       'Uygulama Google Play’e hazırlanıyor: Play sürümünde Standart ve Pro yıllık abonelik Google Play üzerinden alınır, deneme teklifi ve fiyat üyelik ekranında görünür. Bu APK sürümü olduğu gibi tamamen açık kalır',
+      'Genel ayarlara “TMDB verisini kullan” düğmesi: kapatınca film ve dizi ayrıntısında TMDB eşleşmesi, yaş sınırı ve içerik işaretleri kullanılmaz; farkı karşılaştırabilirsin',
     ],
   },
   {

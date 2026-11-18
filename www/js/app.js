@@ -1951,9 +1951,14 @@ const advisorySmart = (warning) => {
 };
 const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
 
+// TMDB verisi (Worker üzerinden: eşleşme, IMDb kimliği, Türkçe ad, tür, yaş sınırı, içerik işaretleri, anahtar kelimeler). Genel ayarlardan
+// kapatılırsa hiç istek gitmez ve önbellekteki kayıt da kullanılmaz; ayrıntı ekranı öteki kaynaklarla (yerel katalog/Cinemeta, KTB, Screenwise,
+// sağlayıcının türü ve özeti) çizilir. Böylece iki durumun farkı aynı yapımda yan yana görülebilir.
+const tmdbLookup = (...args) => (setting('tmdb', true) ? lookupMeta(net, store, ...args) : Promise.resolve(null));
+
 // Bir filmin katalog eşleşmesi (yerel katalog/Cinemeta + Worker/TMDB) ve uyarı aramasında kullanılacak künye. Ayrıntı sayfası ile önden indirme aynı yolu kullanır.
 async function resolveAdvisoryMeta(it, info) {
-  const [meta, wk] = await Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), lookupMeta(net, store, it, info || null).catch(() => null)]);
+  const [meta, wk] = await Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), tmdbLookup(it, info || null).catch(() => null)]);
   const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
   const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '', originalTitle: wk.ot || '' } : baseMeta;
   return { meta, wk, advisoryMeta };
@@ -2200,7 +2205,7 @@ function openSeries(it) {
       });
       draw();
       // Cinemeta (IMDb kimliği) + TMDB Worker + Screenwise; KTB film sitesi diziler için kullanılmaz.
-      Promise.all([loadSeriesMetadata(net, it, store).catch(() => null), lookupMeta(net, store, it, info, 'tv').catch(() => null)]).then(([meta, wk]) => {
+      Promise.all([loadSeriesMetadata(net, it, store).catch(() => null), tmdbLookup(it, info, 'tv').catch(() => null)]).then(([meta, wk]) => {
         if (!body.isConnected) return;
         const parsed = parseMovieCatalogTitle(it.name || '');
         const base = meta || { title: parsed.title || it.name, year: yearOf(info.year || it.year) || parsed.year || 0 };
@@ -4499,6 +4504,7 @@ function generalSheet() {
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
+      chkRow('tmdb', 'TMDB verisini kullan', 'Film ve dizi eşleştirmesi, TMDB yaş sınırı, içerik işaretleri ve anahtar kelimeler. Kapatınca yalnız öteki kaynaklar kullanılır; ayrıntı ekranını yeniden açınca fark görünür') +
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
       `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
