@@ -67,7 +67,7 @@ import { BIND_URL, subId, bestToken, callClaim, nextBind, bindAllowed, bindDue }
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
 import { dlId, pickTarget, makeMeta, parseMeta, dlName, buildVersionIndex, versionsOf, pctOf, dlSub, sortJobs, summary, seriesDone, isActive, isDone } from './dl.js';
 import { recommendMovies } from './movie-recommendations.js';
-import { loadStations, radioItem, radioFavs, isRadioFav, toggleRadioFav, countClick, RADIO_COUNTRY_KEY } from './radio.js';
+import { loadStations, listStations, radioItem, radioFavs, isRadioFav, toggleRadioFav, countClick, RADIO_COUNTRY_KEY, LIST_RADIO_PREFIX } from './radio.js';
 import { radioRowHtml, homeRadio, openRadio as openRadioPage } from './radio-ui.js';
 import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
@@ -1819,11 +1819,18 @@ function playLive(items, index, meta = {}) {
   startPlay(items[index], { ctx });
 }
 
+// Radyo adresleri: listedeki radyo kendi kaynağının yayın adresleriyle (biçim yedeği dahil) çalar; internet radyosu ve favoriler kayıtlı adrese gider.
+function radioTargets(item) {
+  const own = item.listId && S.source && String(item.id).startsWith(`${LIST_RADIO_PREFIX}${S.source.id}:`) ? S.cat.live.find((x) => String(x.id) === item.listId) : null;
+  const t = own ? playTargets(S.source, own) : [];
+  return t.length ? t.map((x) => ({ ...x, live: true })) : [{ url: item.url, mime: 'auto', live: true }];
+}
+
 function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
   const isRec = item.kind === 'recording'; // cihazdaki kayıt: yerel dosya, kaynaktan bağımsız
   const isRadio = !!item.radio; // internet radyosu: doğrudan adres, kaynaktan bağımsız; canlı gibi çalar ama ses (müzik çalar) ekranında açılır
   const localUrl = local || (ep && ep.dlUrl) || ''; // indirilmiş film/bölüm: ağsız yerel dosyadan oynar, ilerleme yine kaynağın öğesine yazılır
-  let targets = isRec ? [{ url: item.url, mime: 'auto' }] : isRadio ? [{ url: item.url, mime: 'auto', live: true }] : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '' }] : targetsOf(item, ep);
+  let targets = isRec ? [{ url: item.url, mime: 'auto' }] : isRadio ? radioTargets(item) : localUrl ? [{ url: localUrl, mime: 'auto', headers: item.headers || undefined, subUri: item.subUri || '' }] : targetsOf(item, ep);
   const bgAudio = !!store.pref('backgroundAudio', !!item.audio);
   targets = targets.map((target) => ({ ...target, bgAudio, title: item.name }));
   if (!targets.length) return toast('Bu içerik için oynatma adresi bulunamadı');
@@ -2482,18 +2489,30 @@ async function openSportsPage() {
 }
 
 // Bugün TV'de: TV rehberinden bugünün spor, film ve dizi programları (seçilen kanallara göre). Modül ilk kullanımda yüklenir.
-// ---- Radyo & Müzik (radio.js veri, radio-ui.js ekran). Liste 24 saat saklanır; ana sayfa satırı oturumda bir kez doldurulur.
+// ---- Radyo & Müzik (radio.js veri, radio-ui.js ekran). Önce kullanıcının listesindeki radyo kanalları; internet dizini (24 saat saklanır) yedektir ve yalnız listede radyo yoksa ya da kullanıcı seçerse yüklenir.
+let listRadioMemo = { key: '', items: [] };
+function listRadios() {
+  if (!S.source) return [];
+  const live = visibleAll('live');
+  const key = `${S.source.id}:${live.length}`;
+  if (listRadioMemo.key !== key) listRadioMemo = { key, items: listStations(live, { sid: S.source.id, urlOf: (it) => (playTargets(S.source, it)[0] || {}).url || it.url || '' }) };
+  return listRadioMemo.items;
+}
+const homeRadioItems = () => {
+  const own = listRadios();
+  return own.length ? own : radioHome ? radioHome.items : [];
+};
 const radioCountry = () => String(store.pref(RADIO_COUNTRY_KEY, 'TR') || 'TR');
 const radioLoad = (cc, force) => loadStations({ net, cache: store.cache, country: cc, version: VERSION, force });
 let radioHome = null;
 let radioBusy = false;
 function fillHomeRadio() {
   const el = $('#home-radio');
-  if (el) el.innerHTML = kidActive() ? '' : radioRowHtml(radioFavs(store), radioHome ? radioHome.items : []);
+  if (el) el.innerHTML = kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems());
 }
 function ensureHomeRadio() {
   if (kidActive() || radioBusy) return;
-  if (radioHome) return fillHomeRadio();
+  if (radioHome || listRadios().length) return fillHomeRadio(); // listede radyo varsa internet dizinine gidilmez
   radioBusy = true;
   radioLoad(radioCountry(), false).then((r) => { radioHome = r; }, () => {}).finally(() => { radioBusy = false; fillHomeRadio(); });
 }
@@ -2505,7 +2524,7 @@ function playRadio(st, list) {
 }
 function openRadio() {
   if (kidActive()) return; // radyo içeriği süzülemediğinden çocuk modunda yok
-  openRadioPage({ store, country: radioCountry, setCountry: (cc) => { store.setPref(RADIO_COUNTRY_KEY, cc); radioHome = null; }, load: radioLoad, play: playRadio, toast });
+  openRadioPage({ store, country: radioCountry, setCountry: (cc) => { store.setPref(RADIO_COUNTRY_KEY, cc); radioHome = null; }, load: radioLoad, play: playRadio, toast, listStations: listRadios });
 }
 
 async function openToday() {
@@ -2994,7 +3013,7 @@ function renderHome(v) {
     </div>
     ${rows}
     <div id="home-picks">${homePicksHtml()}</div>
-    <div id="home-radio">${kidActive() || !radioHome ? '' : radioRowHtml(radioFavs(store), radioHome.items)}</div>
+    <div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
@@ -3007,7 +3026,7 @@ function renderHome(v) {
     if (e.target.closest('#h-search')) return globalSearch();
     const rc = e.target.closest('[data-rid]');
     if (rc) {
-      const list = homeRadio(radioFavs(store), radioHome ? radioHome.items : []);
+      const list = homeRadio(radioFavs(store), homeRadioItems());
       const st = list.find((x) => x.id === rc.dataset.rid);
       if (st) return playRadio(st, list);
     }

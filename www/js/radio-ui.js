@@ -1,7 +1,7 @@
 // Radyo & Müzik ekranı ve ana sayfa satırı (radio.js verisi). Modül ilk kullanımda yüklenir (app.js openRadio).
 import { esc, fmtClock, hashId } from './util.js';
 import { icon, openPage } from './ui.js';
-import { RADIO_COUNTRIES, genreChips, filterStations, radioFavs, isRadioFav, toggleRadioFav } from './radio.js';
+import { RADIO_COUNTRIES, RADIO_SRC_KEY, genreChips, filterStations, radioFavs, isRadioFav, toggleRadioFav } from './radio.js';
 
 const SHOW = 120; // liste bir seferde bu kadar satır çizer; kalanı "Daha fazla" ile gelir
 const HOME_MAX = 12;
@@ -36,10 +36,13 @@ export function radioRowHtml(favs, items) {
   return `<section class="home-row"><div class="home-row-h"><b>📻 Radyo &amp; Müzik</b><button data-go="radio">Tümünü gör</button></div><div class="home-row-s">${cards}</div></section>`;
 }
 
-// env: { store, country(), setCountry(cc), load(cc, force) → { items, at, stale }, play(station, list), toast(msg), playingId?() }
+// env: { store, country(), setCountry(cc), load(cc, force) → { items, at, stale }, play(station, list), toast(msg), playingId?(), listStations() → listedeki radyolar }
+// Listede radyo kanalı varsa ekran onlarla açılır; internet dizini yedek kaynaktır ("İnternet radyoları"). Listede hiç yoksa doğrudan internet dizini yüklenir.
 export function openRadio(env) {
-  let all = [];
-  let loading = true;
+  const listed = typeof env.listStations === 'function' ? env.listStations() : [];
+  let src = listed.length && env.store.pref(RADIO_SRC_KEY, 'list') !== 'net' ? 'list' : 'net'; // 'list' listedeki radyolar, 'net' internet dizini
+  let all = src === 'list' ? listed : [];
+  let loading = src === 'net';
   let error = '';
   let stale = false;
   let at = 0;
@@ -51,13 +54,19 @@ export function openRadio(env) {
   const page = openPage({
     title: 'Radyo & Müzik',
     cls: 'rd-pg',
-    html: `<div class="gd-search"><label class="gd-sbox">${icon('search')}<input id="rd-q" type="search" placeholder="Radyo ara" autocomplete="off" enterkeyhint="search"></label><select id="rd-cc" class="rd-cc" aria-label="Ülke">${RADIO_COUNTRIES.map(([cc, n]) => `<option value="${cc}"${cc === country ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div><div class="chips" id="rd-chips" role="group" aria-label="Tür"></div><small class="rd-upd" id="rd-upd" aria-live="polite"></small><div class="rd-list" id="rd-list"></div>`,
+    html: `<div class="gd-search"><label class="gd-sbox">${icon('search')}<input id="rd-q" type="search" placeholder="Radyo ara" autocomplete="off" enterkeyhint="search"></label><select id="rd-cc" class="rd-cc" aria-label="Ülke"${src === 'list' ? ' hidden' : ''}>${RADIO_COUNTRIES.map(([cc, n]) => `<option value="${cc}"${cc === country ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div><div class="chips" id="rd-src" role="group" aria-label="Kaynak"></div><div class="chips" id="rd-chips" role="group" aria-label="Tür"></div><small class="rd-upd" id="rd-upd" aria-live="polite"></small><div class="rd-list" id="rd-list"></div>`,
   });
   const q = (s) => page.el.querySelector(s);
 
   const favs = () => radioFavs(env.store);
   const base = () => (genre === 'fav' ? favs() : all);
   const current = () => filterStations(base(), { genre: genre === 'fav' ? '' : genre, query });
+
+  // Kaynak seçimi yalnız listede radyo varsa görünür: "Listem" öncelikli, "İnternet radyoları" yedek
+  function drawSrc() {
+    q('#rd-src').innerHTML = listed.length ? `<button class="chip${src === 'list' ? ' on' : ''}" data-src="list">Listem<small>${listed.length}</small></button><button class="chip${src === 'net' ? ' on' : ''}" data-src="net">İnternet radyoları</button>` : '';
+    q('#rd-cc').hidden = src === 'list';
+  }
 
   function drawChips() {
     const fav = favs().length;
@@ -86,7 +95,7 @@ export function openRadio(env) {
       return;
     }
     const list = current();
-    upd.textContent = stale ? `Çevrimdışı liste · ${fmtClock(at)}` : at ? `${all.length} radyo · liste ${fmtClock(at)}` : '';
+    upd.textContent = src === 'list' ? `${all.length} radyo · listenizden` : stale ? `Çevrimdışı liste · ${fmtClock(at)}` : at ? `${all.length} radyo · liste ${fmtClock(at)}` : '';
     if (!list.length) {
       box.innerHTML = `<p class="rd-msg">${genre === 'fav' ? 'Henüz favori radyo yok. Yıldıza dokunarak ekle.' : 'Bu aramayla radyo bulunamadı.'}</p>`;
       return;
@@ -101,11 +110,13 @@ export function openRadio(env) {
     drawList();
     try {
       const r = await env.load(country, !!force);
+      if (src !== 'net') return; // yüklenirken listeye dönüldü
       all = r.items;
       at = r.at;
       stale = !!r.stale;
       if (stale) env.toast('İnternet yok: kayıtlı radyo listesi gösteriliyor', 2800);
     } catch (e) {
+      if (src !== 'net') return;
       all = [];
       error = 'Radyo listesi alınamadı. İnternet bağlantını kontrol et.';
     }
@@ -115,6 +126,29 @@ export function openRadio(env) {
   }
 
   page.el.addEventListener('click', (e) => {
+    const sw = e.target.closest('[data-src]');
+    if (sw) {
+      if (sw.dataset.src === src) return;
+      src = sw.dataset.src;
+      env.store.setPref(RADIO_SRC_KEY, src);
+      genre = '';
+      query = '';
+      shown = SHOW;
+      q('#rd-q').value = '';
+      drawSrc();
+      if (src === 'list') {
+        all = listed;
+        at = 0;
+        stale = false;
+        loading = false;
+        error = '';
+        drawChips();
+        return drawList();
+      }
+      all = [];
+      drawChips();
+      return load(false);
+    }
     const c = e.target.closest('[data-g]');
     if (c) {
       genre = c.dataset.g;
@@ -160,7 +194,9 @@ export function openRadio(env) {
     load(false);
   });
 
+  drawSrc();
   drawChips();
-  load(false);
+  if (src === 'net') load(false);
+  else drawList();
   return page;
 }

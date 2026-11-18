@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeStation, normalizeStations, genresOf, genreChips, filterStations, radioItem, isRadioItem, loadStations, countClick, radioFavs, isRadioFav, toggleRadioFav, RADIO_TTL, RADIO_MIRRORS, RADIO_GENRES } from '../www/js/radio.js';
+import { normalizeStation, normalizeStations, genresOf, genreChips, filterStations, radioItem, isRadioItem, loadStations, countClick, radioFavs, isRadioFav, toggleRadioFav, listStations, isListRadio, RADIO_TTL, RADIO_MIRRORS, RADIO_GENRES } from '../www/js/radio.js';
 
 const raw = (o = {}) => ({ stationuuid: 'u1', name: 'Virgin Radio Türkiye', url: 'http://a/b', url_resolved: 'https://s/stream', favicon: 'https://l/logo.png', tags: 'pop,rock,hits', countrycode: 'TR', codec: 'aac', bitrate: 64, votes: 5, clickcount: 100, lastcheckok: 1, ...o });
 
@@ -162,6 +162,67 @@ test('favoriler: ekle/çıkar, en yeni başta, adres saklanır, bozuk kayıt ele
   assert.deepEqual(radioFavs(store), []);
 });
 
+// ---- listedeki radyolar (öncelikli kaynak) ----
+const live = (o = {}) => ({ id: 'x1', streamId: '1', kind: 'live', name: 'Power FM', logo: 'https://l/p.png', group: 'RADYO', ...o });
+
+test('listedeki radyo: kategori ya da ad "radyo/radio" ise sayılır; TV kanalı, film ve benzer sözcükler sayılmaz', () => {
+  assert.equal(isListRadio(live()), true);
+  assert.equal(isListRadio(live({ group: 'TR | Radyolar' })), true);
+  assert.equal(isListRadio(live({ group: 'Müzik', name: 'Radyo D' })), true);
+  assert.equal(isListRadio(live({ group: 'Ulusal', name: 'TRT Radio 3' })), true);
+  assert.equal(isListRadio(live({ group: 'Ulusal', name: 'Show TV' })), false);
+  assert.equal(isListRadio(live({ group: 'Spor', name: 'Radiohead Konseri' })), false, 'sözcük bütün olmalı');
+  assert.equal(isListRadio(live({ kind: 'movie' })), false);
+  assert.equal(isListRadio(null), false);
+});
+
+test('listedeki radyo: istasyon kaydı kaynağa bağlı kimlik taşır, aynı ad bir kez gelir, adresi olmayan atlanır, düz http logo elenir', () => {
+  const items = [live(), live({ id: 'x2', name: 'power fm', group: 'MÜZİK RADYO' }), live({ id: 'x3', name: 'Kral FM', logo: 'http://l/k.png' }), live({ id: 'x4', name: 'Adresiz' }), live({ id: 'x5', name: 'Haber TV', group: 'Haber' })];
+  const out = listStations(items, { sid: 'src1', urlOf: (it) => (it.name === 'Adresiz' ? '' : `https://h/${it.id}.m3u8`) });
+  assert.deepEqual(out.map((x) => x.name), ['Power FM', 'Kral FM']);
+  assert.equal(out[0].id, 'ls:src1:x1');
+  assert.equal(out[0].listId, 'x1');
+  assert.equal(out[0].url, 'https://h/x1.m3u8');
+  assert.deepEqual(out[0].tags, ['RADYO']);
+  assert.equal(out[0].fromList, true);
+  assert.equal(out[1].logo, '');
+  assert.deepEqual(listStations(null), []);
+  const boom = listStations([live()], { sid: 's', urlOf: () => { throw new Error('x'); } });
+  assert.deepEqual(boom, [], 'adres üretimi patlarsa kayıt atlanır');
+});
+
+test('listedeki radyo: oynatıcı öğesi listId taşır; favori kaydı da; dizine tık bildirilmez', async () => {
+  const [st] = listStations([live()], { sid: 'src1', urlOf: () => 'https://h/1.m3u8' });
+  const it = radioItem(st);
+  assert.equal(it.radio, true);
+  assert.equal(it.listId, 'x1');
+  assert.equal(radioItem({ id: 'rb:u', name: 'a', url: 'https://a' }).listId, undefined);
+  const prefs = {};
+  const store = { pref: (k, d) => (k in prefs ? prefs[k] : d), setPref: (k, v) => { prefs[k] = v; } };
+  toggleRadioFav(store, st);
+  assert.equal(radioFavs(store)[0].listId, 'x1');
+  let calls = 0;
+  const net = { text: async () => { calls++; return ''; } };
+  assert.equal(await countClick({ net, id: st.id }), false);
+  assert.equal(calls, 0);
+  assert.equal(await countClick({ net, id: 'rb:uuid1' }), true);
+  assert.equal(calls, 1);
+});
+
+test('bağlantı: radyo ekranı önce listedeki radyoları gösterir, internet dizini yedektir; listede radyo varsa ana sayfa dizine gitmez', () => {
+  const app = _kaynak('www/js/app.js');
+  const ui = _kaynak('www/js/radio-ui.js');
+  assert.match(app, /listStations: listRadios/);
+  assert.match(app, /if \(radioHome \|\| listRadios\(\)\.length\) return fillHomeRadio\(\)/);
+  assert.match(app, /return own\.length \? own : radioHome \? radioHome\.items : \[\]/);
+  assert.match(app, /visibleAll\('live'\)/, 'gizli/kilitli kategoriler listedeki radyolara da uygulanır');
+  assert.match(ui, /env\.store\.pref\(RADIO_SRC_KEY, 'list'\) !== 'net' \? 'list' : 'net'/);
+  assert.match(ui, /data-src="list"/);
+  assert.match(ui, /data-src="net">İnternet radyoları/);
+  assert.match(ui, /if \(src === 'net'\) load\(false\)/, 'listede radyo varken internet dizini yüklenmez');
+  assert.match(ui, /if \(src !== 'net'\) return;/, 'yükleme sürerken listeye dönülürse sonuç yoksayılır');
+});
+
 // ---- uygulamaya bağlantılar (kaynak metin denetimi) ----
 import { readFileSync as _oku } from 'node:fs';
 const _kaynak = (f) => _oku(new URL('../' + f, import.meta.url), 'utf8');
@@ -177,7 +238,8 @@ test('bağlantı: ana sayfada izleme listesi kısayolu yerine Radyo & Müzik; ç
 
 test('bağlantı: radyo oynatma — doğrudan adres, geçmişe yazılmaz, kanal bozuk işaretlenmez, favori ayrı', () => {
   const app = _kaynak('www/js/app.js');
-  assert.match(app, /isRadio \? \[\{ url: item\.url, mime: 'auto', live: true \}\]/);
+  assert.match(app, /isRadio \? radioTargets\(item\)/);
+  assert.match(app, /return t\.length \? t\.map\(\(x\) => \(\{ \.\.\.x, live: true \}\)\) : \[\{ url: item\.url, mime: 'auto', live: true \}\]/);
   assert.match(app, /!isRec && !isRadio && !item\.localMedia\) store\.pushRecent/);
   assert.match(app, /st\.item\.cast \|\| st\.item\.radio \|\| !st\.targets/);
   assert.match(app, /it\.radio \? isRadioFav\(store, it\.id\)/);

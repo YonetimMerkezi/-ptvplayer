@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 136,
+    title: 'Radyo: önce listendeki kanallar',
+    items: [
+      'Radyo & Müzik artık önce kendi listendeki radyo kanallarını gösteriyor (kategorisi ya da adı “Radyo” olanlar); ana sayfadaki radyo satırı da onlardan dolar',
+      'İnternet radyo dizini yedekte: listende radyo yoksa kendiliğinden açılır; varsa “İnternet radyoları” düğmesiyle istediğinde geçersin. Listede radyo varken dizine hiç bağlanılmaz',
+      'Listedeki radyolar müzik çalar ekranında açılır, favoriye eklenebilir; gizlediğin ya da kilitlediğin kategoriler radyoda da gizli kalır',
+    ],
+  },
+  {
     id: 135,
     title: 'Canlı TV kategorileri görselli',
     items: [

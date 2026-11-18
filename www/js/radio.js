@@ -1,4 +1,4 @@
-// Radyo & Müzik: radio-browser.info (topluluk dizini; ücretsiz, anahtarsız) internet radyoları.
+// Radyo & Müzik: önce kullanıcının listesindeki radyo kanalları; radio-browser.info (topluluk dizini; ücretsiz, anahtarsız) internet radyoları yedektir.
 // Sunucu listesi DNS ile alınır; WebView'da DNS sorgusu olmadığından bilinen yansılar sırayla denenir.
 // Kural: her istekte "uygulamaadı/sürüm" biçiminde User-Agent gider (yerel ağ katmanı iletir). Yayın başlayınca tık sayacı çağrılır (24 saatte bir sayılır).
 import { fold } from './util.js';
@@ -7,6 +7,7 @@ export const RADIO_MIRRORS = ['https://de1.api.radio-browser.info', 'https://nl1
 export const RADIO_TTL = 24 * 3600000;
 export const RADIO_FAV_KEY = 'radio.favs';
 export const RADIO_COUNTRY_KEY = 'radio.country';
+export const RADIO_SRC_KEY = 'radio.src'; // 'list' (listedeki radyolar) | 'net' (internet dizini)
 export const RADIO_FAV_MAX = 300;
 export const RADIO_COUNTRIES = [['TR', 'Türkiye'], ['DE', 'Almanya'], ['NL', 'Hollanda'], ['FR', 'Fransa'], ['GB', 'Birleşik Krallık'], ['AT', 'Avusturya'], ['BE', 'Belçika'], ['CH', 'İsviçre'], ['US', 'ABD'], ['AZ', 'Azerbaycan']];
 
@@ -85,10 +86,37 @@ export function filterStations(list, { genre = '', query = '' } = {}) {
   return (Array.isArray(list) ? list : []).filter((st) => (!genre || genresOf(st).includes(genre)) && (!q || haystack(st).includes(q)));
 }
 
+// ---- Listedeki radyolar: kullanıcının kendi canlı yayın listesindeki radyo kanalları (öncelikli kaynak; internet dizini yedektir)
+export const LIST_RADIO_PREFIX = 'ls:';
+const LIST_GROUP_RE = /\b(radyo|radyolar|radio|radios)\b/;
+const LIST_NAME_RE = /\b(radyo|radio)\b/;
+export const LIST_RADIO_MAX = 2000;
+export const isListRadio = (it) => !!it && it.kind === 'live' && (LIST_GROUP_RE.test(fold(it.group || '')) || LIST_NAME_RE.test(fold(it.name || '')));
+
+// Canlı kanallar → istasyon kaydı. sid: kaynak kimliği (iki kaynakta aynı kanal kimliği çakışmasın); urlOf(item) → oynatma adresi ('' ise kayıt atlanır). Aynı ad bir kez gelir.
+export function listStations(items, { sid = '', urlOf = (it) => it.url || '' } = {}) {
+  const seen = new Set();
+  const out = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    if (!isListRadio(it)) continue;
+    const name = clean(it.name);
+    const key = fold(name);
+    if (!name || seen.has(key)) continue;
+    let url = '';
+    try { url = httpUrl(urlOf(it)); } catch { url = ''; }
+    if (!url) continue;
+    seen.add(key);
+    const group = clean(it.group);
+    out.push({ id: `${LIST_RADIO_PREFIX}${sid}:${it.id}`, listId: String(it.id), name, logo: httpUrl(it.logo) && !/^http:\/\//i.test(it.logo) ? it.logo : '', url, tags: group ? [group] : [], country: '', codec: '', bitrate: 0, votes: 0, clicks: 0, fromList: true });
+    if (out.length >= LIST_RADIO_MAX) break;
+  }
+  return out;
+}
+
 // Oynatıcı öğesi: canlı yayın gibi davranır (arama çubuğu yok), ses modunda (kapak + arka plan) açılır.
 export function radioItem(st) {
   const sub = [(st.tags || []).slice(0, 2).join(' · '), st.bitrate ? `${st.codec || ''} ${st.bitrate} kbps`.trim() : ''].filter(Boolean).join(' · ');
-  return { id: st.id, kind: 'live', radio: true, audio: true, name: st.name, logo: st.logo || '', url: st.url, artist: sub, tags: st.tags || [], country: st.country || '' };
+  return { id: st.id, kind: 'live', radio: true, audio: true, name: st.name, logo: st.logo || '', url: st.url, artist: sub, tags: st.tags || [], country: st.country || '', ...(st.listId ? { listId: st.listId } : {}) };
 }
 export const isRadioItem = (it) => !!(it && it.radio);
 
@@ -124,7 +152,8 @@ export async function loadStations({ net, cache, country = 'TR', version = '1', 
 
 // Yayın başlayınca dizine "dinlendi" bildirimi (sıralamayı besler). Başarısızlık sessizdir.
 export function countClick({ net, id, version = '1', mirrors = RADIO_MIRRORS }) {
-  const uuid = String(id || '').replace(/^rb:/, '');
+  if (!/^rb:/.test(String(id || ''))) return Promise.resolve(false); // listedeki radyolar dizine bildirilmez
+  const uuid = String(id).replace(/^rb:/, '');
   if (!uuid || !mirrors.length) return Promise.resolve(false);
   return net.text(`${mirrors[0]}/json/url/${encodeURIComponent(uuid)}`, { headers: { 'User-Agent': agent(version) }, fast: true }).then(() => true, () => false);
 }
@@ -139,7 +168,7 @@ export function toggleRadioFav(store, st) {
   const list = radioFavs(store);
   const i = list.findIndex((f) => f.id === st.id);
   if (i >= 0) list.splice(i, 1);
-  else list.unshift({ id: st.id, name: st.name, logo: st.logo || '', url: st.url, tags: st.tags || [], country: st.country || '', codec: st.codec || '', bitrate: st.bitrate || 0, votes: st.votes || 0, clicks: st.clicks || 0 });
+  else list.unshift({ id: st.id, ...(st.listId ? { listId: st.listId } : {}), name: st.name, logo: st.logo || '', url: st.url, tags: st.tags || [], country: st.country || '', codec: st.codec || '', bitrate: st.bitrate || 0, votes: st.votes || 0, clicks: st.clicks || 0 });
   store.setPref(RADIO_FAV_KEY, list.slice(0, RADIO_FAV_MAX));
   return i < 0;
 }
