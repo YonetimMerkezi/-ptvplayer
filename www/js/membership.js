@@ -18,7 +18,7 @@ export const PRO_FEATURES = [
   ['rec', 'Kayıt', 'Canlı yayını kaydet, zamanlı kayıt kur'],
   ['dl', 'İndirme', 'Film ve dizileri çevrimdışı izle'],
   ['sources', 'Birden fazla kaynak', 'İkinci ve sonraki listeleri ekle'],
-  ['rows', 'Netflix görünümü', 'Yatay satırlar ve TV vitrini'],
+  ['rows', 'Vitrinli satırlar', 'Yatay satırlar ve TV vitrini'],
   ['themes', 'Renkli temalar', 'Çok renkli uygulama temaları'],
   ['backup', 'Yedekleme', 'Yedekle, geri yükle, TV ile eşitle'],
   ['remind', 'Program hatırlatıcısı', 'Program ve maç başlamadan haber ver'],

@@ -1,9 +1,9 @@
-// Film ve dizi kategorileri “Netflix düzeni”nde: yeni eklenenler ve en çok puan alanlar satırları, sonra yeni/platform/tür sırası, yetişkin en sonda;
+// Film ve dizi kategorileri “öne çıkanlar önce” düzeninde: yeni eklenenler ve en çok puan alanlar satırları, sonra yeni/platform/tür sırası, yetişkin en sonda;
 // Genel ayarlar > “Film ve dizi kategori sırası” ile sağlayıcının sırasına dönülür. Tek başına: node tests/e2e/kategori.cjs; run.cjs sonunda da çağrılır.
 const path = require('node:path');
 
 async function kategoriSection({ browser, base, mock, ok, sleep }) {
-  console.log('kategori sırası: Netflix düzeni');
+  console.log('kategori sırası: öne çıkanlar önce düzeni');
   const tvUrl = new URL('?tv=1', base).href;
   const CORS = { 'access-control-allow-origin': '*' };
   const CATS = ['XXX 18+', 'Korku', 'Komedi', 'Aksiyon', 'NETFLIX Filmleri', 'EN ⇒ ACTION', 'Yeni Filmler 2026', 'Belgesel'];
@@ -44,10 +44,10 @@ async function kategoriSection({ browser, base, mock, ok, sleep }) {
     await sleep(500);
   };
 
-  // 1) varsayılan: Netflix düzeni
+  // 1) varsayılan: öne çıkanlar önce düzeni
   await enter();
   let r = await rows();
-  ok(r.join('|') === 'Yeni eklenenler*:20|En çok puan alanlar*:12|Yeni Filmler 2026:5|NETFLIX Filmleri:5|Aksiyon:5|Komedi:5|Korku:5|Belgesel:5|EN ⇒ ACTION:5|XXX 18+:5|Düzenle:undefined', 'satır sırası Netflix düzeninde: ' + r.join(' | '));
+  ok(r.join('|') === 'Yeni eklenenler*:20|En çok puan alanlar*:12|Yeni Filmler 2026:5|NETFLIX Filmleri:5|Aksiyon:5|Komedi:5|Korku:5|Belgesel:5|EN ⇒ ACTION:5|XXX 18+:5|Düzenle:undefined', 'satır sırası öne çıkanlar önce düzeninde: ' + r.join(' | '));
   // özel satırların içeriği: en yeni önce, en yüksek puan önce
   const first = await page.evaluate(() => window.__iptv.S.list.items.slice(0, 2).map((x) => x.id));
   ok(first.join() === '__new,__top', 'özel satır kimlikleri: ' + first.join());

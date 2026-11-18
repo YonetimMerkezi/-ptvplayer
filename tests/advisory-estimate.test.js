@@ -13,15 +13,15 @@ test('Türk yapımı: tür ve Türkçe özetten tahmin', () => {
   assert.equal(k.violence, 'moderate');
 });
 
-test('yabancı yapım: İngilizce özet ve TMDB anahtar kelimeleri', () => {
-  const r = estimateAdvisories({ genres: ['Drama'], plot: 'A heroin addict tries to rebuild his life after an overdose.', keywords: ['suicide attempt', 'rape', 'nudity'] });
+test('yabancı yapım: İngilizce özet', () => {
+  const r = estimateAdvisories({ genres: ['Drama'], plot: 'A heroin addict tries to rebuild his life after an overdose and a suicide attempt, while a rape case and scenes of nudity haunt the trial.' });
   const c = cats(r);
   assert.equal(c.drugs, 'moderate');
   assert.equal(c.self_harm, 'high');
   assert.equal(c.sexual_violence, 'high');
   assert.equal(c.nudity, 'moderate');
   assert.ok(r[0].level === 'high', 'yüksek düzey önce');
-  assert.ok(r.find((x) => x.category === 'self_harm').from.includes('anahtar kelime'));
+  assert.deepEqual(r.find((x) => x.category === 'self_harm').from, ['özet']);
 });
 
 test('yüksek şiddet, kelime sınırı ve aksan katlama', () => {

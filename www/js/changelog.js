@@ -3,21 +3,21 @@
 export const CHANGELOG = [
   {
     id: 117,
-    title: 'Netflix gibi film/dizi ekranı geri geldi; vitrin, odak halkası ve ana ekran düzeltmeleri',
+    title: 'Vitrinli satırlar film/dizi ekranı geri geldi; vitrin, odak halkası ve ana ekran düzeltmeleri',
     items: [
-      'Film ve dizi ekranı “Netflix gibi” ayarında kategoriler yeniden yatay kayan satırlar olarak açılır; her satırın üstünde kategori adı görünür',
+      'Film ve dizi ekranı “Vitrinli satırlar” ayarında kategoriler yeniden yatay kayan satırlar olarak açılır; her satırın üstünde kategori adı görünür',
       'TV vitrini: odaktaki yapımın arka plan görseli artık güvenilir biçimde yüklenir; başlıkta yalnız ad yazar, bölüm ve tarih alt satırda',
       'Odak halkası kutunun çevresinde tam görünür: satırlarda, kategori içinde ve ana ekrandaki “Son eklenen filmler” satırında kırpılmaz, ekran dışına taşmaz',
       'TV’de kutular daha büyük ve afişler doğru oranda; kutudaki ad alanı alttan yarım satır göstermez',
       'Kategorileri düzenlerken (sırala, gizle, kilitle) düğmeler ızgara görünümünde de çıkar',
       'Ana ekranda aynı film “Son eklenen filmler” satırında bir kez gösterilir',
-      'Netflix görünümünde vitrin artık telefonda da var: üstte öne çıkan yapımın gölgeli görseli, kaydırdıkça değişir; dokununca açılır',
+      'Vitrinli satır görünümünde vitrin artık telefonda da var: üstte öne çıkan yapımın gölgeli görseli, kaydırdıkça değişir; dokununca açılır',
       'Mini müzik çalar: müzik arka planda çalarken sekmelerin üstünde şarkı adı, duraklat, sonraki ve kapat düğmeleri',
       'Profiller (Ayarlar > Profiller): her aile üyesinin favorileri, izleme listesi ve kaldığı yer ayrı tutulur; kaynaklar ve ayarlar ortaktır',
       'Afişi olmayan filmlerde afiş, film eşleştirmesinden bulunup gösterilir',
       'İlk açılışta uygulamayı üç adımda anlatan karşılama ekranı',
       'İçerik uyarıları: doğrulanmış kaydı olmayan film ve dizilerde tür ve özetten çıkarılan tahmini uyarılar gösterilir (yerli ve yabancı); uyarı simgeleri artık görünür',
-      'Netflix görünümünde arama kutusu ve Düzenle çubuğu vitrinin üstünden kalktı; “Kategorileri düzenle” üst çubukta',
+      'Vitrinli satır görünümünde arama kutusu ve Düzenle çubuğu vitrinin üstünden kalktı; “Kategorileri düzenle” üst çubukta',
       'Oynatıcı: yükleniyor halkası oynat düğmesinin üstüne binmez; çözülemeyen ses biçiminde ekrana uyarı çıkmaz, Ses düğmesi işaretlenir',
       'Canlı TV ızgarasında kanal adının ikinci satırı kesilmez',
       'Ses: Ayarlar > Oynatıcı’da “Yazılım ses çözücüsü (deneysel)”; açılınca cihazın çözemediği AC3/E-AC3/DTS sesli yayınlar uygulamanın kendi çözücüsüyle çalınır, uygulama kapanırsa kendiliğinden kapanır',
@@ -29,9 +29,10 @@ export const CHANGELOG = [
       'Bugün TV’de ekranı yenilendi: büyük başlık ve tarih, sayaçlı Spor / Film / Dizi sekmeleri, saat, ŞİMDİ rozeti ve ilerleme çubuklu program kartları; renkler seçtiğiniz tema rengine uyar. Üstteki düğmelerle program ya da kanal araması ve gün seçimi yapılır',
       'TV Rehberi yenilendi: üstte başlık, arama ve yenile düğmeleri; Kategoriler / Tümü / Favoriler / Son İzlenen çipleri; kategori simgeleri ve kanal sayıları. Zaman çizelgesinde gün seçici (bugünden 7 gün), 3 saat kaydırma, şimdi etiketi, kanal logosu ve kalite satırı, ilerleme çubuklu program kutuları; renkler seçtiğiniz temaya uyar',
       'Ana ekranda artık son izlediklerin görünür: “Son izlenen kanallar”, “Son izlenen filmler” ve “Son izlenen diziler” ayrı satırlar olarak gelir (en yenisi başta); kanala dokununca doğrudan açılır, “Tümünü gör” tam listeye götürür. Diziler de artık son izlenenlere kaydedilir',
-      'Telefonda dikey Netflix görünümünde vitrin büyüdü: film konusu 5 satıra kadar gösterilir (küçük ekranlarda 4 ya da 3 satır), başlık ve künye kırpılmaz',
+      'Telefonda dikey vitrinli satır görünümünde vitrin büyüdü: film konusu 5 satıra kadar gösterilir (küçük ekranlarda 4 ya da 3 satır), başlık ve künye kırpılmaz',
       'Uygulama Google Play’e hazırlanıyor: Play sürümünde Standart ve Pro yıllık abonelik Google Play üzerinden alınır, deneme teklifi ve fiyat üyelik ekranında görünür. Bu APK sürümü olduğu gibi tamamen açık kalır',
-      'Genel ayarlara “TMDB verisini kullan” düğmesi: kapatınca film ve dizi ayrıntısında TMDB eşleşmesi, yaş sınırı ve içerik işaretleri kullanılmaz; farkı karşılaştırabilirsin',
+      'TMDB bağlantısı tamamen kaldırıldı: film ve dizi ayrıntısındaki yaş sınırı ve içerik uyarıları artık yalnız KTB, Screenwise ve sağlayıcının tür ve özetinden gelir; elle girilmiş kayıtlar ve TMDB’ye giden hiçbir istek kalmadı',
+      'Uygulamada marka adı geçen “Netflix gibi / Netflix düzeni” adları “Vitrinli satırlar” ve “Öne çıkanlar önce” olarak değişti',
     ],
   },
   {
@@ -355,9 +356,9 @@ export const CHANGELOG = [
   },
   {
     id: 81,
-    title: 'Film ve dizi kategorileri Netflix düzeninde, TV’de kumanda ve kenar düzeltmeleri',
+    title: 'Film ve dizi kategorileri öne çıkanlar önce düzeninde, TV’de kumanda ve kenar düzeltmeleri',
     items: [
-      'Film ve dizi kategorileri artık Netflix gibi sıralanır: önce “Devam et”, “Yeni eklenenler” ve “En çok puan alanlar” satırları, sonra yeni çıkanlar, platformlar (Netflix, Disney+…), Türkçe içerik ve en çok izlenen türler (Aksiyon, Komedi, Dram…); yabancı dil ve yetişkin kategoriler sonda. Kendi verdiğiniz sıra her zaman öncelikli',
+      'Film ve dizi kategorileri artık öne çıkanlar önce sıralanır: önce “Devam et”, “Yeni eklenenler” ve “En çok puan alanlar” satırları, sonra yeni çıkanlar, platformlar (Netflix, Disney+…), Türkçe içerik ve en çok izlenen türler (Aksiyon, Komedi, Dram…); yabancı dil ve yetişkin kategoriler sonda. Kendi verdiğiniz sıra her zaman öncelikli',
       'Genel ayarlar › “Film ve dizi kategori sırası” ile eski “Sağlayıcının sırası”na dönülebilir. “Yeni eklenenler” yalnız eklenme zamanı bilinen listelerde (Xtream) çıkar',
       'TV’de sayfaların sol üstündeki geri düğmesi ve TV Rehberi’ndeki “Program ara” / “EPG yenile” düğmeleri artık üstten kesilmiyor: sayfalara kenar payı eklendi, odak halkası tam görünür',
       'TV’de Ara sayfasında kumandayla arama kutusuna geçilemiyordu (yukarı tuşu geri okuna gidiyordu); artık sekme düğmelerinden yukarı basınca kutuya gelinir, Tamam’a basınca yazılır',
@@ -427,9 +428,9 @@ export const CHANGELOG = [
   },
   {
     id: 73,
-    title: 'Telefonda Netflix gibi ekran: düzenle, satır sayısı, adlar',
+    title: 'Telefonda vitrinli satır ekranı: düzenle, satır sayısı, adlar',
     items: [
-      'Telefonda Netflix gibi görünümün üstünde kategori çubuğu ve “Düzenle” düğmesi var (kumandada düzenleme kutusu en altta kalır)',
+      'Telefonda vitrinli satır görünümünün üstünde kategori çubuğu ve “Düzenle” düğmesi var (kumandada düzenleme kutusu en altta kalır)',
       'Ayarlar > Genel ayarlar > “Satırdaki yapım sayısı”: her satırda en çok 12, 24, 36, 48, 72 veya 100 kutu; fazlası “Tümünü gör” kutusunda',
       'Telefonda satırlardaki film/dizi adları daha küçük yazıyla ve “Kutudaki film/dizi adı” ayarı kadar satırda (varsayılan 3) görünür; adın altından sonraki satırın ucu artık görünmez'
     ],
@@ -459,7 +460,7 @@ export const CHANGELOG = [
     id: 69,
     title: 'Film ve dizi satırları “Devam et”le başlar',
     items: [
-      'Netflix gibi ekranda en üstteki “Tümü” satırı kaldırıldı; izlemeye başladığınız yapım varsa ilk satır “Devam et”, yoksa ilk kategori. Tüm liste Klasik görünümde ve aramada durmaya devam eder'
+      'Vitrinli satır ekranında en üstteki “Tümü” satırı kaldırıldı; izlemeye başladığınız yapım varsa ilk satır “Devam et”, yoksa ilk kategori. Tüm liste Klasik görünümde ve aramada durmaya devam eder'
     ],
   },
   {
@@ -475,11 +476,11 @@ export const CHANGELOG = [
   },
   {
     id: 67,
-    title: 'Netflix gibi film ve dizi ekranı',
+    title: 'Vitrinli satırlar film ve dizi ekranı',
     items: [
-      'TV’de film ve dizi artık Netflix gibi: her kategori yatayda kayan tek bir satır, satırlar alt alta; odaktaki yapımın geniş afişi çevresi gölgeli olarak üstte, altında adı, puanı, süresi, türü ve konusu görünür',
+      'TV’de film ve dizi artık vitrinli satırlar hâlinde: her kategori yatayda kayan tek bir satır, satırlar alt alta; odaktaki yapımın geniş afişi çevresi gölgeli olarak üstte, altında adı, puanı, süresi, türü ve konusu görünür',
       'Her satırda ilk 24 yapım vardır; sondaki “Tümünü gör” kutusu kategoriyi açar, Geri ile aynı kutuya dönülür. En alttaki “Kategorileri düzenle” kutusu sıralama, gizleme, klasör ve kilit işlerini açar',
-      'Ayarlar > Genel ayarlar > Film ve dizi ekranı: Otomatik (TV: Netflix gibi, telefon: Klasik), Netflix gibi, Klasik + TV vitrini, Klasik. Eski “TV vitrini” anahtarı bu ayarın içine katıldı',
+      'Ayarlar > Genel ayarlar > Film ve dizi ekranı: Otomatik (TV: Vitrinli satırlar, telefon: Klasik), Vitrinli satırlar, Klasik + TV vitrini, Klasik. Eski “TV vitrini” anahtarı bu ayarın içine katıldı',
       'Telefonda da seçilebilir: satırlar parmakla yana kayar; vitrin yalnız yatay ekranda kumanda ya da klavyeyle gezerken görünür'
     ],
   },

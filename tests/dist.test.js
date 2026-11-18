@@ -43,5 +43,5 @@ test('Gizlilik politikası: Ayarlar\'daki bağlantı depodaki gerçek dosyaya gi
   assert.ok(dosya, 'bağlantı deponun ana dalındaki dosyayı göstermeli');
   const metin = readFileSync(join(kok, dosya[1]), 'utf8');
   for (const b of ['Cihazınızda tutulan veriler', 'Üyelik ve ödeme', 'Çocuklar', 'Saklama ve silme', 'İletişim', 'Privacy Policy']) assert.ok(metin.includes(b), 'başlık eksik: ' + b);
-  for (const ana of ['translate.googleapis.com', 'Cloudflare Workers', 'Google Play', 'GitHub']) assert.ok(metin.includes(ana), 'veri akışı anılmalı: ' + ana);
+  for (const ana of ['translate.googleapis.com', 'Cinemeta', 'Google Play', 'GitHub']) assert.ok(metin.includes(ana), 'veri akışı anılmalı: ' + ana);
 });

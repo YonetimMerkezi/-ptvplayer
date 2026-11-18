@@ -1,4 +1,4 @@
-// Netflix tarzı satırlar: her kategori yatayda kayan tek bir şerittir; satırlar dikeyde pencerelenir (yalnız görünenler DOM'da).
+// Vitrinli satırlar: her kategori yatayda kayan tek bir şerittir; satırlar dikeyde pencerelenir (yalnız görünenler DOM'da).
 // Gezinme kuralları ve ölçüler saf işlevlerdir (test edilir); Shelves sınıfı DOM, kumanda tuşları ve odak hatırlamayı yönetir.
 import { visibleRows } from './vlist.js';
 

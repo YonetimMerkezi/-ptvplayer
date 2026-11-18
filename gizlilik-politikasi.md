@@ -23,8 +23,8 @@ Eklediğiniz IPTV kaynağına uygulama doğrudan bağlanır. Sağlayıcı, iste�
 
 Uygulamanın özellikleri için aşağıdaki hizmetlere istek gider. İsteklerde adınız, hesabınız ya da cihaz kimliğiniz **bulunmaz**; her internet isteğinde olduğu gibi hizmet IP adresinizi görür.
 
-- **Film ve dizi bilgisi:** Film/dizi adı (listenizdeki addan temizlenmiş hâli) ve varsa yıl, eşleştirme için bize ait bir Cloudflare Workers hizmetine (veritabanı: Cloudflare D1) gönderilir; hizmet TMDB'de eşleşmeyi arar ve Türkçe/özgün ad, IMDb kimliği, yıl, tür, yaş sınırı, içerik tanımlayıcıları ve anahtar kelimeleri alır (afiş, özet, oyuncu ve puan TMDB'den alınmaz). Saklanan kayıt yalnızca bu yapım bilgisidir; kullanıcıya ya da cihaza bağlanmaz. Ayrıca Cinemeta (Stremio), Metahub (afiş) ve Wikidata kullanılır.
-- **İçerik uyarıları:** Film için uyarı bilgisi screenwiseapp.com'dan alınır; İngilizce uyarı metni Türkçeye çevrilmek üzere Google Çeviri'ye (translate.googleapis.com) gönderilir.
+- **Film ve dizi bilgisi:** Film/dizi adı (listenizdeki addan temizlenmiş hâli) ve varsa yıl, eşleştirme, tür, özet ve afiş için Cinemeta (Stremio), Metahub (afiş) ve Wikidata'ya gönderilir. Bu hizmetlere giden istek kullanıcıya ya da cihaza bağlanmaz.
+- **İçerik uyarıları:** Film için uyarı bilgisi screenwiseapp.com'dan alınır; film adı bu hizmete gönderilir. İngilizce uyarı metni Türkçeye çevrilmek üzere Google Çeviri'ye (translate.googleapis.com) gönderilir.
 - **TV rehberi ve yayın akışı:** EPG kaynakları (epgshare01, open-epg, Teleonline, jsDelivr) ve yayın akışı sayfaları (tvdebugun, tvyayinakisi, 1001dizi).
 - **Spor:** TheSportsDB, ESPN, LiveScore, sahadan, macrehberi, livesoccertv, sporekrani; bayraklar için flagcdn.
 - **Diğer:** Film sınıflandırma bilgisi için Kültür ve Turizm Bakanlığı (filmsiniflandirma.ktb.gov.tr); hız testi için Cloudflare (speed.cloudflare.com).
@@ -51,7 +51,7 @@ Uygulama çocuklara yönelik değildir. Aile profilleri için isteğe bağlı, c
 
 ## Saklama ve silme
 
-Biz kişisel veri toplamadığımız için silme talebine konu veri yoktur. Cihazdaki veriler uygulamayı kaldırarak silinir. Film eşleştirme kaydı kişiye bağlı olmayan, yalnız yapım bilgisidir.
+Biz kişisel veri toplamadığımız için silme talebine konu veri yoktur. Cihazdaki veriler uygulamayı kaldırarak silinir.
 
 ## Güvenlik
 
@@ -90,8 +90,8 @@ The app connects directly to the IPTV source you add. The provider receives the 
 
 To power its features the app sends requests to the services below. Requests contain **no** name, account or device identifier; as with any internet request, the service sees your IP address.
 
-- **Movie and series information:** The film/series title (cleaned from the name in your list) and, if known, the year are sent to our own Cloudflare Workers service (database: Cloudflare D1) to find a match; it searches TMDB for a match and receives the Turkish/original title, IMDb ID, year, genres, age rating, content descriptors and keywords (posters, plots, cast and ratings are not taken from TMDB). The stored record is only that title information and is not linked to any user or device. Cinemeta (Stremio), Metahub (posters) and Wikidata are also used.
-- **Content warnings:** Warning information comes from screenwiseapp.com; English warning text is sent to Google Translate (translate.googleapis.com) to be translated into Turkish.
+- **Movie and series information:** The film/series title (cleaned from the name in your list) and, if known, the year are sent to Cinemeta (Stremio), Metahub (posters) and Wikidata for matching, genres, plots and posters. These requests are not linked to any user or device.
+- **Content warnings:** Warning information comes from screenwiseapp.com; the film title is sent to this service. English warning text is sent to Google Translate (translate.googleapis.com) to be translated into Turkish.
 - **TV guide and schedules:** EPG sources (epgshare01, open-epg, Teleonline, jsDelivr) and schedule pages (tvdebugun, tvyayinakisi, 1001dizi).
 - **Sports:** TheSportsDB, ESPN, LiveScore, sahadan, macrehberi, livesoccertv, sporekrani; flagcdn for flags.
 - **Other:** The Turkish Ministry of Culture and Tourism (filmsiniflandirma.ktb.gov.tr) for film classification; Cloudflare (speed.cloudflare.com) for the speed test.
@@ -118,7 +118,7 @@ The app is not directed at children. An optional on-device child lock exists for
 
 ## Retention and deletion
 
-Because we do not collect personal data, there is no personal data to delete on request. On-device data is removed by uninstalling the app. The film-match record is only title information and is not linked to any person.
+Because we do not collect personal data, there is no personal data to delete on request. On-device data is removed by uninstalling the app.
 
 ## Security
 

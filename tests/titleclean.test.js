@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanTitle, isEpisodeLike, cacheKey, fold } from '../www/js/titleclean.js';
-import { lookupMeta } from '../www/js/meta-worker.js';
+import { cleanTitle, isEpisodeLike, fold } from '../www/js/titleclean.js';
 
 test('pipe, nokta ve altçizgi biçimlerinden ad ve yıl çıkarır', () => {
   assert.deepEqual([cleanTitle('Adalet 3 | 2023 | 7.1 | Altyazılı | HD').title, cleanTitle('Adalet 3 | 2023 | 7.1 | Altyazılı | HD').year], ['Adalet 3', 2023]);
@@ -17,21 +16,12 @@ test('devam filmi numarası ve çizgi film adı korunur', () => {
   assert.equal(cleanTitle('Cizgi Film - Pamuk Prenses').title, 'Cizgi Film - Pamuk Prenses');
 });
 
-test('Türkçe karakterler sadeleşir, anahtar kaynaktan bağımsızdır', () => {
+test('Türkçe karakterler sadeleşir', () => {
   assert.equal(fold('IŞIK İSTANBUL Çağrı'), 'isik istanbul cagri');
-  assert.equal(cacheKey(cleanTitle('Geçmiş Olsun', 2012)), cacheKey(cleanTitle('GECMIS.OLSUN.2012')));
 });
 
 test('bölüm kayıtları elenir, "Bölüm" içeren filmler elenmez', () => {
   assert.equal(isEpisodeLike('Gönül Dağı | 230. Bölüm | 07.11.2026'), true);
   assert.equal(isEpisodeLike('Star Wars: Bölüm VIII'), false);
   assert.equal(isEpisodeLike('Alaycı Kuş Bölüm 1 | 2014'), false);
-});
-
-test('yapılandırılmış APP_TOKEN ile Worker isteği doğrulama başlığıyla gönderilir', async () => {
-  let calls = 0, headers = null;
-  const net = { json: async (_url, options) => { calls++; headers = options.headers; return { items: [{ st: 'none' }] }; } };
-  assert.equal(await lookupMeta(net, { cache: { get: async () => null, set: async () => {} } }, { name: 'Alita' }), null);
-  assert.equal(calls, 1);
-  assert.equal(headers['x-app-token'], 'sedonet23');
 });

@@ -74,7 +74,6 @@ import { cleanTitle } from './titleclean.js';
 import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, setBillingReady, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
 import { PRODUCT_IDS, PLAY_PRODUCTS, nextEnt, offerText } from './billing.js';
-import { lookupMeta } from './meta-worker.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { createWarm, uniqueEntries } from './warm.js';
 import { estimateAdvisories, ESTIMATE_LABEL, ESTIMATE_ICON } from './advisory-estimate.js';
@@ -761,7 +760,7 @@ const catsGrid = (kind) => displayMode(kind) === 'grid' && !S.catEdit;
 const listKey = (kind, mode) => (mode === 'cats' ? `cats:${catsGrid(kind) ? 'grid' : 'list'}` : mode);
 function browseMode(kind) {
   if (S.query || S.group[kind] != null) return 'items';
-  // Netflix gibi görünüm: kategoriler yatay kayan satırlardır; düzenleme ve kategori süzgeci klasik kategori listesini açar
+  // Vitrinli satır görünümü: kategoriler yatay kayan satırlardır; düzenleme ve kategori süzgeci klasik kategori listesini açar
   return isMv(kind) && !S.catEdit && !S.catFilter && mvView() === 'rows' ? 'rows' : 'cats';
 }
 
@@ -790,11 +789,11 @@ function shelfTile(kind, row, r, c) {
   return `<div class="sh-more" ${at} data-more><span class="sh-more-i">${icon('chev-r')}</span><b>Tümünü gör</b><small>${row.count}</small></div>`;
 }
 
-// Film ve dizi kategorileri: ayar "Netflix düzeni"yse öne çıkanlardan başlayan sıra, değilse sağlayıcının sırası. Canlı TV her zaman sağlayıcının sırasıdır.
+// Film ve dizi kategorileri: ayar "öne çıkanlar önce" ise öne çıkanlardan başlayan sıra, değilse sağlayıcının sırası. Canlı TV her zaman sağlayıcının sırasıdır.
 const catOrderMode = () => normalizeCatOrder(store.pref('set.catOrder', DEFAULT_CAT_ORDER));
 const providerGroups = (kind) => (isMv(kind) && catOrderMode() === 'smart' ? smartSort(S.groups[kind]) : S.groups[kind]);
 
-// Varsayılan sıra: klasörler, sonra grupların (Netflix düzeni ya da sağlayıcı) sırası.
+// Varsayılan sıra: klasörler, sonra grupların (öne çıkanlar önce düzeni ya da sağlayıcı) sırası.
 // Oynatıcıdaki kanal paneli için: ana ekranla aynı sıra ve gizleme (Tümü, Son izlenen, klasörler, sağlayıcı grupları); boş ve gizli kategori yok.
 function playerCategories() {
   const rows = categoryRows('live', { edit: false, filter: '' });
@@ -965,9 +964,9 @@ function wireCatbar(kind) {
 }
 
 function drawCatbar(kind, mode, all) {
-  // Satırlarda (Netflix gibi) çubuk yalnız dokunmatikte durur (kategori ara + Düzenle); kumandada Düzenle en alttaki kutudur.
+  // Satırlarda (vitrinli satır görünümü) çubuk yalnız dokunmatikte durur (kategori ara + Düzenle); kumandada Düzenle en alttaki kutudur.
   // Liste/Izgara düğmesi klasik kategori listesi ve kategori içi içindir; satırların görünümü Ayarlar'dan seçilir.
-  // Satırlarda (Netflix gibi) çubuk yoktur: vitrin görselinin üstünü kapatmasın. Telefonda "Kategorileri düzenle" üst çubuktaki
+  // Satırlarda (vitrinli satır görünümü) çubuk yoktur: vitrin görselinin üstünü kapatmasın. Telefonda "Kategorileri düzenle" üst çubuktaki
   // düğmedir (#btn-catedit); kumandada en alttaki kutudur. Kategori arama, düzenleme açılınca (klasik liste) görünür.
   const rows = mode === 'rows';
   const visible = (mode === 'cats' || mode === 'items') && all;
@@ -997,8 +996,8 @@ function renderBrowse(v, kind) {
 
 // ---- TV vitrini (hero.js): kategorinin içinde kumandayla gezilen film/dizi kutusunun geniş arka planı, adı, puanı, özeti.
 // Yalnız TV kipinde ve film/dizi kutuları görünürken açık; telefonda hiçbir şey değişmez. Ayar: Genel ayarlar > TV vitrini.
-// Film ve dizi ekranı (Genel ayarlar): Netflix gibi satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: TV'de Netflix gibi, telefonda klasik.
-const MV_VIEWS = [['auto', 'Otomatik'], ['rows', 'Netflix gibi'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
+// Film ve dizi ekranı (Genel ayarlar): vitrinli satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: TV'de vitrinli satırlar, telefonda klasik.
+const MV_VIEWS = [['auto', 'Otomatik'], ['rows', 'Vitrinli satırlar'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
 const isMv = (kind) => kind === 'movie' || kind === 'series';
 function mvPref() {
   const p = store.pref('set.mvView', 'auto');
@@ -1006,7 +1005,7 @@ function mvPref() {
   if (store.pref('set.tvHero', true) === false) return 'classic'; // eski "TV vitrini" anahtarı kapatılmışsa
   return isTvUi() ? 'rows' : 'classic';
 }
-// Geçerli görünüm: Netflix görünümü ve TV vitrini Pro'dur; üyelik yetmiyorsa klasik ızgara gösterilir (ayar silinmez, Pro gelince geri döner).
+// Geçerli görünüm: vitrinli satırlar ve TV vitrini Pro'dur; üyelik yetmiyorsa klasik ızgara gösterilir (ayar silinmez, Pro gelince geri döner).
 function mvView() {
   const v = mvPref();
   return v !== 'classic' && !proOk('rows') ? 'classic' : v;
@@ -1134,7 +1133,7 @@ function heroSync(kind, mode) {
   const on = heroActive(kind, mode);
   box.hidden = !on;
   document.documentElement.classList.toggle('hero-on', on);
-  document.documentElement.classList.toggle('hero-rows', on && mode === 'rows'); // Netflix görünümü: vitrin telefonda (dokunmatik, dikey) da görünür
+  document.documentElement.classList.toggle('hero-rows', on && mode === 'rows'); // vitrinli satır görünümü: vitrin telefonda (dokunmatik, dikey) da görünür
   // Dokunmatikte vitrine dokunmak öne çıkan yapımı açar (kumandada vitrin odak almaz)
   box.onclick = on ? () => {
     const it = hero.current;
@@ -1951,22 +1950,16 @@ const advisorySmart = (warning) => {
 };
 const advisoryTr = (value) => translateScreenwiseText(String(value || '').replace(/\\*\\*/g, '').trim());
 
-// TMDB verisi (Worker üzerinden: eşleşme, IMDb kimliği, Türkçe ad, tür, yaş sınırı, içerik işaretleri, anahtar kelimeler). Genel ayarlardan
-// kapatılırsa hiç istek gitmez ve önbellekteki kayıt da kullanılmaz; ayrıntı ekranı öteki kaynaklarla (yerel katalog/Cinemeta, KTB, Screenwise,
-// sağlayıcının türü ve özeti) çizilir. Böylece iki durumun farkı aynı yapımda yan yana görülebilir.
-const tmdbLookup = (...args) => (setting('tmdb', true) ? lookupMeta(net, store, ...args) : Promise.resolve(null));
-
-// Bir filmin katalog eşleşmesi (yerel katalog/Cinemeta + Worker/TMDB) ve uyarı aramasında kullanılacak künye. Ayrıntı sayfası ile önden indirme aynı yolu kullanır.
+// Bir filmin katalog eşleşmesi (yerel katalog/Cinemeta) ve uyarı aramasında kullanılacak künye. Ayrıntı sayfası ile önden indirme aynı yolu kullanır.
 async function resolveAdvisoryMeta(it, info) {
-  const [meta, wk] = await Promise.all([loadMovieMetadata(net, it, info || null, store).catch(() => null), tmdbLookup(it, info || null).catch(() => null)]);
-  const baseMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
-  const advisoryMeta = wk ? { ...baseMeta, title: meta ? baseMeta.title : (wk.ot || wk.ttl || baseMeta.title), year: baseMeta.year || wk.yr || 0, imdbId: baseMeta.imdbId || wk.imdb || '', trTitle: wk.ttl || '', originalTitle: wk.ot || '' } : baseMeta;
-  return { meta, wk, advisoryMeta };
+  const meta = await loadMovieMetadata(net, it, info || null, store).catch(() => null);
+  const advisoryMeta = meta || { title: (info && (info.original_name || info.original_title || info.name || info.title)) || it.name, year: yearOf((info && (info.year || info.release_date)) || it.year) };
+  return { meta, advisoryMeta };
 }
 
-// ctx: { genres, plot } — sağlayıcının verdiği tür ve özet; doğrulanmış kayıt olmayan içerikler için tahmini uyarılar buradan (ve
-// Worker'ın verdiği TMDB türleri ile anahtar kelimelerinden) çıkarılır. Tahminler ayrı ve "Tahmini" etiketiyle gösterilir.
-async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 'movie', ctx = null) {
+// ctx: { genres, plot } — sağlayıcının verdiği tür ve özet; doğrulanmış kayıt olmayan içerikler için tahmini uyarılar buradan çıkarılır.
+// Tahminler ayrı ve "Tahmini" etiketiyle gösterilir.
+async function paintMovieAdvisories(body, meta, failure = '', kind = 'movie', ctx = null) {
   const host = $('#mv-advisories', body);
   if (!host || !body.isConnected) return;
   let record = null;
@@ -1977,34 +1970,26 @@ async function paintMovieAdvisories(body, meta, failure = '', wk = null, kind = 
   if (!body.isConnected || !host.isConnected) return;
   const warnings = Array.isArray(record && record.warnings) ? record.warnings.filter((w) => w && (w.category || w.type)) : [];
   const ratings = Array.isArray(record && record.ratings) ? record.ratings : [];
-  // Worker (TMDB) verisi: KTB sınıflandırması yoksa tahmini yaş sınırı, ayrıca elle girilmiş uyarılar.
-  const wkRating = wk && wk.cert && !ratings.length ? [{ value: wk.cert, est: wk.csrc !== 'TR' && wk.csrc !== 'MAN', source: wk.csrc === 'TR' ? 'TMDB (Türkiye sınıflandırması)' : wk.csrc === 'MAN' ? 'Elle girilmiş' : 'TMDB, ' + wk.csrc + ' sınıflandırmasından tahmin' }] : [];
-  const allRatings = ratings.length ? ratings : wkRating;
-  const manualKinds = { siddet: ['Şiddet', 'shield-alert'], korku: ['Korku', 'brain'], cinsellik: ['Cinsellik', 'eye-off'], ciplaklik: ['Çıplaklık', 'eye-off'], olumsuz: ['Olumsuz örnek', 'alert-triangle'] };
-  const manualLv = ['', 'Düşük', 'Orta', 'Yüksek'];
-  const manual = Object.entries((wk && wk.w) || {}).filter(([k, v]) => manualKinds[k] && v > 0).map(([k, v]) => ({ label: manualKinds[k][0], icon: manualKinds[k][1], level: manualLv[Math.min(3, v)] }));
   const unique = [...new Map(warnings.map((w) => [String(w.category || w.type).toLowerCase(), w])).values()];
   const sourceNames = { ktb: 'T.C. Kültür ve Turizm Bakanlığı', screenwise: 'Screenwise aile rehberi' };
   // Tahmini uyarılar: doğrulanmış kaynakların zaten bildirdiği kategoriler yinelenmez.
-  const known = new Set([...unique.map((w) => String(w.category || w.type).toLowerCase()), ...Object.keys((wk && wk.w) || {}).map((k) => ({ siddet: 'violence', korku: 'fear', cinsellik: 'sex', ciplaklik: 'nudity', olumsuz: 'negative_examples' }[k])).filter(Boolean)]);
-  const estimated = estimateAdvisories({ genres: [ctx && ctx.genres, ...((wk && wk.gen) || [])].filter(Boolean).join(', '), plot: (ctx && ctx.plot) || '', keywords: (wk && wk.w && wk.w._kw) || [] }).filter((e) => !known.has(e.category));
+  const known = new Set(unique.map((w) => String(w.category || w.type).toLowerCase()));
+  const estimated = estimateAdvisories({ genres: (ctx && ctx.genres) || '', plot: (ctx && ctx.plot) || '' }).filter((e) => !known.has(e.category));
   const estChip = (e) => '<span class="mv-warning-chip mv-est-chip">' + icon(ESTIMATE_ICON[e.category]) + esc(ESTIMATE_LABEL[e.category]) + ' · ' + esc(advisoryLevel(e.level)) + ' <i>tahmini</i></span>';
-  const hasRecord = !!(warnings.length || allRatings.length || manual.length || (record && record.guidance));
+  const hasRecord = !!(warnings.length || ratings.length || (record && record.guidance));
   host.innerHTML = (hasRecord || estimated.length
-    ? allRatings.map((r) => '<span class="mv-warning-chip mv-rating-chip">' + (r.est ? 'Tahmini yaş sınırı' : 'TR sınıflandırma') + ' · ' + esc(r.value) + '</span>').join('') + manual.map((m) => '<span class="mv-warning-chip">' + icon(m.icon) + esc(m.label) + (m.level ? ' · ' + esc(m.level) : '') + '</span>').join('') + unique.slice(0, 5).map((w) => {
+    ? ratings.map((r) => '<span class="mv-warning-chip mv-rating-chip">' + (r.est ? 'Tahmini yaş sınırı' : 'TR sınıflandırma') + ' · ' + esc(r.value) + '</span>').join('') + unique.slice(0, 5).map((w) => {
         const smart = advisorySmart(w);
         const label = smart.label;
         const level = advisoryLevel(w.level || w.severity) || smart.level;
         return '<span class="mv-warning-chip">' + icon(w.icon || advisorySmart(w).icon) + esc(label) + (level ? ' · ' + esc(level) : '') + '</span>';
-      }).join('') + estimated.slice(0, Math.max(0, 5 - unique.length - manual.length)).map(estChip).join('')
+      }).join('') + estimated.slice(0, Math.max(0, 5 - unique.length)).map(estChip).join('')
     : '<span class="mv-warning-checked">' + (record ? 'Henüz doğrulanmış içerik uyarısı bulunamadı' : (failure || 'İçerik uyarıları kontrol ediliyor')) + '</span>') +
     '<button class="mv-warning-info" id="mv-warning-info" type="button" aria-label="Ayrıntılı içerik uyarılarını göster">' + icon('info') + 'Detaylı uyarılar</button>';
   host.hidden = false;
   $('#mv-warning-info', host).addEventListener('click', () => {
-    const ratingRows = allRatings.map((r) => '<article class="mv-warning-detail"><div><b>' + (r.est ? 'Tahmini yaş sınırı' : 'Türkiye yaş sınıflandırması') + '</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
-    const workerWarningSource = wk && wk.st === 'manual' ? 'Elle doğrulanmış kayıt' : 'TMDB içerik tanımlayıcıları (' + esc((wk && wk.csrc) || 'bölgesel sınıflandırma') + ')';
-  const manualRows = manual.map((m) => '<article class="mv-warning-detail"><div><b>' + icon(m.icon) + esc(m.label) + '</b>' + (m.level ? '<span>' + esc(m.level) + '</span>' : '') + '</div><small>' + workerWarningSource + '</small></article>').join('');
-    const rows = ratingRows + manualRows + warnings.map((w) => {
+    const ratingRows = ratings.map((r) => '<article class="mv-warning-detail"><div><b>' + (r.est ? 'Tahmini yaş sınırı' : 'Türkiye yaş sınıflandırması') + '</b><span>' + esc(r.value) + '</span></div><small>' + esc(r.source || 'Resmî kaynak') + '</small></article>').join('');
+    const rows = ratingRows + warnings.map((w) => {
       const smart = advisorySmart(w);
       const label = smart.label;
       const level = advisoryLevel(w.level || w.severity) || smart.level;
@@ -2067,10 +2052,10 @@ function openMovie(it) {
         if (advStarted) return;
         advStarted = true;
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
-        resolveAdvisoryMeta(it, info).then(({ meta, wk, advisoryMeta }) => {
+        resolveAdvisoryMeta(it, info).then(({ meta, advisoryMeta }) => {
           if (!body.isConnected) return;
           const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
-          loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk, 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
+          loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
           if (info) {
             const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
@@ -2161,7 +2146,7 @@ function openSeries(it) {
       if (dlUi) watchDl(body, paintDl);
       // İçerik uyarıları (dizi): sayfa her yeniden çizildiğinde (sezon/favori) son durum yeniden boyanır.
       let adv = { meta: null, failure: '', wk: null };
-      const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, adv.wk, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
+      const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
       const draw = () => {
         const p = progressOf(it);
         const cont = p ? all.find((x) => x.id === p.id) : null;
@@ -2204,13 +2189,13 @@ function openSeries(it) {
         if (b) play(all.find((x) => x.id === b.dataset.ep));
       });
       draw();
-      // Cinemeta (IMDb kimliği) + TMDB Worker + Screenwise; KTB film sitesi diziler için kullanılmaz.
-      Promise.all([loadSeriesMetadata(net, it, store).catch(() => null), tmdbLookup(it, info, 'tv').catch(() => null)]).then(([meta, wk]) => {
+      // Cinemeta (IMDb kimliği) + Screenwise; KTB film sitesi diziler için kullanılmaz.
+      loadSeriesMetadata(net, it, store).catch(() => null).then((meta) => {
         if (!body.isConnected) return;
         const parsed = parseMovieCatalogTitle(it.name || '');
         const base = meta || { title: parsed.title || it.name, year: yearOf(info.year || it.year) || parsed.year || 0 };
-        const advisoryMeta = { ...base, kind: 'series', ...(wk ? { title: meta ? base.title : (wk.ot || wk.ttl || base.title), year: base.year || wk.yr || 0, imdbId: base.imdbId || wk.imdb || '', trTitle: wk.ttl || '' } : {}) };
-        adv = { meta: advisoryMeta, failure: (meta || wk) ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', wk };
+        const advisoryMeta = { ...base, kind: 'series' };
+        adv = { meta: advisoryMeta, failure: meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.' };
         return loadMovieAdvisories(net, store, advisoryMeta, it, 'series').catch(() => { adv.failure = 'İçerik uyarısı kaynağına erişilemedi.'; }).then(() => { if (body.isConnected) paintAdv(); });
       }).catch(() => { adv = { ...adv, failure: 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.' }; if (body.isConnected) paintAdv(); });
     },
@@ -2358,7 +2343,7 @@ function renderSources(v) {
     })
     .join('');
   const grid = `<div class="set-grid"><button class="set-tile" data-set="general">${icon('sliders')}<span>Genel ayarlar</span></button><button class="set-tile" data-set="theme">${icon('palette')}<span>Uygulama teması</span></button><button class="set-tile" data-set="motion">${icon('activity')}<span>Görünüm ve animasyonlar</span></button><button class="set-tile" data-set="player">${icon('play')}<span>Oynatıcı ayarları</span></button><button class="set-tile" data-set="epg">${icon('cal')}<span>TV rehberi (EPG)</span></button><button class="set-tile" data-set="health">${icon('activity')}<span>Yayın kalitesi</span></button><button class="set-tile" data-set="speedtest">${icon('activity')}<span>İnternet hız testi</span></button><button class="set-tile" data-set="plans">${icon('bell')}<span>Planlananlar</span></button><button class="set-tile" data-set="auto">${icon('timer')}<span>Otomasyon</span></button><button class="set-tile" data-set="kid">${icon('lock')}<span>Çocuk profili</span></button><button class="set-tile" data-set="news">${icon('info')}<span>Yenilikler</span></button>${nativePlugin ? `<button class="set-tile" data-set="rec">${icon('rec')}<span>Kayıtlar</span></button><button class="set-tile" data-set="dl">${icon('dl')}<span>İndirilenler</span></button><button class="set-tile" data-set="cast">${icon('cast')}<span>Telefondan oynat</span></button>` : ''}${kidActive() ? '' : `<button class="set-tile" data-set="profiles">${icon('home')}<span>${store.profileId() ? `Profil: ${esc(store.profile().name)}` : 'Profiller'}</span></button>`}${memOn() || store.pref('adm.on', false) ? `<button class="set-tile" data-set="member">${icon('star-on')}<span>Üyelik</span></button>` : ''}${store.pref('adm.on', false) && !isPlay() ? `<button class="set-tile" data-set="admin">${icon('lock')}<span>Yönetici</span></button>` : ''}${isPlay() ? '' : `<button class="set-tile" data-set="update">${icon('refresh')}<span>${upd && upd.status === 'available' ? 'Yeni sürüm var' : 'Güncellemeyi denetle'}</span></button>`}</div>`;
-  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><a class="btn ghost sm" id="privacy-link" href="https://github.com/YonetimMerkezi/-ptvplayer/blob/main/gizlilik-politikasi.md" target="_blank" rel="noopener">Gizlilik politikası</a><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="tmdb-note" style="color:var(--muted);font-size:.75rem">Film ve dizi bilgileri için bu ürün TMDB API’sini kullanır; TMDB tarafından onaylanmamış ya da sertifikalandırılmamıştır.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
+  v.innerHTML = `<div class="page">${grid}<div class="sect">Kaynaklar</div>${cards}<button class="btn" id="src-add">${icon('plus')}Kaynak ekle</button><div class="sect">Diğer</div><button class="btn ghost sm" id="clr-rec">Son izlenenleri temizle</button><a class="btn ghost sm" id="privacy-link" href="https://github.com/YonetimMerkezi/-ptvplayer/blob/main/gizlilik-politikasi.md" target="_blank" rel="noopener">Gizlilik politikası</a><p style="color:var(--muted);font-size:.75rem;margin-top:18px">Iptv Player Pro bir yayın hizmeti değildir ve içerik sağlamaz. Yalnızca yasal olarak erişim hakkınız olan kaynakları kullanın.</p><p id="ver-tap" style="color:var(--muted);font-size:.75rem">Sürüm ${esc(VERSION)}</p></div>`;
   v.addEventListener('click', onSourcesClick);
 }
 
@@ -4504,12 +4489,11 @@ function generalSheet() {
       chkRow('epgRows', 'Kanal listesinde program bilgisini göster', 'Şu an yayındaki program ve ilerleme çubuğu') +
       chkRow('numbers', 'Kanal numaralarını göster', 'Yatay ekrandaki Canlı TV listesinde') +
       chkRow('autoPreview', 'Canlı TV’de önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran') +
-      chkRow('tmdb', 'TMDB verisini kullan', 'Film ve dizi eşleştirmesi, TMDB yaş sınırı, içerik işaretleri ve anahtar kelimeler. Kapatınca yalnız öteki kaynaklar kullanılır; ayrıntı ekranını yeniden açınca fark görünür') +
       chkRow('showProg', 'Devam çubuklarını göster', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi') +
       chkRow('epThumbs', 'Bölüm küçük resimlerini göster', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar daha sıkışık olur') +
-      `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Netflix gibi, telefonda Klasik. Netflix gibi: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
-      `<div class="sel-row"><span>Film ve dizi kategori sırası<small>Netflix düzeni: yeni eklenenler, platformlar, Türkçe içerik ve en çok izlenen türler önce; yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir</small></span><select id="g-cord">${optionsHtml(CAT_ORDERS, catOrderMode())}</select></div>` +
-      `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Netflix gibi görünümde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
+      `<div class="sel-row"><span>Film ve dizi ekranı<small>Otomatik: TV’de Vitrinli satırlar, telefonda Klasik. Vitrinli satırlar: kategoriler yatay kayan satırlar, üstte odaktaki yapımın vitrini (kumanda veya klavyeyle)</small></span><select id="g-mv">${optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto')}</select></div>` +
+      `<div class="sel-row"><span>Film ve dizi kategori sırası<small>Öne çıkanlar önce: yeni eklenenler, platformlar, Türkçe içerik ve en çok izlenen türler önce; yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir</small></span><select id="g-cord">${optionsHtml(CAT_ORDERS, catOrderMode())}</select></div>` +
+      `<div class="sel-row"><span>Satırdaki yapım sayısı<small>Vitrinli satır görünümünde her satırda en çok kaç film/dizi kutusu dizilsin; fazlası “Tümünü gör” kutusunda</small></span><select id="g-rcap">${optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))}</select></div>` +
       `<div class="sel-row"><span>Kutudaki film/dizi adı<small>Afişin altında kaç satır görünsün; Gizli: yalnız afiş</small></span><select id="g-cap">${optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))}</select></div>` +
       `<div class="sel-row"><span>Hafif mod<small>Animasyon, gölge ve bulanıklığı kapatır. Otomatik: 2 GB ve altı bellekli cihazda açılır</small></span><select id="g-lite">${optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))}</select></div>` +
       `<div class="sel-row"><span>TV modu<small>Kumanda ile kullanım: yatay, tam ekran, büyük yazı</small></span><select id="g-tv">${optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))}</select></div>` +

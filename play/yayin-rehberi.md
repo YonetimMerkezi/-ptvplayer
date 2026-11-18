@@ -5,10 +5,9 @@ Telefondan kullanılacak şekilde sıralandı. Kutulardaki metinleri olduğu gib
 ## 1. Başlamadan önce bilmen gerekenler
 
 - **IPTV uygulamaları Play'de sıkı incelenir.** Telif şikâyetiyle kaldırılan örnekler var. Uygulamanın içerik sağlamadığı mağaza metninde ve inceleme notunda açıkça yazılı (aşağıda). Sana ait olmayan kanal adı, logo ya da marka metinde ve ekran görüntülerinde kullanılmadı.
-- **TMDB:** Eşleştirme, tür, yaş sınırı ve içerik tanımlayıcıları TMDB'den geliyor (afiş, özet, oyuncu ve puan gelmiyor). TMDB'nin API şartları ücretli (ticari) kullanım için ayrı izin ister; uygulama aboneliklidir. TMDB ile ticari kullanım iznini kontrol et. Uygulamaya atıf satırı eklendi (Ayarlar'ın altı ve mağaza metni).
-- **“Netflix” adı:** Ayarlarda ve Pro özellik listesinde “Netflix gibi / Netflix görünümü” yazıyor. Marka adı şikâyete yol açabilir; Play yayınından önce “Satır görünümü” gibi bir adla değiştirmeyi öneririm (mağaza metninde geçmiyor).
+- **Marka adı:** Uygulamadaki “Netflix gibi / Netflix düzeni” adları “Vitrinli satırlar” ve “Öne çıkanlar önce” olarak değiştirildi; arayüzde ve mağaza metninde üçüncü tarafın marka adı geçmiyor (kanal/kategori adları kullanıcının kendi listesinden gelir).
 - **Üçüncü taraf kaynaklar:** Spor, yayın akışı ve içerik uyarıları bazı sitelerden ve ücretsiz uç noktalardan okunuyor (Google Çeviri'nin resmî olmayan uç noktası dahil). Bunların kullanım şartlarını ayrıca değerlendirmek gerekir; şikâyet gelirse ilgili özellik kapatılabilir.
-- **Depo herkese açık.** İçindeki APK imza anahtarı ve parolası (iptvplayer) ile TMDB ara hizmetinin uygulama belirteci (APP_TOKEN) herkes tarafından görülebiliyor. Play'de gerçek imza anahtarını Google tutacak; yine de APK imzası için yeni anahtar üretmek APK kullanıcılarının güncellemesini bozacağından ellemedim.
+- **Depo herkese açık.** İçindeki APK imza anahtarı ve parolası (iptvplayer) herkes tarafından görülebiliyor. Play'de gerçek imza anahtarını Google tutacak; yine de APK imzası için yeni anahtar üretmek APK kullanıcılarının güncellemesini bozacağından ellemedim.
 
 ## 2. Sıra
 
@@ -57,8 +56,6 @@ NELER YAPAR
 
 GİZLİLİK
 Hesap gerekmez. Reklam ve izleme yoktur. Kaynaklarınız, parolalarınız ve izleme geçmişiniz yalnızca cihazınızda kalır.
-
-Film ve dizi bilgileri için bu ürün TMDB API'sini kullanır; TMDB tarafından onaylanmamış ya da sertifikalandırılmamıştır.
 ```
 
 **Yenilikler – Türkçe**
@@ -93,8 +90,6 @@ Try it free for 7 days. After that a yearly Standard membership is needed to kee
 
 PRIVACY
 No account needed. No ads, no tracking. Your sources, passwords and watch history stay on your device.
-
-For movie and series information this product uses the TMDB API; it is not endorsed or certified by TMDB.
 ```
 
 What's new
@@ -136,7 +131,7 @@ https://github.com/YonetimMerkezi/-ptvplayer/blob/main/gizlilik-politikasi.md
 - **Şifreleme:** veri aktarılırken şifreleniyor → **Evet**
 - **Silme talebi yolu:** **Hayır** (veri kişiye bağlı değil; politikada yazıyor)
 - Tür: **Uygulama etkinliği → Diğer eylemler** (film/dizi adı, eşleştirme için)
-  - Toplanıyor: **Evet** · Paylaşılıyor: **Hayır** (TMDB, hizmet sağlayıcı olarak bizim adımıza işliyor)
+  - Toplanıyor: **Evet** · Paylaşılıyor: **Hayır** (adlar, hizmet sağlayıcılara yalnız arama için gider; kullanıcıya bağlanmaz)
   - Amaç: **Uygulama işlevselliği**
   - Zorunlu mu: **Evet, zorunlu** (kapatma seçeneği yok)
   - Kişiye bağlı mı: **Hayır**

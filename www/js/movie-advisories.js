@@ -284,7 +284,7 @@ export async function loadMovieAdvisories(net, store, meta, item, kind = '') {
   const ttl = hasError(cached) ? TTL_ERROR : hasUsefulData(cached) ? TTL_FOUND : TTL_EMPTY;
   if (cached && cached.checkedAt && Date.now() - cached.checkedAt < ttl) return cached;
   const record = { imdbId: meta.imdbId || '', title, year, kind: series ? 'series' : 'movie', checkedAt: Date.now(), sources: {}, warnings: [], ratings: [] };
-  // KTB film sınıflandırma sitesi yalnız filmleri kapsar; diziler için Screenwise ve TMDB kullanılır.
+  // KTB film sınıflandırma sitesi yalnız filmleri kapsar; diziler için Screenwise kullanılır.
   if (!series) {
     try {
       const ktbTitles = [...new Set([meta.trTitle, title, meta.originalTitle, meta.original_title, meta.originalName]

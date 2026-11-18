@@ -1,11 +1,11 @@
-// Netflix gibi film/dizi ekranı: her kategori yatayda kayan tek satır, üstte odaktaki yapımın vitrini.
+// vitrinli satırlar film/dizi ekranı: her kategori yatayda kayan tek satır, üstte odaktaki yapımın vitrini.
 // Kapsam: "Tümü" satırı yok, en üst satır "Devam et", TV 1920×1080 ve 960×540 gezinme, "Tümünü gör" ve Geri ile konumun dönmesi, kilitli kategori, Düzenle kutusu,
 // Ayarlar > Film ve dizi ekranı seçenekleri, telefon (dokunmatik kaydırma, vitrin yalnız yatay + kumanda).
 // Tek başına: node tests/e2e/satirlar.cjs; run.cjs sonunda da çağrılır.
 const path = require('node:path');
 
 async function satirlarSection({ browser, base, mock, ok, sleep }) {
-  console.log('satırlar: Netflix gibi film/dizi ekranı');
+  console.log('satırlar: vitrinli satırlar film/dizi ekranı');
   const tvUrl = new URL('?tv=1', base).href;
   const CORS = { 'access-control-allow-origin': '*' };
   const CAT = '.row.cat, .cat-tile'; // klasik kategori listesi: satır (Liste) ya da kutu (Izgara, film/dizide varsayılan)
@@ -314,7 +314,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     await ctx.close();
   }
 
-  // ---- 6) Ayar: TV'de Klasik / Klasik + TV vitrini / Netflix gibi; canlı TV etkilenmez
+  // ---- 6) Ayar: TV'de Klasik / Klasik + TV vitrini / vitrinli satırlar; canlı TV etkilenmez
   {
     for (const [mv, want] of [['classic', 'cats'], ['hero', 'cats'], ['rows', 'rows'], ['auto', 'rows']]) {
       const { ctx, page, errs } = await open({ width: 1280, height: 720 }, { mv });
@@ -336,7 +336,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     }
   }
 
-  // ---- 7) Telefon: varsayılan klasik; Ayarlar'dan Netflix gibi seçilince satırlar, kaydırılır, vitrin yalnız yatay + kumanda
+  // ---- 7) Telefon: varsayılan klasik; Ayarlar'dan vitrinli satırlar seçilince satırlar, kaydırılır, vitrin yalnız yatay + kumanda
   {
     const { ctx, page, errs } = await open({ width: 390, height: 844 }, { tv: false });
     await page.click('.tile.t-movie');
@@ -361,7 +361,7 @@ async function satirlarSection({ browser, base, mock, ok, sleep }) {
     });
     ok(Math.abs(m.cw - Math.round(390 / 3.75)) <= 2, `telefonda ekranda ~3,3 kutu, dördüncüsü yarım görünür (kutu ${m.cw} px)`);
     ok(m.scroll && m.rows >= 2, 'telefon: satırlar yatay kaydırılabilir');
-    // Netflix görünümünde vitrin telefonda (dikey, dokunmatik) da vardır: en üstteki satırın ilk yapımını gösterir
+    // vitrinli satır görünümünde vitrin telefonda (dikey, dokunmatik) da vardır: en üstteki satırın ilk yapımını gösterir
     await page.waitForFunction(() => !!document.querySelector('#hero .hero-t'), null, { timeout: 5000 }).catch(() => {});
     const phero = await page.evaluate(() => {
       const h = document.querySelector('#hero');

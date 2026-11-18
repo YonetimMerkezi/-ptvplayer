@@ -125,9 +125,9 @@ export function toggleInFolder(prefs, id, itemId) {
   return { prefs: { ...prefs, folders: prefs.folders.map((x) => (x.id === id ? { ...x, items } : x)) }, on };
 }
 
-// ---- Netflix düzeni: sağlayıcının kategori sırası yerine öne çıkanlardan başlayan sıra (film ve diziler). Kullanıcının elle verdiği sıra bunun üstüne uygulanır.
+// ---- Öne çıkanlar önce düzeni: sağlayıcının kategori sırası yerine öne çıkanlardan başlayan sıra (film ve diziler). Kullanıcının elle verdiği sıra bunun üstüne uygulanır.
 export const CAT_ORDERS = [
-  ['smart', 'Netflix düzeni (öne çıkanlar önce)'],
+  ['smart', 'Öne çıkanlar önce'],
   ['provider', 'Sağlayıcının sırası'],
 ];
 export const DEFAULT_CAT_ORDER = 'smart';

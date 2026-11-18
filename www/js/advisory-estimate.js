@@ -1,12 +1,12 @@
-// Tahmini içerik uyarıları: doğrulanmış kaynak (KTB, Screenwise, TMDB tanımlayıcıları) bir yapım için kayıt vermediğinde, eldeki
-// tür, özet ve anahtar kelimelerden hangi içeriklerin bulunabileceği çıkarılır. Türkçe ve İngilizce metinle çalışır; sonuç her zaman
+// Tahmini içerik uyarıları: doğrulanmış kaynak (KTB, Screenwise) bir yapım için kayıt vermediğinde, eldeki
+// tür ve özetten hangi içeriklerin bulunabileceği çıkarılır. Türkçe ve İngilizce metinle çalışır; sonuç her zaman
 // "tahmini" diye gösterilir ve doğrulanmış uyarının yerini tutmaz. Saf mantık: ağ ve saklama yok.
 
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
 const LV = { low: 1, moderate: 2, high: 3 };
 const NAME = ['', 'low', 'moderate', 'high'];
 
-// [kategori, düzey, tür deseni | null, özet/anahtar kelime deseni | null, gerekçe]
+// [kategori, düzey, tür deseni | null, özet deseni | null, gerekçe]
 // Desenler katlanmış metne (küçük harf, aksansız, noktalama boşluk) uygulanır; kelime başından eşleşir.
 const RULES = [
   ['violence', 'low', /\b(aksiyon|action|macera|adventure|suc|crime|gerilim|thriller|western|vahsi bati|polisiye|mystery|gizem)\b/, null, 'tür'],
@@ -34,12 +34,11 @@ export const ESTIMATE_ICON = {
   self_harm: 'heart-crack', language: 'message-circle-warning', negative_examples: 'alert-triangle',
 };
 
-// genres: tür adları (dizi ya da "Dram, Suç" gibi metin); plot: özet; keywords: anahtar kelimeler (TMDB, İngilizce).
-// Dönen: [{ category, level: 'low' | 'moderate' | 'high', from: ['tür', 'özet', 'anahtar kelime'] }], düzeyi yüksek olan önce.
-export function estimateAdvisories({ genres = [], plot = '', keywords = [] } = {}) {
+// genres: tür adları (dizi ya da "Dram, Suç" gibi metin); plot: özet.
+// Dönen: [{ category, level: 'low' | 'moderate' | 'high', from: ['tür', 'özet'] }], düzeyi yüksek olan önce.
+export function estimateAdvisories({ genres = [], plot = '' } = {}) {
   const g = ' ' + fold(Array.isArray(genres) ? genres.join(' , ') : genres) + ' ';
   const p = ' ' + fold(plot) + ' ';
-  const k = ' ' + fold((Array.isArray(keywords) ? keywords : []).join(' , ')) + ' ';
   const out = new Map();
   const hit = (cat, level, from) => {
     const cur = out.get(cat) || { category: cat, lv: 0, from: [] };
@@ -50,9 +49,8 @@ export function estimateAdvisories({ genres = [], plot = '', keywords = [] } = {
   for (const [cat, level, genreRe, textRe] of RULES) {
     if (genreRe && genreRe.test(g)) hit(cat, level, 'tür');
     if (textRe && textRe.test(p)) hit(cat, level, 'özet');
-    if (textRe && textRe.test(k)) hit(cat, level, 'anahtar kelime');
   }
-  // Çocuk/aile yapımı: türden gelen "düşük şiddet/gerilim" tahmini anlamsızdır; yalnız özet ya da anahtar kelimeden gelen kalır.
+  // Çocuk/aile yapımı: türden gelen "düşük şiddet/gerilim" tahmini anlamsızdır; yalnız özetten gelen kalır.
   if (/\b(cocuk|aile|family|kids|animasyon|animation)\b/.test(g)) {
     for (const [cat, v] of out) if (v.lv === 1 && v.from.length === 1 && v.from[0] === 'tür') out.delete(cat);
   }

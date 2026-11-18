@@ -74,6 +74,3 @@ export function cleanTitle(raw, yearField) {
 
   return { title: s, year, alt, key: fold(s).replace(/[^a-z0-9]+/g, ' ').trim() };
 }
-
-// Önbellek anahtarı: kaynaktan bağımsız
-export const cacheKey = (c, kind = 'movie') => `${kind}|${c.key}|${c.year ?? ''}`;
