@@ -74,7 +74,7 @@ test('oyuncu sayfası: listede olanlar "Oynat", olmayanlar soluk "Listende yok";
   assert.match(actorHtml('Kimse', '', []), /başka yapım bulunamadı/);
   assert.match(actorHtml('Tom Hanks', 'Yönetmen', films), /<div class="dt-m"><span>Yönetmen<\/span>/);
   assert.match(actorLoadingHtml('Tom Hanks'), /spinner/);
-  assert.match(h, /<span class="pp-av lg" style="--h:\d+">TH<\/span>/);
+  assert.match(h, /<span class="pp-av lg" style="--h:\d+"><i>TH<\/i><\/span>/);
 });
 
 test('listede olmayan yapım ekranı: "Listenizde yok" düğmesi pasif, fragman alanı başta, özet; yüklenirken "Yükleniyor"', () => {
@@ -181,7 +181,7 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
   assert.match(app, /id="mv-people"/);
   assert.match(app, /id="sr-trailer"/);
   assert.match(app, /id="sr-people"/);
-  assert.match(app, /openActor\(personOf\(b\)\.name, personOf\(b\)\.role\)/);
+  assert.match(app, /openActor\(personOf\(b\)\.name, personOf\(b\)\.role, personOf\(b\)\.photo\)/);
   assert.match(app, /chkRow\('trailerAuto', 'Fragmanı otomatik oynat'/);
   assert.match(app, /const autoPlay = auto && setting\('trailerAuto'\)/, 'otomatik oynatma ayara bağlı (varsayılan açık)');
   assert.match(app, /chkRow\('trailerFind', 'Fragmanı otomatik ara'/);
@@ -396,9 +396,34 @@ test('oyuncu ve vizyon ekranları: Türkçe adlar (Wikidata) gelince eşleşme y
   assert.match(app, /import \{ loadTrNames \} from '\.\/tr-names\.js'/);
   assert.match(app, /async function enrichTrNames\(films\)[\s\S]*loadTrNames\(\{ net, cache: store\.cache, ids: need\.map\(\(f\) => f\.imdbId\) \}\)[\s\S]*f\.trNames = map\.get\(f\.imdbId\)/);
   const actor = app.slice(app.indexOf('function openActor'), app.indexOf('function openNewReleases'));
-  assert.match(actor, /const paint = \(\) => \{[\s\S]*f\.inLib = !!inLibrary\(f\)[\s\S]*actorHtml\(name, role, films\)/);
+  assert.match(actor, /const paint = \(\) => \{[\s\S]*f\.inLib = !!inLibrary\(f\)[\s\S]*actorHtml\(name, role, films, photo\)/);
   assert.match(actor, /enrichTrNames\(films\)\.then\(\(changed\) => \{ if \(changed && body\.isConnected\) paint\(\); \}\)/);
   const rel = app.slice(app.indexOf('function openNewReleases'), app.indexOf('function translatePlot'));
   assert.match(rel, /enrichTrNames\(films\)\.then\(\(changed\) => \{ if \(changed && body\.isConnected\) paint\(\); \}\)/);
   assert.match(app, /if \(newHome\) enrichTrNames\(newHome\.films\)\.then\(\(changed\) => \{ if \(changed\) fillHomeNew\(\); \}\)/);
+});
+
+test('oyuncu fotoğrafı: kartta ve oyuncu sayfası başlığında yalnız https adresi; yüklenmezse baş harfler kalır; rol/karakter altyazısı', () => {
+  const h = peopleHtml([
+    { name: 'Tom Hanks', role: '', character: 'Forrest Gump', photo: 'https://img.example/h.jpg' },
+    { name: 'Robert Zemeckis', role: 'Yönetmen', character: '', photo: 'https://img.example/z.jpg' },
+    { name: 'Güvenli Değil', role: '', character: '', photo: 'http://insecure/x.jpg' },
+    { name: 'Fotoğrafsız', role: '', character: '', photo: '' },
+  ]);
+  assert.match(h, /data-person="Tom Hanks" data-role="" data-photo="https:\/\/img\.example\/h\.jpg"/);
+  assert.match(h, /<span class="pp-av" style="--h:\d+"><i>TH<\/i><img src="https:\/\/img\.example\/h\.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this\.remove\(\)"><\/span>/);
+  assert.match(h, /<small>Forrest Gump<\/small>/, 'oyuncunun altında karakter adı');
+  assert.match(h, /data-role="Yönetmen"[^>]*>[\s\S]*?<small>Yönetmen<\/small>/);
+  assert.doesNotMatch(h, /insecure/, 'http fotoğraf kullanılmaz');
+  assert.equal((h.match(/<img /g) || []).length, 2, 'yalnız fotoğrafı olanlarda img');
+  assert.doesNotMatch(h.split('Fotoğrafsız')[0].split('Güvenli Değil')[1] || '', /<img/);
+  const a = actorHtml('Tom Hanks', '', [], 'https://img.example/h.jpg');
+  assert.match(a, /<span class="pp-av lg" style="--h:\d+"><i>TH<\/i><img src="https:\/\/img\.example\/h\.jpg"/);
+  assert.match(actorLoadingHtml('Tom Hanks', 'https://img.example/h.jpg'), /<img src="https:\/\/img\.example\/h\.jpg"/);
+  assert.doesNotMatch(actorHtml('Tom Hanks', '', []), /<img/);
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /\.pp-av img \{[^}]*position: absolute;[^}]*object-fit: cover/);
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /const personOf = \(b\) => \(\{ name: b\.dataset\.person, role: b\.dataset\.role \|\| '', photo: b\.dataset\.photo \|\| '' \}\)/);
+  assert.match(app, /function openActor\(name, role = '', photo = ''\)/);
 });

@@ -38,7 +38,7 @@ test('ayrıntı yükleme: önbellek, süre dolumu, bulunamayan kayıt kısa sür
   assert.equal(n, before + 1);
   const bad = { json: async () => { throw new Error('ağ yok'); } };
   await assert.rejects(loadDetail({ net: bad, cache, imdbId: 'tt1111111' }), /ağ yok/);
-  assert.equal(cache.m.has('cinemeta:detail:v1:movie:tt1111111'), false);
+  assert.equal(cache.m.has('cinemeta:detail:v2:movie:tt1111111'), false);
   assert.equal(await loadDetail({ net, cache, imdbId: 'geçersiz' }), null);
   let url = '';
   await loadDetail({ net: { json: async (u) => ((url = u), { meta: { ...FORREST, id: 'tt0903747', imdb_id: 'tt0903747' } }) }, imdbId: 'tt0903747', type: 'series' });
@@ -48,11 +48,11 @@ test('ayrıntı yükleme: önbellek, süre dolumu, bulunamayan kayıt kısa sür
 test('kişiler: önce yönetmen, sonra oyuncular; Cinemeta yoksa sağlayıcı metni bölünür; aynı kişi bir kez', () => {
   const d = parseDetail(FORREST);
   const p = peopleOf(d);
-  assert.deepEqual(p.slice(0, 3), [{ name: 'Robert Zemeckis', role: 'Yönetmen' }, { name: 'Tom Hanks', role: '' }, { name: 'Robin Wright', role: '' }]);
+  assert.deepEqual(p.slice(0, 3).map((x) => [x.name, x.role]), [['Robert Zemeckis', 'Yönetmen'], ['Tom Hanks', ''], ['Robin Wright', '']]);
   const q = peopleOf(null, { cast: 'Ali Veli, Ayşe Fatma / Can Yılmaz', director: 'Cem Aydın' });
   assert.deepEqual(q.map((x) => x.name), ['Cem Aydın', 'Ali Veli', 'Ayşe Fatma', 'Can Yılmaz']);
   const dual = peopleOf({ director: ['Clint Eastwood'], cast: ['Clint Eastwood', 'Morgan Freeman'] });
-  assert.deepEqual(dual, [{ name: 'Clint Eastwood', role: 'Yönetmen' }, { name: 'Morgan Freeman', role: '' }]);
+  assert.deepEqual(dual.map((x) => [x.name, x.role]), [['Clint Eastwood', 'Yönetmen'], ['Morgan Freeman', '']]);
   assert.deepEqual(peopleOf(null, {}), []);
 });
 
@@ -209,4 +209,34 @@ test('fragman adı: dil öneki ve etiketler ayıklanır, adda yıl varsa ayrıl�
   assert.deepEqual(trailerTitle('TR | Kuruluş Osman (2020)'), { title: 'Kuruluş Osman', year: 2020 });
   assert.deepEqual(trailerTitle('Asla Teslim Olma'), { title: 'Asla Teslim Olma', year: 0 });
   assert.deepEqual(trailerTitle('', ''), { title: '', year: 0 });
+});
+
+test('kişi fotoğrafları: app_extras ve credits_cast birleşir; yalnız https ya da TMDB profil yolu; rol (karakter) kartta taşınır', () => {
+  const meta = {
+    ...FORREST,
+    app_extras: {
+      cast: [{ name: 'Tom Hanks', character: 'Forrest Gump', photo: 'https://img.example/hanks.jpg' }, { name: 'Robin Wright', character: 'Jenny', photo: 'http://insecure/x.jpg' }],
+      directors: [{ name: 'Robert Zemeckis', photo: 'https://img.example/zemeckis.jpg' }],
+    },
+    credits_cast: [{ name: 'Robin Wright', character: 'Jenny Curran', profile_path: '/robin.jpg' }, { name: 'Gary Sinise', character: 'Lt. Dan', profile_path: '/../kotu' }],
+  };
+  const d = parseDetail(meta);
+  const by = (n) => d.castInfo.find((x) => x.name === n);
+  assert.equal(by('Tom Hanks').photo, 'https://img.example/hanks.jpg');
+  assert.equal(by('Tom Hanks').character, 'Forrest Gump');
+  assert.equal(by('Robin Wright').photo, 'https://image.tmdb.org/t/p/w185/robin.jpg', 'http reddedilir, TMDB yolu tamamlanır');
+  assert.equal(by('Gary Sinise').photo, '', 'geçersiz yol reddedilir');
+  assert.equal(d.directorInfo[0].photo, 'https://img.example/zemeckis.jpg');
+  const people = peopleOf(d);
+  const tom = people.find((x) => x.name === 'Tom Hanks');
+  assert.deepEqual([tom.role, tom.character, tom.photo], ['', 'Forrest Gump', 'https://img.example/hanks.jpg']);
+  assert.equal(people[0].photo, 'https://img.example/zemeckis.jpg');
+  assert.equal(people[0].role, 'Yönetmen');
+});
+
+test('kişi fotoğrafları: meta.cast boşsa oyuncular kişi listelerinden gelir; fotoğraf yoksa boş alan (baş harfler gösterilir)', () => {
+  const d = parseDetail({ ...FORREST, cast: undefined, links: [], app_extras: { cast: [{ name: 'Ali Veli', photo: 'https://i/a.jpg' }, { name: 'Ayşe Fatma' }] } });
+  assert.deepEqual(d.cast, ['Ali Veli', 'Ayşe Fatma']);
+  assert.deepEqual(peopleOf(d).filter((x) => x.role === '').map((x) => [x.name, x.photo]), [['Ali Veli', 'https://i/a.jpg'], ['Ayşe Fatma', '']]);
+  assert.equal(peopleOf(null, { cast: 'Can Yılmaz' })[0].photo, '', 'Cinemeta yoksa sağlayıcı metni: fotoğrafsız');
 });

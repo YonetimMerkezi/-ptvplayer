@@ -197,9 +197,20 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
 }
 
 // ---- oyuncu kartları ----
+// Avatar: fotoğraf varsa baş harflerin üstüne biner; adres açılmazsa (ağ yok, kırık bağlantı) kendini kaldırır ve baş harfler görünür kalır
+const photoOk = (u) => /^https:\/\//i.test(String(u || ''));
+export function avatarHtml(name, photo = '', cls = '') {
+  const img = photoOk(photo) ? `<img src="${esc(photo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
+  return `<span class="pp-av${cls ? ' ' + cls : ''}" style="--h:${hueOfName(name)}"><i>${esc(initialsOf(name))}</i>${img}</span>`;
+}
+
+// people: [{ name, role, character, photo }] — role "Yönetmen" ya da boş; altta rol yoksa oyuncunun karakter adı yazılır
 export function peopleHtml(people) {
   if (!people || !people.length) return '';
-  return `<section class="pp"><h2>Oyuncular ve ekip</h2><div class="pp-row">${people.map((p) => `<button class="pp-card" data-person="${esc(p.name)}" aria-label="${esc(p.name)}${p.role ? ', ' + esc(p.role) : ''}"><span class="pp-av" style="--h:${hueOfName(p.name)}">${esc(initialsOf(p.name))}</span><b>${esc(p.name)}</b>${p.role ? `<small>${esc(p.role)}</small>` : ''}</button>`).join('')}</div></section>`;
+  return `<section class="pp"><h2>Oyuncular ve ekip</h2><div class="pp-row">${people.map((p) => {
+    const sub = p.role || p.character || '';
+    return `<button class="pp-card" data-person="${esc(p.name)}" data-role="${esc(p.role || '')}"${photoOk(p.photo) ? ` data-photo="${esc(p.photo)}"` : ''} aria-label="${esc(p.name)}${sub ? ', ' + esc(sub) : ''}">${avatarHtml(p.name, p.photo)}<b>${esc(p.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+  }).join('')}</div></section>`;
 }
 
 // ---- oyuncu sayfası ----
@@ -210,17 +221,17 @@ export function filmCardHtml(f, i = 0) {
   return `<button class="ac-card k${i % 6}${f.inLib ? ' lib' : ' off'}" data-film="${esc(f.imdbId)}" data-type="${esc(f.type)}" aria-label="${esc(f.name)}${f.inLib ? '' : ', listende yok'}"><span class="ac-poster"><i>${esc(initialsOf(f.name))}</i>${img}</span><b>${esc(f.name)}</b><small>${esc(meta)}</small><em>${f.inLib ? `${ic('play')}Oynat` : 'Listende yok'}</em></button>`;
 }
 
-export function actorHtml(name, role, films) {
+export function actorHtml(name, role, films, photo = '') {
   const lib = films.filter((f) => f.inLib);
   const rest = films.filter((f) => !f.inLib);
   const grid = (list) => `<div class="ac-grid">${list.map((f, i) => filmCardHtml(f, i)).join('')}</div>`;
   const body = films.length
     ? (lib.length ? `<h2>Listenizde bulunanlar <small>${lib.length}</small></h2>${grid(lib)}` : '') + (rest.length ? `<h2>Diğer yapımları <small>${rest.length}</small></h2>${grid(rest)}` : '')
     : '<div class="empty"><p>Bu kişi için başka yapım bulunamadı.</p></div>';
-  return `<div class="ac"><div class="ac-head"><span class="pp-av lg" style="--h:${hueOfName(name)}">${esc(initialsOf(name))}</span><div><h1 class="dt-t">${esc(name)}</h1>${role ? `<div class="dt-m"><span>${esc(role)}</span></div>` : ''}</div></div>${body}</div>`;
+  return `<div class="ac"><div class="ac-head">${avatarHtml(name, photo, 'lg')}<div><h1 class="dt-t">${esc(name)}</h1>${role ? `<div class="dt-m"><span>${esc(role)}</span></div>` : ''}</div></div>${body}</div>`;
 }
 
-export const actorLoadingHtml = (name) => `<div class="ac"><div class="ac-head"><span class="pp-av lg" style="--h:${hueOfName(name)}">${esc(initialsOf(name))}</span><div><h1 class="dt-t">${esc(name)}</h1></div></div><div class="empty"><div class="spinner" style="border-color:#fff3;border-top-color:var(--accent)"></div></div></div>`;
+export const actorLoadingHtml = (name, photo = '') => `<div class="ac"><div class="ac-head">${avatarHtml(name, photo, 'lg')}<div><h1 class="dt-t">${esc(name)}</h1></div></div><div class="empty"><div class="spinner" style="border-color:#fff3;border-top-color:var(--accent)"></div></div></div>`;
 
 // ---- vizyondaki filmler: ana sayfa satırı ve tüm liste ----
 // films: [{ imdbId, type, name, year, poster }]; inLibOf(film) → listede mi

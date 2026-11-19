@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 153,
+    title: 'Oyuncu kadrosu ve fotoğrafları',
+    items: [
+      'Film, dizi ve bilgi ekranlarındaki “Oyuncular ve ekip” kartlarında oyuncunun fotoğrafı görünür; fotoğraf yoksa ya da yüklenemezse baş harfler kalır',
+      'Oyuncu kartının altında rolün (karakter) adı yazar; yönetmen “Yönetmen” olarak işaretlenir',
+      'Oyuncu sayfasının başlığında da fotoğraf görünür',
+    ],
+  },
+  {
     id: 152,
     title: 'Oyuncunun filmleri Türkçe adla eşleşiyor',
     items: [

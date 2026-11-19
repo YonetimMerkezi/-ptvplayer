@@ -9,6 +9,7 @@ export const DETAIL_TTL = 30 * 86400000;
 export const MISS_TTL = 6 * 3600000;
 export const PERSON_TTL = 7 * 86400000;
 export const MAX_CAST = 20;
+const TMDB_IMG = 'https://image.tmdb.org/t/p/w185';
 
 const IMDB_ID = /^tt\d+$/;
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -27,6 +28,20 @@ const uniq = (list, keyOf = (x) => x) => {
 };
 
 // Cinemeta "meta" nesnesi → uygulamanın kullandığı sade kayıt. Geçersizse null.
+// Kişi fotoğrafı: yalnız https adresi ya da TMDB profil yolu ("/abc.jpg") kabul edilir
+const photoOf = (p) => {
+  const u = str(p && (p.photo || p.profile_photo || p.profile_path));
+  if (/^https:\/\//i.test(u)) return u;
+  return /^\/[\w.-]+\.(?:jpe?g|png|webp)$/i.test(u) ? TMDB_IMG + u : '';
+};
+// Cinemeta kişi listeleri (app_extras.cast / directors, credits_cast): [{ name, character, photo }]
+const personList = (arr) => (Array.isArray(arr) ? arr : []).map((p) => ({ name: str(p && p.name), character: str(p && p.character), photo: photoOf(p) })).filter((p) => p.name);
+const infoFor = (names, lists) => {
+  const by = new Map();
+  for (const l of lists) for (const p of l) { const k = fold(p.name); const cur = by.get(k); if (!cur) by.set(k, { ...p }); else { if (!cur.photo && p.photo) cur.photo = p.photo; if (!cur.character && p.character) cur.character = p.character; } }
+  return names.map((name) => { const p = by.get(fold(name)) || {}; return { name, character: p.character || '', photo: p.photo || '' }; });
+};
+
 export function parseDetail(meta, type = 'movie') {
   if (!meta || typeof meta !== 'object') return null;
   const imdbId = str(meta.imdb_id || meta.id);
@@ -40,6 +55,11 @@ export function parseDetail(meta, type = 'movie') {
     ...(Array.isArray(meta.cast) ? meta.cast.map(str) : []),
     ...links.filter((l) => l && /^cast$/i.test(String(l.category))).map((l) => str(l.name)),
   ], fold).slice(0, MAX_CAST);
+  const extras = meta.app_extras && typeof meta.app_extras === 'object' ? meta.app_extras : {};
+  const castLists = [personList(extras.cast), personList(meta.credits_cast)];
+  const crew = Array.isArray(meta.credits_crew) ? meta.credits_crew.filter((c) => c && /^director$/i.test(String(c.job))) : [];
+  const dirLists = [personList(extras.directors), personList(crew)];
+  if (!cast.length) cast.push(...uniq(castLists.flat().map((p) => p.name), fold).slice(0, MAX_CAST)); // meta.cast boşsa kişi listelerinden
   const director = uniq([
     ...(Array.isArray(meta.director) ? meta.director.map(str) : []),
     ...links.filter((l) => l && /^directors?$/i.test(String(l.category))).map((l) => str(l.name)),
@@ -57,6 +77,8 @@ export function parseDetail(meta, type = 'movie') {
     trailers,
     cast,
     director,
+    castInfo: infoFor(cast, castLists),
+    directorInfo: infoFor(director.length ? director : uniq(dirLists.flat().map((p) => p.name), fold).slice(0, 3), dirLists),
   };
 }
 
@@ -65,7 +87,7 @@ export async function loadDetail({ net, cache = null, imdbId, type = 'movie', no
   const id = str(imdbId);
   if (!IMDB_ID.test(id)) return null;
   const t = type === 'series' ? 'series' : 'movie';
-  const key = `cinemeta:detail:v1:${t}:${id}`;
+  const key = `cinemeta:detail:v2:${t}:${id}`; // v2: kişi fotoğrafları (castInfo) eklendi
   const hit = cache ? await cache.get(key).catch(() => null) : null;
   if (hit && typeof hit.at === 'number' && now - hit.at < (hit.value ? DETAIL_TTL : MISS_TTL)) return hit.value || null;
   const json = await net.json(`${CINEMETA}/meta/${t}/${encodeURIComponent(id)}.json`, { fast: true });
@@ -77,10 +99,17 @@ export async function loadDetail({ net, cache = null, imdbId, type = 'movie', no
 // Oyuncu/yönetmen kartları: önce yönetmen, sonra oyuncular. Cinemeta yoksa sağlayıcının "A, B, C" metni kullanılır.
 const splitNames = (s) => String(s || '').split(/[,|/;]+/).map((x) => x.trim()).filter((x) => x.length > 1);
 export function peopleOf(detail, provider = {}) {
-  const directors = detail && detail.director && detail.director.length ? detail.director : splitNames(provider.director);
-  const cast = detail && detail.cast && detail.cast.length ? detail.cast : splitNames(provider.cast);
-  // Hem yönetmen hem oyuncu olan kişi bir kez, "Yönetmen" etiketiyle gelir
-  return uniq([...directors.map((name) => ({ name, role: 'Yönetmen' })), ...cast.map((name) => ({ name, role: '' }))], (p) => fold(p.name)).slice(0, MAX_CAST + 3);
+  const withInfo = (names, info) => names.map((name) => { const i = (info || []).find((x) => fold(x.name) === fold(name)) || {}; return { name, photo: i.photo || '', character: i.character || '' }; });
+  const dirNames = detail && detail.director && detail.director.length ? detail.director : (detail && detail.directorInfo && detail.directorInfo.length ? detail.directorInfo.map((p) => p.name) : splitNames(provider.director));
+  const castNames = detail && detail.cast && detail.cast.length ? detail.cast : splitNames(provider.cast);
+  // Hem yönetmen hem oyuncu olan kişi bir kez, "Yönetmen" etiketiyle gelir; kartta oyuncunun rolü (karakter) ve fotoğrafı da taşınır
+  const all = [...withInfo(dirNames, detail && detail.directorInfo).map((p) => ({ ...p, role: 'Yönetmen' })), ...withInfo(castNames, detail && detail.castInfo).map((p) => ({ ...p, role: '' }))];
+  const out = uniq(all, (p) => fold(p.name)).slice(0, MAX_CAST + 3);
+  for (const p of out) { // yönetmen olarak gelen kişinin oyuncu fotoğrafı/rolü varsa tamamlanır
+    const c = (detail && detail.castInfo || []).find((x) => fold(x.name) === fold(p.name));
+    if (c) { if (!p.photo) p.photo = c.photo; if (!p.character) p.character = c.character; }
+  }
+  return out;
 }
 
 // Arama sonucu → oyuncunun yapımları. Adı başlıkta geçenler (belgesel, röportaj, "Tom Hanks: …") oyuncunun filmi değildir.

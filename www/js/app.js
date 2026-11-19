@@ -2288,14 +2288,14 @@ function trailerSearch(name, year, origin) {
   return { query, finds: [...new Set(finds)], wanted: [t.title, original].filter(Boolean), year: oy };
 }
 
-const personOf = (b) => ({ name: b.dataset.person, role: (b.querySelector('small') || {}).textContent || '' });
+const personOf = (b) => ({ name: b.dataset.person, role: b.dataset.role || '', photo: b.dataset.photo || '' });
 
 // Oyuncu sayfası: kişinin film ve dizileri; listede olanlar "Oynat", olmayanlar soluk "Listende yok".
-function openActor(name, role = '') {
+function openActor(name, role = '', photo = '') {
   return openPage({
     cls: 'dt-pg ac-pg',
     title: name,
-    html: actorLoadingHtml(name),
+    html: actorLoadingHtml(name, photo),
     mount: async (body) => {
       let found;
       try {
@@ -2309,7 +2309,7 @@ function openActor(name, role = '') {
       const paint = () => {
         for (const f of films) f.inLib = !!inLibrary(f);
         const top = body.scrollTop;
-        body.innerHTML = actorHtml(name, role, films);
+        body.innerHTML = actorHtml(name, role, films, photo);
         body.scrollTop = top;
       };
       paint();
@@ -2405,7 +2405,7 @@ function openTitleInfo(film) {
     mount: (body) => {
       body.addEventListener('click', (e) => {
         const b = e.target.closest('[data-person]');
-        if (b) openActor(personOf(b).name, personOf(b).role);
+        if (b) openActor(personOf(b).name, personOf(b).role, personOf(b).photo);
         const o = e.target.closest('[data-orig]');
         if (o) togglePlot(body);
       });
@@ -2430,7 +2430,7 @@ function openMovie(it) {
       $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
       body.addEventListener('click', (e) => {
         const b = e.target.closest('[data-person]');
-        if (b) openActor(personOf(b).name, personOf(b).role);
+        if (b) openActor(personOf(b).name, personOf(b).role, personOf(b).photo);
       });
       $('#mv-similar-row', body).addEventListener('click', (e) => {
         const b = e.target.closest('[data-similar]');
@@ -2606,7 +2606,7 @@ function openSeries(it) {
       };
       body.addEventListener('click', (e) => {
         const pp = e.target.closest('[data-person]');
-        if (pp) return openActor(personOf(pp).name, personOf(pp).role);
+        if (pp) return openActor(personOf(pp).name, personOf(pp).role, personOf(pp).photo);
         const s = e.target.closest('[data-s]');
         if (s) {
           season = Number(s.dataset.s);
