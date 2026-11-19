@@ -72,6 +72,10 @@ test('grup: Türkiye, uluslararası, büyük Avrupa, diğer', () => {
   assert.equal(groupOf('Türkiye'), 'tr');
   assert.equal(groupOf('World'), 'int');
   assert.equal(groupOf('Europe'), 'int');
+  for (const c of ['International Friendlies', 'CONCACAF Nations League', 'UEFA Champions League', 'UEFA Nations League', 'World Cup Qualification Europe', 'Africa Cup of Nations', 'Asian Cup', 'Euro']) assert.equal(groupOf(c), 'int', c);
+  for (const c of ['South Africa', 'Central African Republic', 'Worldwide Co', 'Eurovision']) assert.notEqual(groupOf(c), 'int', c);
+  assert.equal(inScope('International Friendlies', 'International Friendlies'), true, 'uluslararası yarışmalar kapsamdadır');
+  assert.equal(inScope('UEFA Women\'s Champions League', 'Women\'s Champions League'), false, 'kadın yarışması kapsam dışı');
   assert.equal(groupOf('England'), 'eu');
   assert.equal(groupOf('Brazil'), 'oth');
   assert.equal(groupOf(''), 'oth');

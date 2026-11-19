@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 165,
+    title: 'Spor: uluslararası yarışmalar',
+    items: [
+      'Uluslararası yarışmalar (hazırlık maçları, UEFA, Dünya Kupası elemeleri, Uluslar Ligi, kıta kupaları) LiveScore kaynağında da listede kalır',
+      'Seçili günün LiveScore listesi inerken ya da alınamadığında durum satırı bunu belirtir; satıra dokununca nedeni görünür',
+    ],
+  },
+  {
     id: 164,
     title: 'Spor: TFF 2. Lig',
     items: [

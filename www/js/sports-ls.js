@@ -85,7 +85,8 @@ export const trStage = (s) =>
     .replace(/\b(white|red|blue|green|yellow)\s+group\b/i, (m, c) => `${TR_GROUP_COLOR[c.toLowerCase()]} Grup`)
     .replace(/\bGroup\s+(\d+)\b/i, '$1. Grup');
 
-const INTL = /^(world|europe|international|south america|north america|central america|concacaf|conmebol|asia|africa|oceania|uefa|fifa|caf|afc)$/i;
+// Yarışma adının başı ("International Friendlies", "UEFA Champions League", "World Cup Qualification Europe", "CONCACAF Nations League"): bir ülke adı bunlarla başlamaz.
+const INTL = /^(world|europe|international|south america|north america|central america|concacaf|conmebol|asian?|african?|oceania|uefa|fifa|caf|afc|ofc|olympic|euro)\b/i;
 const TOP_EU = new Set(['england', 'spain', 'italy', 'germany', 'france', 'portugal', 'netherlands', 'belgium', 'scotland', 'greece']);
 
 // Yarışmanın grubu: tr (Türkiye), int (dünya/kıta), eu (büyük Avrupa ülkeleri), oth (diğer)

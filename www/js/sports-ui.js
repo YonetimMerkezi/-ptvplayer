@@ -421,10 +421,10 @@ export function openSports(env) {
     const at = lastAt();
     let text;
     if (loading && !at && !have) text = 'Maçlar yükleniyor…';
-    else if (loading) text = 'Güncelleniyor…';
+    else if (loading || lsPending.has(day)) text = 'Güncelleniyor…'; // seçili günün LiveScore listesi inerken de belirtilir
     else if (err && !have) text = err;
     else if (err && at) text = `Güncellenemedi · kayıtlı veri (${fmtClock(at)})`;
-    else if (at) text = `Son güncelleme ${fmtClock(at)}${espnErr || failed.length ? ' · bazı veriler alınamadı' : ''}`;
+    else if (at) text = `Son güncelleme ${fmtClock(at)}${espnErr || failed.length || (lsErr && !lsDays.has(day)) ? ' · bazı veriler alınamadı' : ''}`;
     else if (lsBusy || tvPending.size) text = 'Maçlar yükleniyor…';
     else text = '';
     el.textContent = text;
