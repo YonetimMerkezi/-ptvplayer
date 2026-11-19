@@ -1127,6 +1127,8 @@ function paintHero(it, info, final) {
     (m.director ? `<p class="hero-c hero-d"><b>Yönetmen</b> ${esc(m.director)}</p>` : '') +
     (m.plot ? `<p class="hero-p">${esc(m.plot)}</p>` : '') +
     // Telefonda (dokunmatik) vitrinin altında Netflix gibi iki düğme; TV'de CSS gizler, kumanda kutuya odaklanır
+    // TV: fragman oynarken görünür; kumandada aşağıdaki ilk kutudan yukarı basınca odaklanır, Tamam sesi açar/kapatır
+    `<button class="hero-snd" data-hero="sound" aria-label="${heroStage.muted ? 'Sesi aç' : 'Sesi kapat'}">${icon(heroStage.muted ? 'mute' : 'audio')}<span>${heroStage.muted ? 'Sesi aç' : 'Sesi kapat'}</span></button>` +
     `<div class="hero-btns"><button class="hero-b hero-b-play" data-hero="play">${icon('play')}<span>${it.kind === 'series' ? 'İzle' : 'Oynat'}</span></button><button class="hero-b" data-hero="info">${icon('info')}<span>Bilgi</span></button></div>`;
   // Ayrıntı yoldayken yalnız dikey afiş varsa çizilmez: geniş ekranda kırpık görünüp sonra geniş görsele dönüşüyordu.
   // Geniş görsel gelene (ya da ayrıntı gelmeyeceği anlaşılana) dek önceki arka plan kalır.
@@ -1232,8 +1234,9 @@ function heroSync(kind, mode) {
   // Dokunmatikte vitrine dokunmak öne çıkan yapımı açar (kumandada vitrin odak almaz)
   box.onclick = on ? (e) => {
     const it = hero.current;
-    if (!it || document.documentElement.classList.contains('kbd')) return;
     const b = e.target.closest && e.target.closest('[data-hero]');
+    if (b && b.dataset.hero === 'sound') return toggleHeroSound();
+    if (!it || document.documentElement.classList.contains('kbd')) return;
     if (b && b.dataset.hero === 'play' && kind === 'movie') return startPlay(it, { ctx: movieCtx(it) }); // dizide “İzle” bölümler ekranını açar
     kind === 'movie' ? openMovie(it) : openSeries(it);
   } : null;
@@ -1279,16 +1282,33 @@ async function heroTrailerIds(it) {
   }
   return [];
 }
-const heroStage = createHeroStage({ host: $('#hero-tr'), origin: location.origin, onPlaying: () => heroTrailer.playing(), onEnded: () => heroTrailer.ended() });
+const heroLive = (on) => document.documentElement.classList.toggle('hero-live', on); // fragman oynuyor: vitrinde ses düğmesi görünür
+const heroStage = createHeroStage({ host: $('#hero-tr'), origin: location.origin, onPlaying: () => { heroLive(true); heroTrailer.playing(); }, onEnded: () => heroTrailer.ended() });
+// Ses: vitrindeki düğmeden (Tamam) ya da kumandada Oynat/Duraklat (ya da M) tuşundan
+function toggleHeroSound() {
+  const muted = heroStage.toggleMute();
+  if (muted === null) return;
+  const b = $('#hero .hero-snd');
+  if (b) {
+    b.setAttribute('aria-label', muted ? 'Sesi aç' : 'Sesi kapat');
+    b.innerHTML = icon(muted ? 'mute' : 'audio') + `<span>${muted ? 'Sesi aç' : 'Sesi kapat'}</span>`;
+  }
+}
 const heroTrailer = createHeroTrailer({
   enabled: () => heroTrailerOn(),
   resolve: heroTrailerIds,
   start: (ids) => heroStage.start(ids),
-  stop: () => heroStage.stop(),
+  stop: () => { heroStage.stop(); heroLive(false); },
   setCine: (on) => document.documentElement.classList.toggle('hero-cine', on),
 });
 for (const ev of ['keydown', 'pointerdown', 'touchstart']) document.addEventListener(ev, () => heroTrailer.activity(), { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') heroTrailer.cancel(); });
+document.addEventListener('keydown', (e) => {
+  if (heroTrailer.state !== 'playing' || e.repeat || (e.key !== 'MediaPlayPause' && e.key !== 'm' && e.key !== 'M')) return;
+  if (/^(INPUT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) return;
+  e.preventDefault();
+  toggleHeroSound();
+});
 {
   // Sayfa/oynatıcı açılınca fragman kesilir; kapanınca vitrin yine odaktaki yapımı gösteriyorsa bekleme yeniden başlar
   let wasBusy = false;

@@ -1,13 +1,16 @@
 // TV vitrininin fragman katmanı: tam ekran, kontrolsüz YouTube oynatıcısı (DOM). Denetleyici (hero-trailer.js) ne zaman başlayıp duracağını söyler.
-// Ses: önce sesli denenir (TV'de kumandaya basmak oynatmaya izin verir); belirli sürede oynamazsa sessiz yeniden denenir; o da olmazsa sıradaki kimliğe geçilir.
+// Ses: önce sesli denenir (TV'de kumandaya basmak oynatmaya izin verir); belirli sürede oynamazsa sessiz yeniden denenir ve sonraki fragmanlar
+// baştan sessiz başlar (her seferinde beklenmesin); o da olmazsa sıradaki kimliğe geçilir. toggleMute: kullanıcı sesi açar/kapatır.
 import { trailerEmbedUrl } from './cinemeta.js';
 
-export const SOUND_WAIT_MS = 4500;
+export const SOUND_WAIT_MS = 2500;
+export const MUTED_WAIT_MS = 6000;
 
 export function createHeroStage({ host, win = typeof window !== 'undefined' ? window : null, origin = '', onPlaying = () => {}, onEnded = () => {}, soundWait = SOUND_WAIT_MS, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
   let ids = [];
   let at = 0;
   let muted = false;
+  let blocked = false; // sesli başlatma engellendi: sonraki fragmanlar sessiz başlar
   let frame = null;
   let waitT = null;
   let live = false;
@@ -30,12 +33,12 @@ export function createHeroStage({ host, win = typeof window !== 'undefined' ? wi
         try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ }
       });
     }
-    waitT = timers.set(retry, soundWait);
+    waitT = timers.set(retry, muted ? MUTED_WAIT_MS : soundWait); // sessiz deneme yavaş TV kutularında daha uzun beklenir
   };
   // Oynamadı: sesliyse sessiz yeniden dene, sessizse sıradaki kimlik; kimlik kalmadıysa bitir
   function retry() {
     waitT = null;
-    if (!muted) { muted = true; mount(); return; }
+    if (!muted) { blocked = true; muted = true; mount(); return; }
     next();
   }
   function next() {
@@ -63,11 +66,22 @@ export function createHeroStage({ host, win = typeof window !== 'undefined' ? wi
     frame = null;
     host.innerHTML = '';
   }
+  const command = (func, args = []) => {
+    try { if (frame && frame.contentWindow) frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch { /* çapraz köken */ }
+  };
   return {
+    // Sesi açar/kapatır; yeni durumu (true = sessiz) döndürür. Oynatıcı yoksa null
+    toggleMute() {
+      if (!frame) return null;
+      muted = !muted;
+      if (muted) command('mute');
+      else { command('unMute'); command('setVolume', [100]); }
+      return muted;
+    },
     start(list) {
       ids = (list || []).filter(Boolean);
       at = 0;
-      muted = false;
+      muted = blocked;
       if (!ids.length) return onEnded();
       mount();
     },

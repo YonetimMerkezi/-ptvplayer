@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 151,
+    title: 'TV fragmanı: daha hızlı, ses düğmesi',
+    items: [
+      'Vitrinde fragman daha hızlı başlar (yaklaşık 1,5 sn bekleme); fragman adresi beklerken önceden hazırlanır',
+      'Fragman başladıktan 4 sn sonra bilgiler gizlenir',
+      'Ses: fragman oynarken vitrinde “Sesi kapat/aç” düğmesi çıkar (ilk kutudan yukarı basıp Tamam); kumandada Oynat/Duraklat tuşu da sesi açıp kapatır. Sesli başlatma engellenirse sonraki fragmanlar sessiz başlar',
+    ],
+  },
+  {
     id: 150,
     title: 'TV vitrininde otomatik fragman',
     items: [

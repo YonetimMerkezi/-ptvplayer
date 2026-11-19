@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHeroTrailer, DWELL_MS, CINE_MS } from '../www/js/hero-trailer.js';
+import { createHeroTrailer, DWELL_MS, PREFETCH_MS, CINE_MS } from '../www/js/hero-trailer.js';
 import { createHeroStage } from '../www/js/hero-stage.js';
 
 // Sahte zaman: advance(ms) o süre içinde dolan zamanlayıcıları sırayla çalıştırır
@@ -42,26 +42,32 @@ function rig(opts = {}) {
 const A = { id: 'a' };
 const B = { id: 'b' };
 
-test('vitrin fragmanı: odakta DWELL_MS bekleyince çözülür ve başlar; öncesinde hiçbir şey olmaz', async () => {
+test('vitrin fragmanı: kimlik PREFETCH_MS sonra önden çözülür, DWELL_MS dolunca başlar; öncesinde oynatıcı kurulmaz', async () => {
   const { c, log, ht } = rig();
   ht.focus(A);
-  await c.advance(DWELL_MS - 1);
-  assert.deepEqual(log, []);
+  await c.advance(PREFETCH_MS - 1);
+  assert.deepEqual(log, [], 'hızlı gezerken ağa gidilmez');
+  await c.advance(1);
+  assert.deepEqual(log, ['resolve:a'], 'çözme bekleme süresiyle paralel başlar');
+  await c.advance(DWELL_MS - PREFETCH_MS - 1);
+  assert.deepEqual(log, ['resolve:a']);
   await c.advance(1);
   assert.deepEqual(log, ['resolve:a', 'start:vida:a']);
   assert.equal(ht.state, 'loading');
+  assert.ok(DWELL_MS <= 2000 && CINE_MS === 4000, 'hızlı başlar; bilgi 4 sn sonra kaybolur');
 });
 
 test('vitrin fragmanı: odak değişince bekleyen başlatma iptal olur; aynı yapımın yeniden boyanması süreni kesmez', async () => {
   const { c, log, ht } = rig();
   ht.focus(A);
-  await c.advance(2000);
+  await c.advance(DWELL_MS - 100);
   ht.focus(B);
   await c.advance(DWELL_MS - 1);
-  assert.deepEqual(log, [], 'A için sayaç sıfırlandı');
+  assert.deepEqual(log, ['resolve:a', 'resolve:b'], 'A başlamadı; B için sayaç sıfırlandı');
+  assert.equal(log.includes('start:vida:a'), false);
   ht.focus({ id: 'b' }); // aynı yapım yeniden boyandı
   await c.advance(1);
-  assert.deepEqual(log, ['resolve:b', 'start:vidb:b']);
+  assert.deepEqual(log.slice(-1), ['start:vidb:b']);
   ht.playing();
   ht.focus({ id: 'b' });
   assert.equal(ht.state, 'playing', 'aynı yapım: kesilmez');
@@ -109,13 +115,14 @@ test('vitrin fragmanı: odak değişince oynatıcı durur ve bilgi geri gelir; v
   ht.focus({ id: 'b' });
   await c.advance(DWELL_MS * 2);
   assert.equal(log.filter((x) => x === 'start:vidb:b').length, 1, 'bitmiş yapım odak değişmeden yeniden oynamaz');
+  assert.equal(log.filter((x) => x === 'resolve:b').length, 1, 'yeniden çözülmez');
 });
 
 test('vitrin fragmanı: fragman bulunamazsa oynatıcı kurulmaz ve yeniden denenmez; kapalıysa hiç başlamaz; cancel her şeyi bırakır', async () => {
   const none = rig({ ids: [] });
   none.ht.focus(A);
   await none.c.advance(DWELL_MS * 3);
-  assert.deepEqual(none.log, ['resolve:a']);
+  assert.deepEqual(none.log, ['resolve:a'], 'çözme yalnız bir kez');
   assert.equal(none.ht.state, 'idle');
   const off = rig({ enabled: () => false });
   off.ht.focus(A);
@@ -189,20 +196,24 @@ test('vitrin sahnesi: kontrolsüz, sesli başlar; oynayınca katman görünür v
   assert.deepEqual(r.ev, ['playing', 'ended']);
 });
 
-test('vitrin sahnesi: sesli oynamazsa sessiz yeniden denenir, o da olmazsa sıradaki kimlik, kalmadıysa biter; hata hemen sıradakine geçer', async () => {
+test('vitrin sahnesi: sesli oynamazsa 2,5 sn sonra sessiz yeniden denenir ve sonrakiler baştan sessiz başlar; o da olmazsa sıradaki kimlik, kalmadıysa biter; hata hemen sıradakine geçer', async () => {
   const r = stageRig();
   r.stage.start(['a1', 'b2']);
-  await r.c.advance(4499);
+  await r.c.advance(2499);
   assert.equal(r.stage.muted, false);
   await r.c.advance(1);
   assert.equal(r.stage.muted, true, 'sessiz yeniden dene');
   assert.match(r.host.innerHTML, /embed\/a1\?[^"]*mute=1/);
-  await r.c.advance(4500);
+  await r.c.advance(5999);
+  assert.equal(r.stage.index, 0, 'sessiz deneme daha uzun beklenir (yavaş TV kutusu)');
+  await r.c.advance(1);
   assert.equal(r.stage.index, 1, 'sıradaki kimlik');
   assert.match(r.host.innerHTML, /embed\/b2\?/);
   r.msg({ event: 'onError', info: 101 });
   assert.deepEqual(r.ev, ['ended'], 'kimlik kalmadı');
   assert.equal(r.host.innerHTML, '');
+  r.stage.start(['c3']);
+  assert.match(r.host.innerHTML, /embed\/c3\?[^"]*mute=1/, 'sesli başlatma engellendiği öğrenildi: bir sonraki fragman baştan sessiz');
   const e = stageRig();
   e.stage.start(['x1', 'y2']);
   e.msg({ event: 'onError', info: 153 });
@@ -211,6 +222,19 @@ test('vitrin sahnesi: sesli oynamazsa sessiz yeniden denenir, o da olmazsa sıra
   await e.c.advance(10000);
   assert.equal(e.stage.index, 1, 'oynuyorsa bekleme sayacı kalkmış');
   assert.deepEqual(e.ev, ['playing']);
+});
+
+test('vitrin sahnesi: toggleMute sesi açar/kapatır (oynatıcıya komut gider); oynatıcı yokken null', () => {
+  const r = stageRig();
+  const posted = [];
+  r.host.frame.contentWindow.postMessage = (m) => posted.push(JSON.parse(m));
+  assert.equal(r.stage.toggleMute(), null, 'oynatıcı yok');
+  r.stage.start(['a1']);
+  assert.equal(r.stage.muted, false);
+  assert.equal(r.stage.toggleMute(), true);
+  assert.deepEqual(posted.at(-1), { event: 'command', func: 'mute', args: [] });
+  assert.equal(r.stage.toggleMute(), false);
+  assert.deepEqual(posted.slice(-2), [{ event: 'command', func: 'unMute', args: [] }, { event: 'command', func: 'setVolume', args: [100] }]);
 });
 
 test('vitrin sahnesi: yabancı kaynaktan gelen mesaj yoksayılır; destroy dinleyiciyi bırakır', () => {
@@ -247,4 +271,16 @@ test('bağlantı: fragman katmanı tam ekran, oynamadan görünmez; cine kipinde
   assert.match(css, /#hero-tr\.live \{ visibility: visible; opacity: 1;/);
   assert.match(css, /#hero-tr \.ht-frame \{ position: absolute; left: 0; top: -35%; width: 100%; height: 170%;/);
   assert.match(css, /html\.hero-cine #app \{ opacity: 0; \}/);
+});
+
+test('bağlantı: vitrinde ses düğmesi (TV, fragman oynarken), Oynat/Duraklat ve M tuşu; düğme hero-live ile görünür', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /data-hero="sound"/);
+  assert.match(app, /if \(b && b\.dataset\.hero === 'sound'\) return toggleHeroSound\(\);/, 'kumanda Tamam\'ı (kbd) da sesi açar: kbd dönüşünden önce');
+  assert.match(app, /e\.key !== 'MediaPlayPause' && e\.key !== 'm' && e\.key !== 'M'/);
+  assert.match(app, /onPlaying: \(\) => \{ heroLive\(true\); heroTrailer\.playing\(\); \}/);
+  assert.match(app, /stop: \(\) => \{ heroStage\.stop\(\); heroLive\(false\); \}/);
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /\.hero-snd \{ display: none; \}/);
+  assert.match(css, /html\.tv\.hero-live \.hero-snd \{ display: inline-flex;/);
 });
