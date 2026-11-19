@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 164,
+    title: 'Spor: TFF 2. Lig',
+    items: [
+      'TFF 2. Lig (Beyaz ve Kırmızı grup) maçları artık LiveScore verisiyle gelir: skor, gol, asist ve kartlar maç ekranında görünür',
+      'Yayın sitesindeki takım adı farklı yazıldığında ("Menemenspor" ↔ "Menemen FK") aynı maç iki kez listelenmez; yayın kanalı skorlu maçın üzerinde görünür',
+    ],
+  },
+  {
     id: 163,
     title: 'Spor: maç detayı ve kapsam',
     items: [

@@ -69,13 +69,21 @@ const str = (v) => (v == null ? '' : String(v)).trim();
 const arr = (v) => (Array.isArray(v) ? v : []);
 
 const TR_COUNTRY = {
-  turkey: 'Türkiye', england: 'İngiltere', spain: 'İspanya', germany: 'Almanya', france: 'Fransa', italy: 'İtalya', portugal: 'Portekiz',
+  turkey: 'Türkiye', turkiye: 'Türkiye', england: 'İngiltere', spain: 'İspanya', germany: 'Almanya', france: 'Fransa', italy: 'İtalya', portugal: 'Portekiz',
   netherlands: 'Hollanda', belgium: 'Belçika', scotland: 'İskoçya', greece: 'Yunanistan', russia: 'Rusya', brazil: 'Brezilya', argentina: 'Arjantin',
   usa: 'ABD', europe: 'Avrupa', world: 'Dünya', switzerland: 'İsviçre', austria: 'Avusturya', denmark: 'Danimarka', sweden: 'İsveç', norway: 'Norveç',
   poland: 'Polonya', ukraine: 'Ukrayna', croatia: 'Hırvatistan', serbia: 'Sırbistan', romania: 'Romanya', bulgaria: 'Bulgaristan', japan: 'Japonya',
   china: 'Çin', 'saudi arabia': 'Suudi Arabistan', egypt: 'Mısır', morocco: 'Fas', mexico: 'Meksika', 'south korea': 'Güney Kore', azerbaijan: 'Azerbaycan',
 };
 const trCountry = (c) => TR_COUNTRY[norm(c)] || c;
+
+// TFF alt ligleri LiveScore'da İngilizce gelir ("2nd Lig: White Group", "3rd Lig: Group 4"): Türkçe yazılır.
+const TR_GROUP_COLOR = { white: 'Beyaz', red: 'Kırmızı', blue: 'Mavi', green: 'Yeşil', yellow: 'Sarı' };
+export const trStage = (s) =>
+  String(s == null ? '' : s)
+    .replace(/\b(\d)(?:st|nd|rd|th)\s+Lig\b/i, '$1. Lig')
+    .replace(/\b(white|red|blue|green|yellow)\s+group\b/i, (m, c) => `${TR_GROUP_COLOR[c.toLowerCase()]} Grup`)
+    .replace(/\bGroup\s+(\d+)\b/i, '$1. Grup');
 
 const INTL = /^(world|europe|international|south america|north america|central america|concacaf|conmebol|asia|africa|oceania|uefa|fifa|caf|afc)$/i;
 const TOP_EU = new Set(['england', 'spain', 'italy', 'germany', 'france', 'portugal', 'netherlands', 'belgium', 'scotland', 'greece']);
@@ -130,12 +138,13 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
       const comp = str(st && st.CompN);
       const stage = str(st && st.Snm);
       const sub = !!comp && !!stage && norm(comp) !== norm(stage);
-      const snm = sub ? comp : stage || comp;
-      const stageRound = sub ? trRound(stage) : '';
+      const snmRaw = sub ? comp : stage || comp;
       const grp = groupOf(cnm);
+      const snm = grp === 'tr' ? trStage(snmRaw) : snmRaw;
+      const stageRound = sub ? trRound(stage) : '';
       if (!inScope(cnm, `${comp} ${stage}`)) continue;
       const name = [cnm && trCountry(cnm), snm].filter(Boolean).join(' · ') || 'Diğer';
-      const lgId = `ls:${norm(`${cnm} ${snm}`).replace(/ /g, '-') || sid}`; // aynı yarışmanın aşamaları tek bölümde toplanır
+      const lgId = `ls:${norm(`${cnm} ${snmRaw}`).replace(/ /g, '-') || sid}`; // aynı yarışmanın aşamaları tek bölümde toplanır
       const ord = orderOf(grp, snm);
       for (const ev of arr(st && st.Events)) {
         try {

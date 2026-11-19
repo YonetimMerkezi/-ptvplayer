@@ -319,3 +319,15 @@ test('seMatches: kadın maçları kapsam dışıdır (yarışma adı ya da takı
   ];
   assert.deepEqual(seMatches(rows).map((m) => m.id), ['se:a']);
 });
+
+test('mergeSe / seInfoFor: aynı saatte "Menemen FK" ↔ "Menemenspor" (sözcük başı) aynı maçtır; LiveScore maçı çoğaltılmaz, kanalı gelir', () => {
+  const t0 = Date.UTC(2026, 10, 18, 10, 0);
+  const rows = [{ id: '21', t: t0, title: 'Elazığspor - Menemenspor TFF 2. Lig', teams: ['Elazığspor', 'Menemenspor'], comp: 'TFF 2. Lig', channels: ['Tivibu Spor 1'], logos: {} }];
+  const ls = [{ id: 'ls:s1:1831291', lg: 'ls:turkiye-2nd-lig-white-group', t: t0, state: 'post', text: 'MS', home: { name: 'Elazigspor', score: 1 }, away: { name: 'Menemen FK', score: 1 } }];
+  assert.equal(mergeSe(ls, rows), ls, 'satır LiveScore maçıyla aynı: ikinci kez eklenmez');
+  assert.deepEqual(seInfoFor(ls[0], rows).channels, ['Tivibu Spor 1']);
+  // başka bir takımla paylaşılan kısa sözcük eşleştirmez
+  const other = [{ id: '22', t: t0, title: 'Elazığspor - Menemenspor TFF 2. Lig', teams: ['Elazığspor', 'Menemenspor'], comp: 'TFF 2. Lig', channels: [], logos: {} }];
+  const ls2 = [{ id: 'ls:x', lg: 'x', t: t0, state: 'pre', text: '', home: { name: 'Elazigspor', score: null }, away: { name: 'Mus Spor', score: null } }];
+  assert.equal(mergeSe(ls2, other).length, 2, 'aynı saatte rakip farklıysa satır ayrı maçtır');
+});

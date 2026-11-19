@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources, lsDetailUrls, lsEidOf, parseLsEvents, loadLsEvents, parseLsIncidents, parseLsLineups, parseLsStats, inScope, isWomenTeam } from '../www/js/sports-ls.js';
+import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources, lsDetailUrls, lsEidOf, parseLsEvents, loadLsEvents, parseLsIncidents, parseLsLineups, parseLsStats, inScope, isWomenTeam, trStage } from '../www/js/sports-ls.js';
 import { sections, chipsFor, capSections, teamKeys } from '../www/js/sports.js';
 
 const esd = (y, mo, d, h, mi) => `${y}${String(mo).padStart(2, '0')}${String(d).padStart(2, '0')}${String(h).padStart(2, '0')}${String(mi).padStart(2, '0')}00`;
@@ -470,4 +470,29 @@ test('parseLsEvents: asist, kart ve oyuncusuz kayıtlar gol sayılmaz (tür kodu
   const r = parseLsEvents(j, { home: { score: 1 }, away: { score: 0 } });
   assert.deepEqual(r.events.map((e) => e.player), ['Leão']);
   assert.equal(r.events[0].side, 'home');
+});
+
+test('parseLiveScore: TFF 2. Lig (Cnm "Turkiye", "2nd Lig: White Group") listeye girer; ad Türkçe, gruplar ayrı bölüm', () => {
+  const json = {
+    Stages: [
+      { Sid: 's1', Cnm: 'Turkiye', Snm: '2nd Lig: White Group', Events: [{ Eid: '1831291', Esd: 20261118130000, Eps: 'FT', Tr1: '1', Tr2: '1', T1: [{ Nm: 'Elazigspor' }], T2: [{ Nm: 'Menemen FK' }] }] },
+      { Sid: 's2', Cnm: 'Turkiye', Snm: '2nd Lig: Red Group', Events: [{ Eid: '2', Esd: 20261118130000, Eps: 'FT', Tr1: '0', Tr2: '1', T1: [{ Nm: '12 Bingol Spor' }], T2: [{ Nm: 'Sakaryaspor' }] }] },
+    ],
+  };
+  const ms = parseLiveScore(json, { now: Date.UTC(2026, 10, 19, 12, 0) });
+  assert.equal(ms.length, 2);
+  assert.equal(ms[0].grp, 'tr');
+  assert.equal(ms[0].lgName, 'Türkiye · 2. Lig: Beyaz Grup');
+  assert.equal(ms[1].lgName, 'Türkiye · 2. Lig: Kırmızı Grup');
+  assert.notEqual(ms[0].lg, ms[1].lg);
+  assert.equal(ms[0].eid, '1831291');
+  assert.equal(ms[0].state, 'post');
+  assert.equal(ms[0].home.score, 1);
+});
+
+test('trStage: TFF alt lig adları Türkçeleşir, diğerleri değişmez', () => {
+  assert.equal(trStage('2nd Lig: White Group'), '2. Lig: Beyaz Grup');
+  assert.equal(trStage('3rd Lig: Group 4'), '3. Lig: 4. Grup');
+  assert.equal(trStage('Super Lig'), 'Super Lig');
+  assert.equal(trStage(''), '');
 });

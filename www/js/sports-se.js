@@ -393,7 +393,13 @@ const phrasesOf = (match) => ({ own: norm(`${match.home.name} ${match.away.name}
 // Aynı başlama saati (bir takım aynı anda iki maç oynayamaz): bir takımın adı satırda tam geçiyor, diğerinin de en az bir ayırt edici sözcüğü
 // geçiyorsa (kısaltma: "Kepez Bld." ↔ "Kepez Belediyespor") satır bu maçındır. Yoksa maç iki kez görünür ve skoru yalnız birinde olur.
 const SLOT_MS = 20 * 60000;
-const shareWord = (padded, name) => norm(name).split(' ').some((w) => w.length >= 4 && padded.includes(` ${w} `));
+// Ortak sözcük: tam sözcük (≥4 harf) ya da bir sözcüğün diğerinin başı olması (≥5 harf; "Menemen FK" ↔ "Menemenspor").
+const shareWord = (padded, name) => {
+  const toks = padded.trim().split(' ');
+  return norm(name)
+    .split(' ')
+    .some((w) => (w.length >= 4 && padded.includes(` ${w} `)) || toks.some((t) => (t.length > w.length && w.length >= 5 && t.startsWith(w)) || (w.length > t.length && t.length >= 5 && w.startsWith(t))));
+};
 function rowFits(match, r, ph) {
   if (rowIsMatch(match, r, ph)) return true;
   if (Math.abs(r.t - match.t) > SLOT_MS) return false;
