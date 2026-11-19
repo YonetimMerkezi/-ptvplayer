@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { greeting, homeContinue, statusText } from '../www/js/home-extras.js';
+import { readFileSync } from 'node:fs';
+import { greeting, homeContinue, statusText, RECENT_TABS, recentLatest, recentTabPick } from '../www/js/home-extras.js';
 
 test('greeting: saate göre karşılama', () => {
   assert.equal(greeting(7).text, 'İyi sabahlar, iyi seyirler');
@@ -61,4 +62,35 @@ test('homeRecent: diziler bölüm izlemelerinden de gelir, aynı dizi bir kez, s
   assert.deepEqual(homeRecent('series', recents, progress, lookup).map((x) => x.id), ['s2', 's1', 's3']);
   assert.deepEqual(homeRecent('series', recents, progress, lookup, 2).map((x) => x.id), ['s2', 's1']);
   assert.deepEqual(homeRecent('series', null, null, lookup), []);
+});
+
+test('recentLatest: her türün en son izleme zamanı; dizi için bölüm ilerlemesi de sayılır', () => {
+  const rec = [{ kind: 'live', id: 'c1', at: 50 }, { kind: 'live', id: 'c2', at: 90 }, { kind: 'movie', id: 'm1', at: 70 }, { kind: 'series', id: 's1', at: 10 }, { kind: 'live', id: '', at: 999 }, { kind: 'radio', id: 'r', at: 999 }];
+  const prog = { e1: { kind: 'episode', parent: 's2', at: 80 }, m1: { kind: 'movie', id: 'm1', at: 999 }, e2: { kind: 'episode', parent: null, at: 999 } };
+  assert.deepEqual(recentLatest(rec, prog), { live: 90, movie: 70, series: 80 });
+  assert.deepEqual(recentLatest(null, null), { live: 0, movie: 0, series: 0 });
+  assert.deepEqual(recentLatest([], [{ kind: 'episode', parent: 's', at: 5 }]), { live: 0, movie: 0, series: 5 });
+});
+
+test('recentTabPick: seçilen sekme doluysa o; değilse en son izlemenin olduğu, eşitlikte canlı → film → dizi', () => {
+  const counts = { live: 3, movie: 2, series: 0 };
+  const latest = { live: 10, movie: 20, series: 99 };
+  assert.equal(recentTabPick(counts, latest), 'movie', 'boş dizi sekmesi sayılmaz, en yeni film');
+  assert.equal(recentTabPick(counts, latest, 'live'), 'live', 'seçim korunur');
+  assert.equal(recentTabPick(counts, latest, 'series'), 'movie', 'seçilen sekme boşsa varsayılana döner');
+  assert.equal(recentTabPick(counts, latest, 'radio'), 'movie', 'geçersiz seçim yok sayılır');
+  assert.equal(recentTabPick({ live: 1, movie: 1, series: 1 }, { live: 5, movie: 5, series: 5 }), 'live', 'eşitlikte sıra');
+  assert.equal(recentTabPick({ live: 0, movie: 0, series: 0 }, latest), '');
+  assert.equal(recentTabPick(null, null), '');
+  assert.deepEqual(RECENT_TABS.map((t) => [t.kind, t.go]), [['live', 'recent'], ['movie', 'recent-movie'], ['series', 'recent-series']]);
+});
+
+test('bağlantı: ana ekranda kanal/film/dizi son izlenenleri tek sekmeli bölümde; sekmeye dokununca yalnız bölüm yeniden çizilir', () => {
+  const app = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /Son izlenen (kanallar|filmler|diziler)/, 'ayrı satırlar kalmadı');
+  assert.match(app, /<div id="home-recent">\$\{homeRecentHtml\(\)\}<\/div>/);
+  assert.match(app, /role="tab" aria-selected="\$\{t\.kind === on\}" data-rtab="\$\{t\.kind\}"/);
+  assert.match(app, /<button data-go="\$\{cur\.go\}">Tümünü gör<\/button>/, '“Tümünü gör” açık sekmeyi izler');
+  assert.match(app, /const rt = e\.target\.closest\('\[data-rtab\]'\);\s*if \(rt\) \{\s*homeRecentState\.tab = rt\.dataset\.rtab;\s*return fillHomeRecent\(\);/);
+  assert.match(app, /recentTabPick\(counts, recentLatest\(store\.recents\(sid\(\)\), store\.progressAll\(sid\(\)\)\), homeRecentState\.tab\)/);
 });

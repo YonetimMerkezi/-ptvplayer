@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 144,
+    title: 'Ana ekranda tek “Son izlenenler”',
+    items: [
+      'Son izlenen kanallar, filmler ve diziler artık üç ayrı satır yerine tek bölümde sekmeli: Kanallar · Filmler · Diziler',
+      'Açılışta en son izlediğiniz türün sekmesi gelir; sekmeye dokununca liste değişir, “Tümünü gör” seçili sekmeyi açar. İzlemediğiniz tür için sekme çıkmaz',
+    ],
+  },
+  {
     id: 143,
     title: 'Fragmanı YouTube’da kendisi bulsun',
     items: [

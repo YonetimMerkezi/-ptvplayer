@@ -79,7 +79,7 @@ import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, f
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
-import { homeContinue, homeRecent, statusText } from './home-extras.js';
+import { homeContinue, homeRecent, statusText, RECENT_TABS, recentLatest, recentTabPick } from './home-extras.js';
 import { cleanTitle } from './titleclean.js';
 import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, setBillingReady, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
@@ -3165,6 +3165,41 @@ function fillHomePicks() {
   if (sc2) sc2.scrollLeft = left;
 }
 
+// Ana ekran satırları: kaldığın yerden devam (film + dizi), son izlenenler (sekmeli) ve en son eklenen filmler; boşsa satır çıkmaz.
+const rowCards = (list) =>
+  list
+    .map(({ kind, it }, i) => {
+      if (kind === 'live') return card(it, i, `data-hk="live" data-hid="${esc(it.id)}"`, { title: it.name, sub: 'Canlı TV' });
+      const ct = cleanTitle(it.name, it.year);
+      const sub = [kind === 'series' ? 'Dizi' : 'Film', ct.year].filter(Boolean).join(' · ');
+      return card(it, i, `data-hk="${kind}" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub });
+    })
+    .join('');
+const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
+// Son izlenenler: canlı kanal, film ve dizi tek bölümde sekmeli (her sekmede en yeni önce); boş sekme çıkmaz
+const lastSeen = (kind) => recentItems(kind).slice(0, 12).map((it) => ({ kind, it }));
+const homeRecentState = { tab: '' }; // kullanıcının seçtiği sekme; seçmediyse en son izlemenin olduğu sekme açılır
+function homeRecentHtml() {
+  const lists = { live: lastSeen('live'), movie: lastSeen('movie'), series: lastSeen('series') };
+  const tabs = RECENT_TABS.filter((t) => lists[t.kind].length);
+  const counts = { live: lists.live.length, movie: lists.movie.length, series: lists.series.length };
+  const on = recentTabPick(counts, recentLatest(store.recents(sid()), store.progressAll(sid())), homeRecentState.tab);
+  if (!on) return '';
+  const cur = tabs.find((t) => t.kind === on);
+  const chips = tabs.map((t) => `<button class="chip${t.kind === on ? ' on' : ''}" role="tab" aria-selected="${t.kind === on}" data-rtab="${t.kind}"><span aria-hidden="true">${t.icon}</span> ${t.label}</button>`).join('');
+  return `<section class="home-row hp-recent"><div class="home-row-h"><b>🕘 Son izlenenler</b><button data-go="${cur.go}">Tümünü gör</button></div><div class="chips hp-chips" role="tablist" aria-label="Son izlenenler">${chips}</div><div class="home-row-s" role="tabpanel">${rowCards(lists[on])}</div></section>`;
+}
+function fillHomeRecent() {
+  const el = $('#home-recent');
+  if (!el) return;
+  const focused = el.contains(document.activeElement); // kumandada odak seçilen sekmede kalır
+  el.innerHTML = homeRecentHtml();
+  if (focused) {
+    const t = el.querySelector('[data-rtab].on');
+    if (t) t.focus();
+  }
+}
+
 function renderHome(v) {
   const c = S.cat;
   const src = S.source;
@@ -3173,16 +3208,6 @@ function renderHome(v) {
   const cnt = (n, w) => (n ? `${n} ${w}` : '');
   const favN = store.favs(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
-  // Ana ekran satırları: kaldığın yerden devam (film + dizi) ve en son eklenen filmler; boşsa satır çıkmaz.
-  const rowCards = (list) =>
-    list
-      .map(({ kind, it }, i) => {
-        if (kind === 'live') return card(it, i, `data-hk="live" data-hid="${esc(it.id)}"`, { title: it.name, sub: 'Canlı TV' });
-        const ct = cleanTitle(it.name, it.year);
-        const sub = [kind === 'series' ? 'Dizi' : 'Film', ct.year].filter(Boolean).join(' · ');
-        return card(it, i, `data-hk="${kind}" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub });
-      })
-      .join('');
   const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
   // aynı film listede birkaç kez bulunabilir (farklı kategori/kalite): ana ekranda adı ve yılı aynı olan tek kutu olur
   const freshSeen = new Set();
@@ -3194,13 +3219,8 @@ function renderHome(v) {
     })
     .slice(0, 12)
     .map((it) => ({ kind: 'movie', it }));
-  const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
-  // Son izlenenler: canlı kanal, film ve dizi ayrı satırlarda (en yeni önce); boş olan satır çıkmaz
-  const lastSeen = (kind) => recentItems(kind).slice(0, 12).map((it) => ({ kind, it }));
   const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') +
-    homeRow('📺 Son izlenen kanallar', lastSeen('live'), 'recent') +
-    homeRow('🎬 Son izlenen filmler', lastSeen('movie'), 'recent-movie') +
-    homeRow('📚 Son izlenen diziler', lastSeen('series'), 'recent-series') +
+    `<div id="home-recent">${homeRecentHtml()}</div>` +
     homeRow('✨ Son eklenen filmler', fresh, 'movies');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   v.innerHTML = `<div class="home">
@@ -3250,6 +3270,11 @@ function renderHome(v) {
     if (pk) {
       repickHome(pk.dataset.pick || homePick.genre); // seçili çipe yeniden dokunmak ya da "Başka öner" farklı filmler getirir
       return fillHomePicks();
+    }
+    const rt = e.target.closest('[data-rtab]');
+    if (rt) {
+      homeRecentState.tab = rt.dataset.rtab;
+      return fillHomeRecent();
     }
     const nc = e.target.closest('[data-nid]');
     if (nc) {

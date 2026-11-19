@@ -58,3 +58,35 @@ export function homeRecent(kind, recents, progress, lookup, max = 12) {
 
 // "0 Canlı TV · 0 VOD · 0 liste" biçiminde liste durum özeti.
 export const statusText = ({ live = 0, vod = 0, lists = 0 } = {}) => `${live} Canlı TV · ${vod} VOD · ${lists} liste`;
+
+// Ana ekrandaki tek "Son izlenenler" bölümünün sekmeleri; go = "Tümünü gör" düğmesinin gideceği yer.
+export const RECENT_TABS = [
+  { kind: 'live', label: 'Kanallar', icon: '📺', go: 'recent' },
+  { kind: 'movie', label: 'Filmler', icon: '🎬', go: 'recent-movie' },
+  { kind: 'series', label: 'Diziler', icon: '📚', go: 'recent-series' },
+];
+
+// Her türün en son izleme zamanı (ms). Diziler için bölüm izlemeleri de sayılır (homeRecent ile aynı kaynak).
+export function recentLatest(recents, progress) {
+  const out = { live: 0, movie: 0, series: 0 };
+  for (const r of Array.isArray(recents) ? recents : []) {
+    if (r && r.id && r.kind in out) out[r.kind] = Math.max(out[r.kind], Number(r.at) || 0);
+  }
+  for (const p of Array.isArray(progress) ? progress : Object.values(progress || {})) {
+    if (p && p.kind === 'episode' && p.parent) out.series = Math.max(out.series, Number(p.at) || 0);
+  }
+  return out;
+}
+
+// Açık sekme: seçilen sekmede içerik varsa o; yoksa (ya da hiç seçilmediyse) en son izlemenin olduğu sekme, eşitse
+// canlı → film → dizi sırası. counts = { live, movie, series } öğe sayıları; hiçbirinde içerik yoksa ''.
+export function recentTabPick(counts, latest, selected = '') {
+  const has = (k) => Number(counts && counts[k]) > 0;
+  if (selected && has(selected) && RECENT_TABS.some((t) => t.kind === selected)) return selected;
+  let best = '';
+  for (const t of RECENT_TABS) {
+    if (!has(t.kind)) continue;
+    if (!best || (Number(latest && latest[t.kind]) || 0) > (Number(latest && latest[best]) || 0)) best = t.kind;
+  }
+  return best;
+}
