@@ -908,15 +908,27 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .dt-load { color: var(--muted); }
 /* Fragman, oyuncu kartları ve oyuncu sayfası (title-ui.js). Kart yuvarlakları addan renk alır; yazı açık tonda koyu zeminde. */
 .dt-tr:empty, .dt-pp:empty { display: none; }
-.tr { max-width: 560px; margin: 4px 0 16px; }
-.tr-box { position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); }
-.tr-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.tr-thumb { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: pointer; }
-.tr-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
+/* Fragman sahnesi: sayfanın en üstünde. Gölgeli afiş (tr-bg) altta durur; video oynamaya başlayınca (.on) afiş kararır ve kontrolsüz oynatıcı belirir. */
+.tr { margin: 0 0 6px; }
+.tr h2 { margin: 4px 0 8px; font-size: 1.0625rem; color: var(--accent); }
+.tr-hero { position: relative; }
+.tr-box { position: relative; aspect-ratio: 16 / 9; border-radius: 0; overflow: hidden; background: #05080d; }
+.tr-box::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0) 62%, var(--bg, #05080d) 100%); } /* gölge: üstte hafif, altta sayfaya karışır */
+.tr-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.62); transition: opacity 0.8s ease, filter 0.8s ease; }
+.tr-box.on .tr-bg { opacity: 0; filter: brightness(0.15); }
+/* oynatıcı gerekenden büyük ve yukarı kaydırılmış: YouTube'un üstteki başlık şeridi sahne dışında kalır; dokunuş oynatıcıya geçmez */
+.tr-frame { position: absolute; left: 0; top: -35%; width: 100%; height: 170%; border: 0; opacity: 0; transition: opacity 0.8s ease; pointer-events: none; }
+.tr-box.on .tr-frame { opacity: 1; }
+.tr-unmute { position: absolute; right: 12px; bottom: 16px; z-index: 2; width: 40px; height: 40px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); cursor: pointer; }
+.tr-unmute[hidden] { display: none; }
+.tr-unmute .ic { width: 20px; height: 20px; }
+.tr-unmute:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tr-thumb { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.tr-box > .tr-wait { position: absolute; inset: 0; z-index: 1; aspect-ratio: auto; border-radius: 0; background: transparent; }
 .tr-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
 .tr-play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink, #0a1118); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); }
 .tr-play .ic { width: 30px; height: 30px; }
-.tr-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tr-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .tr-bar .btn { min-height: 36px; }
 .dt-orig { display: inline-flex; align-items: center; min-height: 36px; margin: -6px 0 6px; padding: 0 2px; background: none; border: 0; color: var(--accent); font: inherit; font-size: 0.875rem; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .dt-orig:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -933,7 +945,7 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .tr-r.on b { color: var(--accent); }
 .tr-r:focus-visible .tr-rt { outline-color: var(--accent); }
 .tr-note { margin: 6px 0 0; font-size: 0.8125rem; color: var(--muted, #9aa7b5); overflow-wrap: anywhere; }
-.tr-wait { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; border-radius: 14px; background: #0b1118; color: #d5dde6; font-size: 0.9rem; text-align: center; padding: 12px; }
+.tr-wait { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; background: #0b1118; color: #d5dde6; font-size: 0.9rem; text-align: center; padding: 12px; }
 .tr-fail { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; text-align: center; background: #0b1118; color: #d5dde6; font-size: 0.875rem; }
 .tr-fail p { margin: 0; max-width: 34ch; }
 .tr-find { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; text-decoration: none; color: #fff; background: color-mix(in srgb, var(--accent) 14%, #070b14); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); }
@@ -980,8 +992,11 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
   /* afiş: görünen yüksekliğe tam sığar (2:3), genişliği yüksekliğinden gelir; ekran genişliğinin ~%37'sini aşmaz */
   .dt-pos { position: sticky; top: 4px; justify-self: end; width: auto; height: min(calc(100vh - var(--bar-h) - var(--safe-t) - var(--safe-b) - 36px), 56vw); aspect-ratio: 2 / 3; border-radius: 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55); }
   .dt-t { font-size: clamp(1.375rem, 3vw, 2.75rem); font-weight: 800; line-height: 1.1; }
-  .dt-sp .dt { grid-template-columns: minmax(0, 1fr) minmax(220px, 36%) auto; grid-template-areas: "head eps pos" "trl eps pos" "plot eps pos" "facts eps pos" "rest eps pos"; grid-template-rows: auto auto auto auto 1fr; }
-  .dt-sp .dt-tr { grid-area: trl; }
+  /* yatay / geniş ekran: fragman sahnesi sol sütunun üstünde, yükseklik görünür alanın ~%46'sı; köşeler yuvarlak */
+  .tr-hero { width: min(100%, calc(46vh * 16 / 9)); }
+  .tr-box { border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); }
+  .tr-box::after { display: none; }
+  .dt-sp .dt { grid-template-columns: minmax(0, 1fr) minmax(220px, 36%) auto; grid-template-areas: "head eps pos" "plot eps pos" "facts eps pos" "rest eps pos"; grid-template-rows: auto auto auto 1fr; }
   .dt-sp .dt-pp { grid-area: rest; }
   .dt-sp .dt-body { display: contents; }
   .dt-sp .dt-body h2 { display: none; }
@@ -1009,6 +1024,7 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
   .dt { gap: 8px 18px; }
   .dt-t { font-size: 1.25rem; }
   .dt-head { gap: 6px; }
+  .tr-hero { width: min(100%, calc(38vh * 16 / 9)); }
   .dt-m { gap: 4px; }
   .dt-m span { padding: 2px 8px; font-size: 0.6875rem; }
   .dt-btns { gap: 6px; }
@@ -1620,6 +1636,22 @@ html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale
 @media not all and (orientation: landscape) and (min-width: 640px) {
   .dt { grid-template-areas:"pos title" "pos meta" "warning warning" "btns btns" "body body"; grid-template-rows:auto 1fr auto auto auto; }
   .mv-advisories { grid-area:warning; }
+}
+
+/* Fragman sahnesi (title-ui.js; paintTitleExtras .dt'ye data-tr koyar): stage = üstte sahne + düğmelerin altında not/şerit, card = "fragman ara" kartı tek satırda.
+   Satırlar yalnız fragman alanı doluyken eklenir; boşken sayfa eski düzeninde kalır. */
+.dt[data-tr] .dt-tr { grid-area: trl; min-width: 0; }
+.dt[data-tr="stage"] .dt-tr, .dt[data-tr="stage"] .tr { display: contents; }
+.dt[data-tr="stage"] .tr-hero { grid-area: trl; min-width: 0; }
+.dt[data-tr="stage"] .tr-more { grid-area: trx; min-width: 0; }
+.dt[data-tr] { grid-template-areas: "trl trl" "pos head" "trx trx" "body body"; }
+@media not all and (orientation: landscape) and (min-width: 640px) {
+  .dt[data-tr] { grid-template-areas: "trl trl" "pos title" "pos meta" "warning warning" "btns btns" "trx trx" "body body"; grid-template-rows: auto auto 1fr auto auto auto auto; }
+  .dt[data-tr="stage"] .tr-hero { margin: 0 -16px; } /* dikey telefon: sahne sayfa genişliğinde, kenardan kenara */
+}
+@media (orientation: landscape) and (min-width: 640px) {
+  .dt[data-tr] { grid-template-areas: "trl pos" "head pos" "trx pos" "body pos"; grid-template-rows: auto auto auto 1fr; }
+  .dt-sp .dt[data-tr] { grid-template-areas: "trl eps pos" "head eps pos" "trx eps pos" "plot eps pos" "facts eps pos" "rest eps pos"; grid-template-rows: auto auto auto auto auto 1fr; }
 }
 
 .mv-warning-chip .ic { width:15px; height:15px; margin-right:5px; flex:0 0 auto; }

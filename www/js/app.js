@@ -2138,7 +2138,15 @@ const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı ifra
 // Fragman: Cinemeta'nınkiler önce, sağlayıcının (provider.trailer) ardından; hiçbiri yoksa query ile "YouTube’da fragman ara" bağlantısı (Türk yapımlarında Cinemeta'da çoğu zaman fragman yok).
 // Hazır fragman yoksa (ve "Fragmanı otomatik ara" açıksa) başlık YouTube'da aranır; bulunan resmî fragman uygulama içinde oynar, bulunamazsa arama düğmesi kalır.
 // onFound: aramayla fragman bulununca çağrılır (dizi ekranı yeniden çizildiğinde otomatik başlamasın diye).
-function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '', finds = [], wanted = [], year = 0, onFound = null }) {
+// Sayfa ızgarası fragman alanının durumunu bilir (CSS .dt[data-tr]): stage = sahne üstte, card = "fragman ara" kartı, boş = eski düzen.
+function stageMode(tr) {
+  const dt = tr.closest && tr.closest('.dt');
+  if (!dt) return;
+  const sec = tr.firstElementChild;
+  if (!sec) delete dt.dataset.tr;
+  else dt.dataset.tr = sec.querySelector('.tr-hero') ? 'stage' : 'card';
+}
+function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '', finds = [], wanted = [], year = 0, bg = '', onFound = null }) {
   if (!body.isConnected) return;
   const tr = trailer ? $(trailer, body) : null;
   const pp = $(people, body);
@@ -2146,7 +2154,9 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
     const ids = trailerIds(detail, provider && provider.trailer);
     const autoPlay = auto && setting('trailerAuto');
     const find = trailerOn() && !ids.length && finds.length > 0 && setting('trailerFind');
-    tr.innerHTML = trailerOn() ? trailerHtml(ids, { auto: autoPlay, origin: location.origin, query, searching: !!find }) : '';
+    const stageBg = (detail && detail.background) || bg; // sahnenin gölgeli afişi: geniş arka plan görseli (yoksa videonun küçük resmi)
+    tr.innerHTML = trailerOn() ? trailerHtml(ids, { auto: autoPlay, origin: location.origin, query, searching: !!find, bg: stageBg }) : '';
+    stageMode(tr);
     if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
     const token = (tr._find = (tr._find || 0) + 1); // sonradan yapılan yeni boyama eski aramanın sonucunu geçersiz kılar
     if (find) {
@@ -2160,7 +2170,8 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
         }
         if (!tr.isConnected || tr._find !== token) return;
         const good = picks.length > 0 && picks[0].good; // en alakalı fragman ilk sırada: otomatik oynar; yoksa sonuçlar şeritte, kullanıcı seçer
-        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay && good, origin: location.origin, query, found: picks, diag: picks.length ? '' : describeFind(infos) });
+        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay && good, origin: location.origin, query, found: picks, bg: stageBg, diag: picks.length ? '' : describeFind(infos) });
+        stageMode(tr);
         if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
         if (good && onFound) onFound();
       })();
@@ -2310,7 +2321,7 @@ function openMovie(it) {
   const resumeTxt = p ? `Devam et · ${fmtDuration(p.pos)}` : 'Oynat';
   return openPage({
     cls: 'dt-pg',
-    html: `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><div class="dt-tr" id="mv-trailer"></div><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><div class="dt-pp" id="mv-people"></div><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
+    html: `<div class="dt"><div class="dt-tr" id="mv-trailer"></div><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m" id="mv-meta">${chipsOf([it.group, starsOf(it.rating)])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns"><button class="btn lg" id="mv-play">${icon('play')}${esc(resumeTxt)}</button>${p ? '<button class="btn ghost" id="mv-start">Baştan başlat</button>' : ''}<button class="btn ghost" id="mv-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button>${dlOk() ? '<button class="btn ghost" id="mv-dl"></button>' : ''}${nativePlugin && !isTvUi() ? `<button class="btn ghost" id="mv-cast">${icon('cast')}TV’de oynat</button>` : ''}<button class="btn ghost" id="mv-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Film hakkında</h2><p class="dt-plot" id="mv-plot"><span class="dt-load">Yükleniyor…</span></p><dl class="dt-facts" id="mv-facts"></dl><div class="dt-pp" id="mv-people"></div><section class="mv-similar" id="mv-similar" hidden><h2>Bunları da beğenebilirsiniz</h2><div class="mv-similar-row" id="mv-similar-row"></div></section></div></div>`,
     mount: (body) => {
       paintMovieAdvisories(body, null);
       $('#mv-play', body).addEventListener('click', () => startPlay(it, { ctx: movieCtx(it) }));
@@ -2352,7 +2363,7 @@ function openMovie(it) {
         advStarted = true;
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
         const provider = { cast: (info && info.cast) || it.cast, director: (info && info.director) || it.director, trailer: (info && info.trailer) || it.trailer };
-        const extrasOf = (meta, origin) => ({ trailer: '#mv-trailer', people: '#mv-people', ...trailerSearch(it.name, (info && info.year) || (meta && meta.year), origin) });
+        const extrasOf = (meta, origin) => ({ trailer: '#mv-trailer', people: '#mv-people', bg: (info && info.backdrop) || it.backdrop || '', ...trailerSearch(it.name, (info && info.year) || (meta && meta.year), origin) });
         resolveAdvisoryMeta(it, info).then(({ meta, advisoryMeta }) => {
           if (!body.isConnected) return;
           loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail, origin) => paintTitleExtras(body, detail, provider, extrasOf(meta, origin)), (info && info.year) || (meta && meta.year));
@@ -2456,7 +2467,7 @@ function openSeries(it) {
       // Fragman, eşleşme çözülene kadar (ready) boyanmaz: önce sağlayıcınınki, sonra Cinemeta'nınki gelirse video değişip yeniden başlardı.
       const extras = { detail: null, origin: null, ready: false, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director, trailer: info.trailer || it.trailer } };
       const paintExtras = () => {
-        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', auto: !extras.shown, onFound: () => { extras.shown = true; }, ...trailerSearch(it.name, info.year || it.year, extras.origin) });
+        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', bg: info.backdrop || it.backdrop || '', auto: !extras.shown, onFound: () => { extras.shown = true; }, ...trailerSearch(it.name, info.year || it.year, extras.origin) });
         if (extras.ready && trailerIds(extras.detail, extras.provider.trailer).length && trailerOn()) extras.shown = true;
       };
       const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
@@ -2475,7 +2486,7 @@ function openSeries(it) {
           })
           .join('');
         const scroll = body.scrollTop;
-        body.innerHTML = `<div class="dt"><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><div class="dt-tr" id="sr-trailer"></div><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-pp" id="sr-people"></div><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
+        body.innerHTML = `<div class="dt"><div class="dt-tr" id="sr-trailer"></div><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-pp" id="sr-people"></div><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
         body.scrollTop = scroll;
         paintAdv();
         paintExtras();

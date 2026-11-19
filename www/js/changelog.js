@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 149,
+    title: 'Fragman kontrolsüz, afişin yerinde',
+    items: [
+      'Fragman film/dizi ekranının en üstünde, kenardan kenara açılır; YouTube başlığı, ayar ve altyazı düğmeleri görünmez',
+      'Gölgeli afiş hazır olduğunda kararır ve video yumuşakça belirir; küçük ses düğmesi sağ altta, video bitince afişe dönülür',
+      'Bulunan diğer fragmanlar ve YouTube bağlantısı düğmelerin altında “Diğer fragmanlar” şeridinde',
+    ],
+  },
+  {
     id: 148,
     title: 'Telefonda Netflix gibi vitrin',
     items: [

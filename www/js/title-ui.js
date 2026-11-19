@@ -20,8 +20,11 @@ export function hueOfName(name) {
 }
 
 // ---- fragman ----
-const frameHtml = (id, { muted, origin }) => `<iframe class="tr-frame" src="${esc(trailerEmbedUrl(id, { muted, origin }))}" title="Fragman" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
-const thumbHtml = (id) => `<button class="tr-thumb" data-tr="play" aria-label="Fragmanı oynat"><img src="${esc(trailerThumbUrl(id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"><span class="tr-play">${ic('play')}</span></button>`;
+// Fragman sahnesi: gölgeli afiş (tr-bg) altta durur, video hazır olunca afiş kararır ve kontrolsüz oynatıcı belirir (.tr-box.on).
+// Oynatıcı gerekenden büyük ve yukarı kaydırılmış çizilir (CSS): YouTube'un üstteki başlık şeridi sahne dışında kalır; dokunuşlar oynatıcıya geçmez.
+const bgImg = (id, bg) => `<img class="tr-bg" src="${esc(bg || trailerThumbUrl(id))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">`;
+const frameHtml = (id, { muted, origin, bg }) => `${bgImg(id, bg)}<iframe class="tr-frame" src="${esc(trailerEmbedUrl(id, { muted, origin }))}" title="Fragman" tabindex="-1" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+const thumbHtml = (id, bg) => `${bgImg(id, bg)}<button class="tr-thumb" data-tr="play" aria-label="Fragmanı oynat"><span class="tr-play">${ic('play')}</span></button>`;
 const searchBtn = (query, cls) => `<a class="${cls}" href="${esc(trailerSearchUrl(query))}" target="_blank" rel="noopener">${ic('search')}`;
 const failHtml = (query) => `<div class="tr-fail"><p>Fragman uygulamada oynatılamıyor; video sahibi gömmeyi kapatmış olabilir.</p>${query ? `${searchBtn(query, 'btn sm')}YouTube’da ara</a>` : ''}</div>`;
 
@@ -31,25 +34,25 @@ const clock = (s) => {
   return n >= 3600 ? `${Math.floor(n / 3600)}:${String(Math.floor((n % 3600) / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}` : `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
 };
 // Yatay kaydırılan sonuç şeridi: her kart bir YouTube sonucu; dokununca üstteki oynatıcıda açılır (yanlış ya da gömülemeyen videoda başkası seçilir).
-const stripHtml = (found, on) => `<div class="tr-rs"><p class="tr-rh">YouTube sonuçları</p><div class="tr-rl" role="list">${found.map((f) => `<button class="tr-r${f.id === on ? ' on' : ''}" role="listitem" data-tr="pick" data-id="${esc(f.id)}" aria-label="${esc(f.title)}"><span class="tr-rt"><img src="${esc(trailerThumbUrl(f.id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">${f.seconds ? `<i class="tr-d">${clock(f.seconds)}</i>` : ''}</span><b>${esc(f.title)}</b><small>${esc(f.channel || '')}</small></button>`).join('')}</div></div>`;
+const stripHtml = (found, on) => `<div class="tr-rs"><p class="tr-rh">Diğer fragmanlar</p><div class="tr-rl" role="list">${found.map((f) => `<button class="tr-r${f.id === on ? ' on' : ''}" role="listitem" data-tr="pick" data-id="${esc(f.id)}" aria-label="${esc(f.title)}"><span class="tr-rt"><img src="${esc(trailerThumbUrl(f.id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">${f.seconds ? `<i class="tr-d">${clock(f.seconds)}</i>` : ''}</span><b>${esc(f.title)}</b><small>${esc(f.channel || '')}</small></button>`).join('')}</div></div>`;
 
 // ids: YouTube kimlikleri (ilki oynar; gömmeye izin vermeyen videoda sıradakine geçilir). auto: sessiz otomatik başlar, değilse küçük resim.
 // found: YouTube aramasıyla bulunan [{ id, title, channel }]; oynayan videonun adı altta görünür (yanlışsa kullanıcı fark eder).
 // Kimlik yoksa: searching ise "aranıyor", yoksa query varsa "YouTube’da fragman ara" bağlantısı; hiçbiri yoksa boş.
-export function trailerHtml(ids, { auto = false, origin = '', query = '', searching = false, found = null, diag = '' } = {}) {
+export function trailerHtml(ids, { auto = false, origin = '', query = '', searching = false, found = null, diag = '', bg = '' } = {}) {
   const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
   const id = list[0];
   if (!id) {
-    if (searching) return '<section class="tr tr-none"><h2>Fragman</h2><div class="tr-wait" role="status">YouTube’da fragman aranıyor…</div></section>';
+    if (searching) return `<section class="tr tr-none"><div class="tr-hero"><div class="tr-box">${bg ? `<img class="tr-bg" src="${esc(bg)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<div class="tr-wait" role="status">YouTube’da fragman aranıyor…</div></div></div></section>`;
     return query ? `<section class="tr tr-none"><h2>Fragman</h2>${searchBtn(query, 'tr-find')}<span><b>YouTube’da fragman ara</b><small>Bu yapım için hazır fragman bulunamadı</small></span></a>${diag ? `<p class="tr-note tr-diag">${esc(diag)}</p>` : ''}</section>` : '';
   }
   const watch = esc(trailerWatchUrl(id));
-  const media = auto ? frameHtml(id, { muted: true, origin }) : thumbHtml(id);
-  const unmute = auto ? `<button class="btn sm tr-unmute" data-tr="unmute" hidden>${ic('audio')}Sesi aç</button>` : '';
+  const media = auto ? frameHtml(id, { muted: true, origin, bg }) : thumbHtml(id, bg);
+  const unmute = auto ? `<button class="tr-unmute" data-tr="unmute" aria-label="Sesi aç" hidden>${ic('audio')}</button>` : '';
   const notes = found && found.length ? list.map((x) => foundNote(found.find((f) => f.id === x))) : [];
   const note = notes[0] ? `<p class="tr-note">${esc(notes[0])}</p>` : '';
   const strip = found && found.length > 1 ? stripHtml(found, id) : '';
-  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}"${notes.length ? ` data-notes="${esc(JSON.stringify(notes))}"` : ''}><h2>Fragman</h2><div class="tr-box">${media}</div>${note}<div class="tr-bar">${unmute}<a class="btn sm ghost tr-open" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div>${strip}</section>`;
+  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}" data-bg="${esc(bg)}"${notes.length ? ` data-notes="${esc(JSON.stringify(notes))}"` : ''}><div class="tr-hero"><div class="tr-box">${media}</div>${unmute}</div><div class="tr-more">${note}<div class="tr-bar"><a class="btn sm ghost tr-open" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div>${strip}</div></section>`;
 }
 
 // Fragman denetleyicisi: sessiz otomatik oynatma, "Sesi aç", hata → sıradaki fragman (hepsi bitince açıklama + YouTube araması), uygulama oynatıcısı açılınca durdurma.
@@ -63,6 +66,14 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
   };
   const ids = () => String(host.dataset.ids || host.dataset.id || '').split(',').filter(Boolean);
   const origin = host.dataset.origin || '';
+  const bg = () => host.dataset.bg || '';
+  let revealTimer = null;
+  // Sahne: video oynamaya başlayınca afiş kararır, oynatıcı belirir (tr-box.on); bitince / durunca afişe dönülür
+  const setOn = (v) => {
+    const b = host.querySelector('.tr-box');
+    if (b && b.classList) b.classList.toggle('on', !!v);
+    if (v && revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+  };
   let at = 0; // oynayan fragmanın sırası
   let muted = !!frame(); // sessiz otomatik başladıysa sıradaki de sessiz başlar; dokunarak başlatılan sesli devam eder
   const showUnmute = () => {
@@ -86,11 +97,20 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     if (a) a.href = trailerWatchUrl(id);
   };
   const bindFrame = (f) => {
-    if (f) f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ } showUnmute(); });
+    if (f) {
+      f.addEventListener('load', () => {
+        try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ }
+        showUnmute();
+        // Durum iletisi hiç gelmezse (el sıkışma başarısız) sahne yine de açılır; yoksa oynayan video afişin arkasında kalırdı
+        if (revealTimer) clearTimeout(revealTimer);
+        revealTimer = setTimeout(() => setOn(true), 4500);
+      });
+    }
   };
   const toThumb = () => {
     if (!frame()) return;
-    host.querySelector('.tr-box').innerHTML = thumbHtml(host.dataset.id);
+    setOn(false);
+    host.querySelector('.tr-box').innerHTML = thumbHtml(host.dataset.id, bg());
     const u = host.querySelector('.tr-unmute');
     if (u) u.hidden = true;
   };
@@ -103,10 +123,12 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
       host.dataset.id = list[at];
       setNote();
       mark();
-      host.querySelector('.tr-box').innerHTML = frameHtml(list[at], { muted, origin });
+      setOn(false);
+      host.querySelector('.tr-box').innerHTML = frameHtml(list[at], { muted, origin, bg: bg() });
       bindFrame(frame());
       return;
     }
+    setOn(false);
     host.querySelector('.tr-box').innerHTML = failHtml(host.dataset.q || '');
     const n = host.querySelector('.tr-note');
     if (n) n.remove();
@@ -114,6 +136,7 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
   let obs = null;
   const dispose = () => {
     win.removeEventListener('message', onMsg);
+    if (revealTimer) clearTimeout(revealTimer);
     if (obs) obs.disconnect();
   };
   function onMsg(e) {
@@ -125,6 +148,9 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     if (!d || typeof d !== 'object') return;
     if (d.event === 'onError') { nextOrFail(); return; }
     if (d.event === 'onReady' || d.event === 'initialDelivery' || d.event === 'infoDelivery') showUnmute();
+    const st = d.event === 'onStateChange' ? d.info : d.info && d.info.playerState;
+    if (st === 1) setOn(true); // oynuyor
+    else if (st === 0) toThumb(); // bitti: afişe dön, dokununca yeniden oynar
   }
   win.addEventListener('message', onMsg);
   bindFrame(frame());
@@ -149,11 +175,13 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
       }
       setNote();
       mark();
-      host.querySelector('.tr-box').innerHTML = frameHtml(b.dataset.id, { muted: false, origin });
+      setOn(false);
+      host.querySelector('.tr-box').innerHTML = frameHtml(b.dataset.id, { muted: false, origin, bg: bg() });
       bindFrame(frame());
     } else if (b.dataset.tr === 'play') {
       muted = false;
-      host.querySelector('.tr-box').innerHTML = frameHtml(host.dataset.id, { muted: false, origin });
+      setOn(false);
+      host.querySelector('.tr-box').innerHTML = frameHtml(host.dataset.id, { muted: false, origin, bg: bg() });
       bindFrame(frame());
     }
   });
@@ -214,5 +242,5 @@ export function titleInfoHtml(film, detail, loading = false) {
   const poster = d.poster || film.poster;
   const posterHtml = poster ? `<img src="${esc(poster)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(initialsOf(film.name));
   const chips = [film.type === 'series' ? 'Dizi' : 'Film', d.year || film.year || '', String(d.runtime || '').replace(/\s*min\b/i, ' dk'), ...(d.genres || []).map(genreTr)].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
-  return `<div class="dt"><div class="dt-pos">${posterHtml}</div><div class="dt-head"><h1 class="dt-t">${esc(d.name || film.name)}</h1><div class="dt-m">${chips}</div><div class="dt-btns"><button class="btn lg" disabled>${ic('alert-triangle')}Listenizde yok</button></div></div><div class="dt-body"><div class="dt-tr" id="ti-trailer"></div><h2>Hakkında</h2><p class="dt-plot">${loading ? '<span class="dt-load">Yükleniyor…</span>' : esc(d.description || 'Bu yapım için özet bulunamadı.')}</p><div class="dt-pp" id="ti-people"></div></div></div>`;
+  return `<div class="dt"><div class="dt-tr" id="ti-trailer"></div><div class="dt-pos">${posterHtml}</div><div class="dt-head"><h1 class="dt-t">${esc(d.name || film.name)}</h1><div class="dt-m">${chips}</div><div class="dt-btns"><button class="btn lg" disabled>${ic('alert-triangle')}Listenizde yok</button></div></div><div class="dt-body"><h2>Hakkında</h2><p class="dt-plot">${loading ? '<span class="dt-load">Yükleniyor…</span>' : esc(d.description || 'Bu yapım için özet bulunamadı.')}</p><div class="dt-pp" id="ti-people"></div></div></div>`;
 }

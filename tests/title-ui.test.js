@@ -19,7 +19,11 @@ test('fragman bloğu: otomatikte sessiz iframe + "Sesi aç"; kapalıyken küçü
   const auto = trailerHtml(['0jKUpBmYO1Q', 'm-btyJIYLyI'], { auto: true, origin: 'https://localhost' });
   assert.match(auto, /<iframe class="tr-frame" src="https:\/\/www\.youtube\.com\/embed\/0jKUpBmYO1Q\?[^"]*mute=1/);
   assert.match(auto, /referrerpolicy="strict-origin-when-cross-origin"/, 'Hata 153 için');
-  assert.match(auto, /data-tr="unmute" hidden/);
+  assert.match(auto, /<button class="tr-unmute" data-tr="unmute" aria-label="Sesi aç" hidden>/, 'küçük yuvarlak ses düğmesi, sahnenin üstünde');
+  assert.doesNotMatch(auto, /<h2>Fragman|allowfullscreen/, 'başlık ve tam ekran yok: video kontrolsüz sahne');
+  assert.match(auto, /controls=0[^"]*disablekb=1[^"]*fs=0/, 'YouTube kontrolleri kapalı');
+  assert.match(auto, /<div class="tr-box"><img class="tr-bg" src="https:\/\/i\.ytimg\.com\/vi\/0jKUpBmYO1Q\/hqdefault\.jpg"[^>]*><iframe class="tr-frame"/, 'afiş (yoksa videonun küçük resmi) videonun altında');
+  assert.match(trailerHtml(['0jKUpBmYO1Q'], { auto: true, bg: 'https://img/bg.jpg' }), /class="tr-bg" src="https:\/\/img\/bg\.jpg"[^>]*>.*data-bg="https:\/\/img\/bg\.jpg"|data-bg="https:\/\/img\/bg\.jpg".*class="tr-bg" src="https:\/\/img\/bg\.jpg"/s);
   assert.match(auto, /href="https:\/\/www\.youtube\.com\/watch\?v=0jKUpBmYO1Q" target="_blank" rel="noopener"><svg[^>]*><use[^>]*\/><\/svg>YouTube’da aç/);
   const thumb = trailerHtml(['0jKUpBmYO1Q'], { auto: false });
   assert.doesNotMatch(thumb, /<iframe/);
@@ -188,7 +192,8 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
 });
 
 test('fragman bloğu: aranırken bekleme satırı; aramayla bulunanlar için video adı notu, sıradakine geçince not güncellenir, hepsi bitince kalkar', () => {
-  assert.match(trailerHtml([], { searching: true, query: 'x fragman' }), /class="tr tr-none"><h2>Fragman<\/h2><div class="tr-wait" role="status">YouTube’da fragman aranıyor…<\/div>/);
+  assert.match(trailerHtml([], { searching: true, query: 'x fragman' }), /class="tr tr-none"><div class="tr-hero"><div class="tr-box"><div class="tr-wait" role="status">YouTube’da fragman aranıyor…<\/div><\/div><\/div>/);
+  assert.match(trailerHtml([], { searching: true, bg: 'https://img/bg.jpg' }), /<div class="tr-box"><img class="tr-bg" src="https:\/\/img\/bg\.jpg"[^>]*><div class="tr-wait"/, 'aranırken de gölgeli afiş görünür');
   assert.doesNotMatch(trailerHtml([], { searching: true, query: 'x' }), /tr-find/);
   const found = [{ id: 'aaaaaaaaaaa', title: 'Never Surrender | Official Trailer | Netflix', channel: 'Netflix' }, { id: 'bbbbbbbbbbb', title: 'Asla Teslim Olma | Resmi Fragman', channel: '' }];
   const h = trailerHtml(['aaaaaaaaaaa', 'bbbbbbbbbbb'], { auto: true, found, query: 'q' });
@@ -218,7 +223,7 @@ test('fragman bloğu: 2+ YouTube sonucu yatay şeritte; dokunulan kart oynatıc�
     { id: 'ccccccccccc', title: 'Üçüncü', channel: '', seconds: 0, good: false },
   ];
   const h = trailerHtml(found.map((f) => f.id), { auto: true, found, query: 'q' });
-  assert.match(h, /<div class="tr-rs"><p class="tr-rh">YouTube sonuçları<\/p><div class="tr-rl" role="list">/);
+  assert.match(h, /<div class="tr-rs"><p class="tr-rh">Diğer fragmanlar<\/p><div class="tr-rl" role="list">/);
   assert.equal((h.match(/class="tr-r( on)?" role="listitem" data-tr="pick"/g) || []).length, 3);
   assert.match(h, /class="tr-r on" role="listitem" data-tr="pick" data-id="aaaaaaaaaaa"/, 'oynayan kart vurgulu');
   assert.match(h, /<i class="tr-d">2:24<\/i>/);
@@ -272,7 +277,7 @@ test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik y
   assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted, year, onInfo: \(i\) => infos\.push\(i\) \}\)/);
   assert.match(app, /diag: picks\.length \? '' : describeFind\(infos\)/, 'bulunamayınca nedeni kartın altında yazar');
   assert.match(app, /if \(!tr\.isConnected \|\| tr\._find !== token\) return;/, 'yeni boyama eski aramanın sonucunu geçersiz kılar');
-  assert.match(app, /trailerHtml\(picks\.map\(\(p\) => p\.id\), \{ auto: autoPlay && good, origin: location\.origin, query, found: picks, diag: /);
+  assert.match(app, /trailerHtml\(picks\.map\(\(p\) => p\.id\), \{ auto: autoPlay && good, origin: location\.origin, query, found: picks, bg: stageBg, diag: /);
   assert.match(app, /onFound: \(\) => \{ extras\.shown = true; \}/, 'dizi: aramayla bulunan fragman yeniden çizimde otomatik başlamaz');
   assert.match(app, /trailer: \(info && info\.trailer\) \|\| it\.trailer/, 'film: sağlayıcı fragmanı');
   assert.match(app, /trailer: info\.trailer \|\| it\.trailer/, 'dizi: sağlayıcı fragmanı');
@@ -296,11 +301,19 @@ test('bağlantı: oyuncu sayfası sınıfı çok renkli tema listesinde; sayfa k
   const css = kaynak('www/css/app.css');
   assert.match(css, /html\[data-multi\] \.ac-pg \{ --pc: var\(--p2\); \}/);
   assert.match(css, /\.rd-pg, \.ac-pg\) \{\n\s+--accent: var\(--pc\)/);
-  assert.match(css, /\.dt-sp \.dt-tr \{ grid-area: trl; \}/);
+  assert.match(css, /\.dt\[data-tr\] \.dt-tr \{ grid-area: trl;/, 'fragman sahnesi ızgarada üst satır');
+  assert.match(css, /\.dt\[data-tr="stage"\] \.tr-more \{ grid-area: trx;/, 'not ve şerit düğmelerin altında');
+  assert.match(css, /\.tr-frame \{[^}]*top: -35%;[^}]*height: 170%;[^}]*pointer-events: none;/, 'oynatıcı büyük ve kaydırılmış: YouTube başlık şeridi sahne dışında');
+  assert.match(css, /\.tr-box\.on \.tr-bg \{ opacity: 0;/, 'video belirince afiş kararır');
   assert.match(css, /\.dt-tr:empty, \.dt-pp:empty \{ display: none; \}/);
   assert.doesNotMatch(css, /\.tr-play \{[^}]*color: #fff/, 'dolgu üstü yazı koyu kalır');
   const ui = kaynak('www/js/title-ui.js');
   assert.match(ui, /if \(!host\.isConnected\) return dispose\(\)/);
+  const app = kaynak('www/js/app.js');
+  for (const id of ['mv-trailer', 'sr-trailer']) assert.match(app, new RegExp('<div class="dt"><div class="dt-tr" id="' + id + '"></div><div class="dt-pos">'), id + ' sayfanın en üstünde');
+  assert.match(ui, /<div class="dt"><div class="dt-tr" id="ti-trailer"><\/div><div class="dt-pos">/);
+  assert.match(app, /dt\.dataset\.tr = sec\.querySelector\('\.tr-hero'\) \? 'stage' : 'card'/);
+  assert.match(app, /bg: \(info && info\.backdrop\) \|\| it\.backdrop/, 'sahne afişi: geniş arka plan');
 });
 
 test('vizyondaki filmler: satır 12 kartla sınırlı, listedekilere "Listende" etiketi, "Tümünü gör" düğmesi; boşsa satır yok', () => {
@@ -344,4 +357,36 @@ test('telefon vitrini: otomatik görünüm vitrinli satır; vitrinde Oynat/Bilgi
   const css = kaynak('www/css/app.css');
   assert.match(css, /^\.hero-btns \{ display: none; \}/m, 'TV\'de düğme yok');
   assert.match(css, /#hero \.hero-b-play \{ color: var\(--accent-ink, #0a1118\)/, 'vurgu dolgusunda koyu yazı');
+});
+
+test('fragman sahnesi: oynamaya başlayınca afiş kararır (box.on), bitince afişe dönülür, durum iletisi gelmezse yine de açılır', async () => {
+  const { host, box, frameWin, frame } = fakeHost({ dataset: { bg: 'https://img/bg.jpg' } });
+  const cls = new Set();
+  box.classList = { toggle: (c, v) => (v ? cls.add(c) : cls.delete(c)), contains: (c) => cls.has(c) };
+  const win = fakeWin();
+  const dispose = wireTrailer(host, { win, doc: null });
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'infoDelivery', info: { playerState: 3 } }) });
+  assert.equal(cls.has('on'), false, 'arabelleğe alırken afiş durur');
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'infoDelivery', info: { playerState: 1 } }) });
+  assert.equal(cls.has('on'), true, 'oynuyor: video görünür');
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onStateChange', info: 0 }) });
+  assert.equal(cls.has('on'), false);
+  assert.match(box.innerHTML, /class="tr-bg" src="https:\/\/img\/bg\.jpg"[^>]*><button class="tr-thumb" data-tr="play"/, 'bitti: afiş + oynat düğmesi');
+  host.handlers.click({ target: { closest: () => ({ dataset: { tr: 'play' } }) } });
+  assert.match(box.innerHTML, /<iframe class="tr-frame"[^>]*mute=0/, 'dokununca sesli yeniden oynar');
+  assert.match(box.innerHTML, /class="tr-bg" src="https:\/\/img\/bg\.jpg"/, 'yeniden oynarken de aynı afiş');
+  dispose();
+});
+
+test('fragman sahnesi: iframe yüklendi ama durum iletisi yoksa 4,5 sn sonra sahne açılır', async () => {
+  const { host, box, frame } = fakeHost();
+  const cls = new Set();
+  box.classList = { toggle: (c, v) => (v ? cls.add(c) : cls.delete(c)) };
+  const win = fakeWin();
+  const dispose = wireTrailer(host, { win, doc: null });
+  host.handlers['frame:load']();
+  assert.equal(cls.has('on'), false);
+  await new Promise((r) => setTimeout(r, 4700));
+  assert.equal(cls.has('on'), true, 'el sıkışma başarısız olsa da video afişin arkasında kalmaz');
+  dispose();
 });

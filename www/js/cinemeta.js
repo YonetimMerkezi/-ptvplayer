@@ -214,8 +214,9 @@ export const trailerSearchUrl = (query) => `https://www.youtube.com/results?sear
 export const trailerWatchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
 export const trailerThumbUrl = (id) => `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
 // origin: sayfanın kökeni (https://localhost gibi); YouTube gömmeyi (Hata 153) kökenden tanır.
+// Kontrolsüz: YouTube çubukları, altyazı/ayar düğmeleri, tam ekran ve klavye kapalı; ses ve gösterim uygulamanın kendi düğmelerinden yönetilir.
 export function trailerEmbedUrl(id, { muted = true, origin = '' } = {}) {
-  const q = new URLSearchParams({ autoplay: '1', mute: muted ? '1' : '0', playsinline: '1', rel: '0', modestbranding: '1', enablejsapi: '1', controls: '1' });
+  const q = new URLSearchParams({ autoplay: '1', mute: muted ? '1' : '0', playsinline: '1', rel: '0', modestbranding: '1', enablejsapi: '1', controls: '0', disablekb: '1', fs: '0', iv_load_policy: '3', cc_load_policy: '0' });
   if (/^https?:\/\//.test(origin)) q.set('origin', origin);
   return `https://www.youtube.com/embed/${encodeURIComponent(id)}?${q}`;
 }

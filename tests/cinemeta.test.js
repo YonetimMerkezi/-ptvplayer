@@ -123,6 +123,7 @@ test('YouTube adresleri: gömme sessiz/otomatik başlar, köken yalnız http(s) 
   assert.equal(u.searchParams.get('enablejsapi'), '1');
   assert.equal(u.searchParams.get('playsinline'), '1');
   assert.equal(u.searchParams.get('rel'), '0');
+  for (const [k, v] of [['controls', '0'], ['disablekb', '1'], ['fs', '0'], ['iv_load_policy', '3'], ['cc_load_policy', '0']]) assert.equal(u.searchParams.get(k), v, 'YouTube kontrolleri kapalı: ' + k);
   assert.equal(u.searchParams.get('origin'), 'https://localhost');
   assert.equal(new URL(trailerEmbedUrl('0jKUpBmYO1Q', { muted: false, origin: 'file://' })).searchParams.has('origin'), false);
   assert.equal(new URL(trailerEmbedUrl('0jKUpBmYO1Q', { muted: false })).searchParams.get('mute'), '0');
