@@ -38,8 +38,8 @@ test('üyelik: Standart uygulamayı açar, Pro özelliklerini açmaz; Pro hepsin
 test('denemede Pro özellikleri de açık; kararlaştırılan özellikler Pro listesinde', () => {
   const tr = memberState({ start: NOW, now: NOW + DAY });
   assert.equal(canUse('cast', tr), true);
-  for (const id of ['multi', 'rec', 'dl', 'sources', 'rows', 'themes', 'backup', 'remind', 'sportdetail', 'seriesfollow', 'teamfollow', 'cast', 'tvlink', 'kid', 'profiles']) assert.ok(isProFeature(id), id);
-  assert.equal(PRO_FEATURES.length, 15);
+  for (const id of ['multi', 'rec', 'dl', 'sources', 'rows', 'trailer', 'actors', 'themes', 'backup', 'remind', 'sportdetail', 'seriesfollow', 'teamfollow', 'cast', 'tvlink', 'kid', 'profiles']) assert.ok(isProFeature(id), id);
+  assert.equal(PRO_FEATURES.length, 17);
   assert.equal(isProFeature('live'), false);
 });
 

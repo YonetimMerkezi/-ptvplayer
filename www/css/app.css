@@ -994,6 +994,8 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .pp { margin: 4px 0 16px; min-width: 0; }
 .pp-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 12px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
 .pp-card { flex: 0 0 92px; min-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--text); text-align: center; scroll-snap-align: start; cursor: pointer; }
+/* Pro'ya bağlı ayar/başlık işareti: sarı dolguda koyu yazı */
+.set-pro { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: #facc15; color: #0a1118; font-style: normal; font-size: 0.625rem; font-weight: 800; letter-spacing: 0.06em; vertical-align: middle; }
 .pp-card:focus-visible, .ac-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pp-av { flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; font-size: 1.125rem; font-weight: 800; background: hsl(var(--h) 38% 22%); color: hsl(var(--h) 85% 84%); border: 2px solid hsl(var(--h) 55% 46%); }
 .pp-av.lg { width: 72px; height: 72px; font-size: 1.5rem; }

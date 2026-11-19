@@ -183,7 +183,7 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
   assert.match(app, /id="sr-people"/);
   assert.match(app, /openActor\(personOf\(b\)\.name, personOf\(b\)\.role, personOf\(b\)\.photo\)/);
   assert.match(app, /chkRow\('trailerAuto', 'Fragmanı otomatik oynat'/);
-  assert.match(app, /const autoPlay = auto && setting\('trailerAuto'\)/, 'otomatik oynatma ayara bağlı (varsayılan açık)');
+  assert.match(app, /const autoPlay = auto && trailerAutoOn\(\)/, 'otomatik oynatma ayara ve Pro\'ya bağlı (varsayılan açık)');
   assert.match(app, /chkRow\('trailerFind', 'Fragmanı otomatik ara'/);
   assert.match(app, /const trailerOn = \(\) => !kidActive\(\) && !isTvUi\(\)/, 'TV ve çocuk modunda fragman yok');
   assert.match(app, /const people = kidActive\(\) \? \[\] : peopleOf\(detail, provider\)/, 'çocuk modunda oyuncu kartı (ve fotoğraf araması) yok');

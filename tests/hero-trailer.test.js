@@ -254,7 +254,7 @@ test('bağlantı: vitrin boyanınca fragman denetleyicisine bildirilir; vitrin k
   const app = kaynak('www/js/app.js');
   assert.match(app, /if \(!box \|\| box\.hidden\) return;\n  heroTrailer\.focus\(it\);/, 'paintHero her boyamada odağı bildirir');
   assert.match(app, /function heroOff\(\) \{\n  document\.documentElement\.classList\.remove\('hero-on'\);\n  heroTrailer\.cancel\(\);/);
-  assert.match(app, /const heroTrailerOn = \(\) => \(isTvUi\(\) \|\| phoneVitrin\(\)\) && !kidActive\(\) && setting\('trailerAuto'\) && !heroBusy\(\)/, 'TV ya da telefon dikey vitrin, çocuk modu dışı, ayar açık, sayfa/oynatıcı yok');
+  assert.match(app, /const heroTrailerOn = \(\) => \(isTvUi\(\) \|\| phoneVitrin\(\)\) && !kidActive\(\) && trailerAutoOn\(\) && !heroBusy\(\)/, 'TV ya da telefon dikey vitrin, çocuk modu dışı, ayar açık ve Pro, sayfa/oynatıcı yok');
   assert.match(app, /document\.querySelector\('#sheets > \*'\) \|\| document\.body\.classList\.contains\('player-open'\)/);
   assert.match(app, /visibilitychange', \(\) => \{ if \(document\.visibilityState === 'hidden'\) heroTrailer\.cancel\(\)/);
   assert.match(app, /\['keydown', 'pointerdown', 'touchstart'\]/, 'tuş/dokunuş bilgiyi geri getirir');

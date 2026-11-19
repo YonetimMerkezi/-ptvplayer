@@ -205,9 +205,9 @@ export function avatarHtml(name, photo = '', cls = '') {
 }
 
 // people: [{ name, role, character, photo }] — role "Yönetmen" ya da boş; altta rol yoksa oyuncunun karakter adı yazılır
-export function peopleHtml(people) {
+export function peopleHtml(people, locked = false) {
   if (!people || !people.length) return '';
-  return `<section class="pp"><h2>Oyuncular ve ekip</h2><div class="pp-row">${people.map((p) => {
+  return `<section class="pp"><h2>Oyuncular ve ekip${locked ? '<em class="set-pro">PRO</em>' : ''}</h2><div class="pp-row">${people.map((p) => {
     const sub = p.role || p.character || '';
     return `<button class="pp-card" data-person="${esc(p.name)}" data-role="${esc(p.role || '')}"${photoOk(p.photo) ? ` data-photo="${esc(p.photo)}"` : ''} aria-label="${esc(p.name)}${sub ? ', ' + esc(sub) : ''}">${avatarHtml(p.name, p.photo)}<b>${esc(p.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
   }).join('')}</div></section>`;

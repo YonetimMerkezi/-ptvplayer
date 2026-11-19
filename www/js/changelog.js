@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 160,
+    title: 'Pro: otomatik fragman ve oyuncu ayrıntıları',
+    items: [
+      'Fragmanı otomatik oynatma (film/dizi ekranı ve vitrin) ile oyuncu ayrıntıları (fotoğraflar ve oyuncu sayfası) Pro üyeliğe bağlandı; deneme süresinde açıktır',
+      'Pro değilken kadro adları görünür, başlıkta ve ayar satırında PRO işareti çıkar; oyuncuya ya da otomatik fragman ayarına dokununca Pro sayfası açılır. Fragmanı elle başlatmak herkese açık kalır',
+      'Telefondaki listeyi QR kodla TV’ye aktarma zaten Pro’dur',
+    ],
+  },
+  {
     id: 159,
     title: 'Öneriler ve tema kartları',
     items: [

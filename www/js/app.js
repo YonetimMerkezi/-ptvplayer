@@ -143,6 +143,10 @@ function memState() {
 // Sessiz soru: özellik bu üyelikte açık mı? (kilitler kapalıysa her şey açık)
 const proOk = (feature) => !memOn() || canUse(feature, memState());
 const memBlocked = () => memOn() && !canUseApp(memState());
+// Fragmanı otomatik oynat: ayar açık VE Pro (deneme dahil). Elle dokunup fragman izlemek herkese açık kalır.
+const trailerAutoOn = () => setting('trailerAuto') && proOk('trailer');
+// Oyuncu ayrıntıları (fotoğraf, oyuncu sayfası) Pro'dur; kilitliyken kadro adları görünür, başlıkta PRO işareti çıkar.
+const actorsLocked = () => memOn() && !proOk('actors');
 setProGate((feature, silent) => {
   if (proOk(feature)) return true;
   if (!silent) memberSheet(feature);
@@ -1270,7 +1274,7 @@ function heroSync(kind, mode) {
 const heroBusy = () => !!document.querySelector('#sheets > *') || document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing');
 // Telefon: dikey ekranda vitrinli satırlar açıkken de çalışır (üstteki yapımda bekleyince vitrin alanında sessiz oynar; sinema kipi yok, liste kaydırılabilir kalır)
 const phoneVitrin = () => !isTvUi() && document.documentElement.classList.contains('hero-on') && document.documentElement.classList.contains('hero-rows') && !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches);
-const heroTrailerOn = () => (isTvUi() || phoneVitrin()) && !kidActive() && setting('trailerAuto') && !heroBusy() && document.visibilityState !== 'hidden';
+const heroTrailerOn = () => (isTvUi() || phoneVitrin()) && !kidActive() && trailerAutoOn() && !heroBusy() && document.visibilityState !== 'hidden';
 // Fragman kimlikleri: sağlayıcı → Cinemeta → YouTube araması (ayar açıksa). Hepsi önbellekli; aynı yapıma yeniden odaklanınca anında gelir.
 async function heroTrailerIds(it) {
   const info = S.source ? peekVodInfo(S.source, it) : null;
@@ -2271,7 +2275,7 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
   const pp = $(people, body);
   if (tr) {
     const ids = trailerIds(detail, provider && provider.trailer);
-    const autoPlay = auto && setting('trailerAuto');
+    const autoPlay = auto && trailerAutoOn();
     const find = trailerOn() && !ids.length && finds.length > 0 && setting('trailerFind');
     const stageBg = (detail && detail.background) || bg; // sahnenin gölgeli afişi: geniş arka plan görseli (yoksa videonun küçük resmi)
     tr.innerHTML = trailerOn() ? trailerHtml(ids, { auto: autoPlay, origin: location.origin, query, searching: !!find, bg: stageBg }) : '';
@@ -2298,8 +2302,8 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
   }
   if (pp) {
     const people = kidActive() ? [] : peopleOf(detail, provider);
-    pp.innerHTML = peopleHtml(people);
-    paintPhotos(pp, people, detail && detail.imdbId);
+    pp.innerHTML = peopleHtml(people, actorsLocked());
+    if (!actorsLocked()) paintPhotos(pp, people, detail && detail.imdbId);
   }
 }
 
@@ -2317,7 +2321,7 @@ function paintPhotos(pp, people, imdbId) {
     if (!changed) return;
     const row = $('.pp-row', pp);
     const left = row ? row.scrollLeft : 0;
-    pp.innerHTML = peopleHtml(people);
+    pp.innerHTML = peopleHtml(people, actorsLocked());
     const nrow = $('.pp-row', pp);
     if (nrow) nrow.scrollLeft = left;
   }).catch(() => {});
@@ -2350,6 +2354,7 @@ const personOf = (b) => ({ name: b.dataset.person, role: b.dataset.role || '', p
 
 // Oyuncu sayfası: kişinin film ve dizileri; listede olanlar "Oynat", olmayanlar soluk "Listende yok".
 function openActor(name, role = '', photo = '') {
+  if (!needPro('actors')) return undefined; // Pro özelliği: Pro sayfası açılır
   return openPage({
     cls: 'dt-pg ac-pg',
     title: name,
@@ -4910,7 +4915,8 @@ function globalSearch() {
 
 // ------------------------------------------------------------------ ayarlar: genel, EPG, otomasyon
 
-const chkRow = (k, label, sub) => `<button class="chk${setting(k) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
+// pro: Pro özellik kimliği; verilirse etiketin yanında PRO işareti çıkar, Pro açık değilken kutu kapalı görünür.
+const chkRow = (k, label, sub, pro = '') => `<button class="chk${setting(k) && (!pro || proOk(pro)) ? ' on' : ''}" data-k="${k}"><i>${icon('check')}</i><span class="t">${esc(label)}${pro && memOn() ? '<em class="set-pro">PRO</em>' : ''}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
 // Ayar kartı (başlık + satırlar). Satır açıklaması düz metindir; HTML gerekiyorsa { html } verilir.
 // selRow: sağda seçim kutusu (stack = seçim kutusu açıklamanın altına geçer); btnRow: sağda düğme; numRow: sağda sayı kutusu; noteRow: kart içi not.
 const setCard = (title, ic, rows) => `<section class="set-card"><h3>${icon(ic)}<span>${esc(title)}</span></h3>${rows.filter(Boolean).join('')}</section>`;
@@ -5156,7 +5162,7 @@ function generalSheet() {
         chkRow('showProg', 'Devam çubukları', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi'),
         chkRow('epThumbs', 'Bölüm küçük resimleri', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar sıkışık olur'),
         chkRow('trailerFind', 'Fragmanı otomatik ara', 'Hazır fragman yoksa başlığı YouTube’da arar ve bulduğu resmî fragmanı ekranda gösterir; kapalıyken “YouTube’da ara” düğmesi çıkar'),
-        chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Film ve dizi ekranında fragman sessiz başlar, “Sesi aç” ile açılır; kapalıyken küçük resme dokununca oynar. TV’de ve çocuk modunda fragman gösterilmez'),
+        chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Film ve dizi ekranında ve vitrinde fragman sessiz başlar, “Sesi aç” ile açılır; kapalıyken küçük resme dokununca oynar. Çocuk modunda fragman gösterilmez', 'trailer'),
       ]) +
       setCard('Görünüm ve cihaz', 'gear', [
         selRow('g-fs', 'Yazı boyutu', '', optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))),
@@ -5182,7 +5188,9 @@ function generalSheet() {
       body.addEventListener('click', (e) => {
         const c = e.target.closest('.chk');
         if (c) {
-          const on = !setting(c.dataset.k);
+          const pk = c.dataset.k === 'trailerAuto' ? 'trailer' : '';
+          const on = pk && !proOk(pk) ? true : !setting(c.dataset.k);
+          if (on && pk && !needPro(pk)) return; // Pro olmadan açılmaz: Pro sayfası açılır
           store.setPref('set.' + c.dataset.k, on);
           c.classList.toggle('on', on);
           if (c.dataset.k === 'showProg' || c.dataset.k === 'epThumbs') applyViewPrefs();

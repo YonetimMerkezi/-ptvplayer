@@ -56,3 +56,21 @@ test('tema kartları: görsel kutusu 3:4\'ü yüzde dolguyla kurar, kart taşmaz
   assert.match(css, /\.theme-shot img \{ position:absolute; left:0; top:0; display:block; width:100%; height:100%; max-width:100%; object-fit:cover;/);
   assert.doesNotMatch(css, /\.theme-shot \{[^}]*aspect-ratio/);
 });
+
+test('Pro: fragmanı otomatik oynatma ve oyuncu ayrıntıları Pro özelliğidir; elle fragman izlemek ve QR ile liste aktarma kapıları yerinde', async () => {
+  const { isProFeature, canUse } = await import('../www/js/membership.js');
+  assert.ok(isProFeature('trailer') && isProFeature('actors') && isProFeature('tvlink'));
+  assert.ok(canUse('trailer', { tier: 'pro' }) && !canUse('trailer', { tier: 'standard' }) && canUse('trailer', { tier: 'trial' }), 'yalnız Pro (ve denemede)');
+  assert.ok(canUse('actors', { tier: 'pro' }) && !canUse('actors', { tier: 'standard' }));
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /const trailerAutoOn = \(\) => setting\('trailerAuto'\) && proOk\('trailer'\);/);
+  assert.match(app, /const actorsLocked = \(\) => memOn\(\) && !proOk\('actors'\);/);
+  assert.match(app, /function openActor\(name, role = '', photo = ''\) \{\s*if \(!needPro\('actors'\)\) return undefined;/, 'oyuncu sayfası kapıdan geçer (3 çağıran de)');
+  assert.match(app, /if \(!actorsLocked\(\)\) paintPhotos\(pp, people, detail && detail\.imdbId\);/, 'Pro değilken fotoğraf araması yapılmaz');
+  assert.match(app, /pp\.innerHTML = peopleHtml\(people, actorsLocked\(\)\);/);
+  assert.match(app, /chkRow\('trailerAuto', 'Fragmanı otomatik oynat', '[^']*', 'trailer'\)/, 'ayar satırında PRO işareti');
+  assert.match(app, /if \(on && pk && !needPro\(pk\)\) return;/, 'Pro olmadan açılmaz, Pro sayfası açılır');
+  const ui = kaynak('www/js/title-ui.js');
+  assert.match(ui, /export function peopleHtml\(people, locked = false\)[\s\S]*Oyuncular ve ekip\$\{locked \? '<em class="set-pro">PRO<\/em>' : ''\}/);
+  assert.match(kaynak('www/css/app.css'), /\.set-pro \{[^}]*background: #facc15; color: #0a1118;/, 'sarı dolguda koyu yazı');
+});
