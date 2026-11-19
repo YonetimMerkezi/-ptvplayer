@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 168,
+    title: 'Spor: Mackolik skor düzeltmesi',
+    items: [
+      'Mackolik\'ten gelen Türkiye maçlarında devre arası skoru maç skoru gibi gösteriliyordu (12 Bingölspor – Sakaryaspor 0-0 yerine 0-1); maç sonu ve canlı skor artık doğru alandan okunuyor',
+    ],
+  },
+  {
     id: 167,
     title: 'Spor: Mackolik yedek kaynağı',
     items: [

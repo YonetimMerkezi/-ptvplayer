@@ -1,5 +1,7 @@
 // Mackolik canlı skor listesi (yedek kaynak): LiveScore'a ulaşılamadığında Türkiye ligleri (Süper Lig, 1/2/3. Lig, kupalar) buradan gelir.
-// Adres: vd.mackolik.com/livedata?date=GG/AA/YYYY. Yanıt: { m: [ [id, evId, ev, depId, dep, durumKodu, durumYazısı, "1-1", …, saat(16), …, tarih(35), [ülkeNo, ülke, ligNo, lig, aşamaNo, sezon, …], …], … ] }.
+// Adres: vd.mackolik.com/livedata?date=GG/AA/YYYY. Yanıt: { m: [ satır, … ] }. Satır: 0 kimlik, 2 ev, 4 deplasman, 5 durum kodu, 6 durum yazısı,
+// 7 DEVRE ARASI skoru ("0-1" yazısı; maç skoru DEĞİL), 12/13 ev/deplasman güncel gol sayısı (sayı), 29/30 aynı skor (yazı), 31/32 devre arası golleri,
+// 16 saat, 35 tarih, 36 yarışma [ülkeNo, ülke, ligNo, lig, aşamaNo, sezon, …].
 // Saatler Türkiye saatidir. Maç olayı/kadro bu listede yoktur: yalnız skor ve durum.
 import { teamLabel, norm, withTimeout } from './sports.js';
 import { isWomenTeam } from './sports-ls.js';
@@ -22,9 +24,11 @@ export function parseMkTime(date, time) {
   return Number.isFinite(t) ? t : null;
 }
 
-const scoreOf = (s) => {
-  const m = /^(\d+)\s*-\s*(\d+)$/.exec(String(s == null ? '' : s).trim());
-  return m ? [Number(m[1]), Number(m[2])] : null;
+const goals = (v) => (v == null || !/^\d{1,3}$/.test(String(v).trim()) ? null : Number(v));
+const scoreOf = (h, a) => {
+  const x = goals(h);
+  const y = goals(a);
+  return x == null || y == null ? null : [x, y];
 };
 
 // Durum: kod (0 başlamadı, 4 maç sonu, 8 penaltılar, 9 ertelendi; 1-3 canlı) ve yazı ("MS", "İY", "67", "Ert."). Önce yazıya bakılır; bilinmeyen kod saate ve skora göre yorumlanır.
@@ -69,8 +73,9 @@ export function parseMackolik(json, { now = Date.now() } = {}) {
       const id = `mk:${r[0]}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      const sc = scoreOf(r[7]);
-      const status = mkStatus(Number(r[5]), r[6], { t, now, scored: !!sc });
+      // Güncel skor 12/13 (sayı), yoksa 29/30 (yazı). 7. alan devre arası skorudur; maç skoru diye okunmaz.
+      const sc = scoreOf(r[12], r[13]) || scoreOf(r[29], r[30]);
+      const status = mkStatus(Number(r[5]), r[6], { t, now, scored: !!sc && sc[0] + sc[1] > 0 });
       const played = status.state !== 'pre' && !status.off && !!sc;
       const side = (name, v) => ({ name, label: teamLabel(name), abbr: '', logo: '', score: played ? v : null, pen: null });
       out.push({

@@ -17,7 +17,7 @@ import { FAV_CHIP, cleanFavs, isFavSide, hasFavMatch, toggleFav, autoRemindTarge
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v2'; // LiveScore gün listeleri
-const MK_CACHE_KEY = 'sports-mk:v1'; // Mackolik gün listeleri (LiveScore alınamazsa Türkiye ligleri için yedek)
+const MK_CACHE_KEY = 'sports-mk:v2'; // Mackolik gün listeleri (LiveScore alınamazsa Türkiye ligleri için yedek)
 const LS_DOWN_MS = 10 * 60e3; // LiveScore alınamadıysa bu süre yeniden denenmez; doğrudan yedek kaynağa gidilir
 const LS_CACHE_DAYS = 5;
 const BADGE_CACHE_KEY = 'sports-badges:v1'; // kulüp rozeti arama sonuçları (ad → adres ya da boş)
