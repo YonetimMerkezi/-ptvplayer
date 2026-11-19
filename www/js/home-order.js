@@ -6,7 +6,7 @@ export const HOME_SECTIONS = [
   { id: 'tools', label: 'Hızlı erişim', hint: 'Rehber · Çoklu ekran · Favoriler · Spor' },
   { id: 'continue', label: 'Kaldığın yerden devam et', hint: 'Yarım kalan film ve diziler' },
   { id: 'recent', label: 'Son izlenenler', hint: 'Kanallar · Filmler · Diziler sekmeleri' },
-  { id: 'fresh', label: 'Son eklenen filmler', hint: 'Listenize en son eklenenler' },
+  { id: 'fresh', label: 'Son eklenen filmler ve diziler', hint: 'Listenize en son eklenenler' },
   { id: 'picks', label: 'Ne izleyeceğine karar veremedin mi?', hint: 'Türe göre film önerileri' },
   { id: 'new', label: 'Vizyondaki filmler', hint: 'Sinemada yeni çıkanlar' },
   { id: 'radio', label: 'Radyo & Müzik', hint: 'Favori radyolarınız' },

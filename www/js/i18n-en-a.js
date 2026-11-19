@@ -338,6 +338,7 @@ export const EN_A = [
   ["Spor", "Sports"],
   ["▶️ Kaldığın yerden devam et", "▶️ Continue where you left off"],
   ["✨ Son eklenen filmler", "✨ Recently added movies"],
+  ["📺 Son eklenen diziler", "📺 Recently added series"],
   ["Bitiş Tarihi:", "Expiry date:"],
   ["Bağlantı ve liste durumu", "Connection and list status"],
   ["Giriş: {0}", "Login: {0}"],

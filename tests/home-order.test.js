@@ -55,3 +55,12 @@ test('bağlantı: ana ekran bölümleri kayıtlı sırayla dizilir; ayarlarda s�
   assert.match(app, /store\.setPref\('set\.homeOrder', list\)/);
   assert.match(app, /reset\.addEventListener\('click', \(\) => save\(\[\]\)\)/, 'varsayılan sıraya dön');
 });
+
+test('ana ekran: "Son eklenen" bölümü filmlerin yanında son eklenen dizileri de gösterir (aynı bölüm, aynı sıra ayarı)', () => {
+  const app = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8');
+  assert.equal(sectionLabel('fresh'), 'Son eklenen filmler ve diziler');
+  assert.match(app, /const freshOf = \(kind\) => \{/);
+  assert.match(app, /const fresh = freshOf\('movie'\);\n\s+const freshSeries = freshOf\('series'\);/);
+  assert.match(app, /fresh: homeRow\('✨ Son eklenen filmler', fresh, 'movies'\) \+ homeRow\('📺 Son eklenen diziler', freshSeries, 'series'\)/);
+  assert.equal(DEFAULT_ORDER.filter((id) => id === 'fresh').length, 1, 'yeni bölüm kimliği eklenmedi');
+});

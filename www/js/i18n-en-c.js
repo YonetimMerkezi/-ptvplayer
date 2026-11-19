@@ -131,6 +131,7 @@ export const EN_C = [
   ["Yarım kalan film ve diziler", "Movies and series you stopped midway"],
   ["Kanallar · Filmler · Diziler sekmeleri", "Channels · Movies · Series tabs"],
   ["Son eklenen filmler", "Recently added movies"],
+  ["Son eklenen filmler ve diziler", "Recently added movies and series"],
   ["Listenize en son eklenenler", "The latest additions to your list"],
   ["Ne izleyeceğine karar veremedin mi?", "Can't decide what to watch?"],
   ["Türe göre film önerileri", "Movie suggestions by genre"],

@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 170,
+    title: 'Ana ekranda son eklenen diziler',
+    items: [
+      'Ana ekranda “Son eklenen filmler” satırının altında “Son eklenen diziler” satırı da görünür (listenize en son eklenen ya da güncellenen diziler); “Tümünü gör” Diziler sekmesini açar',
+      'Ayarlar → Genel → Ana ekran → “Bölüm sırası”nda bu bölüm “Son eklenen filmler ve diziler” adıyla yer alır',
+    ],
+  },
+  {
     id: 169,
     title: 'Vizyondaki filmler: Türkiye sinema programı',
     items: [

@@ -3448,16 +3448,20 @@ function renderHome(v) {
   const favN = store.favs(sid()).length;
   const who = src.type === 'xtream' ? src.user : src.local ? 'Dosya' : 'M3U';
   const cont = homeContinue(store.continueWatching(sid()), (k, id) => S.idx[CAT_KEY[k]].get(id));
-  // aynı film listede birkaç kez bulunabilir (farklı kategori/kalite): ana ekranda adı ve yılı aynı olan tek kutu olur
-  const freshSeen = new Set();
-  const fresh = newestItems(visibleAll('movie'))
-    .filter((it) => {
-      const ct = cleanTitle(it.name, it.year);
-      const k = `${ct.key}|${ct.year || ''}`;
-      return !ct.key || (!freshSeen.has(k) && !!freshSeen.add(k));
-    })
-    .slice(0, 12)
-    .map((it) => ({ kind: 'movie', it }));
+  // aynı film/dizi listede birkaç kez bulunabilir (farklı kategori/kalite): ana ekranda adı ve yılı aynı olan tek kutu olur
+  const freshOf = (kind) => {
+    const seen = new Set();
+    return newestItems(visibleAll(kind))
+      .filter((it) => {
+        const ct = cleanTitle(it.name, it.year);
+        const k = `${ct.key}|${ct.year || ''}`;
+        return !ct.key || (!seen.has(k) && !!seen.add(k));
+      })
+      .slice(0, 12)
+      .map((it) => ({ kind, it }));
+  };
+  const fresh = freshOf('movie');
+  const freshSeries = freshOf('series');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
   // Ana ekran bölümleri; sırası Ayarlar → Genel → “Bölüm sırası”ndan değişir (durum çubuğu ve alt bilgi hep sabit).
   const sections = {
@@ -3480,7 +3484,7 @@ function renderHome(v) {
     </div>`,
     continue: homeRow('▶️ Kaldığın yerden devam et', cont, 'continue'),
     recent: `<div id="home-recent">${homeRecentHtml()}</div>`,
-    fresh: homeRow('✨ Son eklenen filmler', fresh, 'movies'),
+    fresh: homeRow('✨ Son eklenen filmler', fresh, 'movies') + homeRow('📺 Son eklenen diziler', freshSeries, 'series'),
     picks: `<div id="home-picks">${homePicksHtml()}</div>`,
     new: `<div id="home-new">${kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f))}</div>`,
     radio: `<div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>`,
