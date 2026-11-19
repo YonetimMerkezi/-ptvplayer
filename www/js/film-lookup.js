@@ -1,7 +1,7 @@
 // TV rehberinde türü olmayan programın film olup olmadığını program adını veri kaynaklarında arayarak bulur.
-// Rehber kaynaklarının çoğu tür vermez (ücretsiz kaynaklarda programların ~%98'i boş); ad farklı dilde (Türkçe dublaj adı) bile olsa:
+// Rehber kaynaklarının çoğu tür vermez (ücretsiz kaynaklarda programların ~%98'i boş); ad hangi dilde olursa olsun (Türkçe dublaj adı, Almanca, Rusça, Arapça…):
 //  1) kullanıcının film kütüphanesi (yerel, anında);  2) Wikidata'da Türkçe adla arama (açıklamadan film / dizi ayrımı);
-//  3) Cinemeta'da (IMDb) adla arama;  4) adı İngilizceye çevirip Cinemeta'da arama.
+//  3) Cinemeta'da (IMDb) adla arama;  4) adın dilini otomatik tespit edip Wikidata'da kendi dilinde, İngilizceye çevirip Wikidata + Cinemeta'da arama.
 // Yalnız BİREBİR ad eşleşmesi sayılır; hem film hem dizi çıkarsa (belirsiz) film sayılmaz. Sonuçlar önbelleğe yazılır.
 import { cleanTitle } from './titleclean.js';
 import { CINEMETA } from './cinemeta.js';
@@ -13,12 +13,14 @@ export const FILM_TTL = 60 * 86400000; // film / dizi kararı uzun süre değiş
 export const NONE_TTL = 3 * 86400000; // hiçbir kaynakta bulunamayan ad bir süre sonra yeniden denenir
 const MIN_TRANSLATED_LEN = 8; // çeviriyle aramada tek/kısa sözcük ("Aile" → "Family") yanlış eşleşir
 
+const NON_LATIN = /(?!\p{Script=Latin})\p{L}/u; // Kiril, Arapça, CJK… harf içeriyor mu
 const keyCache = new Map();
 export function keyOf(title) {
   const s = String(title || '');
   let k = keyCache.get(s);
   if (k === undefined) {
-    k = cleanTitle(s).key || '';
+    // Latin harfli adlar titleclean anahtarıyla (aksan/noktalama yok sayılır); başka alfabelerde o anahtar boş kalır → Unicode harf/rakamlar
+    k = NON_LATIN.test(s) ? s.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim() : cleanTitle(s).key || '';
     if (keyCache.size > 4000) keyCache.clear();
     keyCache.set(s, k);
   }
@@ -76,11 +78,11 @@ export function cinemetaVerdict(movieJson, seriesJson, title) {
   return decide(has(movieJson), has(seriesJson));
 }
 
-const wikidataUrl = (q) => `${WD_API}?action=wbsearchentities&search=${encodeURIComponent(q)}&language=tr&uselang=en&type=item&limit=10&format=json&origin=*`;
+const wikidataUrl = (q, lang) => `${WD_API}?action=wbsearchentities&search=${encodeURIComponent(q)}&language=${lang}&uselang=en&type=item&limit=10&format=json&origin=*`;
 const cinemetaUrl = (type, q) => `${CINEMETA}/catalog/${type}/top/search=${encodeURIComponent(q)}.json`;
 
-async function viaWikidata(net, title) {
-  return wikidataVerdict(await net.json(wikidataUrl(searchText(title)), { fast: true, headers: { 'User-Agent': WIKI_UA } }), title);
+async function viaWikidata(net, q, title, lang) {
+  return wikidataVerdict(await net.json(wikidataUrl(q, lang), { fast: true, headers: { 'User-Agent': WIKI_UA } }), title);
 }
 
 async function viaCinemeta(net, name, title) {
@@ -90,52 +92,69 @@ async function viaCinemeta(net, name, title) {
   return cinemetaVerdict(m.status === 'fulfilled' ? m.value : null, s.status === 'fulfilled' ? s.value : null, title);
 }
 
+// Google çevirinin tespit ettiği kaynak dil → Wikidata dil kodu (zh-CN → zh, iw → he); anlaşılamazsa ''
+export function wikiLang(code) {
+  const c = String(code || '').toLowerCase().split('-')[0];
+  const fixed = { iw: 'he', jw: 'jv' }[c] || c;
+  return /^[a-z]{2,3}$/.test(fixed) ? fixed : '';
+}
+
+// Ad hangi dilde olursa olsun (sl=auto) İngilizceye çevirir ve kaynak dili bildirir: { text, lang }
 async function translateToEn(net, cache, text, now) {
-  const key = 'film:en:v1:' + keyOf(text);
+  const key = 'film:en:v2:' + keyOf(text);
   const hit = cache ? await cache.get(key).catch(() => null) : null;
-  if (hit && typeof hit.text === 'string' && typeof hit.at === 'number' && now - hit.at < FILM_TTL) return hit.text;
-  const out = parseTranslation(await net.json(`${TRANSLATE_URL}?client=gtx&sl=tr&tl=en&dt=t&q=${encodeURIComponent(text)}`, { fast: true }));
-  if (cache && out) await cache.set(key, { at: now, text: out }).catch(() => {});
+  if (hit && typeof hit.text === 'string' && typeof hit.at === 'number' && now - hit.at < FILM_TTL) return { text: hit.text, lang: hit.lang || '' };
+  const json = await net.json(`${TRANSLATE_URL}?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`, { fast: true });
+  const out = { text: parseTranslation(json), lang: wikiLang(Array.isArray(json) ? json[2] : '') };
+  if (cache && out.text) await cache.set(key, { at: now, ...out }).catch(() => {});
   return out;
 }
 
 // Dönüş: 'film' | 'series' | 'none' (kaynaklar yanıt verdi, film değil/bilinmiyor) | '' (ağ hatası: kaydedilmez, sonra yeniden denenir)
+// Sıra: Latin harfli ad → Wikidata (Türkçe) ve Cinemeta; sonra otomatik dil tespitli çeviri → adın kendi dilinde Wikidata (Almanca, Rusça, Arapça…)
+// ve İngilizce çeviriyle Wikidata + Cinemeta. Çeviriyle aramada tek/kısa genel sözcükler yanlış eşleşeceği için en az iki sözcük ya da yeterince uzun ad aranır.
 export async function lookupFilm({ net, cache = null, title, now = Date.now() }) {
   const key = keyOf(title);
   if (!key) return 'none';
-  const ck = 'film:v1:' + key;
+  const ck = 'film:v2:' + key;
   const hit = cache ? await cache.get(ck).catch(() => null) : null;
   if (hit && typeof hit.v === 'string' && typeof hit.at === 'number' && now - hit.at < (hit.v === 'none' ? NONE_TTL : FILM_TTL)) return hit.v;
   const save = async (v) => {
     if (cache) await cache.set(ck, { at: now, v }).catch(() => {});
     return v;
   };
+  const q = searchText(title);
+  const latin = !NON_LATIN.test(q);
   let answered = 0;
-  const attempt = async (fn) => {
+  let v = '';
+  const step = async (fn) => {
+    if (v) return;
     try {
-      const v = await fn();
+      v = await fn();
       answered++;
-      return v;
-    } catch (_) {
-      return '';
-    }
+    } catch (_) { /* bu kaynak yanıt vermedi: sıradakine geç */ }
   };
-  let v = await attempt(() => viaWikidata(net, title));
-  if (v) return save(v);
-  v = await attempt(() => viaCinemeta(net, searchText(title), title));
-  if (v) return save(v);
-  // Ad Cinemeta/Wikidata'da kendi diliyle yoksa: İngilizceye çevirip ara (en az iki sözcük ya da yeterince uzun; genel tek sözcükler yanlış eşleşir)
-  const words = searchText(title).split(/\s+/).filter(Boolean);
-  if (words.length >= 2 && key.length >= MIN_TRANSLATED_LEN) {
-    let en = '';
+  if (latin) {
+    await step(() => viaWikidata(net, q, title, 'tr'));
+    await step(() => viaCinemeta(net, q, title));
+  }
+  const long = (t) => t.split(/\s+/).filter(Boolean).length >= 2 || keyOf(t).length >= MIN_TRANSLATED_LEN;
+  if (!v && (!latin || long(q))) {
+    let tr = null;
     try {
-      en = await translateToEn(net, cache, searchText(title), now);
+      tr = await translateToEn(net, cache, q, now);
     } catch (_) { /* çeviri alınamadı: arama bu adımda biter */ }
-    if (en && keyOf(en) && keyOf(en) !== key && keyOf(en).length >= MIN_TRANSLATED_LEN) {
-      v = await attempt(() => viaCinemeta(net, en, en));
-      if (v) return save(v);
+    if (tr) {
+      // adın kendi dilinde (Türkçe zaten arandı): tam ad eşleşmesi, kısa ad bile olsa güvenlidir
+      if (tr.lang && !(latin && tr.lang === 'tr')) await step(() => viaWikidata(net, q, title, tr.lang));
+      const en = tr.lang === 'en' ? '' : tr.text;
+      if (en && keyOf(en) && keyOf(en) !== key && long(en)) {
+        await step(() => viaWikidata(net, en, en, 'en'));
+        await step(() => viaCinemeta(net, en, en));
+      }
     }
   }
+  if (v) return save(v);
   return answered ? save('none') : '';
 }
 

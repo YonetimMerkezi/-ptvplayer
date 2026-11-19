@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keyOf, searchText, kindOfDescription, wikidataVerdict, cinemetaVerdict, lookupFilm, createFilmResolver, NONE_TTL } from '../www/js/film-lookup.js';
+import { keyOf, wikiLang, searchText, kindOfDescription, wikidataVerdict, cinemetaVerdict, lookupFilm, createFilmResolver, NONE_TTL } from '../www/js/film-lookup.js';
 
 const wd = (...items) => ({ search: items.map(([label, description, match]) => ({ label, description, match: match || { type: 'label', language: 'tr', text: label } })) });
 const cm = (...names) => ({ metas: names.map((n) => (typeof n === 'string' ? { name: n } : n)) });
@@ -80,13 +80,13 @@ test('lookupFilm: Wikidata bulamazsa Cinemeta, o da yoksa adı İngilizceye çev
   const en = 'The Lord of the Rings: The Two Towers';
   const net = fakeNet([
     ['wbsearchentities', wd()],
-    ['translate_a/single', [[[en, t]]]],
+    ['translate_a/single', [[[en, t]], null, 'tr']],
     [`/movie/top/search=${encodeURIComponent(en)}`, cm(en)],
     ['/movie/top/search=', cm()],
     ['/series/top/search=', cm()],
   ]);
   assert.equal(await lookupFilm({ net, title: t }), 'film');
-  assert.ok(net.calls.some((u) => u.includes('sl=tr&tl=en')), 'çeviri istendi');
+  assert.ok(net.calls.some((u) => u.includes('sl=auto&tl=en')), 'çeviri istendi (dil otomatik tespit)');
 });
 
 test('lookupFilm: genel tek sözcük çeviriyle aranmaz ("Aile" → "Family" filmi yanlış eşleşmesin)', async () => {
@@ -143,4 +143,52 @@ test('createFilmResolver: ağ hatası (boş karar) kalıcı sayılmaz, sonraki i
   small.request(['a b c', 'd e f', 'g h i']);
   await new Promise((res) => setTimeout(res, 30));
   assert.equal(small.verdict('g h i'), '', 'bütçe dolunca sorulmaz');
+});
+
+test('keyOf / wikiLang: Latin olmayan alfabelerde boş anahtar çıkmaz; dil kodları Wikidata biçimine çevrilir', () => {
+  assert.equal(keyOf('Властелин колец: Две крепости'), 'властелин колец две крепости');
+  assert.equal(keyOf('ВЛАСТЕЛИН КОЛЕЦ'), keyOf('властелин колец'));
+  assert.notEqual(keyOf('指环王2：双塔奇兵'), '2');
+  assert.equal(wikiLang('zh-CN'), 'zh');
+  assert.equal(wikiLang('iw'), 'he');
+  assert.equal(wikiLang('de'), 'de');
+  assert.equal(wikiLang(''), '');
+  assert.equal(wikiLang(undefined), '');
+});
+
+test('lookupFilm: Almanca ad — dil tespit edilir, Wikidata\'da kendi dilinde aranır', async () => {
+  const t = 'Der Herr der Ringe: Die zwei Türme';
+  const net = fakeNet([
+    ['language=de', wd([t, '2002 film directed by Peter Jackson'])],
+    ['wbsearchentities', wd()],
+    ['/movie/top/search=', cm()],
+    ['/series/top/search=', cm()],
+    ['translate_a/single', [[['The Lord of the Rings: The Two Towers', t]], null, 'de']],
+  ]);
+  assert.equal(await lookupFilm({ net, title: t }), 'film');
+  assert.ok(net.calls.some((u) => u.includes('language=de')));
+});
+
+test('lookupFilm: Rusça (Kiril) ad — tek sözcük bile kendi dilindeki Wikidata kaydından bulunur; İngilizce çeviri yalnız uzun adlarda aranır', async () => {
+  const net = fakeNet([
+    ['language=ru', wd(['Титаник', '1997 film directed by James Cameron'], ['Титаник', 'British ocean liner'])],
+    ['translate_a/single', [[['Titanic', 'Титаник']], null, 'ru']],
+  ]);
+  assert.equal(await lookupFilm({ net, title: 'ТИТАНИК' }), 'film');
+  assert.ok(!net.calls.some((u) => u.includes('language=tr')), 'Latin olmayan adda Türkçe arama atlanır');
+  assert.ok(!net.calls.some((u) => u.includes('/catalog/')), 'tek sözcüklü çeviriyle Cinemeta aranmaz');
+});
+
+test('lookupFilm: Arapça ad — dil Wikidata kodu olarak kullanılır, bulunamazsa İngilizce çeviriyle Cinemeta aranır', async () => {
+  const t = 'سيد الخواتم: البرجان';
+  const en = 'The Lord of the Rings: The Two Towers';
+  const net = fakeNet([
+    ['language=ar', wd()],
+    ['language=en', wd()],
+    ['translate_a/single', [[[en, t]], null, 'ar']],
+    [`/movie/top/search=${encodeURIComponent(en)}`, cm(en)],
+    ['/movie/top/search=', cm()],
+    ['/series/top/search=', cm()],
+  ]);
+  assert.equal(await lookupFilm({ net, title: t }), 'film');
 });
