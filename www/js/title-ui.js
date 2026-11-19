@@ -25,7 +25,13 @@ const thumbHtml = (id) => `<button class="tr-thumb" data-tr="play" aria-label="F
 const searchBtn = (query, cls) => `<a class="${cls}" href="${esc(trailerSearchUrl(query))}" target="_blank" rel="noopener">${ic('search')}`;
 const failHtml = (query) => `<div class="tr-fail"><p>Fragman uygulamada oynatılamıyor; video sahibi gömmeyi kapatmış olabilir.</p>${query ? `${searchBtn(query, 'btn sm')}YouTube’da ara</a>` : ''}</div>`;
 
-const foundNote = (f) => (f ? `YouTube aramasıyla bulundu: ${f.title}${f.channel ? ' · ' + f.channel : ''}` : '');
+const foundNote = (f) => (f ? `YouTube ${f.good === false ? 'sonucu' : 'aramasıyla bulundu'}: ${f.title}${f.channel ? ' · ' + f.channel : ''}` : '');
+const clock = (s) => {
+  const n = Math.max(0, Math.floor(Number(s) || 0));
+  return n >= 3600 ? `${Math.floor(n / 3600)}:${String(Math.floor((n % 3600) / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}` : `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+};
+// Yatay kaydırılan sonuç şeridi: her kart bir YouTube sonucu; dokununca üstteki oynatıcıda açılır (yanlış ya da gömülemeyen videoda başkası seçilir).
+const stripHtml = (found, on) => `<div class="tr-rs"><p class="tr-rh">YouTube sonuçları</p><div class="tr-rl" role="list">${found.map((f) => `<button class="tr-r${f.id === on ? ' on' : ''}" role="listitem" data-tr="pick" data-id="${esc(f.id)}" aria-label="${esc(f.title)}"><span class="tr-rt"><img src="${esc(trailerThumbUrl(f.id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">${f.seconds ? `<i class="tr-d">${clock(f.seconds)}</i>` : ''}</span><b>${esc(f.title)}</b><small>${esc(f.channel || '')}</small></button>`).join('')}</div></div>`;
 
 // ids: YouTube kimlikleri (ilki oynar; gömmeye izin vermeyen videoda sıradakine geçilir). auto: sessiz otomatik başlar, değilse küçük resim.
 // found: YouTube aramasıyla bulunan [{ id, title, channel }]; oynayan videonun adı altta görünür (yanlışsa kullanıcı fark eder).
@@ -42,7 +48,8 @@ export function trailerHtml(ids, { auto = false, origin = '', query = '', search
   const unmute = auto ? `<button class="btn sm tr-unmute" data-tr="unmute" hidden>${ic('audio')}Sesi aç</button>` : '';
   const notes = found && found.length ? list.map((x) => foundNote(found.find((f) => f.id === x))) : [];
   const note = notes[0] ? `<p class="tr-note">${esc(notes[0])}</p>` : '';
-  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}"${notes.length ? ` data-notes="${esc(JSON.stringify(notes))}"` : ''}><h2>Fragman</h2><div class="tr-box">${media}</div>${note}<div class="tr-bar">${unmute}<a class="btn sm ghost" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div></section>`;
+  const strip = found && found.length > 1 ? stripHtml(found, id) : '';
+  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}"${notes.length ? ` data-notes="${esc(JSON.stringify(notes))}"` : ''}><h2>Fragman</h2><div class="tr-box">${media}</div>${note}<div class="tr-bar">${unmute}<a class="btn sm ghost tr-open" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div>${strip}</section>`;
 }
 
 // Fragman denetleyicisi: sessiz otomatik oynatma, "Sesi aç", hata → sıradaki fragman (hepsi bitince açıklama + YouTube araması), uygulama oynatıcısı açılınca durdurma.
@@ -67,6 +74,17 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     if (!n || !host.dataset.notes) return;
     try { n.textContent = JSON.parse(host.dataset.notes)[at] || ''; } catch { /* bozuk not */ }
   };
+  // Şeritte oynayan kartı vurgular ve "YouTube’da aç" bağlantısını oynayan videoya çevirir
+  const mark = () => {
+    const id = host.dataset.id;
+    const cards = host.querySelectorAll ? host.querySelectorAll('.tr-r') : [];
+    for (const c of cards) {
+      c.classList.toggle('on', c.dataset.id === id);
+      if (c.dataset.id === id && c.scrollIntoView) c.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    }
+    const a = host.querySelector('.tr-open');
+    if (a) a.href = trailerWatchUrl(id);
+  };
   const bindFrame = (f) => {
     if (f) f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ } showUnmute(); });
   };
@@ -84,6 +102,7 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
       at += 1;
       host.dataset.id = list[at];
       setNote();
+      mark();
       host.querySelector('.tr-box').innerHTML = frameHtml(list[at], { muted, origin });
       bindFrame(frame());
       return;
@@ -117,6 +136,21 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
       muted = false;
       b.dataset.done = '1';
       b.hidden = true;
+    } else if (b.dataset.tr === 'pick') {
+      const i = ids().indexOf(b.dataset.id);
+      if (i < 0) return;
+      at = i;
+      muted = false; // dokunarak seçildi: sesli başlar
+      host.dataset.id = b.dataset.id;
+      const u = host.querySelector('.tr-unmute');
+      if (u) {
+        u.hidden = true;
+        u.dataset.done = '1'; // video sesli açılıyor; yükleme bitince “Sesi aç” yeniden çıkmasın
+      }
+      setNote();
+      mark();
+      host.querySelector('.tr-box').innerHTML = frameHtml(b.dataset.id, { muted: false, origin });
+      bindFrame(frame());
     } else if (b.dataset.tr === 'play') {
       muted = false;
       host.querySelector('.tr-box').innerHTML = frameHtml(host.dataset.id, { muted: false, origin });

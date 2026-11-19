@@ -12,12 +12,13 @@ export const YT_HEADERS = {
   'accept-language': 'tr-TR,tr;q=0.9,en;q=0.8',
   cookie: 'SOCS=CAI; CONSENT=YES+1',
 };
-export const MAX_FOUND = 3;
+export const MAX_FOUND = 3; // doğrulanmış (en alakalı) fragman sayısı
+export const MAX_LIST = 10; // yatay sonuç şeridindeki en çok video
 export const MIN_SECONDS = 15;
 export const MAX_SECONDS = 330; // fragman 5,5 dakikadan uzun değildir; uzunlar çoğunlukla tam film/özet
 
 const trailerish = /trailer|fragman|teaser|tizer|resmi|official/i;
-const unwanted = /reaction|tepki|anlatt|özet|ozet|recap|review|inceleme|yorum|bölüm|bolum|episode|sahne|scene|soundtrack|müzik|muzik|ending|explained|analiz|vlog|parody|parodi|fan[ -]?made|tiktok|shorts|tek parça|tek parca|film izle|full movie|tüm film|izle\b/i;
+const unwanted = /reaction|tepki|anlatt|özet|ozet|recap|review|inceleme|yorum|bölüm|bolum|episode|sahne|scene|soundtrack|müzik|muzik|ending|explained|analiz|vlog|parody|parodi|fan[ -]?made|tiktok|shorts|tek parça|tek parca|film izle|full movie|tüm film/i;
 const officialChannel = /netflix|hbo|\bmax\b|disney|warner|sony|universal|paramount|prime video|amazon|apple tv|marvel|lucasfilm|lionsgate|a24|mgm|focus features|trt|tabii|exxen|gain|blutv|puhu|kanal d|show tv|star tv|\batv\b|tv8|yapım|yapim|film|pictures|studios/i;
 
 const text = (v) => {
@@ -132,13 +133,12 @@ export function parseYoutubeResults(html) {
 // Başlıkta geçen yıllar (1900–2099)
 const yearsIn = (s) => (String(s || '').match(/\b(?:19|20)\d{2}\b/g) || []).map(Number);
 
-// Sonuçlardan en alakalı fragmanlar; resmî kanal şartı yoktur. Yanlış filmin fragmanı hiç fragman olmamasından kötü olduğu için:
-//  • arama tırnaklı öbek aramasıysa (ad video bilgisinde geçiyor) YouTube'un sıralaması esas alınır: fragman gibi görünen, süresi uygun,
-//    anlatım/özet/tam film olmayan ilk sonuçlar seçilir;
-//  • tırnaksızsa başlığın aranan adla (Türkçe ya da özgün) örtüşmesi gerekir;
-//  • başlıktaki yıl aranan yıldan ±1'den fazla ayrılıyorsa elenir.
+// Sonuçlardan en alakalı fragmanlar; resmî kanal şartı yoktur. YouTube Türkçe adı filmle eşleştirir (yabancı adlı resmî fragmanı da ilk sıraya koyar),
+// bu yüzden ilk üç sıradaki fragman gibi görünen sonuçlar başlığı adla örtüşmese de kabul edilir; sonrakiler için başlığın aranan adla
+// (Türkçe ya da özgün) örtüşmesi gerekir. Anlatım/özet/tam film, uygun olmayan süre ve aranan yıldan ±1'den fazla farklı başlık yılı elenir.
 // Sıralama: YouTube sırası, başlığı ada uyanlar ve "official trailer / resmi fragman" yazanlar hafif öne geçer.
-export function pickTrailers(results, wanted = [], { year = 0, quoted = false } = {}) {
+export const TOP_TRUSTED = 3;
+export function pickTrailers(results, wanted = [], { year = 0 } = {}) {
   const names = (Array.isArray(wanted) ? wanted : [wanted]).map(tokens).filter((t) => t.length);
   const overlap = (title) => {
     const have = new Set(tokens(title));
@@ -147,30 +147,45 @@ export function pickTrailers(results, wanted = [], { year = 0, quoted = false } 
   const y = Number(year) || 0;
   return (Array.isArray(results) ? results : [])
     .map((r, i) => ({ r, i, official: !!r.verified || officialChannel.test(r.channel || ''), ov: overlap(r.title) }))
-    .filter(({ r, ov }) => {
+    .filter(({ r, i, ov }) => {
       if (!trailerish.test(r.title) || unwanted.test(r.title) || r.seconds < MIN_SECONDS || r.seconds > MAX_SECONDS) return false;
       const ys = yearsIn(r.title);
       if (y && ys.length && !ys.some((v) => Math.abs(v - y) <= 1)) return false;
-      return quoted || ov >= 0.6;
+      return ov >= 0.6 || i < TOP_TRUSTED;
     })
     .map((x) => ({ ...x, score: 20 - x.i + (x.ov >= 0.6 ? 3 : 0) + (x.official ? 1 : 0) + (/official trailer|resmi fragman/i.test(x.r.title) ? 2 : 0) }))
     .sort((a, b) => b.score - a.score || a.i - b.i)
     .slice(0, MAX_FOUND)
-    .map(({ r }) => ({ id: r.id, title: r.title, channel: r.channel }));
+    .map(({ r }) => ({ id: r.id, title: r.title, channel: r.channel, seconds: r.seconds }));
+}
+
+// Ekrandaki yatay sonuç şeridi: önce en alakalı fragmanlar (good: true; ilki oynatılır), sonra YouTube sırasıyla kalan makul videolar
+// (süresi fragmana uygun, anlatım/özet/tam film değil, yılı uyumlu). Uygun fragman seçilemese de kullanıcı sonuçlardan kendisi seçebilir.
+export function listTrailers(results, wanted = [], { year = 0 } = {}) {
+  const src = Array.isArray(results) ? results : [];
+  const best = pickTrailers(src, wanted, { year }).map((p) => ({ ...p, good: true }));
+  const y = Number(year) || 0;
+  const used = new Set(best.map((p) => p.id));
+  const rest = src
+    .filter((r) => !used.has(r.id) && !unwanted.test(r.title) && r.seconds >= MIN_SECONDS && r.seconds <= MAX_SECONDS)
+    .filter((r) => { const ys = yearsIn(r.title); return !(y && ys.length && !ys.some((v) => Math.abs(v - y) <= 1)); })
+    .map((r) => ({ id: r.id, title: r.title, channel: r.channel, seconds: r.seconds, good: false }));
+  return [...best, ...rest].slice(0, MAX_LIST);
 }
 
 export const resultsUrl = (query) => `${YT_RESULTS}?search_query=${encodeURIComponent(String(query || '').trim())}&sp=EgIQAQ%253D%253D`; // sp: yalnız videolar
 
-// query ile arar; bulunamayan sonuç yalnız sayfa okunabildiyse (video sayısı > 0) önbelleğe yazılır, ağ hatasında null döner ve yazılmaz.
+// query ile arar → şerit listesi ([{ id, title, channel, seconds, good }]; ilk good olanlar en alakalı); sonuç yalnız sayfa okunabildiyse (video sayısı > 0)
+// önbelleğe yazılır (uygun fragman çıkmayan liste kısa süre), ağ hatasında null döner ve yazılmaz.
 // onInfo({ read, bytes, error, cached }): ekranda "neden bulunamadı" bilgisi göstermek için.
 export async function findTrailerOnYoutube({ net, cache = null, query, wanted = [], year = 0, now = Date.now(), onInfo = null }) {
   const q = String(query || '').trim();
   if (!q) return [];
   const info = (i) => { if (onInfo) onInfo(i); };
-  const key = 'yt-trailer:v3:' + fold(q) + ':' + (Number(year) || 0);
+  const key = 'yt-trailer:v4:' + fold(q) + ':' + (Number(year) || 0);
   const hit = cache ? await cache.get(key).catch(() => null) : null;
-  if (hit && Array.isArray(hit.picks) && typeof hit.at === 'number' && now - hit.at < (hit.picks.length ? FIND_TTL : FIND_MISS_TTL)) {
-    info({ read: Number(hit.read) || hit.picks.length, bytes: 0, error: '', cached: true });
+  if (hit && Array.isArray(hit.picks) && typeof hit.at === 'number' && now - hit.at < (hit.picks.some((p) => p.good) ? FIND_TTL : FIND_MISS_TTL)) {
+    info({ read: Number(hit.read) || hit.picks.length, bytes: 0, error: '', cached: true, first: Array.isArray(hit.first) ? hit.first : [] });
     return hit.picks;
   }
   let html;
@@ -181,9 +196,10 @@ export async function findTrailerOnYoutube({ net, cache = null, query, wanted = 
     return null;
   }
   const results = parseYoutubeResults(html);
-  const picks = pickTrailers(results, wanted, { year, quoted: q.includes('"') });
-  info({ read: results.length, bytes: String(html || '').length, error: '', cached: false });
-  if (cache && (picks.length || results.length)) await cache.set(key, { at: now, picks, read: results.length }).catch(() => {});
+  const picks = listTrailers(results, wanted, { year });
+  const first = results.slice(0, 2).map((r) => r.title);
+  info({ read: results.length, bytes: String(html || '').length, error: '', cached: false, first });
+  if (cache && results.length) await cache.set(key, { at: now, picks, read: results.length, first }).catch(() => {});
   return picks;
 }
 
@@ -192,7 +208,11 @@ export function describeFind(infos) {
   const list = (Array.isArray(infos) ? infos : []).filter(Boolean);
   if (!list.length) return '';
   const read = Math.max(...list.map((i) => Number(i.read) || 0));
-  if (read > 0) return `YouTube aramasında ${read} video bulundu, uygun fragman çıkmadı`;
+  if (read > 0) {
+    const first = (list.find((i) => Array.isArray(i.first) && i.first.length) || {}).first || [];
+    const short = (t) => (t.length > 42 ? t.slice(0, 41) + '…' : t);
+    return `YouTube aramasında ${read} video bulundu, uygun fragman çıkmadı${first.length ? ` (ilk sonuçlar: ${first.map((t) => `“${short(t)}”`).join(', ')})` : ''}`;
+  }
   if (list.every((i) => i.error)) return `YouTube araması yapılamadı: ${String(list[0].error).slice(0, 60)}`;
   const kb = Math.round(Math.max(...list.map((i) => Number(i.bytes) || 0)) / 1024);
   return `YouTube sayfası okunamadı (${kb} KB yanıt, 0 video)`;

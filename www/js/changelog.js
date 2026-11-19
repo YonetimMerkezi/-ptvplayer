@@ -3,11 +3,12 @@
 export const CHANGELOG = [
   {
     id: 147,
-    title: 'Fragman araması doğru filmi bulsun',
+    title: 'Fragman araması: yatay sonuç şeridi',
     items: [
-      'Arama artık adı tırnak içinde (tam öbek) yapar; “2026 fragman” gibi genel sözcükler yüzünden başka bir filmin fragmanı çıkmaz',
-      'Resmî kanal şartı kalktı: YouTube’un en alakalı bulduğu fragman gösterilir. Başlıktaki yıl farklıysa (başka bir yapım) video elenir',
-      'Önceki hatalı arama sonuçları temizlendi',
+      'Fragman ararken YouTube’un bulduğu videolar fragmanın altında yatay kaydırılan bir şeritte listelenir; dokunduğunuz video üstte açılır',
+      'En alakalı fragman ilk sıradadır ve otomatik oynar; yanlışsa şeritten doğrusunu seçebilirsiniz. Uygun fragman seçilemese de sonuçlar şeritte görünür',
+      'Arama Türkçe adla ve yılsız yapılır (“Asla Teslim Olma fragman”); resmî kanal şartı yoktur. Başlıktaki yıl farklıysa (başka bir yapım) video elenir',
+      'Fragman bulunamazsa kartın altında nedeni ve ilk sonuçların adları yazar',
     ],
   },
   {

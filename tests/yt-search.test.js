@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseYoutubeResults, pickTrailers, resultsUrl, findTrailerOnYoutube, describeFind, YT_HEADERS, FIND_TTL, FIND_MISS_TTL, MAX_FOUND } from '../www/js/yt-search.js';
+import { parseYoutubeResults, pickTrailers, listTrailers, resultsUrl, findTrailerOnYoutube, describeFind, YT_HEADERS, FIND_TTL, FIND_MISS_TTL, MAX_LIST } from '../www/js/yt-search.js';
 
 const vr = (id, title, channel, len, verified = false) => ({ videoRenderer: {
   videoId: id, title: { runs: [{ text: title }] }, ownerText: { runs: [{ text: channel }] }, lengthText: { simpleText: len },
@@ -34,23 +34,26 @@ test('parseYoutubeResults: sayfada ya da JSON’da sorun varsa boş döner; dizg
   assert.equal(parseYoutubeResults(page([vr(id('h'), 'T', 'K', '1:00'), vr(id('h'), 'T', 'K', '1:00')])).length, 1, 'aynı video tek sayılır');
 });
 
-test('pickTrailers: tırnaklı aramada YouTube sırası esas; anlatım/özet/tam film ve çok uzun/kısa videolar elenir, resmî kanal şart değil', () => {
-  const picks = pickTrailers(parseYoutubeResults(page(RESULTS)), ['Asla Teslim Olma'], { quoted: true });
-  assert.deepEqual(picks.map((p) => p.id), [id('a'), id('e')], 'ilk sıradaki (adı başlıkta geçmeyen) fragman da kabul');
-  assert.deepEqual(picks[0], { id: id('a'), title: 'Never Surrender | Official Trailer | Netflix', channel: 'Netflix' });
-  // resmî olmayan kanalın ilk sıradaki fragmanı da seçilir
+test('pickTrailers: ilk üç sıradaki fragman başlığı adla örtüşmese de kabul; anlatım/özet/tam film ve uygunsuz süre elenir; resmî kanal şart değil', () => {
+  const picks = pickTrailers(parseYoutubeResults(page(RESULTS)), ['Asla Teslim Olma']);
+  assert.deepEqual(picks.map((p) => p.id), [id('a'), id('e')], 'ilk sıradaki yabancı adlı fragman + adı başlıkta geçen 4. sıradaki');
+  assert.deepEqual(picks[0], { id: id('a'), title: 'Never Surrender | Official Trailer | Netflix', channel: 'Netflix', seconds: 144 });
+  // resmî olmayan kanalın ilk sıradaki fragmanı da seçilir; puan eşitse YouTube sırası kazanır
   const fan = parseYoutubeResults(page([vr(id('x'), 'Yabancı Ad | Official Trailer', 'Rastgele Kanal', '1:30'), vr(id('y'), 'Asla Teslim Olma Fragman', 'Kanal2', '1:20')]));
-  assert.equal(pickTrailers(fan, ['Asla Teslim Olma'], { quoted: true })[0].id, id('x'), 'eşit puanda YouTube sırası kazanır');
+  assert.equal(pickTrailers(fan, ['Asla Teslim Olma'])[0].id, id('x'));
 });
 
-test('pickTrailers: tırnaksız aramada başlık aranan adla örtüşmeli; başlık örtüşen ve “resmi fragman” yazan hafif öne geçer', () => {
+test('pickTrailers: 4. sıradan sonra başlık aranan adla örtüşmeli; örtüşen ve “resmi fragman” yazan hafif öne geçer', () => {
   const r = parseYoutubeResults(page([
-    vr(id('a'), 'Başka Bir Film | Official Trailer', 'Netflix', '2:00', true),
-    vr(id('b'), 'Kuruluş Osman Fragman', 'Rastgele Kanal', '1:50'),
-    vr(id('c'), 'Kuruluş Osman | Resmi Fragman', 'TRT', '1:40'),
+    vr(id('a'), 'Alakasız 1 | Trailer', 'Kanal', '1:00'),
+    vr(id('b'), 'Alakasız 2 | Trailer', 'Kanal', '1:00'),
+    vr(id('c'), 'Alakasız 3 | Trailer', 'Kanal', '1:00'),
+    vr(id('d'), 'Kuruluş Osman Fragman', 'Kanal', '1:50'),
+    vr(id('e'), 'Alakasız 5 | Official Trailer', 'Netflix', '2:00', true),
   ]));
-  assert.deepEqual(pickTrailers(r, ['Kuruluş Osman']).map((p) => p.id), [id('c'), id('b')], 'örtüşmeyen resmî kanal bile elenir');
-  assert.deepEqual(pickTrailers(r, ['Kuruluş Osman'], { quoted: true }).map((p) => p.id), [id('c'), id('a'), id('b')], 'tırnaklıda hepsi aday; puan: sıra + ad uyumu + resmi fragman yazısı');
+  const ids = pickTrailers(r, ['Kuruluş Osman']).map((p) => p.id);
+  assert.deepEqual(ids, [id('a'), id('d'), id('b')], 'örtüşen 4. sıradaki öne geçer; örtüşmeyen 5. sıradaki resmî kanal bile elenir');
+  assert.ok(!ids.includes(id('e')));
   assert.deepEqual(pickTrailers([], ['x']), []);
   assert.deepEqual(pickTrailers(null, null), []);
 });
@@ -62,9 +65,24 @@ test('pickTrailers: başlıktaki yıl aranan yıldan ±1’den fazla ayrılıyor
     vr(id('c'), 'Asla Teslim Olma (2026) Fragman', 'Kanal', '1:30'),
     vr(id('d'), 'Asla Teslim Olma Fragman', 'Kanal', '1:30'),
   ]));
-  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 2026 }).map((p) => p.id), [id('c'), id('d')], 'tırnaksız: ad örtüşmeyen “As Good As Dead 2” de elenir');
-  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 2026, quoted: true }).map((p) => p.id), [id('a'), id('c'), id('d')], '1998 elenir');
-  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 0, quoted: true }).map((p) => p.id), [id('a'), id('b'), id('c')].slice(0, MAX_FOUND), 'yıl bilinmiyorsa süzgeç yok');
+  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 2026 }).map((p) => p.id), [id('a'), id('c'), id('d')], '1998 elenir');
+  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 0 }).map((p) => p.id), [id('a'), id('b'), id('c')], 'yıl bilinmiyorsa süzgeç yok');
+  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 2025 }).map((p) => p.id), [id('a'), id('c'), id('d')], '±1 yıl tolerans');
+});
+
+test('listTrailers: önce en alakalı fragmanlar (good), sonra YouTube sırasıyla makul videolar; özet/tam film/uygunsuz süre/yanlış yıl yok; en çok 10', () => {
+  const r = parseYoutubeResults(page(RESULTS));
+  assert.deepEqual(listTrailers(r, ['Asla Teslim Olma'], { year: 2026 }).map((x) => [x.id, x.good]), [[id('a'), true], [id('e'), true]]);
+  const items = [vr(id('0'), 'Rastgele Bir Video', 'Kanal', '3:00'), vr(id('1'), 'Asla Teslim Olma | Resmi Fragman', 'Kanal', '1:00'), vr(id('2'), 'Başka Bir Video (1990)', 'Kanal', '2:00'), vr(id('3'), 'Uzun Video', 'Kanal', '12:00')];
+  for (let i = 0; i < 12; i++) items.push(vr(String.fromCharCode(97 + i).repeat(11), 'Video ' + i, 'Kanal', '2:00'));
+  const l = listTrailers(parseYoutubeResults(page(items)), ['Asla Teslim Olma'], { year: 2026 });
+  assert.equal(l.length, MAX_LIST);
+  assert.deepEqual(l[0], { id: id('1'), title: 'Asla Teslim Olma | Resmi Fragman', channel: 'Kanal', seconds: 60, good: true }, 'en alakalı başta');
+  assert.equal(l[1].id, id('0'));
+  assert.equal(l[1].good, false, 'fragman gibi görünmeyen ama makul video kullanıcı seçsin diye şeritte');
+  assert.ok(!l.some((x) => x.id === id('2') || x.id === id('3')), 'yanlış yıl ve uzun video yok');
+  assert.deepEqual(listTrailers([], ['x']), []);
+  assert.deepEqual(listTrailers(null, null), []);
 });
 
 test('pickTrailers: süre sınırları ve özgün ad eşleşmesi', () => {
@@ -85,15 +103,16 @@ test('findTrailerOnYoutube: arar, önbelleğe yazar; ikinci çağrı ağa gitmez
   const mem = new Map();
   const cache = { get: async (k) => mem.get(k), set: async (k, v) => { mem.set(k, v); } };
   const net = { text: async (url, opts) => { calls.push({ url, opts }); return page(RESULTS); } };
-  const picks = await findTrailerOnYoutube({ net, cache, query: '"Asla Teslim Olma" fragman', wanted: ['Asla Teslim Olma'] });
+  const picks = await findTrailerOnYoutube({ net, cache, query: 'Asla Teslim Olma fragman', wanted: ['Asla Teslim Olma'] });
   assert.equal(picks[0].id, id('a'));
-  assert.match(calls[0].url, /^https:\/\/www\.youtube\.com\/results\?search_query=%22Asla%20Teslim%20Olma%22%20fragman/);
+  assert.equal(picks[0].good, true);
+  assert.match(calls[0].url, /^https:\/\/www\.youtube\.com\/results\?search_query=Asla%20Teslim%20Olma%20fragman/);
   assert.equal(calls[0].opts.fast, true);
   assert.match(calls[0].opts.headers['accept-language'], /^tr-TR/);
-  assert.equal((await findTrailerOnYoutube({ net, cache, query: '"asla teslim olma" fragman', wanted: ['x'] }))[0].id, id('a'));
+  assert.equal((await findTrailerOnYoutube({ net, cache, query: 'asla teslim olma fragman', wanted: ['x'] }))[0].id, id('a'));
   assert.equal(calls.length, 1, 'önbellekten (büyük/küçük harf fark etmez)');
   const later = Date.now() + FIND_TTL + 1000;
-  await findTrailerOnYoutube({ net, cache, query: '"Asla Teslim Olma" fragman', wanted: ['Asla Teslim Olma'], now: later });
+  await findTrailerOnYoutube({ net, cache, query: 'Asla Teslim Olma fragman', wanted: ['Asla Teslim Olma'], now: later });
   assert.equal(calls.length, 2, 'süresi dolan önbellek yenilenir');
   const noMatch = { text: async () => page([vr(id('z'), 'Alakasız Video', 'Kanal', '10:00')]) };
   assert.deepEqual(await findTrailerOnYoutube({ net: noMatch, cache, query: 'Bulunamayan', wanted: [] }), []);
@@ -101,7 +120,7 @@ test('findTrailerOnYoutube: arar, önbelleğe yazar; ikinci çağrı ağa gitmez
   const seen = [];
   assert.deepEqual(await findTrailerOnYoutube({ net: { text: async () => { calls.push(1); return ''; } }, cache, query: 'Bulunamayan', wanted: [], onInfo: (i) => seen.push(i) }), []);
   assert.equal(calls.length, n, 'sayfa okunup uygun video çıkmadıysa kısa süre önbellekte');
-  assert.deepEqual(seen, [{ read: 1, bytes: 0, error: '', cached: true }]);
+  assert.deepEqual(seen, [{ read: 1, bytes: 0, error: '', cached: true, first: ['Alakasız Video'] }]);
   assert.ok(FIND_MISS_TTL < FIND_TTL);
   // sayfa hiç okunamadıysa (0 video: düzen değişmiş ya da engel sayfası) önbelleğe yazılmaz; her açılışta yeniden denenir
   const blocked = { text: async () => { calls.push(2); return '<html>consent</html>'; } };
@@ -109,7 +128,7 @@ test('findTrailerOnYoutube: arar, önbelleğe yazar; ikinci çağrı ağa gitmez
   assert.deepEqual(await findTrailerOnYoutube({ net: blocked, cache, query: 'Okunamayan', wanted: [], onInfo: (i) => info.push(i) }), []);
   await findTrailerOnYoutube({ net: blocked, cache, query: 'Okunamayan', wanted: [] });
   assert.equal(calls.filter((x) => x === 2).length, 2);
-  assert.deepEqual(info, [{ read: 0, bytes: 20, error: '', cached: false }]);
+  assert.deepEqual(info, [{ read: 0, bytes: 20, error: '', cached: false, first: [] }]);
 });
 
 test('findTrailerOnYoutube: ağ hatasında null döner ve önbelleğe yazılmaz; boş sorguda ağa gidilmez', async () => {
@@ -158,6 +177,7 @@ test('parseYoutubeResults: kaçışlı JSON.parse(\'\\x7b…\') biçimi ve sayfa
 test('describeFind: bulunamama nedeni kullanıcıya anlaşılır yazılır', () => {
   assert.equal(describeFind([]), '');
   assert.equal(describeFind([{ read: 18, bytes: 900000 }, { read: 0, bytes: 100 }]), 'YouTube aramasında 18 video bulundu, uygun fragman çıkmadı');
+  assert.equal(describeFind([{ read: 18, first: ['Çok uzun bir video başlığı burada yazıyor ve kırpılmalı artık', 'Kısa'] }]), 'YouTube aramasında 18 video bulundu, uygun fragman çıkmadı (ilk sonuçlar: “Çok uzun bir video başlığı burada yazıyor…”, “Kısa”)');
   assert.equal(describeFind([{ read: 0, bytes: 2048 }]), 'YouTube sayfası okunamadı (2 KB yanıt, 0 video)');
   assert.equal(describeFind([{ error: 'HTTP 429' }, { error: 'x' }]), 'YouTube araması yapılamadı: HTTP 429');
   assert.match(describeFind([{ read: 0, bytes: 5, error: '' }, { error: 'zaman aşımı' }]), /okunamadı/, 'biri okunduysa ama video yoksa');

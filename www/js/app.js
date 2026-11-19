@@ -75,7 +75,7 @@ import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from '.
 import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
-import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle, trailerPhrase } from './cinemeta.js';
+import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
@@ -2150,12 +2150,14 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
         const infos = [];
         for (const q of finds) {
           const r = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted, year, onInfo: (i) => infos.push(i) }).catch((e) => { infos.push({ error: String((e && e.message) || e) }); return null; });
-          if (r && r.length) { picks = r; break; }
+          if (r && r.length && !picks.length) picks = r; // ilk sonuç listesi yedek kalır
+          if (r && r.some((p) => p.good)) { picks = r; break; } // en alakalı fragman bulunduysa dur
         }
         if (!tr.isConnected || tr._find !== token) return;
-        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay, origin: location.origin, query, found: picks, diag: picks.length ? '' : describeFind(infos) });
+        const good = picks.length > 0 && picks[0].good; // en alakalı fragman ilk sırada: otomatik oynar; yoksa sonuçlar şeritte, kullanıcı seçer
+        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay && good, origin: location.origin, query, found: picks, diag: picks.length ? '' : describeFind(infos) });
         if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
-        if (picks.length && onFound) onFound();
+        if (good && onFound) onFound();
       })();
     }
   }
@@ -2174,13 +2176,14 @@ function loadTitleExtras(it, imdbId, type, onDetail, year = '') {
 // Fragman araması: YouTube Türkçe adla da doğru sonucu verir, bu yüzden önce katalog adı ("… 2022 fragman"), sonra bilinen özgün ad ("… official trailer").
 // query: "YouTube’da ara" düğmesi; finds: uygulamanın kendi aramaları (sırayla); wanted: bulunan videonun başlığıyla karşılaştırılacak adlar.
 function trailerSearch(name, year, origin) {
-  const query = trailerQuery(name, year);
   const t = trailerTitle(name, year);
   const y = t.year || Number((/\b(?:19|20)\d{2}\b/.exec(String(year ?? '')) || [])[0]) || 0;
   const original = origin && origin.original ? origin.original : '';
   const oy = (origin && origin.year) || y;
-  // uygulamanın kendi aramaları tırnaklı ad ile gider (tam öbek); düğmedeki serbest aramada kullanıcı sonucu kendisi seçer
-  const finds = [trailerPhrase(t.title, 'fragman'), original ? trailerPhrase(original, 'official trailer', oy || '') : ''].filter(Boolean);
+  // Türkçe adla yılsız aranır ("Asla Teslim Olma fragman"): YouTube adı filmle eşleştirir, "2026 fragman" gibi genel sözcükler başka filmleri öne çıkarır.
+  // Özgün adlı aramada yıl kalır (yabancı adlar zaten ayırt edicidir).
+  const query = `${t.title} fragman`;
+  const finds = [query, original ? trailerQuery(original, oy || '', 'official trailer') : ''].filter(Boolean);
   return { query, finds: [...new Set(finds)], wanted: [t.title, original].filter(Boolean), year: oy };
 }
 
