@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 159,
+    title: 'Öneriler ve tema kartları',
+    items: [
+      '“Ne izleyeceğine karar veremedin mi?” bölümünde türe ya da “Başka öner”e basınca sayfa artık en üste kaymaz; odak seçtiğin türde kalır',
+      'Her türde en fazla 3 öneri gösterilir; “Şaşırt beni” tek bir film önerir (tekrar basınca bir başkası gelir)',
+      'Uygulama teması sayfasında kartlar kendi kutusundan taşmaz; eski TV’lerde de görseller kutuya sığar',
+    ],
+  },
+  {
     id: 158,
     title: 'TV: karşılama ekranı ve telefondan liste aktarma',
     items: [

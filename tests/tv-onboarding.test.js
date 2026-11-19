@@ -33,3 +33,26 @@ test('TV tarafı: telefondan eşitleme gelince uygulama yenilenir (kaynak yoksa 
   const ui = kaynak('www/js/cast-ui.js');
   assert.match(ui, /plugin\.addListener\('castSync'[\s\S]*applySnapshot\(store, parsed\.snap\)[\s\S]*deps\.onSynced\(\)/);
 });
+
+test('ana ekran "Ne izleyeceğine karar veremedin mi?": tür başına en fazla 3 öneri, "Şaşırt beni" tek film', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /const PICKS_MAX = 3;/);
+  assert.match(app, /pickMovies\(visibleAll\('movie'\), genre, \{ limit: genre === SURPRISE_ID \? 1 : PICKS_MAX,/);
+});
+
+test('öneri bölümü yeniden çizilince odak aynı çipe/düğmeye döner ve sayfa en üste kaymaz (kumanda odağı ilk öğeye atmasın)', () => {
+  const app = kaynak('www/js/app.js');
+  const fn = app.slice(app.indexOf('function fillHomePicks()'), app.indexOf('// Ana ekran satırları: kaldığın yerden devam'));
+  assert.match(fn, /const had = a && el\.contains\(a\)/);
+  assert.match(fn, /data-pick-again/);
+  assert.match(fn, /const page = el\.closest\('\.home'\);[\s\S]*const top = page \? page\.scrollTop : 0;/);
+  assert.match(fn, /el\.innerHTML = homePicksHtml\(\);[\s\S]*t\.focus\(\{ preventScroll: true \}\);[\s\S]*page\.scrollTop = top;/);
+});
+
+test('tema kartları: görsel kutusu 3:4\'ü yüzde dolguyla kurar, kart taşmaz (aspect-ratio ve düğmede flex\'e bağlı değil)', () => {
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /\.theme-choice \{\s*position:relative; display:block; box-sizing:border-box; width:100%; min-width:0; max-width:100%; overflow:hidden;/);
+  assert.match(css, /\.theme-shot \{ position:relative; display:block; width:100%; height:0; padding-top:133\.3334%; overflow:hidden;/);
+  assert.match(css, /\.theme-shot img \{ position:absolute; left:0; top:0; display:block; width:100%; height:100%; max-width:100%; object-fit:cover;/);
+  assert.doesNotMatch(css, /\.theme-shot \{[^}]*aspect-ratio/);
+});

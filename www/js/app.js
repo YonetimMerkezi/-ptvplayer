@@ -3322,9 +3322,10 @@ const picksKey = (it) => {
 };
 const homePick = { src: '', genre: '', ids: [], seen: new Map() };
 const pickWatched = (it) => !!(S.prog[it.id] && S.prog[it.id].pos > 0);
+const PICKS_MAX = 3; // bir türde en fazla 3 öneri; "Şaşırt beni" tek film önerir
 function repickHome(genre) {
   const seen = homePick.seen.get(genre) || new Set();
-  const picks = pickMovies(visibleAll('movie'), genre, { limit: 10, key: picksKey, watched: pickWatched, seen: [...seen] });
+  const picks = pickMovies(visibleAll('movie'), genre, { limit: genre === SURPRISE_ID ? 1 : PICKS_MAX, key: picksKey, watched: pickWatched, seen: [...seen] });
   for (const it of picks) seen.add(it.id);
   homePick.seen.set(genre, seen);
   homePick.genre = genre;
@@ -3354,9 +3355,20 @@ function fillHomePicks() {
   if (!el) return;
   const sc = el.querySelector('.hp-chips');
   const left = sc ? sc.scrollLeft : 0;
+  // Bölüm yeniden çizilince odaktaki çip/düğme silinir; kumanda odağı sayfanın başına atmasın ve sayfa yukarı kaymasın diye
+  // odak aynı çipe/düğmeye geri verilir, sayfanın kaydırma konumu da korunur.
+  const a = document.activeElement;
+  const had = a && el.contains(a) ? (a.dataset.pick ? `[data-pick="${a.dataset.pick}"]` : a.hasAttribute('data-pick-again') ? '[data-pick-again]' : '') : '';
+  const page = el.closest('.home');
+  const top = page ? page.scrollTop : 0;
   el.innerHTML = homePicksHtml();
   const sc2 = el.querySelector('.hp-chips');
   if (sc2) sc2.scrollLeft = left;
+  if (had) {
+    const t = el.querySelector(had);
+    if (t) t.focus({ preventScroll: true });
+  }
+  if (page) page.scrollTop = top;
 }
 
 // Ana ekran satırları: kaldığın yerden devam (film + dizi), son izlenenler (sekmeli) ve en son eklenen filmler; boşsa satır çıkmaz.
