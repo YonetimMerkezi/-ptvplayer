@@ -2,7 +2,7 @@
 
 *English version below.*
 
-Son güncelleme: 18 Kasım 2026 · Uygulama: Iptv Player Pro (`com.koruk.iptv`) · Geliştirici: YonetimMerkezi
+Son güncelleme: 19 Kasım 2026 · Uygulama: Iptv Player Pro (`com.koruk.iptv`) · Geliştirici: YonetimMerkezi
 
 ## Kısaca
 
@@ -24,6 +24,8 @@ Eklediğiniz IPTV kaynağına uygulama doğrudan bağlanır. Sağlayıcı, iste�
 Uygulamanın özellikleri için aşağıdaki hizmetlere istek gider. İsteklerde adınız, hesabınız ya da cihaz kimliğiniz **bulunmaz**; her internet isteğinde olduğu gibi hizmet IP adresinizi görür.
 
 - **Film ve dizi bilgisi:** Film/dizi adı (listenizdeki addan temizlenmiş hâli) ve varsa yıl, eşleştirme, tür, özet ve afiş için Cinemeta (Stremio), Metahub (afiş) ve Wikidata'ya gönderilir. Bu hizmetlere giden istek kullanıcıya ya da cihaza bağlanmaz.
+- **Fragmanlar:** Fragman gösterilen ekranlarda küçük resim ve oynatıcı YouTube'dan (Google) yüklenir; "Fragmanı otomatik ara" açıksa fragman bulmak için film/dizi adı YouTube'da aranır. YouTube bu istekleri kendi gizlilik politikasına göre işleyebilir. Çocuk modunda fragman gösterilmez.
+- **Oyuncu bilgisi:** Oyuncu ve yönetmen adları fotoğraf için Wikidata'ya gönderilir, fotoğraflar Wikimedia Commons'tan yüklenir; oyuncunun diğer yapımları için ad Cinemeta'ya gönderilir. Bu istekler kullanıcıya ya da cihaza bağlanmaz.
 - **İçerik uyarıları:** Film için uyarı bilgisi screenwiseapp.com'dan alınır; film adı bu hizmete gönderilir. İngilizce uyarı metni Türkçeye çevrilmek üzere Google Çeviri'ye (translate.googleapis.com) gönderilir.
 - **TV rehberi ve yayın akışı:** EPG kaynakları (epgshare01, open-epg, Teleonline, jsDelivr) ve yayın akışı sayfaları (tvdebugun, tvyayinakisi, 1001dizi).
 - **Spor:** TheSportsDB, ESPN, LiveScore, sahadan, macrehberi, livesoccertv, sporekrani; bayraklar için flagcdn.
@@ -74,7 +76,7 @@ Soru ve talepler için: https://github.com/YonetimMerkezi/-ptvplayer/issues
 
 # Iptv Player Pro – Privacy Policy
 
-Last updated: 18 November 2026 · App: Iptv Player Pro (`com.koruk.iptv`) · Developer: YonetimMerkezi
+Last updated: 19 November 2026 · App: Iptv Player Pro (`com.koruk.iptv`) · Developer: YonetimMerkezi
 
 ## In short
 
@@ -96,6 +98,8 @@ The app connects directly to the IPTV source you add. The provider receives the 
 To power its features the app sends requests to the services below. Requests contain **no** name, account or device identifier; as with any internet request, the service sees your IP address.
 
 - **Movie and series information:** The film/series title (cleaned from the name in your list) and, if known, the year are sent to Cinemeta (Stremio), Metahub (posters) and Wikidata for matching, genres, plots and posters. These requests are not linked to any user or device.
+- **Trailers:** On screens that show a trailer, the thumbnail and the player are loaded from YouTube (Google); if "Find trailers automatically" is on, the film/series title is searched on YouTube to find one. YouTube may process these requests under its own privacy policy. Trailers are not shown in child mode.
+- **Cast information:** Actor and director names are sent to Wikidata to find photos, and the photos are loaded from Wikimedia Commons; the name is sent to Cinemeta to list the person's other titles. These requests are not linked to any user or device.
 - **Content warnings:** Warning information comes from screenwiseapp.com; the film title is sent to this service. English warning text is sent to Google Translate (translate.googleapis.com) to be translated into Turkish.
 - **TV guide and schedules:** EPG sources (epgshare01, open-epg, Teleonline, jsDelivr) and schedule pages (tvdebugun, tvyayinakisi, 1001dizi).
 - **Sports:** TheSportsDB, ESPN, LiveScore, sahadan, macrehberi, livesoccertv, sporekrani; flagcdn for flags.
