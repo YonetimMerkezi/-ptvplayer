@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 163,
+    title: 'Spor: maç detayı ve kapsam',
+    items: [
+      'Süper Lig, 1. Lig ve diğer Avrupa ligleri gibi LiveScore\'dan gelen maçlarda da artık gol, asist, sarı kart, oyuncu değişikliği, devre arası, kadro, diziliş, teknik direktör ve takım istatistikleri görünür',
+      'Canlı maçlarda skor ve durum maç ekranında da güncellenir; istatistik ve kadro seyrek yenilenir, istek sayısı düşük kalır',
+      'Spor sayfası yalnız Türkiye, Avrupa ve uluslararası erkek futbolunu gösterir; kadın maçları ve Avrupa dışı ülke ligleri listeden çıktı',
+    ],
+  },
+  {
     id: 162,
     title: 'Bugün TV’de: film tespiti',
     items: [

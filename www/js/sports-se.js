@@ -448,6 +448,7 @@ export function seMatches(rows) {
   for (const r of rows || []) {
     if (!r || !r.teams) continue;
     const comp = fixTr(r.comp);
+    if ([comp, r.teams[0], r.teams[1]].some((x) => women(norm(x)))) continue; // kapsam: kadın maçları listeye girmez
     const grp = compGroup(comp);
     out.push({
       id: `se:${r.id}`,

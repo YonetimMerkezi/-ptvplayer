@@ -89,6 +89,25 @@ export function groupOf(country) {
   return 'oth';
 }
 
+// Kapsam: yalnız Türkiye, Avrupa ve uluslararası (dünya/kıta) erkek futbolu. Kadın maçları ve Avrupa dışı ülke ligleri (Brezilya, Japonya…) listeye girmez.
+const EUROPE = new Set([
+  'albania', 'andorra', 'armenia', 'austria', 'azerbaijan', 'belarus', 'belgium', 'bosnia herzegovina', 'bosnia and herzegovina', 'bulgaria', 'croatia', 'cyprus',
+  'czech republic', 'czechia', 'denmark', 'england', 'estonia', 'faroe islands', 'finland', 'france', 'georgia', 'germany', 'gibraltar', 'greece', 'hungary', 'iceland',
+  'ireland', 'republic of ireland', 'rep of ireland', 'israel', 'italy', 'kazakhstan', 'kosovo', 'latvia', 'liechtenstein', 'lithuania', 'luxembourg', 'malta', 'moldova',
+  'montenegro', 'netherlands', 'north macedonia', 'macedonia', 'northern ireland', 'norway', 'poland', 'portugal', 'romania', 'russia', 'san marino', 'scotland', 'serbia',
+  'slovakia', 'slovenia', 'spain', 'sweden', 'switzerland', 'turkey', 'turkiye', 'ukraine', 'wales',
+].map((c) => norm(c)));
+export const isEuropean = (country) => EUROPE.has(norm(country));
+const WOMEN_COMP = /(^| )(women|womens|woman|ladies|female|feminin|feminine|femenina|femenino|femminile|frauen|damen|kvinner|kvinde|kvindelig|kobiet|bayanlar|bayan|kadinlar|kadin|nwsl|wsl|liga f|toppserien|damallsvenskan)( |$)/;
+const WOMEN_TEAM = /(^| )(w|women|womens|ladies)$/;
+export const isWomenComp = (text) => WOMEN_COMP.test(norm(text));
+export const isWomenTeam = (name) => WOMEN_TEAM.test(norm(name));
+export function inScope(country, compText = '') {
+  if (isWomenComp(compText)) return false;
+  const g = groupOf(country);
+  return g === 'tr' || g === 'int' || isEuropean(country);
+}
+
 // Grup içi sıra: Türkiye'de Süper Lig, kupa, 1. Lig önce.
 function orderOf(grp, name) {
   if (grp !== 'tr') return 5;
@@ -114,6 +133,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
       const snm = sub ? comp : stage || comp;
       const stageRound = sub ? trRound(stage) : '';
       const grp = groupOf(cnm);
+      if (!inScope(cnm, `${comp} ${stage}`)) continue;
       const name = [cnm && trCountry(cnm), snm].filter(Boolean).join(' · ') || 'Diğer';
       const lgId = `ls:${norm(`${cnm} ${snm}`).replace(/ /g, '-') || sid}`; // aynı yarışmanın aşamaları tek bölümde toplanır
       const ord = orderOf(grp, snm);
@@ -124,7 +144,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
           const n1 = str(a && a.Nm);
           const n2 = str(b && b.Nm);
           const t = parseEsd(ev && ev.Esd);
-          if (!n1 || !n2 || t == null) continue;
+          if (!n1 || !n2 || t == null || isWomenTeam(n1) || isWomenTeam(n2)) continue;
           const scored = intOrNull(ev.Tr1) != null && intOrNull(ev.Tr2) != null;
           const status = lsStatus(ev.Eps, { t, now, scored });
           const played = status.state !== 'pre';
@@ -190,12 +210,15 @@ export async function loadLiveScoreDay({ net, dayMs, now = Date.now(), hosts = L
 
 // ---- maç olayları (gol dakikaları) ----
 
-const DETAIL_PATH = '/v1/api/app/scoreboard/soccer/';
-
-// Bir LiveScore maçının tek maç özeti adresleri (ana ve yedek adres). Eid: gün listesindeki olay kimliği.
-export function lsDetailUrls(eid, hosts = LS_HOSTS) {
+const DETAIL_PATHS = {
+  scoreboard: '/v1/api/app/scoreboard/soccer/', // durum, skor, goller (Incs-s)
+  incidents: '/v1/api/app/incidents/soccer/', // goller, asistler, kartlar (Incs)
+  lineups: '/v1/api/app/lineups/soccer/', // ilk 11, yedekler, formasyon, teknik direktör, oyuncu değişiklikleri (Subs)
+  statistics: '/v1/api/app/statistics/soccer/', // takım istatistikleri (Stat)
+};
+export function lsDetailUrls(eid, hosts = LS_HOSTS, kind = 'scoreboard') {
   const hs = Array.isArray(hosts) ? hosts : [hosts];
-  return [...hs].reverse().map((h) => `${h}${DETAIL_PATH}${encodeURIComponent(eid)}?locale=en`); // belgedeki sıra: cdn adresi önce
+  return [...hs].reverse().map((h) => `${h}${DETAIL_PATHS[kind] || DETAIL_PATHS.scoreboard}${encodeURIComponent(eid)}?locale=en`); // belgedeki sıra: cdn adresi önce
 }
 
 // Maç kimliği: gün listesinden gelen Eid (eski kayıtlarda yok: kimliğin sonundaki sayı).
@@ -211,6 +234,16 @@ const minuteText = (v) => {
   return s ? `${s}'` : '';
 };
 
+// LiveScore olay tür kodları (gerçek maç yanıtlarından çıkarıldı: kodların belgesi yok). 36 gol, 37 gol (başka tür), 39 kendi kalesine gol
+// (olay, golden yararlanan takımın altında gelir), 43 sarı kart, 63 asist. Tanınmayan kodlar gösterilmez.
+const IT_GOALISH = new Set([36, 37, 39]);
+const IT_GOAL = new Set([36, 37]);
+const IT_OWN = 39;
+const IT_YELLOW = 43;
+const IT_ASSIST = 63;
+const IT_SUB_ON = 5;
+const IT_SUB_OFF = 4;
+
 // "Incs-s" (yalnız goller) içindeki olayları dolaşır: Min ve Pn/IT alanı olan her nesne bir gol sayılır. "1"/"2" anahtarı takım mı devre mi belli
 // değildir (gerçek cihazda devre gibi davrandı); bu yüzden takım sırayla şunlardan çıkarılır: gol sonrası skor (Sc), olaydaki takım numarası,
 // maç skoru (bir takım hiç gol atmadıysa), skorla tam tutan "1"/"2" anahtarı. Hiçbiri tutmazsa takım boş kalır (ekran ortada gösterir).
@@ -221,7 +254,8 @@ function collectGoals(node, key, out, depth = 0) {
     return;
   }
   if ('Min' in node && ('Pn' in node || 'IT' in node)) {
-    out.push({ ev: node, key });
+    // Tür kodu varsa yalnız gol türleri alınır: asist (63), kart (43) ve oyuncusuz kayıtlar (44…) gol sayılmaz
+    if (node.IT == null || IT_GOALISH.has(Number(node.IT))) out.push({ ev: node, key });
     return;
   }
   for (const [k, v] of Object.entries(node)) collectGoals(v, k === '1' || k === '2' ? k : key, out, depth + 1);
@@ -324,21 +358,246 @@ export function parseLsEvents(json, m) {
   return { events, note: events.length ? '' : 'Incs-s boş', warn };
 }
 
-// Maçın gollerini indirir. Döner: { events, note }; adres çalışmazsa events boş, note nedeni söyler (ekranda küçük yazıyla görünür). Hata atmaz.
-export async function loadLsEvents({ net, match, hosts = LS_HOSTS, timeoutMs = 15000 } = {}) {
+const flip = (side) => (side === 'home' ? 'away' : side === 'away' ? 'home' : '');
+const minuteOf = (ev) => {
+  const min = str(ev && ev.Min).replace(/'/g, '');
+  if (!min) return '';
+  const ex = intOrNull(ev && ev.MinEx);
+  return ex ? `${min}+${ex}'` : `${min}'`;
+};
+const minuteKey = (ev) => {
+  const m = intOrNull(ev && ev.Min);
+  if (m == null) return 999;
+  const ex = intOrNull(ev && ev.MinEx);
+  return m + (ex ? ex / 100 : 0);
+};
+const fullName = (p) => {
+  const n = `${str(p && p.Fn)} ${str(p && p.Ln)}`.trim();
+  return (n || str(p && (p.Snm || p.Pn))).slice(0, 60);
+};
+const scoreText = (sc) => (Array.isArray(sc) && intOrNull(sc[0]) != null && intOrNull(sc[1]) != null ? `${intOrNull(sc[0])}–${intOrNull(sc[1])}` : '');
+
+// "incidents" yanıtı: Incs → yarı anahtarı ("1"/"2") → olaylar (iç içe "Incs" olabilir). Nm: takım (1 ev sahibi, 2 deplasman); Sc: olaydan sonraki skor.
+// Gol, kendi kalesine gol ve sarı kart olay olur; asist golün ayrıntısına yazılır. Kırmızı kart kodu bilinmediği için gösterilmez.
+export function parseLsIncidents(json) {
+  const src = json && typeof json === 'object' ? json.Incs : null;
+  if (!src || typeof src !== 'object') return { events: [], ht: '' };
+  const nodes = [];
+  const walk = (node, depth = 0) => {
+    if (node == null || typeof node !== 'object' || depth > 6) return;
+    if (Array.isArray(node)) return node.forEach((x) => walk(x, depth + 1));
+    if ('Min' in node && 'IT' in node) return void nodes.push(node);
+    for (const v of Object.values(node)) walk(v, depth + 1);
+  };
+  walk(src);
+  const events = [];
+  const assists = [];
+  nodes.forEach((ev, idx) => {
+    const it = Number(ev.IT);
+    const nm = sideNo(ev.Nm);
+    if (it === IT_ASSIST) return void assists.push({ ev, nm });
+    const kind = IT_GOAL.has(it) ? 'goal' : it === IT_OWN ? 'own' : it === IT_YELLOW ? 'yellow' : '';
+    if (!kind || !nm) return;
+    events.push({
+      kind,
+      mark: false,
+      idx,
+      key: minuteKey(ev),
+      minute: minuteOf(ev),
+      side: kind === 'own' ? flip(nm) : nm,
+      player: fullName(ev) || str(ev.Pn).slice(0, 60),
+      other: '',
+      detail: '',
+      score: kind === 'yellow' ? '' : scoreText(ev.Sc),
+      text: '',
+      _sc: scoreText(ev.Sc),
+      _nm: nm,
+    });
+  });
+  // asist: aynı dakika, aynı takım ve aynı skorlu golün ayrıntısı
+  for (const a of assists) {
+    const sc = scoreText(a.ev.Sc);
+    const g = events.find((e) => e.kind === 'goal' && e._nm === a.nm && e.key === minuteKey(a.ev) && e._sc === sc && !e.detail);
+    const who = fullName(a.ev) || str(a.ev.Pn);
+    if (g && who) g.detail = `asist: ${who}`;
+  }
+  for (const e of events) {
+    delete e._sc;
+    delete e._nm;
+  }
+  const ht = intOrNull(json.Trh1) != null && intOrNull(json.Trh2) != null ? `${intOrNull(json.Trh1)}–${intOrNull(json.Trh2)}` : '';
+  return { events, ht };
+}
+
+const POS_TR = { 1: 'K', 2: 'D', 3: 'OS', 4: 'F' };
+const fpOrder = (p) => {
+  const m = /^(\d+):(\d+)$/.exec(str(p.Fp));
+  return m ? [Number(m[1]), Number(m[2])] : [intOrNull(p.Pos) || 9, intOrNull(p.Snu) || 99];
+};
+
+// "lineups" yanıtı: Lu[takım] { Tnb, Fo (formasyon), Ps (oyuncular) }: Pos 1–4 ilk 11, 5 yedek (PosS: mevki), 10 teknik direktör. Subs: oyuncu değişiklikleri
+// (her değişiklik iki kayıt: giren IT 5, çıkan IT 4; IDo karşı oyuncunun kimliği).
+export function parseLsLineups(json) {
+  const out = { lineups: {}, subs: [] };
+  const teams = arr(json && json.Lu);
+  const names = new Map();
+  const sideOfTeam = new Map();
+  teams.forEach((t, i) => {
+    if (!t || typeof t !== 'object') return;
+    const side = sideNo(t.Tnb) || (i === 0 ? 'home' : i === 1 ? 'away' : '');
+    if (!side) return;
+    const ps = arr(t.Ps);
+    for (const p of ps) {
+      const nm = fullName(p);
+      for (const id of [p.Aid, p.Pid, p.ID]) if (id != null && id !== '') names.set(String(id), nm);
+    }
+    const starters = ps
+      .filter((p) => [1, 2, 3, 4].includes(Number(p.Pos)))
+      .sort((x, y) => {
+        const a = fpOrder(x);
+        const b = fpOrder(y);
+        return a[0] - b[0] || a[1] - b[1];
+      })
+      .map((p) => ({ n: str(p.Snu), name: fullName(p), pos: POS_TR[Number(p.Pos)] || '', starter: true }))
+      .filter((p) => p.name);
+    if (!starters.length) return;
+    const subs = ps
+      .filter((p) => Number(p.Pos) === 5)
+      .map((p) => ({ n: str(p.Snu), name: fullName(p), pos: POS_TR[Number(p.PosS)] || '', starter: false }))
+      .filter((p) => p.name);
+    const coach = ps.find((p) => Number(p.Pos) === 10);
+    const fo = arr(t.Fo).map(intOrNull).filter((x) => x != null && x > 0);
+    out.lineups[side] = { formation: fo.length >= 3 && fo.reduce((a, b) => a + b, 0) === 10 ? fo.join('-') : '', starters, subs, squad: false, coach: coach ? fullName(coach) : '' };
+    sideOfTeam.set(i, side);
+  });
+  // oyuncu değişiklikleri
+  const raw = [];
+  const walk = (node, depth = 0) => {
+    if (node == null || typeof node !== 'object' || depth > 6) return;
+    if (Array.isArray(node)) return node.forEach((x) => walk(x, depth + 1));
+    if ('Min' in node && ('IDo' in node || 'AIDo' in node)) return void raw.push(node);
+    for (const v of Object.values(node)) walk(v, depth + 1);
+  };
+  walk(json && json.Subs);
+  const seen = new Set();
+  const take = (ev, on) => {
+    const side = sideNo(ev.Nm);
+    const idSelf = str(ev.Aid || ev.ID);
+    const idOther = str(ev.AIDo || ev.IDo);
+    if (!side || !idOther) return;
+    const key = `${minuteKey(ev)}|${side}|${[idSelf, idOther].sort().join('-')}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const self = names.get(idSelf) || fullName(ev) || (str(ev.Pnum) ? `#${str(ev.Pnum)}` : '');
+    const other = names.get(idOther) || (str(ev.PnumO) ? `#${str(ev.PnumO)}` : '');
+    const player = on ? self : other;
+    const out2 = on ? other : self;
+    if (!player) return;
+    out.subs.push({ kind: 'sub', mark: false, idx: 1000 + out.subs.length, key: minuteKey(ev), minute: minuteOf(ev), side, player, other: out2, detail: '', score: '', text: '' });
+  };
+  for (const ev of raw) if (Number(ev.IT) === IT_SUB_ON || ev.IT == null) take(ev, true);
+  for (const ev of raw) if (Number(ev.IT) === IT_SUB_OFF) take(ev, false);
+  return out;
+}
+
+// İstatistik satırları (LiveScore Stat anahtarları): yalnız anlamı doğrulananlar. Pss = top hakimiyeti (iki takımın toplamı 100). Kart satırları yalnız kart varsa.
+const STAT_ROWS = [
+  ['Pss', 'Top hakimiyeti', true],
+  ['Shon', 'İsabetli şut', false],
+  ['Shof', 'İsabetsiz şut', false],
+  ['Shbl', 'Engellenen şut', false],
+  ['Gks', 'Kurtarış', false],
+  ['Fls', 'Faul', false],
+  ['Ofs', 'Ofsayt', false],
+  ['Ycs', 'Sarı kartlar', false, true],
+  ['Rcs', 'Kırmızı kartlar', false, true],
+];
+export function parseLsStats(json) {
+  const st = arr(json && json.Stat);
+  if (st.length < 2) return [];
+  const home = st.find((x) => sideNo(x && x.Tnb) === 'home') || st[0];
+  const away = st.find((x) => sideNo(x && x.Tnb) === 'away') || st[1];
+  if (home === away) return [];
+  const rows = [];
+  for (const [key, label, pct, onlyIfAny] of STAT_ROWS) {
+    const h = intOrNull(home[key]);
+    const a = intOrNull(away[key]);
+    if (h == null || a == null) continue;
+    if (pct && (h + a < 98 || h + a > 102)) continue; // yüzdelik değilse (başka bir sayaçsa) gösterilmez
+    if (onlyIfAny && h + a === 0) continue;
+    rows.push({ id: key, label, home: h, away: a, pct });
+  }
+  // tüm sayaçlar sıfırsa (veri henüz yok) istatistik gösterilmez
+  return rows.some((r) => r.home + r.away > 0) ? rows : [];
+};
+
+// Olay listesine devre arası / maç sonu ayraçlarını koyar ve dakikaya göre sıralar. status: lsStatus çıktısı.
+function arrange(events, { ht, ft, status }) {
+  const out = events.map((e) => ({ ...e }));
+  const min = /^(\d+)/.exec(String((status && status.text) || ''));
+  const pastHalf = !!status && (status.state === 'post' || /Devre arası|Uzatma|Penalt/.test(status.text || '') || (min && Number(min[1]) > 45) || out.some((e) => e.key > 45.5));
+  if (ht && pastHalf && out.length) out.push({ kind: 'ht', mark: true, idx: -1, key: 45.5, minute: '', side: '', player: '', other: '', detail: '', score: ht, text: '' });
+  if (ft && status && status.state === 'post' && !status.off && out.length) out.push({ kind: 'ft', mark: true, idx: 99999, key: 9999, minute: '', side: '', player: '', other: '', detail: '', score: ft, text: '' });
+  out.sort((a, b) => a.key - b.key || a.idx - b.idx);
+  for (const e of out) {
+    delete e.key;
+    delete e.idx;
+  }
+  return out;
+}
+
+// Maçın canlı ayrıntısını indirir: durum + skor (scoreboard), olaylar (incidents; olmazsa scoreboard'daki goller), kadro + oyuncu değişiklikleri (lineups), istatistik (statistics).
+// lineups/stats: false ise o uç hiç sorulmaz (kotayı korumak için ekran bunları seyrek ister). Döner: { events, note, warn, status, home, away, lineups?, stats? }. Hata atmaz.
+export async function loadLsEvents({ net, match, hosts = LS_HOSTS, timeoutMs = 15000, lineups = true, stats = true, incidents = true } = {}) {
   const eid = lsEidOf(match);
   if (!eid) return { events: [], note: 'Maç kimliği yok' };
   const errs = [];
-  for (const url of lsDetailUrls(eid, hosts)) {
-    try {
-      const json = await withTimeout(net.json(url, { fast: true }), timeoutMs);
-      if (!json || typeof json !== 'object') throw new Error('Boş yanıt');
-      return parseLsEvents(json, match);
-    } catch (e) {
-      errs.push(String((e && e.message) || e || 'hata').slice(0, 80));
+  const get = async (kind) => {
+    let last = null;
+    for (const url of lsDetailUrls(eid, hosts, kind)) {
+      try {
+        const json = await withTimeout(net.json(url, { fast: true }), timeoutMs);
+        if (!json || typeof json !== 'object') throw new Error('Boş yanıt');
+        return json;
+      } catch (e) {
+        last = e;
+        errs.push(String((e && e.message) || e || 'hata').slice(0, 80));
+      }
     }
+    throw last || new Error('hata');
+  };
+  const [sb, inc, lu, st] = await Promise.allSettled([get('scoreboard'), incidents ? get('incidents') : Promise.reject(new Error('atlandı')), lineups ? get('lineups') : Promise.reject(new Error('atlandı')), stats ? get('statistics') : Promise.reject(new Error('atlandı'))]);
+  const out = { events: [], note: '' };
+  const sj = sb.status === 'fulfilled' ? sb.value : null;
+  // durum + skor
+  if (sj) {
+    const h = intOrNull(sj.Tr1);
+    const a = intOrNull(sj.Tr2);
+    const status = lsStatus(sj.Eps, { t: match.t || 0, now: Date.now(), scored: h != null && a != null });
+    out.status = status;
+    out.home = { score: status.state === 'pre' ? null : h };
+    out.away = { score: status.state === 'pre' ? null : a };
   }
-  return { events: [], note: errs[0] || 'hata' };
+  // olaylar
+  const parsed = inc.status === 'fulfilled' ? parseLsIncidents(inc.value) : { events: [], ht: '' };
+  let events = parsed.events;
+  if (!events.length && sj) {
+    const g = parseLsEvents(sj, match);
+    events = g.events.map((e, i) => ({ ...e, idx: i, key: minuteKey({ Min: parseInt(e.minute, 10) }) }));
+    out.note = events.length ? '' : g.note;
+    if (g.warn) out.warn = g.warn;
+  } else if (!events.length) out.note = errs[0] || 'hata';
+  let subs = [];
+  if (lu.status === 'fulfilled') {
+    const l = parseLsLineups(lu.value);
+    if (l.lineups.home || l.lineups.away) out.lineups = l.lineups;
+    subs = l.subs;
+  }
+  if (st.status === 'fulfilled') out.stats = parseLsStats(st.value);
+  const ft = sj && intOrNull(sj.Tr1) != null && intOrNull(sj.Tr2) != null ? `${intOrNull(sj.Tr1)}–${intOrNull(sj.Tr2)}` : '';
+  out.events = arrange([...events, ...subs], { ht: parsed.ht || (sj && intOrNull(sj.Trh1) != null && intOrNull(sj.Trh2) != null ? `${intOrNull(sj.Trh1)}–${intOrNull(sj.Trh2)}` : ''), ft, status: out.status });
+  if (!sj && !events.length && lu.status !== 'fulfilled' && st.status !== 'fulfilled') out.note = errs[0] || 'hata';
+  return out;
 }
 
 // ---- iki kaynağı birleştirme ----

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources, lsDetailUrls, lsEidOf, parseLsEvents, loadLsEvents } from '../www/js/sports-ls.js';
+import { lsDateKey, lsTz, lsUrls, parseEsd, lsStatus, groupOf, parseLiveScore, loadLiveScoreDay, sameTeam, mergeSources, lsDetailUrls, lsEidOf, parseLsEvents, loadLsEvents, parseLsIncidents, parseLsLineups, parseLsStats, inScope, isWomenTeam } from '../www/js/sports-ls.js';
 import { sections, chipsFor, capSections, teamKeys } from '../www/js/sports.js';
 
 const esd = (y, mo, d, h, mi) => `${y}${String(mo).padStart(2, '0')}${String(d).padStart(2, '0')}${String(h).padStart(2, '0')}${String(mi).padStart(2, '0')}00`;
@@ -79,7 +79,7 @@ test('grup: Türkiye, uluslararası, büyük Avrupa, diğer', () => {
 
 test('parseLiveScore: maçlar, durumlar, gruplar; bozuk kayıtlar atlanır', () => {
   const ms = parseLiveScore(FIX, { now: new Date(2026, 10, 12, 22, 0).getTime() });
-  assert.equal(ms.length, 5);
+  assert.equal(ms.length, 4); // Brezilya (Avrupa dışı lig) kapsam dışıdır
   const by = Object.fromEntries(ms.map((m) => [m.id.split(':')[2], m]));
   assert.equal(by.e1.state, 'post');
   assert.deepEqual([by.e1.home.score, by.e1.away.score], [2, 1]);
@@ -92,8 +92,7 @@ test('parseLiveScore: maçlar, durumlar, gruplar; bozuk kayıtlar atlanır', () 
   assert.equal(by.e2.home.score, null);
   assert.equal(by.e2.ord, 0); // Süper Lig önce
   assert.ok(by.e1.ord > by.e2.ord);
-  assert.deepEqual([by.e3.state, by.e3.text, by.e3.home.score], ['in', "34'", 1]);
-  assert.equal(by.e3.grp, 'oth');
+  assert.equal(by.e3, undefined, 'Avrupa dışı ülke ligi kapsam dışı');
   assert.equal(by.e4.off, true);
   assert.equal(by.e4.home.label, 'Türkiye'); // milli takım Türkçe gösterilir
   assert.equal(by.e4.grp, 'int');
@@ -113,7 +112,7 @@ test('loadLiveScoreDay: yedek adrese düşer, biçim ve ağ hataları ayrıntıy
   const r = await loadLiveScoreDay({ net, dayMs: DAYMS, now: Date.now() });
   assert.equal(urls.length, 2);
   assert.match(r.url, /prod-cdn-public-api/);
-  assert.equal(r.matches.length, 5);
+  assert.equal(r.matches.length, 4);
 
   const bad = { json: async () => ({ foo: 1 }) };
   await assert.rejects(loadLiveScoreDay({ net: bad, dayMs: DAYMS }), (e) => {
@@ -309,11 +308,11 @@ test('loadLsEvents: ilk adres çalışmazsa yedeğe geçer; hepsi başarısızsa
   const calls = [];
   const net = { json: async (url) => { calls.push(url); if (url.includes('prod-cdn')) throw new Error('HTTP 403'); return { 'Incs-s': { 1: [{ Min: 5, Pn: 'Y' }] } }; } };
   const m = { eid: '999999', home: { score: 1 }, away: { score: 0 } };
-  const r = await loadLsEvents({ net, match: m });
+  const r = await loadLsEvents({ net, match: m, lineups: false, stats: false, incidents: false });
   assert.equal(calls.length, 2);
   assert.equal(r.events.length, 1);
   assert.equal(r.events[0].score, '1–0');
-  const bad = await loadLsEvents({ net: { json: async () => { throw new Error('HTTP 500'); } }, match: m });
+  const bad = await loadLsEvents({ net: { json: async () => { throw new Error('HTTP 500'); } }, match: m, lineups: false, stats: false, incidents: false });
   assert.deepEqual(bad, { events: [], note: 'HTTP 500' });
   assert.deepEqual(await loadLsEvents({ net, match: { home: {}, away: {} } }), { events: [], note: 'Maç kimliği yok' });
 });
@@ -322,4 +321,153 @@ test('parseLiveScore: maç nesnesi Eid taşır (maç özeti için)', () => {
   const j = { Stages: [{ Sid: 's', Cnm: 'Spain', Snm: 'Segunda RFEF', Events: [ev('4321000', 'Castellonense', 'La Nucia', esd(2026, 11, 11, 21, 0), { Eps: "54'", Tr1: '1', Tr2: '1' })] }] };
   const r = parseLiveScore(j, { now: Date.UTC(2026, 10, 11, 19, 0) });
   assert.equal(r[0].eid, '4321000');
+});
+
+// ---- gerçek maç yanıtlarından (Galatasaray 4–3 Amed Sportif) alınan örnekler ----
+const P = (Min, Nm, IT, Fn, Ln, Sc, extra = {}) => ({ Min, Nm, IT, Fn, Ln, Pn: `${Fn[0]}. ${Ln}`, ...(Sc ? { Sc } : {}), ...extra });
+const INC = {
+  Eid: '1821078', Tr1: '4', Tr2: '3', Trh1: '2', Trh2: '0',
+  Incs: {
+    1: [P(7, 1, 36, 'Rafael', 'Leão', [1, 0]), P(7, 1, 63, 'Lucas', 'Torreira', [1, 0]), P(45, 1, 39, 'Alban', 'Lafont', [2, 0])],
+    2: [
+      P(50, 2, 43, 'Rayan', 'Raveloson'), P(59, 1, 36, 'Aleksey', 'Batrakov', [3, 0]), P(59, 1, 63, 'Roland', 'Sallai', [3, 0]), P(61, 2, 43, 'Gift', 'Orban'),
+      P(62, 2, 36, 'Dia', 'Saba', [3, 1]), P(65, 2, 36, 'Gift', 'Orban', [3, 2]), P(65, 2, 63, 'Furkan', 'Soyalp', [3, 2]), P(74, 2, 43, 'David', 'Bates'),
+      P(80, 1, 36, 'Barış Alper', 'Yılmaz', [4, 2]), P(80, 1, 63, 'Gabriel', 'Sara', [4, 2]), P(90, 2, 36, 'Yira', 'Sor', [4, 3], { MinEx: 2 }),
+    ],
+  },
+};
+
+test('parseLsIncidents: gol, kendi kalesine gol, sarı kart; asist golün ayrıntısına yazılır; asist ve bilinmeyen kodlar olay olmaz', () => {
+  const r = parseLsIncidents(INC);
+  const ev = r.events;
+  assert.equal(ev.length, 10, '6 gol + 1 kendi kalesine + 3 sarı kart; asistler ayrı olay değil');
+  const goal = ev[0];
+  assert.deepEqual([goal.kind, goal.side, goal.minute, goal.player, goal.score, goal.detail], ['goal', 'home', "7'", 'Rafael Leão', '1–0', 'asist: Lucas Torreira']);
+  const own = ev.find((e) => e.kind === 'own');
+  assert.deepEqual([own.side, own.player, own.score], ['away', 'Alban Lafont', '2–0']); // Lafont deplasman kalecisi: golü ev sahibi alır
+  assert.equal(ev.filter((e) => e.kind === 'yellow').length, 3);
+  assert.deepEqual(ev.filter((e) => e.kind === 'yellow').map((e) => e.side), ['away', 'away', 'away']);
+  const last = ev[ev.length - 1];
+  assert.deepEqual([last.minute, last.score, last.side], ["90+2'", '4–3', 'away']);
+  assert.equal(r.ht, '2–0');
+  // iç içe olay + tanınmayan kod + oyuncusuz kayıt
+  const nested = { Incs: { 1: [{ Min: 5, Nm: 2, Sc: [0, 1], Incs: [P(5, 2, 36, 'Y', 'Başaytaç', [0, 1])] }, { Min: 37, Nm: 2, IT: 44 }, { Min: 12, Nm: 1, IT: 99, Pn: 'X' }] } };
+  assert.deepEqual(parseLsIncidents(nested).events.map((e) => [e.kind, e.player, e.side]), [['goal', 'Y Başaytaç', 'away']]);
+  for (const j of [null, {}, { Incs: null }, { Incs: [] }, { Incs: { 1: [null, 5, 'x'] } }]) assert.deepEqual(parseLsIncidents(j).events, []);
+});
+
+const LU = {
+  Eid: '1821078',
+  Lu: [
+    { Tnb: 1, Fo: [4, 2, 3, 1], Ps: [
+      { Aid: '22006', Pid: '22006', Fn: 'Uğurcan', Ln: 'Çakır', Pos: 1, Snu: 1, PosA: 1, Fp: '1:1' },
+      { Aid: '38280', Pid: '38280', Fn: 'Evren Eren', Ln: 'Elmali', Pos: 2, Snu: 17, PosA: 2, Fp: '2:4' },
+      { Pid: '6pg', Fn: 'Aleksey', Ln: 'Batrakov', Pos: 3, Snu: 83, PosA: 3, Fp: '4:2' },
+      { Aid: '2152', Pid: '2152', Fn: 'El Chadaille', Ln: 'Bitshiabu', Pos: 5, PosS: 2, Snu: 4 },
+      { Aid: '49215', Pid: '49215', Fn: 'Okan', Ln: 'Buruk', Pos: 10, Pon: 'COACH' },
+      { Aid: '77', Pid: '77', Fn: 'Yedek', Ln: 'Oyuncu', Pos: 5, PosS: 3, Snu: 77 },
+    ] },
+    { Tnb: 2, Fo: [4, 3, 1, 2], Ps: [
+      { Aid: '54265', Pid: '54265', Fn: 'Ali', Ln: 'Bulbul', Pos: 5, PosS: 4, Snu: 9 },
+      { Aid: '43603', Pid: '43603', Fn: 'Gökhan', Ln: 'Gül', Pos: 3, Snu: 8, Fp: '3:2' },
+      { Aid: '1', Pid: '1', Fn: 'Kaleci', Ln: 'Bir', Pos: 1, Snu: 1, Fp: '1:1' },
+      { Aid: '9', Pid: '9', Fn: 'Besnik', Ln: 'Hasi', Pos: 10, Pon: 'COACH' },
+    ] },
+  ],
+  // her değişiklik iki kayıt: giren IT 5, çıkan IT 4
+  Subs: { 2: [
+    { Min: 46, Nm: 2, Aid: '54265', ID: '54265', Fn: 'Ali', Ln: 'Bulbul', IDo: '43603', AIDo: '43603', IT: 5 },
+    { Min: 46, Nm: 2, Aid: '43603', ID: '43603', Fn: 'Gökhan', Ln: 'Gül', IDo: '54265', AIDo: '54265', IT: 4 },
+    { Min: 63, Nm: 1, Aid: '77', ID: '77', IDo: '38280', PnumO: 17, IT: 5 },
+  ] },
+};
+
+test('parseLsLineups: ilk 11 formasyon sırasıyla, yedekler, teknik direktör, formasyon; oyuncu değişiklikleri çift kayıttan tek olay olur', () => {
+  const r = parseLsLineups(LU);
+  const h = r.lineups.home;
+  assert.equal(h.formation, '4-2-3-1');
+  assert.deepEqual(h.starters.map((p) => p.name), ['Uğurcan Çakır', 'Evren Eren Elmali', 'Aleksey Batrakov']);
+  assert.deepEqual(h.starters.map((p) => p.pos), ['K', 'D', 'OS']);
+  assert.deepEqual(h.subs.map((p) => [p.n, p.name, p.pos]), [['4', 'El Chadaille Bitshiabu', 'D'], ['77', 'Yedek Oyuncu', 'OS']]);
+  assert.equal(h.coach, 'Okan Buruk');
+  assert.equal(r.lineups.away.coach, 'Besnik Hasi');
+  assert.equal(r.lineups.away.formation, '4-3-1-2');
+  assert.equal(r.subs.length, 2, '46. dk değişikliği iki kayıttan bir olay');
+  assert.deepEqual([r.subs[0].side, r.subs[0].minute, r.subs[0].player, r.subs[0].other], ['away', "46'", 'Ali Bulbul', 'Gökhan Gül']);
+  assert.deepEqual([r.subs[1].side, r.subs[1].minute, r.subs[1].player, r.subs[1].other], ['home', "63'", 'Yedek Oyuncu', 'Evren Eren Elmali']); // adı olmayan kayıtta oyuncular kimlikten kadrodan bulunur
+  for (const j of [null, {}, { Lu: null }, { Lu: [null, {}] }]) assert.deepEqual(parseLsLineups(j), { lineups: {}, subs: [] });
+  // ilk 11 belli değilse (kadro henüz açıklanmadı) kadro bölümü yok
+  assert.deepEqual(parseLsLineups({ Lu: [{ Tnb: 1, Ps: [{ Fn: 'A', Ln: 'B', Pos: 5 }] }] }).lineups, {});
+});
+
+test('parseLsStats: doğrulanan satırlar; takım Tnb ile bulunur; yüzdelik toplamı 100 değilse gösterilmez; kart satırı yalnız kart varsa', () => {
+  const j = { Eid: '1', Stat: [
+    { Tnb: 2, Fls: 11, Ofs: 8, Ycs: 3, Rcs: 0, Shof: 3, Shbl: 6, Gks: 3, Pss: 43, Shon: 5, Cos: 6 },
+    { Tnb: 1, Fls: 8, Ofs: 3, Ycs: 0, Rcs: 0, Shof: 6, Shbl: 5, Gks: 2, Pss: 57, Shon: 6, Cos: 3 },
+  ] };
+  const rows = parseLsStats(j);
+  assert.deepEqual(rows.map((r) => r.label), ['Top hakimiyeti', 'İsabetli şut', 'İsabetsiz şut', 'Engellenen şut', 'Kurtarış', 'Faul', 'Ofsayt', 'Sarı kartlar']);
+  assert.deepEqual([rows[0].home, rows[0].away, rows[0].pct], [57, 43, true]);
+  assert.deepEqual([rows[7].home, rows[7].away], [0, 3]);
+  assert.equal(parseLsStats({ Stat: [{ Tnb: 1, Pss: 70 }, { Tnb: 2, Pss: 70 }] }).length, 0);
+  assert.deepEqual(parseLsStats({ Stat: [{ Tnb: 1, Fls: 0, Ofs: 0 }, { Tnb: 2, Fls: 0, Ofs: 0 }] }), [], 'hepsi sıfırsa veri yok sayılır');
+  for (const x of [null, {}, { Stat: [] }, { Stat: [{}] }]) assert.deepEqual(parseLsStats(x), []);
+});
+
+test('loadLsEvents: durum+skor, olaylar (HT/MS ayraçlı), değişiklikler, kadro ve istatistik tek yüklemede; lineups/stats:false ise o uçlar sorulmaz', async () => {
+  const SB = { Eid: '1821078', Tr1: '4', Tr2: '3', Trh1: '2', Trh2: '0', Eps: 'FT', 'Incs-s': { 1: [] } };
+  const calls = [];
+  const net = { json: async (url) => {
+    calls.push(url);
+    if (url.includes('/scoreboard/')) return SB;
+    if (url.includes('/incidents/')) return INC;
+    if (url.includes('/lineups/')) return LU;
+    if (url.includes('/statistics/')) return { Eid: '1', Stat: [{ Tnb: 1, Pss: 57, Shon: 6 }, { Tnb: 2, Pss: 43, Shon: 5 }] };
+    throw new Error('beklenmeyen ' + url);
+  } };
+  const m = { eid: '1821078', t: Date.now() - 3 * 3600e3, home: { score: 4 }, away: { score: 3 } };
+  const r = await loadLsEvents({ net, match: m });
+  assert.equal(r.status.state, 'post');
+  assert.deepEqual([r.home.score, r.away.score], [4, 3]);
+  const kinds = r.events.map((e) => (e.mark ? e.kind : e.kind));
+  assert.ok(kinds.indexOf('ht') > kinds.indexOf('own') && kinds.indexOf('ht') < kinds.indexOf('yellow'), 'devre arası 45. dk ile 50. dk arasında');
+  assert.deepEqual(kinds.slice(-1), ['ft']);
+  assert.equal(r.events.find((e) => e.kind === 'ht').score, '2–0');
+  assert.equal(r.events.find((e) => e.kind === 'ft').score, '4–3');
+  assert.equal(r.events.filter((e) => e.kind === 'sub').length, 2);
+  assert.ok(r.lineups.home.starters.length && r.stats.length);
+  assert.equal(calls.length, 4 * 1 + 0, 'ilk adres çalıştı: dört uç, birer istek');
+  // seyrek yoklama: kadro/istatistik istenmezse sorulmaz ve yanıtta yer almaz
+  calls.length = 0;
+  const lite = await loadLsEvents({ net, match: m, lineups: false, stats: false });
+  assert.equal(calls.length, 2);
+  assert.ok(!('lineups' in lite) && !('stats' in lite));
+  assert.ok(lite.events.length >= 10);
+});
+
+test('kapsam: Türkiye, Avrupa ve uluslararası erkek futbolu; kadın, genç olmayan Avrupa dışı ligler ve kadın takımlar dışarıda', () => {
+  assert.equal(inScope('Turkiye', 'Süper Lig'), true);
+  assert.equal(inScope('Czech Republic', '1. Liga'), true);
+  assert.equal(inScope('Bosnia & Herzegovina', 'Premier Liga'), true);
+  assert.equal(inScope('World', 'Friendlies'), true);
+  assert.equal(inScope('South America', 'Copa Libertadores'), true);
+  assert.equal(inScope('Brazil', 'Serie A'), false);
+  assert.equal(inScope('Japan', 'J1 League'), false);
+  assert.equal(inScope('England', "Women's Super League"), false);
+  assert.equal(inScope('Germany', 'Frauen-Bundesliga'), false);
+  assert.equal(inScope('Spain', 'Liga F'), false);
+  assert.equal(inScope('Europe', 'UEFA Women\'s Champions League'), false);
+  assert.equal(isWomenTeam('Arsenal W'), true);
+  assert.equal(isWomenTeam('Lyon Women'), true);
+  assert.equal(isWomenTeam('Wolfsberger AC'), false);
+  assert.equal(isWomenTeam('Arsenal'), false);
+  const j = { Stages: [{ Sid: 's', Cnm: 'England', Snm: 'Premier League', Events: [ev('1', 'Arsenal', 'Chelsea', esd(2026, 11, 12, 20, 0)), ev('2', 'Arsenal W', 'Chelsea W', esd(2026, 11, 12, 21, 0))] }] };
+  assert.deepEqual(parseLiveScore(j).map((m) => m.eid), ['1']);
+});
+
+test('parseLsEvents: asist, kart ve oyuncusuz kayıtlar gol sayılmaz (tür kodu varsa)', () => {
+  const j = { 'Incs-s': { 1: [{ Min: 7, Nm: 1, Sc: [1, 0], Incs: [{ Min: 7, Nm: 1, IT: 36, Pn: 'Leão', Sc: [1, 0] }, { Min: 7, Nm: 1, IT: 63, Pn: 'Torreira', Sc: [1, 0] }] }, { Min: 37, Nm: 2, IT: 44 }, { Min: 40, Nm: 2, IT: 43, Pn: 'Kartlı' }] } };
+  const r = parseLsEvents(j, { home: { score: 1 }, away: { score: 0 } });
+  assert.deepEqual(r.events.map((e) => e.player), ['Leão']);
+  assert.equal(r.events[0].side, 'home');
 });

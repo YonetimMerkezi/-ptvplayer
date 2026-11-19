@@ -463,4 +463,8 @@ export const EN_A = [
   ["Bellek, işlemci ve video çözücüleri", "Memory, processor and video decoders"],
   ["Görüntüle", "View"],
   ["Yayın önbelleği", "Stream buffer"],
+  ["Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur", "Fast: channels open quickly, stutter may increase. High: less stutter, channels open a bit slower. Applies on next launch"],
+  ["Görüntü çözücü", "Video decoder"],
+  ["Otomatik cihazın seçimini kullanır. Donanım öncelikli: Mi Stick gibi TV kutularında ilk deneme. Görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar", "Automatic uses the device's choice. Hardware first: first attempt on TV boxes like Mi Stick. If the picture is broken try software first (uses more CPU). Changing it reopens the current stream"],
+  ["Yazılım ses çözücüsü (deneysel)", "Software audio decoder (experimental)"],
 ];

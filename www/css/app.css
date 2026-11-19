@@ -1584,6 +1584,15 @@ html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 3px var(--ring, #fff);
 .sd-rem .chips { justify-content: center; flex-wrap: wrap; padding: 0 0 4px; overflow: visible; }
 .sd-sec { padding: 8px 0 2px; }
 .sd-sec h4 { margin: 0 0 4px; font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.sd-sxs { display: grid; gap: 8px; }
+.sd-sx { display: grid; grid-template-columns: 3.4em 1fr 3.4em; align-items: center; column-gap: 6px; row-gap: 3px; font-size: 0.8125rem; }
+.sd-sx b { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); }
+.sd-sx b:nth-of-type(2) { text-align: right; }
+.sd-sx span { text-align: center; color: var(--muted); }
+.sd-sx.h b:first-child, .sd-sx.a b:nth-of-type(2) { color: var(--text); }
+.sd-sxb { grid-column: 1 / -1; display: flex; gap: 3px; height: 4px; }
+.sd-sxb i { display: block; border-radius: 2px; background: var(--line); }
+.sd-sx.h .sd-sxb i:first-child, .sd-sx.a .sd-sxb i:last-child { background: var(--accent); }
 .sd-note { margin: 0 0 8px; color: var(--muted); font-size: 0.875rem; }
 .sd-note b { color: var(--text); }
 .sd-intl { font-size: 0.8125rem; }

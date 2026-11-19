@@ -84,10 +84,22 @@ test('parseSummary: olaylar takıma ve dakikaya göre, ilgisiz olaylar atılır'
   assert.equal(d.away.score, 1);
 });
 
-test('parseSummary: istatistik verilmez (ESPN yanıtında olsa bile)', () => {
+test('parseSummary: takım istatistiği yalnız iki takımda da olan bilinen satırlarla (yüzdelik toplamı ~100); sezon toplamları gösterilmez', () => {
   const d = parseSummary(SUMMARY, {});
-  assert.equal('stats' in d, false);
+  assert.deepEqual(d.stats.map((r) => [r.label, r.home, r.away, r.pct]), [['Top hakimiyeti', 55.4, 44.6, true], ['Şut', 12, 7, false]]);
   assert.equal(JSON.stringify(d).includes('Topla oynama'), false);
+  // ESPN Süper Lig özetinde boxscore yalnız sezon toplamı taşır (atılan gol, asist, averaj): istatistik bölümü olmaz
+  const season = { boxscore: { teams: [
+    { homeAway: 'home', team: { id: '1' }, statistics: [{ name: 'totalGoals', displayValue: '3' }, { name: 'goalAssists', displayValue: '2' }, { name: 'goalDifference', displayValue: '-25' }] },
+    { homeAway: 'away', team: { id: '2' }, statistics: [{ name: 'totalGoals', displayValue: '11' }, { name: 'goalAssists', displayValue: '8' }, { name: 'goalDifference', displayValue: '2' }] },
+  ] } };
+  assert.deepEqual(parseSummary(season, {}).stats, []);
+  assert.equal(parseSummary(season, {}).empty, true);
+  // her şey sıfırsa (veri henüz yok) gösterilmez; kart satırı yalnız kart varsa
+  const zero = { boxscore: { teams: [{ homeAway: 'home', team: { id: '1' }, statistics: [{ name: 'totalShots', displayValue: '0' }, { name: 'yellowCards', displayValue: '0' }] }, { homeAway: 'away', team: { id: '2' }, statistics: [{ name: 'totalShots', displayValue: '0' }, { name: 'yellowCards', displayValue: '0' }] }] } };
+  assert.deepEqual(parseSummary(zero, {}).stats, []);
+  const cards = { boxscore: { teams: [{ homeAway: 'home', team: { id: '1' }, statistics: [{ name: 'totalShots', displayValue: '4' }, { name: 'yellowCards', displayValue: '2' }] }, { homeAway: 'away', team: { id: '2' }, statistics: [{ name: 'totalShots', displayValue: '1' }, { name: 'yellowCards', displayValue: '0' }] }] } };
+  assert.deepEqual(parseSummary(cards, {}).stats.map((r) => r.label), ['Şut', 'Sarı kartlar']);
 });
 
 test('parseSummary: maç öncesi liste (ilk 11 işaretsiz) yedek sayılmaz, oyuncu listesi olur', () => {

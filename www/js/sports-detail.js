@@ -1,4 +1,4 @@
-// Maç ayrıntısı: ESPN "summary" yanıtını ekran verisine çevirir (olaylar, kadro, hakem, yayıncılar).
+// Maç ayrıntısı: ESPN "summary" yanıtını ekran verisine çevirir (olaylar, kadro, takım istatistiği, hakem, yayıncılar).
 // ESPN'in resmî olmayan API'si alanları her maçta vermez; her şey eksik olabilir kabul edilir, hiçbir okuma hata atmaz.
 import { ESPN_BASE, statusOf, parseBroadcasts } from './sports.js';
 import { channelsByName } from './sports-tv.js';
@@ -149,6 +149,46 @@ function parseLineups(j, ids) {
   return out;
 }
 
+// Takım istatistikleri (boxscore.teams[].statistics): yalnız maç istatistiği olan bilinen adlar; sezon toplamları (atılan gol, averaj…) gösterilmez.
+// Her iki takımda da bulunan satırlar alınır; tümü sıfırsa (veri henüz yok) hiç gösterilmez. Ek istek gerektirmez: özetle birlikte gelir.
+const ESPN_STATS = [
+  ['possessionPct', 'Top hakimiyeti', true],
+  ['totalShots', 'Şut', false],
+  ['shotsOnTarget', 'İsabetli şut', false],
+  ['wonCorners', 'Korner', false],
+  ['saves', 'Kurtarış', false],
+  ['foulsCommitted', 'Faul', false],
+  ['offsides', 'Ofsayt', false],
+  ['yellowCards', 'Sarı kartlar', false, true],
+  ['redCards', 'Kırmızı kartlar', false, true],
+];
+function parseStats(j, ids) {
+  const sideOf = (t) => {
+    const hs = t && (t.homeAway === 'home' || t.homeAway === 'away') ? t.homeAway : '';
+    const id = str(t && t.team && t.team.id);
+    return hs || (id && id === ids.home ? 'home' : id && id === ids.away ? 'away' : '');
+  };
+  const by = { home: null, away: null };
+  for (const t of arr(j.boxscore && j.boxscore.teams)) {
+    const side = sideOf(t);
+    if (!side || by[side]) continue;
+    const m = new Map();
+    for (const x of arr(t.statistics)) if (x && x.name != null) m.set(String(x.name), num(x.displayValue != null ? x.displayValue : x.value));
+    by[side] = m;
+  }
+  if (!by.home || !by.away) return [];
+  const rows = [];
+  for (const [name, label, pct, onlyIfAny] of ESPN_STATS) {
+    const h = by.home.get(name);
+    const a = by.away.get(name);
+    if (h == null || a == null) continue;
+    if (pct && (h + a < 98 || h + a > 102)) continue;
+    if (onlyIfAny && h + a === 0) continue;
+    rows.push({ id: name, label, home: h, away: a, pct });
+  }
+  return rows.some((r) => r.home + r.away > 0) ? rows : [];
+}
+
 // ESPN summary yanıtı → ekran verisi. m: listedeki maç (ad/logo/saat için yedek).
 export function parseSummary(json, m) {
   const j = json && typeof json === 'object' ? json : {};
@@ -176,9 +216,10 @@ export function parseSummary(json, m) {
     referee: ref ? str(ref.fullName || ref.displayName) : '',
     events: parseEvents(j, ids),
     lineups: parseLineups(j, ids),
+    stats: parseStats(j, ids),
     intl: bc.slice(0, 8),
   };
-  data.empty = !data.events.length && !data.lineups.home && !data.lineups.away;
+  data.empty = !data.events.length && !data.lineups.home && !data.lineups.away && !data.stats.length;
   return data;
 }
 

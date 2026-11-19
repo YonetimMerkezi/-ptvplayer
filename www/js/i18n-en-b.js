@@ -1,9 +1,5 @@
 // Türkçe → İngilizce sözlük, bölüm 2/4 (i18n.js). Çift: [Türkçe, İngilizce]; {0}, {1} değişen kısım.
 export const EN_B = [
-  ["Hızlı: kanal çabuk açılır, takılma artabilir. Yüksek: daha az takılma, kanal biraz geç açılır. Sonraki açılışta geçerli olur", "Fast: channels open quickly, stutter may increase. High: less stutter, channels open a bit slower. Applies on next launch"],
-  ["Görüntü çözücü", "Video decoder"],
-  ["Otomatik cihazın seçimini kullanır. Donanım öncelikli: Mi Stick gibi TV kutularında ilk deneme. Görüntü bozuksa yazılım öncelikliyi deneyin (işlemciyi daha çok kullanır). Seçim açık yayını yeniden açar", "Automatic uses the device's choice. Hardware first: first attempt on TV boxes like Mi Stick. If the picture is broken try software first (uses more CPU). Changing it reopens the current stream"],
-  ["Yazılım ses çözücüsü (deneysel)", "Software audio decoder (experimental)"],
   ["Telefonunuz bir kanalın sesini çözemiyorsa (AC3, E-AC3, DTS: “Ses çözülemiyor”) uygulamanın kendi çözücüsüyle çalar. Seçim açık yayını yeniden açar.", "If your phone can't decode a channel's audio (AC3, E-AC3, DTS: “Audio can't be decoded”), the app's own decoder plays it. Changing it reopens the current stream."],
   ["Önceki denemede uygulama kapandığı için kapatıldı; yine de deneyebilirsiniz.", "Turned off because the app closed on the previous attempt; you can still try it."],
   ["Kapanma kaydı:", "Crash log:"],
@@ -463,4 +459,12 @@ export const EN_B = [
   ["TV ile eşitleme yalnız Android uygulamasında çalışır", "Syncing with TV only works in the Android app"],
   ["Eşitleniyor…", "Syncing…"],
   ["Liste TV’ye aktarılıyor…", "Transferring the list to the TV…"],
+  ["TV ile eşitlenemedi. Yedekle / geri yükle › TV ile eşitle’yi deneyin.", "Could not sync with the TV. Try Backup / restore › Sync with TV."],
+  ["TV ile eşitlendi:", "Synced with TV:"],
+  ["Gönderildi…", "Sent…"],
+  ["{0} üzerinde", "On {0}"],
+  ["Altyazı", "Subtitles"],
+  ["Uyku", "Sleep"],
+  ["Son kanal", "Last channel"],
+  ["Canlıya dön", "Back to live"],
 ];

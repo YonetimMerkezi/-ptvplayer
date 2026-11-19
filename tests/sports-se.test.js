@@ -305,7 +305,17 @@ test('mergeSe / seInfoFor: aynı saatte tek takım eşleşirse (kısaltılmış 
   assert.equal(all, ls, 'satır skorlu maçla aynı: eklenmez');
   assert.deepEqual(seInfoFor(ls[0], rows).channels, ['Tivibu Spor 1'], 'kanal, skorlu maçın üzerinde görünür (3 saat sonraki satır sayılmaz)');
   assert.equal(mergeSe(ls, [rows[1]]).length, 2, 'başka saatteki satır aynı maç değildir');
-  // kadın/genç işareti ayrı maçtır
+  // kadın maçı kapsam dışıdır: erkek maçıyla birleşmez, listeye de eklenmez
   const w = [{ id: '11', t: t0, title: 'Balıkesirspor Kadın - Ankara FK Kadın', teams: ['Balıkesirspor Kadın', 'Ankara FK Kadın'], comp: 'Kadınlar Ligi', channels: [], logos: {} }];
-  assert.equal(mergeSe(ls, w).length, 2, 'erkek maçı kadın satırıyla birleşmez');
+  assert.equal(mergeSe(ls, w).length, 1, 'kadın satırı listeye girmez, erkek maçı değişmez');
+});
+
+test('seMatches: kadın maçları kapsam dışıdır (yarışma adı ya da takım adı)', () => {
+  const rows = [
+    { id: 'a', comp: 'Süper Lig', teams: ['Galatasaray', 'Fenerbahce'], t: 1 },
+    { id: 'b', comp: 'Kadınlar Süper Ligi', teams: ['Galatasaray', 'Fenerbahce'], t: 2 },
+    { id: 'c', comp: 'Premier Lig', teams: ['Arsenal W', 'Chelsea W'], t: 3 },
+    { id: 'd', comp: "Women's Champions League", teams: ['Lyon', 'Barcelona'], t: 4 },
+  ];
+  assert.deepEqual(seMatches(rows).map((m) => m.id), ['se:a']);
 });
