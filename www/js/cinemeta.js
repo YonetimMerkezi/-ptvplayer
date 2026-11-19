@@ -216,6 +216,13 @@ export function buildTitleIndex(items) {
   return map;
 }
 
+// Yalnız birebir (temizlenmiş) ad eşleşmesi: bulanık eşleşme yapmaz. TV rehberindeki program adının listede film olarak bulunup bulunmadığına bakmak için (yanlış pozitif istemeyen yerler).
+export function hasExactTitle(name, titleIndex) {
+  if (!titleIndex || !name) return false;
+  const key = cleanTitle(name).key;
+  return !!key && titleIndex.has(key);
+}
+
 // film.trNames: Wikidata'dan gelen Türkçe adlar; film.trGuess: makine çevirisiyle üretilmiş Türkçe tahmin adları (yalnız gevşek eşikle aranır).
 // Önce tam ad eşleşmesi (özgün + Türkçe adlar), sonra bulanık eşleşme (title-match.js), en son tahmin adlarıyla gevşek eşleşme.
 export function findInLibrary(film, { titleIndex = null, imdbIndex = null } = {}) {

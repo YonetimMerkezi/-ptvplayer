@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 162,
+    title: 'Bugün TV’de: film tespiti',
+    items: [
+      'Rehber türü vermediğinde, adı film listenizde birebir geçen ve film uzunluğundaki programlar artık Film sekmesinde görünür (ör. ulusal kanalların akşam filmleri)',
+      'Listenizde bulunmayan ve rehberin türünü bildirmediği filmler hâlâ Film sekmesine girmez',
+    ],
+  },
+  {
     id: 161,
     title: 'Dil seçeneği ve Pro fragman',
     items: [

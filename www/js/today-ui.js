@@ -157,7 +157,12 @@ export function openToday(env) {
     const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id))) : [];
     // Tüm EPG kanallarını tara: ulusal kanalların yanında Sinema TV, beIN Movies,
     // Movies Smart, FilmBox ve benzeri tematik film kanalları da listeye girer.
-    const epgFilmEntries = allEntries.filter((x) => channelKind(x.channel) === 'film' || kindOf(x.p) === 'film');
+    // Rehberlerin çoğu tür vermez (ücretsiz kaynaklarda programların ~%98'inde boş): türü boş, film uzunluğunda ve adı listenizde
+    // film olarak birebir geçen program film sayılır (kütüphane kanıtı; haber/yarışma gibi türü bilinenlere dokunmaz).
+    const libFilm = (x) => !x.p.c && x.p.e - x.p.s >= 70 * 60e3 && !channelKind(x.channel) && !kindOf(x.p) && !!(env.libraryFilm && env.libraryFilm(x.p.t));
+    const epgFilmEntries = allEntries
+      .filter((x) => channelKind(x.channel) === 'film' || kindOf(x.p) === 'film' || libFilm(x))
+      .map((x) => (libFilm(x) ? { ...x, hint: 'film' } : x));
     const selectedEpgFilms = filmSel == null
       ? epgFilmEntries
       : epgFilmEntries.filter((x) => filmSel.includes(String(x.id)));

@@ -70,7 +70,8 @@ export function todayRows({ entries, kind, now, day = 0, includePast = false, ma
   const seen = new Set();
   const counts = { spor: 0, film: 0, dizi: 0 };
   const rows = [];
-  for (const { id, p, channel } of entries) {
+  // entry.hint: dışarıdan gelen tür kanıtı (ör. adı kullanıcının film kütüphanesinde geçiyor); yalnız rehber hiçbir tür çıkarmıyorsa ve programın kendi türü (p.c) boşsa kullanılır (haber/yarışma gibi bilinen türü ezmez).
+  for (const { id, p, channel, hint } of entries) {
     if (!p || p.s < from || p.s >= to) continue;
     const byChannel = channelKind(channel);
     if (byChannel === 'ignore') continue;
@@ -80,7 +81,7 @@ export function todayRows({ entries, kind, now, day = 0, includePast = false, ma
       'gullervegunahlar', 'daha17', 'uzaksehir', 'esrefruya', 'haysiyet',
       'uckizkardes', 'kucukaga', 'yaprakdokumu', 'siyahbeyazask', 'ikizlermemocan',
     ].some((name) => title === name || title.startsWith(name));
-    const k = byChannel || (kanalDSeries ? 'dizi' : kindOf(p));
+    const k = byChannel || (kanalDSeries ? 'dizi' : kindOf(p) || (!p.c && KINDS.some(([id]) => id === hint) ? hint : ''));
     if (!k) continue;
     const key = `${id}|${p.s}`;
     if (seen.has(key)) continue;

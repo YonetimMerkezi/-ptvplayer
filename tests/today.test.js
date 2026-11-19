@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { kindOf, channelKind, dayStart, todayRows, normalizeChannels, MAX_ROWS } from '../www/js/today.js';
 import { XmltvParser } from '../www/js/epg.js';
+import { readFileSync } from 'node:fs';
 
 test('channelKind: sinema ve beIN kanalları kanal adından tanınır', () => {
   for (const n of ['Sinema TV', 'Sinema 2', 'Cinema TV', 'beIN Movies', 'beIN Movies Stars', 'MovieSmart Action', 'FilmBox Premium', 'Cine 1']) assert.equal(channelKind(n), 'film', n);
@@ -130,4 +131,27 @@ test('todayRows: Kanal D dizileri dizi alanına eklenir, haber ve yarışma ekle
   const r = todayRows({ entries, kind: 'dizi', now: H(15) });
   assert.deepEqual(r.rows.map((x) => x.p.t), ['Güller ve Günahlar', 'Daha 17']);
   assert.deepEqual(r.counts, { spor: 0, film: 0, dizi: 2 });
+});
+
+test('todayRows: giriş ipucu (kütüphane kanıtı) yalnız rehber tür çıkarmıyorsa filme çevirir; haber/dizi/spor kanıtını ezmez', () => {
+  const entries = [
+    { id: 'trt1', channel: 'TR: TRT 1 HD', p: prog(20, 23, 'Yüzüklerin Efendisi: İki Kule', ''), hint: 'film' },
+    { id: 'trt1', channel: 'TR: TRT 1 HD', p: prog(23, 24, 'Başka Program', '') },
+    { id: 'n', channel: 'TR: Haber TV', p: prog(21, 22, 'Ana Haber', 'Haber'), hint: 'film' },
+    { id: 's', channel: 'TR: Dizi TV', p: prog(21, 22, 'Bir Dizi 12. Bölüm', ''), hint: 'film' },
+    { id: 'x', channel: 'TR: Kanal X', p: prog(21, 22, 'Bilinmeyen Tür', ''), hint: 'saçma' },
+  ];
+  assert.deepEqual(todayRows({ entries, kind: 'film', now: NOW }).rows.map((x) => x.p.t), ['Yüzüklerin Efendisi: İki Kule']);
+  assert.equal(todayRows({ entries, kind: 'film', now: NOW }).counts.film, 1);
+  assert.deepEqual(todayRows({ entries, kind: 'dizi', now: NOW }).rows.map((x) => x.p.t), ['Bir Dizi 12. Bölüm']);
+  assert.deepEqual(todayRows({ entries: entries.map(({ hint, ...e }) => e), kind: 'film', now: NOW }).rows, [], 'ipucu yokken eskisi gibi tahmin yok');
+});
+
+test('Bugün TV\'de: türü boş, film uzunluğunda ve adı listede film olarak birebir geçen program film sayılır (kütüphane kanıtı)', () => {
+  const ui = readFileSync(new URL('../www/js/today-ui.js', import.meta.url), 'utf8');
+  assert.match(ui, /const libFilm = \(x\) => !x\.p\.c && x\.p\.e - x\.p\.s >= 70 \* 60e3 && !channelKind\(x\.channel\) && !kindOf\(x\.p\) && !!\(env\.libraryFilm && env\.libraryFilm\(x\.p\.t\)\);/);
+  assert.match(ui, /\|\| libFilm\(x\)\)\s*\.map\(\(x\) => \(libFilm\(x\) \? \{ \.\.\.x, hint: 'film' \} : x\)\);/);
+  const app = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /hasExactTitle\(k, ix\.movie\) && !hasExactTitle\(k, ix\.series\)/, 'dizi kütüphanesinde de varsa film sayılmaz');
+  assert.match(app, /epgReady: \(\) => S\.epg\.ready,\s*libraryFilm,/);
 });
