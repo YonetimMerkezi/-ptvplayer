@@ -30,12 +30,12 @@ const foundNote = (f) => (f ? `YouTube aramasıyla bulundu: ${f.title}${f.channe
 // ids: YouTube kimlikleri (ilki oynar; gömmeye izin vermeyen videoda sıradakine geçilir). auto: sessiz otomatik başlar, değilse küçük resim.
 // found: YouTube aramasıyla bulunan [{ id, title, channel }]; oynayan videonun adı altta görünür (yanlışsa kullanıcı fark eder).
 // Kimlik yoksa: searching ise "aranıyor", yoksa query varsa "YouTube’da fragman ara" bağlantısı; hiçbiri yoksa boş.
-export function trailerHtml(ids, { auto = false, origin = '', query = '', searching = false, found = null } = {}) {
+export function trailerHtml(ids, { auto = false, origin = '', query = '', searching = false, found = null, diag = '' } = {}) {
   const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
   const id = list[0];
   if (!id) {
     if (searching) return '<section class="tr tr-none"><h2>Fragman</h2><div class="tr-wait" role="status">YouTube’da fragman aranıyor…</div></section>';
-    return query ? `<section class="tr tr-none"><h2>Fragman</h2>${searchBtn(query, 'tr-find')}<span><b>YouTube’da fragman ara</b><small>Bu yapım için hazır fragman bulunamadı</small></span></a></section>` : '';
+    return query ? `<section class="tr tr-none"><h2>Fragman</h2>${searchBtn(query, 'tr-find')}<span><b>YouTube’da fragman ara</b><small>Bu yapım için hazır fragman bulunamadı</small></span></a>${diag ? `<p class="tr-note tr-diag">${esc(diag)}</p>` : ''}</section>` : '';
   }
   const watch = esc(trailerWatchUrl(id));
   const media = auto ? frameHtml(id, { muted: true, origin }) : thumbHtml(id);

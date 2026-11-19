@@ -194,6 +194,9 @@ test('fragman bloğu: aranırken bekleme satırı; aramayla bulunanlar için vid
   assert.match(h, /<p class="tr-note">YouTube aramasıyla bulundu: Never Surrender \| Official Trailer \| Netflix · Netflix<\/p>/);
   assert.match(h, /data-notes="\[&quot;YouTube aramasıyla bulundu: Never Surrender/);
   assert.doesNotMatch(trailerHtml(['aaaaaaaaaaa'], { auto: true }), /tr-note|data-notes/, 'hazır fragmanda not yok');
+  const d = trailerHtml([], { query: 'x fragman', diag: 'YouTube aramasında 18 video bulundu, uygun fragman çıkmadı' });
+  assert.match(d, /<\/a><p class="tr-note tr-diag">YouTube aramasında 18 video bulundu, uygun fragman çıkmadı<\/p><\/section>/, 'bulunamama nedeni kartın altında');
+  assert.doesNotMatch(trailerHtml([], { query: 'x fragman' }), /tr-diag/);
 
   const note = { textContent: 'ilk', removed: false, remove() { this.removed = true; } };
   const { host, frameWin } = fakeHost({ dataset: { id: 'aaaaaaaaaaa', ids: 'aaaaaaaaaaa,bbbbbbbbbbb', notes: JSON.stringify(['not 1', 'not 2']) } });
@@ -220,9 +223,10 @@ test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik y
   const app = kaynak('www/js/app.js');
   assert.match(app, /const ids = trailerIds\(detail, provider && provider\.trailer\);/);
   assert.match(app, /const find = trailerOn\(\) && !ids\.length && finds\.length > 0 && setting\('trailerFind'\);/, 'yalnız hazır fragman yokken ve ayar açıkken aranır');
-  assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted \}\)/);
+  assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted, onInfo: \(i\) => infos\.push\(i\) \}\)/);
+  assert.match(app, /diag: picks\.length \? '' : describeFind\(infos\)/, 'bulunamayınca nedeni kartın altında yazar');
   assert.match(app, /if \(!tr\.isConnected \|\| tr\._find !== token\) return;/, 'yeni boyama eski aramanın sonucunu geçersiz kılar');
-  assert.match(app, /trailerHtml\(picks\.map\(\(p\) => p\.id\), \{ auto: autoPlay, origin: location\.origin, query, found: picks \}\)/);
+  assert.match(app, /trailerHtml\(picks\.map\(\(p\) => p\.id\), \{ auto: autoPlay, origin: location\.origin, query, found: picks, diag: /);
   assert.match(app, /onFound: \(\) => \{ extras\.shown = true; \}/, 'dizi: aramayla bulunan fragman yeniden çizimde otomatik başlamaz');
   assert.match(app, /trailer: \(info && info\.trailer\) \|\| it\.trailer/, 'film: sağlayıcı fragmanı');
   assert.match(app, /trailer: info\.trailer \|\| it\.trailer/, 'dizi: sağlayıcı fragmanı');

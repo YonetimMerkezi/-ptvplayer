@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 146,
+    title: 'Fragman araması telefonda düzeltildi',
+    items: [
+      'Uygulamanın YouTube araması telefonun mobil kimliğiyle gidiyordu ve YouTube’un mobil sayfası okunamıyordu; artık masaüstü sayfası istenir, mobil düzen de okunur',
+      'Fragman bulunamazsa kartın altında nedeni yazar (kaç video bulundu, sayfa okunamadı ya da bağlantı hatası); eski hatalı “bulunamadı” kayıtları temizlendi',
+    ],
+  },
+  {
     id: 145,
     title: 'Ana ekran bölümlerinin sırası ayarlardan değişir',
     items: [

@@ -74,7 +74,7 @@ import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
-import { findTrailerOnYoutube } from './yt-search.js';
+import { findTrailerOnYoutube, describeFind } from './yt-search.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
@@ -2147,12 +2147,13 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
     if (find) {
       (async () => {
         let picks = [];
+        const infos = [];
         for (const q of finds) {
-          const r = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted }).catch(() => null);
+          const r = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted, onInfo: (i) => infos.push(i) }).catch((e) => { infos.push({ error: String((e && e.message) || e) }); return null; });
           if (r && r.length) { picks = r; break; }
         }
         if (!tr.isConnected || tr._find !== token) return;
-        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay, origin: location.origin, query, found: picks });
+        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay, origin: location.origin, query, found: picks, diag: picks.length ? '' : describeFind(infos) });
         if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
         if (picks.length && onFound) onFound();
       })();

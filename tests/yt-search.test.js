@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseYoutubeResults, pickTrailers, resultsUrl, findTrailerOnYoutube, FIND_TTL, FIND_MISS_TTL, MAX_FOUND } from '../www/js/yt-search.js';
+import { parseYoutubeResults, pickTrailers, resultsUrl, findTrailerOnYoutube, describeFind, YT_HEADERS, FIND_TTL, FIND_MISS_TTL, MAX_FOUND } from '../www/js/yt-search.js';
 
 const vr = (id, title, channel, len, verified = false) => ({ videoRenderer: {
   videoId: id, title: { runs: [{ text: title }] }, ownerText: { runs: [{ text: channel }] }, lengthText: { simpleText: len },
@@ -87,12 +87,21 @@ test('findTrailerOnYoutube: arar, önbelleğe yazar; ikinci çağrı ağa gitmez
   const later = Date.now() + FIND_TTL + 1000;
   await findTrailerOnYoutube({ net, cache, query: 'Asla Teslim Olma 2026 fragman', wanted: ['Asla Teslim Olma'], now: later });
   assert.equal(calls.length, 2, 'süresi dolan önbellek yenilenir');
-  const empty = { text: async () => page([]) };
-  assert.deepEqual(await findTrailerOnYoutube({ net: empty, cache, query: 'Bulunamayan', wanted: [] }), []);
+  const noMatch = { text: async () => page([vr(id('z'), 'Alakasız Video', 'Kanal', '10:00')]) };
+  assert.deepEqual(await findTrailerOnYoutube({ net: noMatch, cache, query: 'Bulunamayan', wanted: [] }), []);
   const n = calls.length;
-  assert.deepEqual(await findTrailerOnYoutube({ net: { text: async () => { calls.push(1); return ''; } }, cache, query: 'Bulunamayan', wanted: [] }), []);
-  assert.equal(calls.length, n, 'boş sonuç kısa süre önbellekte');
+  const seen = [];
+  assert.deepEqual(await findTrailerOnYoutube({ net: { text: async () => { calls.push(1); return ''; } }, cache, query: 'Bulunamayan', wanted: [], onInfo: (i) => seen.push(i) }), []);
+  assert.equal(calls.length, n, 'sayfa okunup uygun video çıkmadıysa kısa süre önbellekte');
+  assert.deepEqual(seen, [{ read: 1, bytes: 0, error: '', cached: true }]);
   assert.ok(FIND_MISS_TTL < FIND_TTL);
+  // sayfa hiç okunamadıysa (0 video: düzen değişmiş ya da engel sayfası) önbelleğe yazılmaz; her açılışta yeniden denenir
+  const blocked = { text: async () => { calls.push(2); return '<html>consent</html>'; } };
+  const info = [];
+  assert.deepEqual(await findTrailerOnYoutube({ net: blocked, cache, query: 'Okunamayan', wanted: [], onInfo: (i) => info.push(i) }), []);
+  await findTrailerOnYoutube({ net: blocked, cache, query: 'Okunamayan', wanted: [] });
+  assert.equal(calls.filter((x) => x === 2).length, 2);
+  assert.deepEqual(info, [{ read: 0, bytes: 20, error: '', cached: false }]);
 });
 
 test('findTrailerOnYoutube: ağ hatasında null döner ve önbelleğe yazılmaz; boş sorguda ağa gidilmez', async () => {
@@ -103,4 +112,45 @@ test('findTrailerOnYoutube: ağ hatasında null döner ve önbelleğe yazılmaz;
   let n = 0;
   assert.deepEqual(await findTrailerOnYoutube({ net: { text: async () => { n++; return ''; } }, cache, query: '  ' }), []);
   assert.equal(n, 0);
+});
+
+test('YT_HEADERS: masaüstü kimliği ve onay çerezi gönderilir (yerel eklentinin mobil kimliğini ezer)', async () => {
+  assert.match(YT_HEADERS['user-agent'], /Windows NT 10\.0.*Chrome\/\d+/);
+  assert.doesNotMatch(YT_HEADERS['user-agent'], /Mobile|Android/);
+  assert.match(YT_HEADERS.cookie, /SOCS=/);
+  let seen;
+  await findTrailerOnYoutube({ net: { text: async (u, o) => { seen = o; return page([]); } }, query: 'x fragman' });
+  assert.equal(seen.headers, YT_HEADERS);
+});
+
+test('parseYoutubeResults: mobil sayfa düzeni (videoWithContextRenderer, headline, süre rozeti) de okunur', () => {
+  const mobile = page([
+    { videoWithContextRenderer: { videoId: id('m'), headline: { runs: [{ text: 'Never Surrender | Official Trailer | Netflix' }] }, lengthText: { runs: [{ text: '2:24' }], accessibility: {} }, shortBylineText: { runs: [{ text: 'Netflix' }] }, ownerBadges: [{ metadataBadgeRenderer: { style: 'BADGE_STYLE_TYPE_VERIFIED' } }] } },
+    { videoWithContextRenderer: { videoId: id('n'), headline: { runs: [{ text: 'Başka Fragman' }] }, thumbnailOverlays: [{ thumbnailOverlayTimeStatusRenderer: { text: { simpleText: '1:05' } } }], shortBylineText: { runs: [{ text: 'Kanal' }] } } },
+    { compactVideoRenderer: { videoId: id('o'), title: { simpleText: 'Kompakt Fragman' }, lengthText: { simpleText: '0:45' }, longBylineText: { runs: [{ text: 'Kanal2' }] } } },
+  ]);
+  const r = parseYoutubeResults(mobile);
+  assert.deepEqual(r.map((x) => [x.id, x.title, x.channel, x.seconds, x.verified]), [
+    [id('m'), 'Never Surrender | Official Trailer | Netflix', 'Netflix', 144, true],
+    [id('n'), 'Başka Fragman', 'Kanal', 65, false],
+    [id('o'), 'Kompakt Fragman', 'Kanal2', 45, false],
+  ]);
+});
+
+test('parseYoutubeResults: kaçışlı JSON.parse(\'\\x7b…\') biçimi ve sayfadaki başka ytInitialData geçişleri atlanır', () => {
+  const data = { a: { contents: [vr(id('p'), 'Kaçışlı "Fragman" | Resmi', 'Netflix', '2:00', true)] } };
+  const esc = JSON.stringify(data).replace(/[{}":,\\']/g, (c) => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+  const html = `<script>window.ytInitialDataEndpoint = 1; if (window.ytInitialData) {}</script><script>var ytInitialData = JSON.parse('${esc}');</script>`;
+  const r = parseYoutubeResults(html);
+  assert.deepEqual(r.map((x) => [x.id, x.title, x.seconds]), [[id('p'), 'Kaçışlı "Fragman" | Resmi', 120]]);
+  // ilk geçiş boş nesne, ikincisi gerçek veri
+  assert.equal(parseYoutubeResults('var ytInitialData = {}; ' + page([vr(id('q'), 'T', 'K', '1:00')]))[0].id, id('q'));
+});
+
+test('describeFind: bulunamama nedeni kullanıcıya anlaşılır yazılır', () => {
+  assert.equal(describeFind([]), '');
+  assert.equal(describeFind([{ read: 18, bytes: 900000 }, { read: 0, bytes: 100 }]), 'YouTube aramasında 18 video bulundu, uygun fragman çıkmadı');
+  assert.equal(describeFind([{ read: 0, bytes: 2048 }]), 'YouTube sayfası okunamadı (2 KB yanıt, 0 video)');
+  assert.equal(describeFind([{ error: 'HTTP 429' }, { error: 'x' }]), 'YouTube araması yapılamadı: HTTP 429');
+  assert.match(describeFind([{ read: 0, bytes: 5, error: '' }, { error: 'zaman aşımı' }]), /okunamadı/, 'biri okunduysa ama video yoksa');
 });
