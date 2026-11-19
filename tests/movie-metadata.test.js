@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matchMovieMetadata, loadMovieMetadata, parseMovieCatalogTitle, resolveMovieWithWikidata } from '../www/js/movie-metadata.js';
+import { matchMovieMetadata, loadMovieMetadata, parseMovieCatalogTitle, resolveMovieWithWikidata, resolveTitleOrigin } from '../www/js/movie-metadata.js';
 
 test('Türkçe veya orijinal ad tam eşleşirse doğru filmi bulur', () => {
   const rows = [
@@ -129,4 +129,65 @@ test('alternatif orijinal ad varsa sırayla arayıp doğru IMDb kaydını bulur'
   assert.equal(meta.imdbId, 'tt4444444');
   assert.equal(Object.hasOwn(meta, 'imdbRating'), false);
   assert.equal(calls.length, 3);
+});
+
+// ---- Türkçe adlı yabancı yapımlar: yalnız fragman/oyuncu için IMDb kimliği ve özgün ad ----
+const wdEntity = (tr, imdb, { year = 0, start = false, en = '', original = '' } = {}) => ({
+  labels: { tr: { value: tr }, ...(en ? { en: { value: en } } : {}) },
+  claims: {
+    ...(imdb ? { P345: [{ mainsnak: { datavalue: { value: imdb } } }] } : {}),
+    ...(year ? { [start ? 'P580' : 'P577']: [{ mainsnak: { datavalue: { value: { time: `+${year}-01-01T00:00:00Z` } } } }] } : {}),
+    ...(original ? { P1476: [{ mainsnak: { datavalue: { value: { text: original, language: 'en' } } } }] } : {}),
+  },
+});
+const wdNet = (entities, calls = []) => ({ json: async (url) => {
+  calls.push(url);
+  return url.includes('wbsearchentities') ? { search: Object.keys(entities).map((id) => ({ id, description: 'televizyon dizisi' })) } : { entities };
+} });
+const memStore = () => { const m = new Map(); return { cache: { get: async (k) => m.get(k), set: async (k, v) => { m.set(k, v); } }, m }; };
+
+test('Türkçe adlı dizi: Wikidata\'dan IMDb kimliği ve özgün ad gelir (dizide başlangıç tarihi, yıl ±1)', async () => {
+  const net = wdNet({
+    Q1: wdEntity('Bir Skandalın Anatomisi', 'tt11126994', { year: 2022, start: true, en: 'Anatomy of a Scandal' }),
+    Q2: wdEntity('Bir Skandalın Anatomisi', '', { en: 'Anatomy of a Scandal' }), // roman: IMDb kimliği yok
+  });
+  assert.deepEqual(await resolveTitleOrigin(net, 'Bir Skandalın Anatomisi', 2022), { imdbId: 'tt11126994', year: 2022, original: 'Anatomy of a Scandal' });
+  assert.equal((await resolveTitleOrigin(net, 'Bir Skandalın Anatomisi', 2023)).imdbId, 'tt11126994', 'sağlayıcı yılı bir yıl kayık olabilir');
+  assert.equal((await resolveTitleOrigin(net, 'Bir Skandalın Anatomisi (2022)')).imdbId, 'tt11126994', 'yıl katalog adından da alınır');
+  assert.equal((await resolveTitleOrigin(net, 'Bir Skandalın Anatomisi', 0)).imdbId, 'tt11126994', 'yıl bilinmiyorsa tek aday yeter');
+  assert.equal(await resolveTitleOrigin(net, 'Bir Skandalın Anatomisi', 2015), null, 'yıl çok farklıysa eşleşmez');
+});
+
+test('Türkçe ad çözümü: özgün ad (P1476) İngilizce etiketten önce gelir; film için yayın tarihi kullanılır', async () => {
+  const net = wdNet({ Q1: wdEntity('Kâğıt Ev', 'tt6468322', { year: 2017, en: 'Money Heist', original: 'La casa de papel' }) });
+  assert.equal((await resolveTitleOrigin(net, 'Kâğıt Ev', 2017)).original, 'La casa de papel');
+});
+
+test('Türkçe ad çözümü: adı tam eşleşmeyen ya da birden çok olası yapım varsa eşleşme yapılmaz', async () => {
+  const two = wdNet({ Q1: wdEntity('Aynı Ad', 'tt1000001', { year: 2010 }), Q2: wdEntity('Aynı Ad', 'tt1000002', { year: 2011 }) });
+  assert.equal(await resolveTitleOrigin(two, 'Aynı Ad', 0), null, 'yıl yoksa iki aday: belirsiz');
+  assert.equal((await resolveTitleOrigin(two, 'Aynı Ad', 2011)).imdbId, 'tt1000002', 'yıl tam tutan tek adayı seçtirir');
+  const same = wdNet({ Q1: wdEntity('Aynı Ad', 'tt1000001', { year: 2010 }), Q2: wdEntity('Aynı Ad', 'tt1000002', { year: 2011 }) });
+  assert.equal(await resolveTitleOrigin(same, 'Aynı Ad', 2010).then((v) => v.imdbId), 'tt1000001');
+  assert.equal(await resolveTitleOrigin(wdNet({ Q1: wdEntity('Başka Ad', 'tt1000003', { year: 2020 }) }), 'Farklı Ad', 2020), null, 'ad tam tutmuyorsa yok');
+  assert.equal(await resolveTitleOrigin(wdNet({ Q1: wdEntity('Tarihsiz Ad', 'tt1000004') }), 'Tarihsiz Ad', 2020).then((v) => v.imdbId), 'tt1000004', 'tarihi olmayan tek kayıt kabul edilir');
+  assert.equal(await resolveTitleOrigin(wdNet({ Q1: wdEntity('Karışık Ad', 'tt1000005', { year: 2001 }), Q2: wdEntity('Karışık Ad', 'tt1000006') }), 'Karışık Ad', 2020), null, 'tarihli kayıt uyuşmuyorsa tarihsiz kayda da güvenilmez');
+  assert.equal(await resolveTitleOrigin(wdNet({}), 'Hiç Yok', 2020), null);
+  assert.equal(await resolveTitleOrigin(wdNet({}), '', 2020), null);
+});
+
+test('Türkçe ad çözümü: sonuç (ve boş sonuç) önbelleğe yazılır; ağ hatasında yazılmaz ve boş döner', async () => {
+  const calls = [];
+  const st = memStore();
+  const net = wdNet({ Q1: wdEntity('Önbellekli Ad', 'tt2000001', { year: 2019, en: 'Cached Title' }) }, calls);
+  assert.equal((await resolveTitleOrigin(net, 'Önbellekli Ad', 2019, st)).original, 'Cached Title');
+  const n = calls.length;
+  assert.equal((await resolveTitleOrigin(net, 'Önbellekli Ad', 2019, st)).imdbId, 'tt2000001');
+  assert.equal(calls.length, n, 'ikinci çağrı ağa gitmez');
+  const miss = memStore();
+  assert.equal(await resolveTitleOrigin(wdNet({}), 'Bulunamayan', 2019, miss), null);
+  assert.equal(miss.m.size, 1, 'bulunamayan da kısa süre önbelleğe yazılır');
+  const down = memStore();
+  assert.equal(await resolveTitleOrigin({ json: async () => { throw new Error('ağ yok'); } }, 'Ağ Yok', 2019, down), null);
+  assert.equal(down.m.size, 0, 'ağ hatası önbelleğe yazılmaz');
 });

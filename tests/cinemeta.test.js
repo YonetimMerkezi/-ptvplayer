@@ -193,5 +193,6 @@ test('fragman araması: katalog adındaki dil öneki, kalite etiketi ve yıl ay�
   assert.equal(trailerQuery('The Matrix [4K]', '1999-03-31'), 'The Matrix 1999 fragman');
   assert.equal(trailerQuery('Yüzüklerin Efendisi: Yüzük Kardeşliği', 2001), 'Yüzüklerin Efendisi: Yüzük Kardeşliği 2001 fragman');
   assert.equal(trailerQuery('', ''), 'fragman');
+  assert.equal(trailerQuery('Anatomy of a Scandal', 2022, 'official trailer'), 'Anatomy of a Scandal 2022 official trailer', 'özgün adla arama ek sözcüğü değişir');
   assert.equal(trailerSearchUrl('Kuruluş Osman 2020 fragman'), 'https://www.youtube.com/results?search_query=Kurulu%C5%9F%20Osman%202020%20fragman');
 });

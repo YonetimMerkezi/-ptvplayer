@@ -191,7 +191,11 @@ test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik y
   assert.match(app, /trailer: \(info && info\.trailer\) \|\| it\.trailer/, 'film: sağlayıcı fragmanı');
   assert.match(app, /trailer: info\.trailer \|\| it\.trailer/, 'dizi: sağlayıcı fragmanı');
   assert.match(app, /query: trailerQuery\(film\.name, film\.year\)/, 'bilgi ekranı');
-  assert.match(app, /paintTitleExtras\(body, null, provider, extrasOf\(null\)\)/, 'film: eşleşme çözülemese de fragman');
+  assert.match(app, /paintTitleExtras\(body, null, provider, extrasOf\(null, null\)\)/, 'film: eşleşme çözülemese de fragman');
+  assert.match(app, /resolveTitleOrigin\(net, it\.name, year, store\)/, 'IMDb eşleşmesi yoksa Türkçe ad özgün ada çevrilir');
+  assert.match(app, /origin && origin\.original \? trailerQuery\(origin\.original, origin\.year \|\| year, 'official trailer'\)/, 'YouTube araması özgün adla');
+  assert.match(app, /loadTitleExtras\(it, meta && meta\.imdbId, 'movie', \(detail, origin\) => paintTitleExtras\(body, detail, provider, extrasOf\(meta, origin\)\)/);
+  assert.match(app, /loadTitleExtras\(it, meta && meta\.imdbId, 'series', \(detail, origin\) => \{ extras\.detail = detail; extras\.origin = origin;/);
   assert.match(app, /if \(!extras\.ready\) \{ extras\.ready = true; paintExtras\(\); \}/, 'dizi: eşleşme çözülemese de fragman');
   assert.match(app, /trailer: extras\.ready \? '#sr-trailer' : ''/, 'dizi: eşleşme çözülmeden fragman boyanmaz (video değişip yeniden başlamasın)');
   assert.match(app, /if \(extras\.ready && trailerIds\(extras\.detail, extras\.provider\.trailer\)\.length && trailerOn\(\)\) extras\.shown = true/);

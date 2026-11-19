@@ -71,7 +71,7 @@ import { loadStations, listStations, radioItem, radioFavs, isRadioFav, toggleRad
 import { radioRowHtml, homeRadio, openRadio as openRadioPage } from './radio-ui.js';
 import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
-import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
+import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
@@ -2140,11 +2140,16 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
 }
 
 // Kütüphane öğesinin ekranında: IMDb kimliği çözülünce ayrıntıyı alır, onDetail ile boyar.
-function loadTitleExtras(it, imdbId, type, onDetail) {
+// IMDb eşleşmesi yoksa (Türkçe adlı yabancı yapımlar) Türkçe ad Wikidata'dan özgün ada ve IMDb kimliğine çevrilir; yalnız fragman/oyuncu için (içerik uyarıları sıkı eşleşmeyle kalır).
+// onDetail(detail, origin): origin = { imdbId, year, original } | null — YouTube aramasında özgün ad kullanılır.
+function loadTitleExtras(it, imdbId, type, onDetail, year = '') {
   if (imdbId) libraryIndex().byImdb.set(imdbId, it);
-  if (!imdbId) return onDetail(null);
-  loadDetail({ net, cache: store.cache, imdbId, type }).catch(() => null).then(onDetail);
+  const detailOf = (id, origin) => loadDetail({ net, cache: store.cache, imdbId: id, type }).catch(() => null).then((d) => onDetail(d, origin));
+  if (imdbId) return detailOf(imdbId, null);
+  resolveTitleOrigin(net, it.name, year, store).catch(() => null).then((origin) => (origin && origin.imdbId ? detailOf(origin.imdbId, origin) : onDetail(null, origin)));
 }
+// Fragman araması: özgün ad biliniyorsa onunla (yabancı yapımların fragmanı özgün adla bulunur), değilse katalog adıyla
+const titleQueryOf = (name, year, origin) => (origin && origin.original ? trailerQuery(origin.original, origin.year || year, 'official trailer') : trailerQuery(name, year));
 
 const personOf = (b) => ({ name: b.dataset.person, role: (b.querySelector('small') || {}).textContent || '' });
 
@@ -2280,10 +2285,10 @@ function openMovie(it) {
         advStarted = true;
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
         const provider = { cast: (info && info.cast) || it.cast, director: (info && info.director) || it.director, trailer: (info && info.trailer) || it.trailer };
-        const extrasOf = (meta) => ({ trailer: '#mv-trailer', people: '#mv-people', query: trailerQuery(it.name, (info && info.year) || (meta && meta.year)) });
+        const extrasOf = (meta, origin) => ({ trailer: '#mv-trailer', people: '#mv-people', query: titleQueryOf(it.name, (info && info.year) || (meta && meta.year), origin) });
         resolveAdvisoryMeta(it, info).then(({ meta, advisoryMeta }) => {
           if (!body.isConnected) return;
-          loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail) => paintTitleExtras(body, detail, provider, extrasOf(meta)));
+          loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail, origin) => paintTitleExtras(body, detail, provider, extrasOf(meta, origin)), (info && info.year) || (meta && meta.year));
           const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
           loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
           if (info) {
@@ -2292,7 +2297,7 @@ function openMovie(it) {
           }
         }).catch(() => {
           if (!body.isConnected) return;
-          paintTitleExtras(body, null, provider, extrasOf(null)); // eşleşme çözülemese de sağlayıcı fragmanı / YouTube araması gösterilir
+          paintTitleExtras(body, null, provider, extrasOf(null, null)); // eşleşme çözülemese de sağlayıcı fragmanı / YouTube araması gösterilir
           paintMovieAdvisories(body, null, 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.');
         });
       };
@@ -2382,9 +2387,9 @@ function openSeries(it) {
       let adv = { meta: null, failure: '', wk: null };
       // Fragman ve oyuncu kartları: sayfa yeniden çizilince fragman yeniden başlamasın diye otomatik oynatma yalnız ilk boyamada olur.
       // Fragman, eşleşme çözülene kadar (ready) boyanmaz: önce sağlayıcınınki, sonra Cinemeta'nınki gelirse video değişip yeniden başlardı.
-      const extras = { detail: null, ready: false, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director, trailer: info.trailer || it.trailer } };
+      const extras = { detail: null, origin: null, ready: false, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director, trailer: info.trailer || it.trailer } };
       const paintExtras = () => {
-        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', auto: !extras.shown, query: trailerQuery(it.name, info.year || it.year) });
+        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', auto: !extras.shown, query: titleQueryOf(it.name, info.year || it.year, extras.origin) });
         if (extras.ready && trailerIds(extras.detail, extras.provider.trailer).length && trailerOn()) extras.shown = true;
       };
       const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
@@ -2436,7 +2441,7 @@ function openSeries(it) {
       // Cinemeta (IMDb kimliği) + Screenwise; KTB film sitesi diziler için kullanılmaz.
       loadSeriesMetadata(net, it, store).catch(() => null).then((meta) => {
         if (!body.isConnected) return;
-        loadTitleExtras(it, meta && meta.imdbId, 'series', (detail) => { extras.detail = detail; extras.ready = true; paintExtras(); });
+        loadTitleExtras(it, meta && meta.imdbId, 'series', (detail, origin) => { extras.detail = detail; extras.origin = origin; extras.ready = true; paintExtras(); }, info.year || it.year);
         const parsed = parseMovieCatalogTitle(it.name || '');
         const base = meta || { title: parsed.title || it.name, year: yearOf(info.year || it.year) || parsed.year || 0 };
         const advisoryMeta = { ...base, kind: 'series' };

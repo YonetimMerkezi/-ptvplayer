@@ -191,11 +191,11 @@ export function trailerIds(detail, providerTrailer) {
 }
 
 // Fragman bulunamadığında YouTube araması: katalog adındaki dil öneki ("TR | "), kalite etiketleri ve yıl ayıklanır.
-export function trailerQuery(name, year) {
+export function trailerQuery(name, year, suffix = 'fragman') {
   const stripped = String(name ?? '').replace(/^\s*[A-Za-z]{2,3}\s*[|⇒»]\s*/, '');
   const c = cleanTitle(stripped, yearOf(year) || undefined);
   const title = (c.title || stripped).trim();
-  return [title, c.year || yearOf(year) || '', 'fragman'].filter(Boolean).join(' ');
+  return [title, c.year || yearOf(year) || '', suffix].filter(Boolean).join(' ');
 }
 export const trailerSearchUrl = (query) => `https://www.youtube.com/results?search_query=${encodeURIComponent(String(query || '').trim())}`;
 export const trailerWatchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;

@@ -79,26 +79,61 @@ const entityTitles = (entity) => {
   }
   return values.filter((x) => typeof x === 'string' && x.trim());
 };
+// Wikidata'da Türkçe adı arar; IMDb kimliği (tt…) olan yapımları döndürür. filmOnly: yalnız açıklaması film olanlar.
+async function wikidataTitles(net, query, { filmOnly }) {
+  const searchUrl = WIKIDATA + '?action=wbsearchentities&search=' + encodeURIComponent(query) + '&language=tr&uselang=tr&limit=10&format=json&origin=*';
+  const search = await net.json(searchUrl, { fast: true });
+  const ids = (Array.isArray(search && search.search) ? search.search : [])
+    .filter((x) => x && /^Q\d+$/.test(x.id) && (!filmOnly || /film|movie|sinema|motion picture/i.test(String(x.description || ''))))
+    .slice(0, 8).map((x) => x.id);
+  if (!ids.length) return [];
+  const detailUrl = WIKIDATA + '?action=wbgetentities&ids=' + ids.join('|') + '&props=labels|aliases|claims&languages=tr|en&format=json&origin=*';
+  const detail = await net.json(detailUrl, { fast: true });
+  return Object.values(detail && detail.entities || {}).map((entity) => {
+    const imdb = claimValue(entity, 'P345');
+    const date = claimValue(entity, 'P577') || claimValue(entity, 'P580'); // film: yayın tarihi, dizi: başlangıç tarihi
+    const original = claimValue(entity, 'P1476'); // özgün ad
+    const names = entityTitles(entity);
+    return {
+      imdbId: typeof imdb === 'string' ? imdb : '',
+      year: yearOf(date && date.time),
+      names,
+      original: String((original && original.text) || (entity.labels && entity.labels.en && entity.labels.en.value) || '').trim(),
+      exact: names.some((name) => cleanTitle(name) === cleanTitle(query)),
+    };
+  }).filter((x) => /^tt\d+$/.test(x.imdbId));
+}
+
 export async function resolveMovieWithWikidata(net, title, year = 0) {
   const query = String(title || '').trim();
   if (!query) return null;
-  const searchUrl = WIKIDATA + '?action=wbsearchentities&search=' + encodeURIComponent(query) + '&language=tr&uselang=tr&format=json&origin=*';
-  const search = await net.json(searchUrl, { fast: true });
-  const ids = (Array.isArray(search && search.search) ? search.search : [])
-    .filter((x) => x && /^Q\d+$/.test(x.id) && /film|movie|sinema|motion picture/i.test(String(x.description || '')))
-    .slice(0, 8).map((x) => x.id);
-  if (!ids.length) return null;
-  const detailUrl = WIKIDATA + '?action=wbgetentities&ids=' + ids.join('|') + '&props=labels|aliases|claims&languages=tr|en&format=json&origin=*';
-  const detail = await net.json(detailUrl, { fast: true });
-  const candidates = Object.values(detail && detail.entities || {}).map((entity) => {
-    const imdb = claimValue(entity, 'P345');
-    const date = claimValue(entity, 'P577');
-    const entityYear = yearOf(date && date.time);
-    const names = entityTitles(entity);
-    const exact = names.some((name) => cleanTitle(name) === cleanTitle(query));
-    return { imdbId: typeof imdb === 'string' ? imdb : '', year: entityYear, names, exact };
-  }).filter((x) => /^tt\d+$/.test(x.imdbId) && (!year || x.year === Number(year)) && x.exact);
+  const candidates = (await wikidataTitles(net, query, { filmOnly: true })).filter((x) => (!year || x.year === Number(year)) && x.exact);
   return candidates.length === 1 ? candidates[0] : null;
+}
+
+// Türkçe adlı film/dizi → IMDb kimliği ve özgün ad. YALNIZ fragman/oyuncu bulmak için kullanılır; içerik uyarılarının sıkı eşleşmesi (loadMovieMetadata) değişmez.
+// Aynı Türkçe adı taşıyan tek yapım bulunursa döner. Yıl ±1 hoşgörülür (dizide ilk yayın yılı ile sağlayıcının yılı ayrışabilir); tarihi olmayan kayıt yalnız tek aday olarak kabul edilir.
+export async function resolveTitleOrigin(net, title, year = 0, store = null) {
+  const parsed = parseMovieCatalogTitle(title);
+  const query = parsed.title;
+  if (!query) return null;
+  const wanted = yearOf(year) || parsed.year;
+  const key = `title-origin:v1:${cleanTitle(query)}|${wanted || 0}`;
+  const cached = store && store.cache ? await store.cache.get(key).catch(() => null) : null;
+  if (cached && cached.savedAt && Date.now() - cached.savedAt < (cached.value ? CACHE_TTL : CACHE_MISS_TTL)) return cached.value || null;
+  let value = null;
+  try {
+    const exact = (await wikidataTitles(net, query, { filmOnly: false })).filter((x) => x.exact);
+    const near = wanted ? exact.filter((x) => x.year && Math.abs(x.year - wanted) <= 1) : exact;
+    const pool = near.length ? near : (exact.length === 1 && !exact[0].year ? exact : []); // tarihsiz kayıt yalnız tek başına adaysa
+    const same = wanted ? pool.filter((x) => x.year === wanted) : [];
+    const pick = pool.length === 1 ? pool[0] : (same.length === 1 ? same[0] : null);
+    if (pick) value = { imdbId: pick.imdbId, year: pick.year || wanted || 0, original: pick.original };
+  } catch (_) {
+    return null; // ağ hatası: önbelleğe yazılmaz, sonraki açılışta yeniden denenir
+  }
+  if (store && store.cache) await store.cache.set(key, { savedAt: Date.now(), value }).catch(() => {});
+  return value;
 }
 
 export async function loadMovieMetadata(net, item, vodInfo = null, store = null) {

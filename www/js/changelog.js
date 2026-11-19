@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 141,
+    title: 'Türkçe adlı yabancı yapımlarda fragman',
+    items: [
+      'Türkçe adı olan yabancı film ve dizilerde (örn. “Bir Skandalın Anatomisi”) ad, Wikidata’dan özgün ada ve IMDb kaydına çevrilir; fragman ve oyuncular oradan gelir',
+      'Fragman yine bulunamazsa “YouTube’da fragman ara” düğmesi artık özgün adla arar (örn. “Anatomy of a Scandal 2022 official trailer”)',
+    ],
+  },
+  {
     id: 140,
     title: 'Türk yapımlarında ve Türkçe adlı filmlerde fragman',
     items: [
