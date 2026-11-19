@@ -147,11 +147,14 @@ test('todayRows: giriş ipucu (kütüphane kanıtı) yalnız rehber tür çıkar
   assert.deepEqual(todayRows({ entries: entries.map(({ hint, ...e }) => e), kind: 'film', now: NOW }).rows, [], 'ipucu yokken eskisi gibi tahmin yok');
 });
 
-test('Bugün TV\'de: türü boş, film uzunluğunda ve adı listede film olarak birebir geçen program film sayılır (kütüphane kanıtı)', () => {
+test('Bugün TV\'de: türü boş, film uzunluğundaki program adı kaynaklarda film bulunursa film sayılır (film-lookup çözücüsü)', () => {
   const ui = readFileSync(new URL('../www/js/today-ui.js', import.meta.url), 'utf8');
-  assert.match(ui, /const libFilm = \(x\) => !x\.p\.c && x\.p\.e - x\.p\.s >= 70 \* 60e3 && !channelKind\(x\.channel\) && !kindOf\(x\.p\) && !!\(env\.libraryFilm && env\.libraryFilm\(x\.p\.t\)\);/);
-  assert.match(ui, /\|\| libFilm\(x\)\)\s*\.map\(\(x\) => \(libFilm\(x\) \? \{ \.\.\.x, hint: 'film' \} : x\)\);/);
+  assert.match(ui, /const filmLike = \(x\) => !x\.p\.c && x\.p\.e - x\.p\.s >= FILM_MIN_MS && x\.p\.e - x\.p\.s <= FILM_MAX_MS && !channelKind\(x\.channel\) && !kindOf\(x\.p\);/);
+  assert.match(ui, /const isFilmByLookup = \(x\) => filmLike\(x\) && !!env\.films && env\.films\.verdict\(x\.p\.t\) === 'film';/);
+  assert.match(ui, /\|\| isFilmByLookup\(x\)\)\s*\.map\(\(x\) => \(isFilmByLookup\(x\) \? \{ \.\.\.x, hint: 'film' \} : x\)\);/);
+  assert.match(ui, /env\.films\.request\(list\.map\(\(x\) => x\.p\.t\), \(\) => \{ if \(root\.isConnected\) draw\(\); \}\);/, 'sonuç gelince ekran yeniden çizilir');
   const app = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /hasExactTitle\(k, ix\.movie\) && !hasExactTitle\(k, ix\.series\)/, 'dizi kütüphanesinde de varsa film sayılmaz');
-  assert.match(app, /epgReady: \(\) => S\.epg\.ready,\s*libraryFilm,/);
+  assert.match(app, /createFilmResolver\(\{ net, cache: store\.cache, local: libraryFilm \}\)/);
+  assert.match(app, /hasExactTitle\(k, ix\.movie\) && !hasExactTitle\(k, ix\.series\)/, 'kütüphane kanıtı: dizi kütüphanesinde de varsa film sayılmaz');
+  assert.match(app, /epgReady: \(\) => S\.epg\.ready,\s*films: filmResolver,/);
 });

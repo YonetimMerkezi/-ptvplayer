@@ -75,6 +75,7 @@ import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
+import { createFilmResolver } from './film-lookup.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, hasExactTitle, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { loadTrNames } from './tr-names.js';
@@ -2223,7 +2224,7 @@ function libraryIndex() {
   if (libIdx.stamp !== stamp) libIdx = { stamp, src, movie: buildTitleIndex(mv), series: buildTitleIndex(sr), byImdb: libIdx.src === src ? libIdx.byImdb : new Map() };
   return libIdx;
 }
-// "Bugün TV'de": rehber tür vermediğinde program adı listenizde film olarak (ve dizi olarak değil) birebir geçiyorsa film sayılır.
+// Yerel kanıt: program adı listenizde film olarak (ve dizi olarak değil) birebir geçiyorsa film sayılır.
 const filmMemo = { stamp: '', map: new Map() };
 function libraryFilm(title) {
   const ix = libraryIndex();
@@ -2232,6 +2233,8 @@ function libraryFilm(title) {
   if (!filmMemo.map.has(k)) filmMemo.map.set(k, hasExactTitle(k, ix.movie) && !hasExactTitle(k, ix.series));
   return filmMemo.map.get(k);
 }
+// Türü boş TV rehberi programlarının film olup olmadığı: kütüphane + Wikidata/Cinemeta araması (film-lookup.js); sonuçlar önbellekte.
+const filmResolver = createFilmResolver({ net, cache: store.cache, local: libraryFilm });
 const inLibrary = (film) => {
   const ix = libraryIndex();
   return findInLibrary(film, { titleIndex: film.type === 'series' ? ix.series : ix.movie, imdbIndex: ix.byImdb });
@@ -2961,7 +2964,7 @@ async function openToday() {
       net,
       liveItems: () => visibleAll('live'),
       epgReady: () => S.epg.ready,
-      libraryFilm,
+      films: filmResolver,
       ensureEpg: () => maybeRefreshEpg(),
       listFor: (it) => S.epg.listFor(it),
       epgBetween: (from, to) => S.epg.between(from, to),

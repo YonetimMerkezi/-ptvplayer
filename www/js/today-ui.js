@@ -5,6 +5,7 @@ import { loc } from './i18n.js';
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage, openSheet } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf } from './today.js';
+import { keyOf } from './film-lookup.js';
 import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
@@ -17,6 +18,9 @@ const DAYS = 3; // rehber en çok bugünden başlayarak üç gün (entries) gös
 
 // env: { liveItems(): görünür canlı kanallar, epgReady(), listFor(item): kanalın programları, epgBetween(from, to), programSheet(item, p),
 //        channels(): seçili kanal no listesi, setChannels(ids), openFlow?(): Dizi akışı ekranını açar, now? }
+const FILM_MIN_MS = 70 * 60e3; // film adayı: en az 70 dk, en çok 5,5 saat (reklamlı yayın)
+const FILM_MAX_MS = 330 * 60e3;
+
 export function openToday(env) {
   const now = env.now || (() => Date.now());
   let kind = 'spor';
@@ -147,6 +151,23 @@ export function openToday(env) {
     draw();
   }
 
+  // Görünen günün, bitmemiş ve günlük tekrarlanmayan (dizi/sohbet değil) adaylarını akşam filmleri önce olacak sırayla çözücüye verir.
+  function requestFilmLookups(cands) {
+    const t = now();
+    const from = dayStart(t, day);
+    const to = from + 24 * 3600e3;
+    const repeats = new Map();
+    for (const x of cands) {
+      const k = `${x.id}|${keyOf(x.p.t)}`;
+      repeats.set(k, (repeats.get(k) || 0) + 1);
+    }
+    const hour = (ms) => new Date(ms).getHours();
+    const list = cands
+      .filter((x) => x.p.s >= from && x.p.s < to && x.p.e > t && repeats.get(`${x.id}|${keyOf(x.p.t)}`) === 1)
+      .sort((a, b) => (hour(a.p.s) >= 19 ? 0 : 1) - (hour(b.p.s) >= 19 ? 0 : 1) || a.p.s - b.p.s);
+    env.films.request(list.map((x) => x.p.t), () => { if (root.isConnected) draw(); });
+  }
+
   function draw() {
     const t = now();
     const ready = env.epgReady() || !!seriesData || (kind === 'film' && day === 0 && filmSource.loaded);
@@ -157,12 +178,14 @@ export function openToday(env) {
     const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id))) : [];
     // Tüm EPG kanallarını tara: ulusal kanalların yanında Sinema TV, beIN Movies,
     // Movies Smart, FilmBox ve benzeri tematik film kanalları da listeye girer.
-    // Rehberlerin çoğu tür vermez (ücretsiz kaynaklarda programların ~%98'inde boş): türü boş, film uzunluğunda ve adı listenizde
-    // film olarak birebir geçen program film sayılır (kütüphane kanıtı; haber/yarışma gibi türü bilinenlere dokunmaz).
-    const libFilm = (x) => !x.p.c && x.p.e - x.p.s >= 70 * 60e3 && !channelKind(x.channel) && !kindOf(x.p) && !!(env.libraryFilm && env.libraryFilm(x.p.t));
+    // Rehberlerin çoğu tür vermez (ücretsiz kaynaklarda programların ~%98'inde boş): türü boş ve film uzunluğundaki programın adı
+    // listenizde, Wikidata'da ya da Cinemeta'da (Türkçe adı çevrilerek de) film olarak bulunursa film sayılır (film-lookup.js; haber/yarışma/dizi gibi bilinen türe dokunmaz).
+    const filmLike = (x) => !x.p.c && x.p.e - x.p.s >= FILM_MIN_MS && x.p.e - x.p.s <= FILM_MAX_MS && !channelKind(x.channel) && !kindOf(x.p);
+    const isFilmByLookup = (x) => filmLike(x) && !!env.films && env.films.verdict(x.p.t) === 'film';
+    if (ready && env.films) requestFilmLookups(allEntries.filter(filmLike));
     const epgFilmEntries = allEntries
-      .filter((x) => channelKind(x.channel) === 'film' || kindOf(x.p) === 'film' || libFilm(x))
-      .map((x) => (libFilm(x) ? { ...x, hint: 'film' } : x));
+      .filter((x) => channelKind(x.channel) === 'film' || kindOf(x.p) === 'film' || isFilmByLookup(x))
+      .map((x) => (isFilmByLookup(x) ? { ...x, hint: 'film' } : x));
     const selectedEpgFilms = filmSel == null
       ? epgFilmEntries
       : epgFilmEntries.filter((x) => filmSel.includes(String(x.id)));

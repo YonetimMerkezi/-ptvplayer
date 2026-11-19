@@ -5,8 +5,8 @@ export const CHANGELOG = [
     id: 162,
     title: 'Bugün TV’de: film tespiti',
     items: [
-      'Rehber türü vermediğinde, adı film listenizde birebir geçen ve film uzunluğundaki programlar artık Film sekmesinde görünür (ör. ulusal kanalların akşam filmleri)',
-      'Listenizde bulunmayan ve rehberin türünü bildirmediği filmler hâlâ Film sekmesine girmez',
+      'Rehber türü vermediğinde, film uzunluğundaki programın adı Wikidata ve IMDb (Cinemeta) kayıtlarında aranır; ad Türkçe bile olsa İngilizceye çevrilerek de aranır ve film çıkarsa Film sekmesine eklenir (ör. ulusal kanalların akşam filmleri)',
+      'Akşam saatleri önce taranır; sonuçlar saklanır, aynı program bir daha aranmaz. Dizi ya da belirsiz çıkan programlar Film sekmesine girmez',
     ],
   },
   {
