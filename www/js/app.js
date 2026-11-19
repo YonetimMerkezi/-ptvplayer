@@ -80,6 +80,7 @@ import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titl
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, homeRecent, statusText, RECENT_TABS, recentLatest, recentTabPick } from './home-extras.js';
+import { normalizeOrder, moveSection, isDefaultOrder, sectionLabel, HOME_SECTIONS } from './home-order.js';
 import { cleanTitle } from './titleclean.js';
 import { hueOf } from './music-order.js';
 import { PRO_FEATURES, PREVIEWS, TIERS, TRIAL_DAYS, BILLING_READY, setBillingReady, enforced, memberState, canUse, canUseApp, proFeature, stateText, normalizePreview, setProGate, needPro } from './membership.js';
@@ -3219,21 +3220,17 @@ function renderHome(v) {
     })
     .slice(0, 12)
     .map((it) => ({ kind: 'movie', it }));
-  const rows = homeRow('▶️ Kaldığın yerden devam et', cont, 'continue') +
-    `<div id="home-recent">${homeRecentHtml()}</div>` +
-    homeRow('✨ Son eklenen filmler', fresh, 'movies');
   const status = statusText({ live: c.live.length, vod: c.movies.length + c.series.length, lists: store.sources().length });
-  v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
-    <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">${linkState().text}</span><button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
-    <div class="home-section-head"><b>Keşfet</b><span>Yayın ve içerikler</span></div>
+  // Ana ekran bölümleri; sırası Ayarlar → Genel → “Bölüm sırası”ndan değişir (durum çubuğu ve alt bilgi hep sabit).
+  const sections = {
+    explore: `<div class="home-section-head"><b>Keşfet</b><span>Yayın ve içerikler</span></div>
     <div class="tiles home-primary">
       <button class="tile t-live" data-go="live" data-autofocus>${icon('tv')}<b>Canlı TV</b><small>${cnt(c.live.length, 'kanal')}</small></button>
       <button class="tile t-movie" data-go="movies">${icon('movie')}<b>Filmler</b><small>${cnt(c.movies.length, 'film')}</small></button>
       <button class="tile t-series" data-go="series">${icon('series')}<b>Diziler</b><small>${cnt(c.series.length, 'dizi')}</small></button>
       <button class="tile t-today" data-go="today">${icon('cal')}<b>Bugün TV’de</b><small>Spor · Film · Dizi</small></button>
-    </div>
-    <div class="home-section-head home-tools-head"><b>Hızlı erişim</b><span>Araçlar</span></div>
+    </div>`,
+    tools: `<div class="home-section-head home-tools-head"><b>Hızlı erişim</b><span>Araçlar</span></div>
     <div class="shortcuts${nativePlugin ? ' has-rec has-dl' : ''}">
       <button class="tile mini t-guide" data-go="guide">${miniIc('guide')}<b>TV Rehberi</b></button>
       <button class="tile mini t-multi" data-go="multi">${miniIc('grid')}<b>Çoklu ekran</b></button>
@@ -3242,11 +3239,18 @@ function renderHome(v) {
       <button class="tile mini t-sport" data-go="sport">${miniIc('ball')}<b>Spor</b></button>
       ${nativePlugin ? `<button class="tile mini t-recs" data-go="rec">${miniIc('rec')}<b>Kayıtlar</b></button><button class="tile mini t-dl" data-go="dl">${miniIc('dl', summary([...DL.values()]).active)}<b>İndirilenler</b></button>` : ''}
       ${nativePlugin ? `<button class="tile mini t-local" data-go="local">${miniIc('folder')}<b>Medya merkezi</b></button>` : `<button class="tile mini t-set" data-go="sources">${miniIc(kidActive() ? 'lock' : 'gear')}<b>${kidActive() ? 'Çıkış' : 'Ayarlar'}</b></button>`}
-    </div>
-    ${rows}
-    <div id="home-picks">${homePicksHtml()}</div>
-    <div id="home-new">${kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f))}</div>
-    <div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>
+    </div>`,
+    continue: homeRow('▶️ Kaldığın yerden devam et', cont, 'continue'),
+    recent: `<div id="home-recent">${homeRecentHtml()}</div>`,
+    fresh: homeRow('✨ Son eklenen filmler', fresh, 'movies'),
+    picks: `<div id="home-picks">${homePicksHtml()}</div>`,
+    new: `<div id="home-new">${kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f))}</div>`,
+    radio: `<div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>`,
+  };
+  v.innerHTML = `<div class="home">
+    <div class="home-top"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">${linkState().text}</span><button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
+    ${normalizeOrder(store.pref('set.homeOrder', [])).map((id) => sections[id] || '').join('')}
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
     <div class="home-foot"><span${expInfo && expInfo.level !== 'ok' ? ' class="exp-warn"' : ''}>${exp ? 'Bitiş Tarihi: ' + esc(exp) + (expInfo ? ' · ' + expiryText(expInfo) : '') : ''}</span><button id="h-src">${icon('down')}<span>${esc(src.name)}</span></button><span>Giriş: ${esc(who)}</span></div>
   </div>`;
@@ -4954,6 +4958,9 @@ function generalSheet() {
         selRow('g-lite', 'Hafif mod', 'Animasyon, gölge ve bulanıklığı kapatır; otomatikte 2 GB ve altı bellekli cihazda açılır', optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))),
         selRow('g-tv', 'TV modu', 'Kumanda ile kullanım: yatay, tam ekran, büyük yazı', optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))),
       ]) +
+      setCard('Ana ekran', 'home', [
+        btnRow('g-hord', 'Bölüm sırası', isDefaultOrder(normalizeOrder(store.pref('set.homeOrder', []))) ? 'Varsayılan sıra; örn. Vizyondakileri üste taşıyabilirsiniz' : 'Özel sıra', 'Düzenle'),
+      ]) +
       setCard('Son izlenenler', 'history', [
         selRow('g-lim', 'Saklanan sayı', 'Son izlenenler listesinin sınırı', optionsHtml([[20, '20'], [40, '40'], [100, '100']], lim)),
         btnRow('g-clr', 'Listeyi temizle', 'Bu kaynağın son izlenenlerini siler', 'Temizle'),
@@ -5008,6 +5015,7 @@ function generalSheet() {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));
         applyTvMode();
       });
+      $('#g-hord', body).addEventListener('click', () => homeOrderSheet());
       $('#g-lock', body).addEventListener('click', () => lockSheet());
       $('#g-bk', body).addEventListener('click', () => backupSheet());
       $('#g-dev', body).addEventListener('click', async () => toast((await copyText(fmtDeviceId(deviceId(store)))) ? 'Cihaz kimliği kopyalandı' : 'Kopyalanamadı'));
@@ -6745,6 +6753,40 @@ async function toggleCatLock(kind, id) {
   savePrefs(kind, toggleLocked(prefs, id));
   if (!wasLocked) S.unlocked.delete(catKey(kind, id));
   refreshList(true);
+}
+
+// Ana ekran bölümlerinin sırası: bölümler yukarı/aşağı ya da en üste taşınır; ana ekran bir sonraki açılışta (ya da şu an açıksa hemen) yeni sırayla çizilir.
+function homeOrderSheet() {
+  const order = () => normalizeOrder(store.pref('set.homeOrder', []));
+  openSheet({
+    title: 'Ana ekran bölüm sırası',
+    html: '<p class="hint">Bölümleri yukarı, aşağı ya da en üste taşıyın. Bağlantı durumu ve alt bilgi her zaman en altta kalır.</p><div id="ho-list"></div><div class="ho-foot"><button class="btn ghost" id="ho-reset" type="button">Varsayılan sıra</button></div>',
+    mount: (body) => {
+      const box = $('#ho-list', body);
+      const reset = $('#ho-reset', body);
+      const draw = () => {
+        box.innerHTML = order()
+          .map((id, i) => `<div class="rec-row fo-row ho-row" data-id="${id}"><div class="rec-play"><span class="t">${i + 1}. ${esc(sectionLabel(id))}</span><small>${esc((HOME_SECTIONS.find((x) => x.id === id) || {}).hint || '')}</small></div><button class="act" data-m="top" aria-label="En üste al">${icon('top')}</button><button class="act" data-m="up" aria-label="Yukarı">${icon('up')}</button><button class="act" data-m="down" aria-label="Aşağı">${icon('down')}</button></div>`)
+          .join('');
+        reset.disabled = isDefaultOrder(order());
+      };
+      const save = (list) => {
+        store.setPref('set.homeOrder', list);
+        draw();
+        if (S.tab === 'home') renderTab();
+      };
+      box.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-m]');
+        const row = b && b.closest('[data-id]');
+        if (!row) return;
+        save(moveSection(order(), row.dataset.id, b.dataset.m));
+        const again = box.querySelector(`[data-id="${CSS.escape(row.dataset.id)}"] [data-m="${b.dataset.m}"]`);
+        if (again && document.documentElement.classList.contains('kbd')) again.focus(); // kumandada odak taşınan satırın aynı düğmesinde kalır
+      });
+      reset.addEventListener('click', () => save([]));
+      draw();
+    },
+  });
 }
 
 function lockSheet() {

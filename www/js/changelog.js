@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 145,
+    title: 'Ana ekran bölümlerinin sırası ayarlardan değişir',
+    items: [
+      'Ayarlar → Genel → Ana ekran → “Bölüm sırası”: Keşfet, Hızlı erişim, Kaldığın yerden devam, Son izlenenler, Son eklenenler, Film önerileri, Vizyondakiler ve Radyo bölümlerini yukarı, aşağı ya da en üste taşıyabilirsiniz',
+      '“Varsayılan sıra” ile eski düzene dönülür. Bağlantı durumu ve alt bilgi her zaman en altta kalır',
+    ],
+  },
+  {
     id: 144,
     title: 'Ana ekranda tek “Son izlenenler”',
     items: [

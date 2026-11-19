@@ -565,6 +565,8 @@ a.btn { text-decoration: none; }
 .rec-row { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
 .rec-row .rec-play { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 8px; text-align: left; }
 .rec-row .rec-play .t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ho-row .rec-play .t { white-space: normal; overflow: visible; text-overflow: clip; }
+.ho-foot { display: flex; justify-content: flex-end; padding: 14px 0 4px; }
 .rec-row .rec-play small { color: var(--muted, #8a97ad); font-size: 0.8125rem; }
 .rec-row.on .rec-play small { color: var(--danger); }
 .sy-val { font-size: 2rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin: 4px 0 0; }
