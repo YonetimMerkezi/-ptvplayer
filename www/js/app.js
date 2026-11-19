@@ -1084,15 +1084,15 @@ function renderBrowse(v, kind) {
 }
 
 // ---- TV vitrini (hero.js): kategorinin içinde kumandayla gezilen film/dizi kutusunun geniş arka planı, adı, puanı, özeti.
-// Yalnız TV kipinde ve film/dizi kutuları görünürken açık; telefonda hiçbir şey değişmez. Ayar: Genel ayarlar > TV vitrini.
-// Film ve dizi ekranı (Genel ayarlar): vitrinli satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: TV'de vitrinli satırlar, telefonda klasik.
+// Film/dizi kutuları görünürken açık: TV'de kumandayla, telefonda dikeyken (Netflix gibi üstte büyük afiş, altında kayan satırlar).
+// Film ve dizi ekranı (Genel ayarlar): vitrinli satırlar / klasik ızgara + TV vitrini / klasik. Otomatik: vitrinli satırlar (telefon dikey ve TV).
 const MV_VIEWS = [['auto', 'Otomatik'], ['rows', 'Vitrinli satırlar'], ['hero', 'Klasik + TV vitrini'], ['classic', 'Klasik']];
 const isMv = (kind) => kind === 'movie' || kind === 'series';
 function mvPref() {
   const p = store.pref('set.mvView', 'auto');
   if (MV_VIEWS.some(([k]) => k === p && k !== 'auto')) return p;
   if (store.pref('set.tvHero', true) === false) return 'classic'; // eski "TV vitrini" anahtarı kapatılmışsa
-  return isTvUi() ? 'rows' : 'classic';
+  return 'rows';
 }
 // Geçerli görünüm: vitrinli satırlar ve TV vitrini Pro'dur; üyelik yetmiyorsa klasik ızgara gösterilir (ayar silinmez, Pro gelince geri döner).
 function mvView() {
@@ -1122,7 +1122,9 @@ function paintHero(it, info, final) {
     `<div class="hero-m">${m.rating ? `<b class="hero-r">★ ${esc(m.rating)}</b>` : ''}${m.meta.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` +
     (m.cast ? `<p class="hero-c"><b>Oyuncular</b> ${esc(m.cast)}</p>` : '') +
     (m.director ? `<p class="hero-c hero-d"><b>Yönetmen</b> ${esc(m.director)}</p>` : '') +
-    (m.plot ? `<p class="hero-p">${esc(m.plot)}</p>` : '');
+    (m.plot ? `<p class="hero-p">${esc(m.plot)}</p>` : '') +
+    // Telefonda (dokunmatik) vitrinin altında Netflix gibi iki düğme; TV'de CSS gizler, kumanda kutuya odaklanır
+    `<div class="hero-btns"><button class="hero-b hero-b-play" data-hero="play">${icon('play')}<span>${it.kind === 'series' ? 'İzle' : 'Oynat'}</span></button><button class="hero-b" data-hero="info">${icon('info')}<span>Bilgi</span></button></div>`;
   // Ayrıntı yoldayken yalnız dikey afiş varsa çizilmez: geniş ekranda kırpık görünüp sonra geniş görsele dönüşüyordu.
   // Geniş görsel gelene (ya da ayrıntı gelmeyeceği anlaşılana) dek önceki arka plan kalır.
   if (final || m.wide) paintHeroBg(m.bg, m.backs);
@@ -1224,9 +1226,12 @@ function heroSync(kind, mode) {
   document.documentElement.classList.toggle('hero-on', on);
   document.documentElement.classList.toggle('hero-rows', on && mode === 'rows'); // vitrinli satır görünümü: vitrin telefonda (dokunmatik, dikey) da görünür
   // Dokunmatikte vitrine dokunmak öne çıkan yapımı açar (kumandada vitrin odak almaz)
-  box.onclick = on ? () => {
+  box.onclick = on ? (e) => {
     const it = hero.current;
-    if (it && !document.documentElement.classList.contains('kbd')) (kind === 'movie' ? openMovie(it) : openSeries(it));
+    if (!it || document.documentElement.classList.contains('kbd')) return;
+    const b = e.target.closest && e.target.closest('[data-hero]');
+    if (b && b.dataset.hero === 'play' && kind === 'movie') return startPlay(it, { ctx: movieCtx(it) }); // dizide “İzle” bölümler ekranını açar
+    kind === 'movie' ? openMovie(it) : openSeries(it);
   } : null;
   if (!on) {
     box.innerHTML = '';
@@ -4952,7 +4957,7 @@ function generalSheet() {
         chkRow('autoPreview', 'Önizleme oynat', 'Yatay ekranda kanala dokununca küçük pencerede açılır; kapalıyken doğrudan tam ekran'),
       ]) +
       setCard('Film ve diziler', 'movie', [
-        selRow('g-mv', 'Film ve dizi ekranı', 'Otomatik: TV’de Vitrinli satırlar, telefonda Klasik. Vitrinli satırlar: yatay kayan kategoriler, üstte odaktaki yapımın vitrini', optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto'), true),
+        selRow('g-mv', 'Film ve dizi ekranı', 'Otomatik: Vitrinli satırlar (telefonda dikeyken ve TV’de). Vitrinli satırlar: yatay kayan kategoriler, üstte odaktaki yapımın vitrini', optionsHtml(MV_VIEWS, MV_VIEWS.some(([k]) => k === store.pref('set.mvView', 'auto')) ? store.pref('set.mvView', 'auto') : 'auto'), true),
         selRow('g-cord', 'Kategori sırası', 'Öne çıkanlar önce: yeni, platform ve Türkçe içerik üstte, yetişkin kategoriler en sonda. Kendi verdiğiniz sıra her zaman önceliklidir', optionsHtml(CAT_ORDERS, catOrderMode()), true),
         selRow('g-rcap', 'Satırdaki yapım sayısı', 'Vitrinli satırda en çok kaç kutu dizilir; fazlası “Tümünü gör” kutusunda', optionsHtml(ROW_CAPS, normalizeRowCap(store.pref('set.rowCap', SHELF_CAP)))),
         selRow('g-cap', 'Kutudaki ad', 'Afişin altında kaç satır görünsün', optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))),

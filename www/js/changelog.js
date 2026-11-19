@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 148,
+    title: 'Telefonda Netflix gibi vitrin',
+    items: [
+      'Film ve Dizi ekranı telefonda dikeyken de vitrinli açılır: üstte büyük gölgeli afiş, altında kayan satırlar (Genel ayarlar › Film ve dizi ekranı: Otomatik)',
+      'Vitrinde Oynat (dizide İzle) ve Bilgi düğmeleri; afişe dokunmak yapımı açar',
+    ],
+  },
+  {
     id: 147,
     title: 'Fragman araması: yatay sonuç şeridi',
     items: [

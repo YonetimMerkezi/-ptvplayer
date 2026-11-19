@@ -449,6 +449,7 @@ html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !impo
 .hero-c { margin: 0 0 0.3em; color: #e3ebee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hero-c b { margin-right: 0.5em; color: var(--muted); font-weight: 600; }
 .hero-p { margin: 0.5em 0 0; font-size: 1.02em; line-height: 1.4; color: #e3ebee; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.hero-btns { display: none; } /* düğmeler yalnız telefonda (dikey) görünür; TV'de kumanda kutuya odaklanır */
 @media (max-height: 640px) { .hero-d { display: none; } .hero-t { -webkit-line-clamp: 1; } } /* 960×540 gibi alçak ekranda yönetmen satırı ve başlığın ikinci satırı yer açar: özet kırpılmaz */
 /* Telefonda vitrin yalnız yatayken ve kumanda/klavye kullanılırken görünür; dokunmatikte yer açılır */
 /* Telefonda vitrin: dikeyde yalnız vitrinli satır görünümünde (html.hero-rows) çıkar; yatayda yer dar olduğundan yalnız kumanda/klavye ile */
@@ -456,13 +457,16 @@ html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !impo
 @media not all and (orientation: landscape) { html:not(.tv):not(.hero-rows) #hero, html:not(.tv):not(.hero-rows) #hero-bg { display: none !important; } }
 /* Telefon, dikey: görsel üstte tam genişlikte durur ve aşağı doğru sayfaya karışır; yazı görselin alt kenarında */
 @media (orientation: portrait) {
-  html:not(.tv) #hero:not([hidden]) { display: flex; flex-direction: column; justify-content: flex-end; height: 30vh; max-width: none; padding: 0 14px 8px; font-size: 14px; }
+  html:not(.tv) #hero:not([hidden]) { display: flex; flex-direction: column; justify-content: flex-end; height: 36vh; max-width: none; padding: 0 14px 10px; font-size: 14px; }
   html:not(.tv) #hero .hero-c, html:not(.tv) #hero .hero-d { display: none; }
   html:not(.tv) #hero .hero-t { -webkit-line-clamp: 1; }
-  html:not(.tv) #hero .hero-p { -webkit-line-clamp: 5; } /* konu 5 satıra kadar görünür; yükseklik 30vh olduğundan başlık ve künye kırpılmaz */
-  @media (max-height: 720px) { html:not(.tv) #hero .hero-p { -webkit-line-clamp: 4; } } /* alçak ekranlarda satır azalır, başlık kırpılmaz */
-  @media (max-height: 600px) { html:not(.tv) #hero .hero-p { -webkit-line-clamp: 3; } }
-  html:not(.tv) #hero-bg { bottom: auto; height: 51vh; -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
+  html:not(.tv) #hero .hero-p { -webkit-line-clamp: 3; } /* düğmeler de aynı alanda: konu 3 satıra kadar */
+  @media (max-height: 640px) { html:not(.tv) #hero .hero-p { -webkit-line-clamp: 2; } } /* alçak ekranlarda satır azalır, başlık kırpılmaz */
+  html:not(.tv) #hero .hero-btns { display: flex; gap: 10px; margin-top: 12px; }
+  html:not(.tv) #hero .hero-b { flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; font: inherit; font-size: 1rem; font-weight: 750; color: #fff; background: rgba(255, 255, 255, 0.16); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  html:not(.tv) #hero .hero-b .ic { width: 20px; height: 20px; }
+  html:not(.tv) #hero .hero-b-play { color: var(--accent-ink, #0a1118); background: var(--accent); } /* vurgu dolgusunda koyu mürekkep (sarıda beyaz yazı olmaz) */
+  html:not(.tv) #hero-bg { bottom: auto; height: 58vh; -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
   html:not(.tv) #hero-bg::after { background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.05) 30%, rgba(0, 0, 0, 0.78) 100%); }
   html:not(.tv) #hero-bg i.poster { left: 0; right: 0; width: auto; -webkit-mask-image: none; mask-image: none; }
   html:not(.tv) #hero-bg i.poster img { object-fit: cover; object-position: center 18%; }

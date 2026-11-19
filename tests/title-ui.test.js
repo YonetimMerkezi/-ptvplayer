@@ -333,3 +333,15 @@ test('bağlantı: vizyondaki filmler ana sayfada, çocuk modunda yok; kart bilgi
   const css = kaynak('www/css/app.css');
   assert.match(css, /\.nw-tag \{[^}]*color: var\(--accent-ink, #0a1118\)/, 'dolgu üstü yazı koyu');
 });
+
+test('telefon vitrini: otomatik görünüm vitrinli satır; vitrinde Oynat/Bilgi düğmeleri, TV\'de gizli, dolguda koyu yazı', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /return 'rows';\n\}/, 'otomatik: telefon ve TV vitrinli satırlar');
+  assert.doesNotMatch(app, /isTvUi\(\) \? 'rows' : 'classic'/);
+  assert.match(app, /data-hero=\\?"play\\?"/);
+  assert.match(app, /data-hero=\\?"info\\?"/);
+  assert.match(app, /b\.dataset\.hero === 'play' && kind === 'movie'\) return startPlay/);
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /^\.hero-btns \{ display: none; \}/m, 'TV\'de düğme yok');
+  assert.match(css, /#hero \.hero-b-play \{ color: var\(--accent-ink, #0a1118\)/, 'vurgu dolgusunda koyu yazı');
+});
