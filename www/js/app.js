@@ -93,6 +93,7 @@ const store = createStore();
 const net = createNet(nativePlugin ? { native: nativePlugin, convertFileSrc: (p) => Cap.convertFileSrc(p) } : {});
 
 const CAT_KEY = { live: 'live', movie: 'movies', series: 'series' };
+const CAT_UNIT = { live: 'kanal', movie: 'film', series: 'dizi' }; // kategori kartındaki sayının birimi
 // Çocuk profili: açıkken katalog yalnız izinli kategorileri içerir (setCatalog), ayarlar/kaynaklar gizlenir, çıkış çocuk-modu şifresiyle olur.
 const kidPinRec = () => store.pref('kid.pin', null);
 const kidActive = () => kidActiveOf(store.pref('kid.on', false), kidPinRec());
@@ -915,9 +916,9 @@ function categoryRows(kind, { edit = S.catEdit, filter = S.catFilter } = {}) {
 function catRow(c, i, kind) {
   const folderIc = c.folder ? icon('folder') : '';
   const lockIc = c.locked ? icon('lock') : '';
-  // Canlı TV: her kategori kendi gerçekçi görseliyle geniş kart (spor, sinema, haber…); düzenleme modunda eski sade satır
-  if (kind === 'live' && !S.catEdit) {
-    return `<div class="row cat vis${c.special ? ' special' : ''}${c.hidden ? ' hid' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}">${catArtImg(catArtId(c))}<div class="meta"><div class="nm"><span class="mq-i">${lockIc}${esc(c.name)}</span></div><div class="sub">${c.count} kanal${c.locked ? ' · kilitli' : ''}</div></div><span class="chev" aria-hidden="true">›</span></div>`;
+  // Canlı TV, Film ve Dizi: her kategori kendi gerçekçi görseliyle geniş kart (spor, aksiyon, korku…); düzenleme modunda eski sade satır
+  if (CAT_KEY[kind] && !S.catEdit) {
+    return `<div class="row cat vis${c.special ? ' special' : ''}${c.hidden ? ' hid' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}">${catArtImg(catArtId(c, kind))}<div class="meta"><div class="nm"><span class="mq-i">${lockIc}${esc(c.name)}</span></div><div class="sub">${c.count} ${CAT_UNIT[kind]}${c.locked ? ' · kilitli' : ''}</div></div><span class="chev" aria-hidden="true">›</span></div>`;
   }
   if (!S.catEdit || c.special) {
     return `<div class="row cat${c.special ? ' special' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}"><div class="meta"><div class="nm"><span class="mq-i">${lockIc}${folderIc}${esc(c.name)}</span></div></div><span class="n">${c.count}</span><span class="chev" aria-hidden="true">›</span></div>`;
@@ -1333,7 +1334,7 @@ function mountList(kind, mode = 'items') {
         cellH: (w, cols) => Math.max(86, Math.min(124, (w - 24 - gap * (cols - 1)) / cols * 0.72)),
         render: (c, i) => categoryTile(c, i, kind),
       } : {
-        rowH: scaled(kind === 'live' && !S.catEdit ? 92 : 56),
+        rowH: scaled(CAT_KEY[kind] && !S.catEdit ? 92 : 56),
         render: (c, i) => catRow(c, i, kind),
       }),
       onTap: (i, ev) => onCatTap(kind, i, ev),
@@ -1630,8 +1631,8 @@ function liveRow(it, i) {
 
 function categoryTile(c, i, kind) {
   const folderIc = c.folder ? icon('folder') : c.locked ? icon('lock') : icon('list');
-  if (kind === 'live' && !(S.catEdit && !c.special)) {
-    return `<div class="cat-tile vis${c.hidden ? ' hidden' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}">${catArtImg(catArtId(c))}<b>${esc(c.name)}</b><small>${c.count} kanal</small>${c.locked ? '<span class="cat-tile-lock">Kilitli</span>' : ''}</div>`;
+  if (CAT_KEY[kind] && !(S.catEdit && !c.special)) {
+    return `<div class="cat-tile vis${c.hidden ? ' hidden' : ''}${kc(i)}" role="button" tabindex="0" data-i="${i}">${catArtImg(catArtId(c, kind))}<b>${esc(c.name)}</b><small>${c.count} ${CAT_UNIT[kind]}</small>${c.locked ? '<span class="cat-tile-lock">Kilitli</span>' : ''}</div>`;
   }
   if (S.catEdit && !c.special) {
     const move_ = S.catFilter ? '' : `<button class="cat-tile-act" data-act="top" aria-label="En üste al">${icon('top')}</button><button class="cat-tile-act" data-act="up" aria-label="Yukarı">${icon('up')}</button><button class="cat-tile-act" data-act="down" aria-label="Aşağı">${icon('down')}</button>`;

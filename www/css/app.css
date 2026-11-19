@@ -132,7 +132,7 @@ html[data-multi] .ac-pg { --pc: var(--p2); }
 html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-pg, .gs-pg, .cast-pg, .speed-page-shell, .sp-pg, .sd-pg, .sf-pg, .health-pg, .set-pg, .theme-picker-page, .rd-pg, .ac-pg) {
   --accent: var(--pc); --accent-ink: #0a1118; --accent-soft: color-mix(in srgb, var(--pc) 18%, transparent); --sel: color-mix(in srgb, var(--pc) 42%, #000);
 }
-/* Canlı TV kategorileri: gerçekçi görselli geniş kart (www/img/cat/*.webp; kategori adına göre cat-art.js seçer). Görsel sağda, sola doğru kartın koyu rengine erir. */
+/* Canlı TV, Film ve Dizi kategorileri: gerçekçi görselli geniş kart (www/img/cat/*.webp; kategori adına göre cat-art.js seçer). Görsel sağda, sola doğru kartın koyu rengine erir. */
 .row.cat.vis, .cat-tile.vis { --vis-bg: color-mix(in srgb, var(--accent) 14%, #070b14); position: relative; overflow: hidden; background: var(--vis-bg); box-shadow: none; }
 .row.cat.vis { height: calc(100% - 10px); margin: 5px 0; padding: 0 10px 0 30px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 20px; }
 .row.cat.vis::before { content: ''; position: absolute; left: 12px; top: 24%; bottom: 24%; width: 4px; border-radius: 3px; background: var(--accent); z-index: 2; }

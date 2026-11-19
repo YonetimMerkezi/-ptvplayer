@@ -1,5 +1,5 @@
-// Canlı TV kategori kartlarının görselleri: gerçekçi fotoğraf tarzı arka planlar (www/img/cat/<kimlik>.webp, çevrimdışı çalışır).
-// Kategori adından tür çıkarılır; bilinmeyen ad "genel" görselini alır. Görseller yapay zekâ ile üretilmiştir (ticari markasız, kişisiz).
+// Canlı TV, Film ve Dizi kategori kartlarının görselleri: gerçekçi fotoğraf tarzı arka planlar (www/img/cat/<kimlik>.webp, çevrimdışı çalışır).
+// Kategori adından tür çıkarılır; bilinmeyen ad Canlı TV'de "genel", Film'de "sinema", Dizi'de "dizi" görselini alır. Görseller yapay zekâ ile üretilmiştir (ticari markasız, kişisiz).
 import { fold } from './util.js';
 
 // Sıra önemlidir: ilk eşleşen kazanır ("Çocuk Filmleri" → çocuk, "Spor Haber" → spor). Metin fold() ile küçük harf ve aksansızdır.
@@ -18,17 +18,46 @@ export const CAT_ART_RULES = [
   ['ulusal', /ulusal|national|yerel|local|turk|\btr\b|\btrt\b|genel/],
 ];
 
-const SPECIAL_ART = { __all: 'tumu', __recent: 'son', __cont: 'son', __new: 'tumu', __top: 'genel' };
-export const CAT_ART_IDS = [...new Set([...CAT_ART_RULES.map((r) => r[0]), 'genel', 'klasor', ...Object.values(SPECIAL_ART)])];
+// Film ve Dizi kategorileri: önce tür (aksiyon, komedi, korku…), bulunamazsa ülke, o da yoksa film/dizi genel görseli.
+// Aynı sıra kuralı geçerli ("TR | AKSİYON" → aksiyon, "Türk Dizileri" → yerli). "bilim kurgu" belgeselden, "tarih" belgeselden ayrı ele alınır.
+export const MOVIE_ART_RULES = [
+  ['animasyon', /animasyon|anime|animation|cizgi/],
+  ['cocuk', /cocuk|kids|aile|family|cartoon|junior|bebek/],
+  ['bilimkurgu', /bilim ?kurgu|sci ?-?fi|science fiction|uzay|\bsf\b/],
+  ['belgesel', /belgesel|documentar|\bdoga\b|nature|discovery|biyografi|biography/],
+  ['muzik', /muzik|music|konser/],
+  ['aksiyon', /aksiyon|action|dovus|martial/],
+  ['macera', /macera|adventure/],
+  ['komedi', /komedi|comedy|mizah|gulmece/],
+  ['korku', /korku|horror|dehset|paranormal|zombi|cadi/],
+  ['romantik', /romantik|romance|\bask\b|\baski\b|\blove\b/],
+  ['gerilim', /gerilim|thriller|\bsuc\b|crime|polisiye|dedektif|gizem|mystery|casus|\bspy\b/],
+  ['savas', /savas|\bwar\b|tarih|history|historical|western|vahsi bati|epik|\bepic\b/],
+  ['fantastik', /fantastik|fantasy|buyu|efsane|supernatural/],
+  ['dram', /dram|drama|duygusal/],
+  ['uhd', /\b4k\b|uhd|hevc|ultra|h\.?265/],
+  ['__genel', /dublaj|altyazi|subtitle|dubbed/],
+  ['yerli', /yerli|turk|\btr\b|yesilcam|\blocal\b/],
+];
 
-// c: { id, name, special, folder } → görsel kimliği (www/img/cat/<kimlik>.webp)
-export function catArtId(c) {
-  if (!c) return 'genel';
+const SPECIAL_ART = { __all: 'tumu', __recent: 'son', __cont: 'son', __new: 'tumu', __top: 'genel' };
+export const CAT_ART_IDS = [...new Set([...CAT_ART_RULES.map((r) => r[0]), ...MOVIE_ART_RULES.map((r) => r[0]).filter((id) => id !== '__genel'), 'genel', 'klasor', ...Object.values(SPECIAL_ART)])];
+const KIND_ART = { live: 'genel', movie: 'sinema', series: 'dizi' };
+const COUNTRY_RE = CAT_ART_RULES.find((r) => r[0] === 'ulke')[1];
+
+// c: { id, name, special, folder }, kind: 'live' | 'movie' | 'series' → görsel kimliği (www/img/cat/<kimlik>.webp)
+export function catArtId(c, kind = 'live') {
+  const fallback = KIND_ART[kind] || 'genel';
+  if (!c) return fallback;
   if (c.special && SPECIAL_ART[c.id]) return SPECIAL_ART[c.id];
   if (c.folder) return 'klasor';
   const text = fold(c.name);
+  if (kind === 'movie' || kind === 'series') {
+    for (const [id, re] of MOVIE_ART_RULES) if (re.test(text)) return id === '__genel' ? fallback : id;
+    return COUNTRY_RE.test(text) ? 'ulke' : fallback;
+  }
   for (const [id, re] of CAT_ART_RULES) if (re.test(text)) return id;
-  return 'genel';
+  return fallback;
 }
 
 // Görsel dosyası yoksa resim kalkar, kart yine de çalışır.

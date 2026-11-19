@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 139,
+    title: 'Film ve dizi kategorileri görselli',
+    items: [
+      'Film ve Dizi kategorileri de Canlı TV gibi gerçekçi görselli kartlarla açılır: aksiyon, komedi, dram, korku, bilim kurgu, animasyon, aşk, gerilim, macera, savaş/tarih, fantastik ve yerli yapımlar için ayrı görseller',
+      'Kategori adından tür tanınır (örn. “TR | AKSİYON FİLMLERİ”, “Yerli Diziler”); tanınmayan adlar film/dizi görselini alır. Kart altındaki sayı artık “film” / “dizi” yazar',
+    ],
+  },
+  {
     id: 138,
     title: 'Vizyondaki filmler',
     items: [
