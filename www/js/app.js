@@ -76,6 +76,7 @@ import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
+import { loadTrNames } from './tr-names.js';
 import { createHeroTrailer } from './hero-trailer.js';
 import { createHeroStage } from './hero-stage.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
@@ -2205,6 +2206,17 @@ const inLibrary = (film) => {
   const ix = libraryIndex();
   return findInLibrary(film, { titleIndex: film.type === 'series' ? ix.series : ix.movie, imdbIndex: ix.byImdb });
 };
+// Cinemeta'dan İngilizce adla gelen yapımlara Türkçe adlar eklenir (Wikidata, tek istek; tr-names.js): listeniz Türkçe adlıysa eşleşme böyle bulunur.
+// Listeyle eşleşme sonucu değiştiyse true döner (ekran yeniden boyanır). Ağ yoksa sessizce false.
+async function enrichTrNames(films) {
+  const need = films.filter((f) => !Array.isArray(f.trNames));
+  if (!need.length) return false;
+  const before = films.map((f) => !!inLibrary(f));
+  const map = await loadTrNames({ net, cache: store.cache, ids: need.map((f) => f.imdbId) }).catch(() => null);
+  if (!map || !map.size) return false;
+  for (const f of need) if (map.has(f.imdbId)) f.trNames = map.get(f.imdbId);
+  return films.some((f, i) => !!inLibrary(f) !== before[i]);
+}
 const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı iframe'e takılır; çocuk modunda dış video yok
 
 // Fragman ve oyuncu kartlarını boyar. detail yoksa (IMDb eşleşmesi ya da ağ yok) yalnız sağlayıcının oyuncu listesi kartlanır.
@@ -2293,13 +2305,20 @@ function openActor(name, role = '') {
         return;
       }
       if (!body.isConnected) return;
-      const films = [...found.movies, ...found.series].map((f) => ({ ...f, inLib: !!inLibrary(f) })).sort((a, b) => b.year - a.year);
-      body.innerHTML = actorHtml(name, role, films);
+      const films = [...found.movies, ...found.series].sort((a, b) => b.year - a.year);
+      const paint = () => {
+        for (const f of films) f.inLib = !!inLibrary(f);
+        const top = body.scrollTop;
+        body.innerHTML = actorHtml(name, role, films);
+        body.scrollTop = top;
+      };
+      paint();
       body.addEventListener('click', (e) => {
         const c = e.target.closest('[data-film]');
         const film = c && films.find((f) => f.imdbId === c.dataset.film);
         if (film) openTitleInfo(film);
       });
+      enrichTrNames(films).then((changed) => { if (changed && body.isConnected) paint(); }); // Türkçe adlar gelince eşleşenler "Oynat"a döner
     },
   });
 }
@@ -2315,7 +2334,11 @@ function ensureHomeNew() {
   if (kidActive() || newBusy) return;
   if (newHome) return fillHomeNew();
   newBusy = true;
-  loadNewReleases({ net, cache: store.cache }).then((r) => { newHome = r; }, () => {}).finally(() => { newBusy = false; fillHomeNew(); });
+  loadNewReleases({ net, cache: store.cache }).then((r) => { newHome = r; }, () => {}).finally(() => {
+    newBusy = false;
+    fillHomeNew();
+    if (newHome) enrichTrNames(newHome.films).then((changed) => { if (changed) fillHomeNew(); });
+  });
 }
 function openNewReleases() {
   if (kidActive()) return;
@@ -2331,13 +2354,20 @@ function openNewReleases() {
         return;
       }
       if (!body.isConnected) return;
-      const films = newHome.films.map((f) => ({ ...f, inLib: !!inLibrary(f) }));
-      body.innerHTML = releasesPageHtml(films);
+      const films = newHome.films;
+      const paint = () => {
+        for (const f of films) f.inLib = !!inLibrary(f);
+        const top = body.scrollTop;
+        body.innerHTML = releasesPageHtml(films);
+        body.scrollTop = top;
+      };
+      paint();
       body.addEventListener('click', (e) => {
         const c = e.target.closest('[data-film]');
         const film = c && films.find((f) => f.imdbId === c.dataset.film);
         if (film) openTitleInfo(film);
       });
+      enrichTrNames(films).then((changed) => { if (changed && body.isConnected) paint(); });
     },
   });
 }

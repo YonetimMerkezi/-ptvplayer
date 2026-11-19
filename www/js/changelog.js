@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 152,
+    title: 'Oyuncunun filmleri Türkçe adla eşleşiyor',
+    items: [
+      'Oyuncu sayfasında ve vizyondaki filmlerde, listenizde Türkçe adıyla bulunan yapımlar artık “Listende yok” yerine “Oynat” olarak görünür',
+      'Eşleşme Türkçe adlara (Wikidata) ve küçük ad farklarına (kesme işareti, alt başlık, parantez içi özgün ad) bakar; yıl ve sıra numarası tutmayan filmler birbirine karıştırılmaz',
+      'Türkçe adlı bir film/dizi açıldığında IMDb eşleşmesi de aynı yöntemle daha sık bulunur (fragman ve oyuncular için)',
+    ],
+  },
+  {
     id: 151,
     title: 'TV fragmanı: daha hızlı, ses düğmesi',
     items: [

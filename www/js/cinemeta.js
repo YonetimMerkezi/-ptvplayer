@@ -2,6 +2,7 @@
 // Ağ yoksa ya da eşleşme bulunamazsa sessizce boş döner; sonuçlar önbellekte tutulur.
 import { fold, youtubeIdOf } from './util.js';
 import { cleanTitle } from './titleclean.js';
+import { fuzzyFind } from './title-match.js';
 
 export const CINEMETA = 'https://v3-cinemeta.strem.io';
 export const DETAIL_TTL = 30 * 86400000;
@@ -166,19 +167,34 @@ export function buildTitleIndex(items) {
     if (!ct.key) continue;
     if (!map.has(ct.key)) map.set(ct.key, []);
     map.get(ct.key).push({ it, year: ct.year || 0 });
+    // "Katiller Devri (Jianyu)": parantez içi çoğu zaman özgün ad; o adla da bulunabilsin
+    const alt = ct.alt ? cleanTitle(ct.alt, ct.year) : null;
+    if (alt && alt.key && alt.key !== ct.key) {
+      if (!map.has(alt.key)) map.set(alt.key, []);
+      map.get(alt.key).push({ it, year: ct.year || 0 });
+    }
   }
   return map;
 }
 
+// film.trNames: Wikidata'dan gelen Türkçe adlar (varsa). Önce tam ad eşleşmesi (özgün + Türkçe adlar), bulunamazsa bulanık eşleşme (title-match.js).
 export function findInLibrary(film, { titleIndex = null, imdbIndex = null } = {}) {
   if (!film) return null;
   if (imdbIndex && imdbIndex.has(film.imdbId)) return imdbIndex.get(film.imdbId);
   if (!titleIndex) return null;
-  const ct = cleanTitle(film.name, film.year);
-  const list = ct.key ? titleIndex.get(ct.key) : null;
-  if (!list) return null;
-  const hit = list.find((x) => !x.year || !film.year || Math.abs(x.year - film.year) <= 1);
-  return hit ? hit.it : null;
+  const names = [film.name, ...(Array.isArray(film.trNames) ? film.trNames : [])].filter(Boolean);
+  const year = Number(film.year) || 0;
+  for (const name of names) {
+    const ct = cleanTitle(name, film.year);
+    const list = ct.key ? titleIndex.get(ct.key) : null;
+    const hit = list && list.find((x) => !x.year || !year || Math.abs(x.year - year) <= 1);
+    if (hit) return hit.it;
+  }
+  for (const name of names) {
+    const hit = fuzzyFind(titleIndex, cleanTitle(name, film.year).title || name, year);
+    if (hit) return hit.it;
+  }
+  return null;
 }
 
 // Cinemeta türleri İngilizce gelir; ekranda Türkçe gösterilir (bilinmeyen tür olduğu gibi kalır)

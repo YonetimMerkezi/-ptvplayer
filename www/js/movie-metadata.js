@@ -1,4 +1,5 @@
 // Film ve dizi kimlik eşleştirmesi. IMDb puanı özellikle kullanılmaz.
+import { tokensOf, dice, acceptable } from './title-match.js';
 import { fold } from './util.js';
 import { findBundledMedia } from './media-catalog.js';
 
@@ -123,11 +124,18 @@ export async function resolveTitleOrigin(net, title, year = 0, store = null) {
   if (cached && cached.savedAt && Date.now() - cached.savedAt < (cached.value ? CACHE_TTL : CACHE_MISS_TTL)) return cached.value || null;
   let value = null;
   try {
-    const exact = (await wikidataTitles(net, query, { filmOnly: false })).filter((x) => x.exact);
+    const all = await wikidataTitles(net, query, { filmOnly: false });
+    const exact = all.filter((x) => x.exact);
     const near = wanted ? exact.filter((x) => x.year && Math.abs(x.year - wanted) <= 1) : exact;
     const pool = near.length ? near : (exact.length === 1 && !exact[0].year ? exact : []); // tarihsiz kayıt yalnız tek başına adaysa
     const same = wanted ? pool.filter((x) => x.year === wanted) : [];
-    const pick = pool.length === 1 ? pool[0] : (same.length === 1 ? same[0] : null);
+    let pick = pool.length === 1 ? pool[0] : (same.length === 1 ? same[0] : null);
+    if (!pick && !exact.length && wanted) {
+      // Tam ad tutmadı ("Fleet Sokağının Şeytan Berberi" ↔ "Sweeney Todd: Fleet Sokağı'nın …"): yıl biliniyorsa bulanık eşleşen tek yapım kabul edilir
+      const q = tokensOf(query);
+      const fuzzy = all.filter((x) => x.year && x.names.some((n) => { const t = tokensOf(n); return new Set(q).size >= 2 && acceptable(dice(q, t), q, t, wanted, x.year); }));
+      if (fuzzy.length === 1) pick = fuzzy[0];
+    }
     if (pick) value = { imdbId: pick.imdbId, year: pick.year || wanted || 0, original: pick.original };
   } catch (_) {
     return null; // ağ hatası: önbelleğe yazılmaz, sonraki açılışta yeniden denenir

@@ -191,3 +191,13 @@ test('Türkçe ad çözümü: sonuç (ve boş sonuç) önbelleğe yazılır; ağ
   assert.equal(await resolveTitleOrigin({ json: async () => { throw new Error('ağ yok'); } }, 'Ağ Yok', 2019, down), null);
   assert.equal(down.m.size, 0, 'ağ hatası önbelleğe yazılmaz');
 });
+
+test('Türkçe ad çözümü: tam ad tutmasa da yıl biliniyorsa bulanık eşleşen tek yapım kabul edilir (kesme/alt başlık farkı)', async () => {
+  const net = wdNet({ Q1: wdEntity("Sweeney Todd: Fleet Sokağı'nın Şeytan Berberi", 'tt0408236', { year: 2007, en: 'Sweeney Todd: The Demon Barber of Fleet Street' }) });
+  const r = await resolveTitleOrigin(net, 'Sweeney Todd Fleet Sokağının Şeytan Berberi', 2007);
+  assert.equal(r && r.imdbId, 'tt0408236');
+  assert.equal(await resolveTitleOrigin(net, 'Sweeney Todd Fleet Sokağının Şeytan Berberi', 0), null, 'yıl yoksa bulanık eşleşme yapılmaz');
+  assert.equal(await resolveTitleOrigin(net, 'Sweeney Todd Fleet Sokağının Şeytan Berberi', 2015), null, 'yıl uyuşmazsa eşleşmez');
+  const two = wdNet({ Q1: wdEntity('Alfa Beta Gama Delta Zeta', 'tt2000001', { year: 2010 }), Q2: wdEntity('Alfa Beta Gama Delta Eta', 'tt2000002', { year: 2010 }) });
+  assert.equal(await resolveTitleOrigin(two, 'Alfa Beta Gama Delta Epsilon', 2010), null, 'iki bulanık aday: belirsiz');
+});

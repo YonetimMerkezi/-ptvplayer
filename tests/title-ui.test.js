@@ -390,3 +390,15 @@ test('fragman sahnesi: iframe yüklendi ama durum iletisi yoksa 4,5 sn sonra sah
   assert.equal(cls.has('on'), true, 'el sıkışma başarısız olsa da video afişin arkasında kalmaz');
   dispose();
 });
+
+test('oyuncu ve vizyon ekranları: Türkçe adlar (Wikidata) gelince eşleşme yeniden hesaplanır ve ekran yeniden boyanır', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /import \{ loadTrNames \} from '\.\/tr-names\.js'/);
+  assert.match(app, /async function enrichTrNames\(films\)[\s\S]*loadTrNames\(\{ net, cache: store\.cache, ids: need\.map\(\(f\) => f\.imdbId\) \}\)[\s\S]*f\.trNames = map\.get\(f\.imdbId\)/);
+  const actor = app.slice(app.indexOf('function openActor'), app.indexOf('function openNewReleases'));
+  assert.match(actor, /const paint = \(\) => \{[\s\S]*f\.inLib = !!inLibrary\(f\)[\s\S]*actorHtml\(name, role, films\)/);
+  assert.match(actor, /enrichTrNames\(films\)\.then\(\(changed\) => \{ if \(changed && body\.isConnected\) paint\(\); \}\)/);
+  const rel = app.slice(app.indexOf('function openNewReleases'), app.indexOf('function translatePlot'));
+  assert.match(rel, /enrichTrNames\(films\)\.then\(\(changed\) => \{ if \(changed && body\.isConnected\) paint\(\); \}\)/);
+  assert.match(app, /if \(newHome\) enrichTrNames\(newHome\.films\)\.then\(\(changed\) => \{ if \(changed\) fillHomeNew\(\); \}\)/);
+});
