@@ -330,6 +330,14 @@ html.tv.hero-on .catbar { position: absolute; top: 0; right: 0; z-index: 2; padd
 .ob-steps .ic { flex: none; width: 28px; height: 28px; color: var(--accent); }
 .ob-steps span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ob-steps small { color: var(--muted); font-size: 0.8125rem; }
+.ob-act { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.ob-act .btn { margin-top: 16px; }
+/* TV (kumanda): düğmeler adımların üstünde, adımlar yan yana; her şey 540 px yüksekliğe sığar ve gerekirse kaydırılır (odaktaki düğme ekran dışında kalmaz) */
+html.tv .empty.ob { display: flex; flex-direction: column; align-items: center; max-width: 820px; max-height: 100%; padding-top: 8px; padding-bottom: 12px; overflow-y: auto; }
+html.tv .empty.ob .ob-act { order: 2; }
+html.tv .empty.ob .ob-steps { order: 3; flex-direction: row; max-width: none; align-self: stretch; margin: 16px 0 0; }
+html.tv .empty.ob .ob-steps li { flex: 1 1 0; align-items: flex-start; }
+html.tv .empty.ob .ob-trial { order: 4; margin-top: 12px; }
 .ob-trial { max-width: 26em; margin: 0 auto 14px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--gold); color: var(--text); font-size: 0.875rem; text-align: left; }
 .linkbtn { color: var(--accent); text-decoration: underline; font-size: inherit; }
 /* Profiller sayfası */

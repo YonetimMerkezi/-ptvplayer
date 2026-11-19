@@ -136,6 +136,7 @@ export function createCastUI(deps) {
               if (!dev) return;
               if (manage) {
                 toast(`${dev.name} ile eşleşti`);
+                syncAfterPair(dev);
                 return search();
               }
               api.close();
@@ -182,6 +183,7 @@ export function createCastUI(deps) {
               if (!dev) return;
               if (manage) {
                 toast(`${dev.name} ile eşleşti`);
+                syncAfterPair(dev);
                 draw();
                 return;
               }
@@ -257,6 +259,17 @@ export function createCastUI(deps) {
     toast('Eşitleniyor…', 15000);
     const r = await runSync(dev);
     if (!r.ok) return toast(r.msg, 4000);
+    store.setPref('sync.last', Date.now());
+    toast(syncMessage(r.tv, r.phone), 7000);
+  }
+
+  // Yeni eşleşmeden hemen sonra (Ayarlar › Telefondan oynat): liste, favoriler ve kaldığın yer TV'ye geçer. Eskiden yalnız kendiliğinden eşitleme (dakikalar sonra) taşırdı.
+  // "Kendiliğinden eşitle" kapalıysa yapılmaz; hata sessizce geçilir (Yedekle / geri yükle › TV ile eşitle elle çalışır).
+  async function syncAfterPair(dev) {
+    if (!dev || store.pref('sync.auto', true) === false) return;
+    toast('Liste TV’ye aktarılıyor…', 15000);
+    const r = await runSync(dev);
+    if (!r.ok) return toast(r.msg || 'TV ile eşitlenemedi. Yedekle / geri yükle › TV ile eşitle’yi deneyin.', 5000);
     store.setPref('sync.last', Date.now());
     toast(syncMessage(r.tv, r.phone), 7000);
   }

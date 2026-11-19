@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 158,
+    title: 'TV: karşılama ekranı ve telefondan liste aktarma',
+    items: [
+      'TV’deki “Hoş geldiniz” ekranı artık ekrana sığar: “Kaynak ekle” düğmesi görünür ve odaklıdır, adımlar yan yana dizilir; yanına “Telefondan al” düğmesi eklendi',
+      'Ayarlar › Telefondan oynat’ta telefonu QR ya da kodla eşleştirir eşleştirmez liste, favoriler ve kaldığın yer TV’ye hemen aktarılır (daha önce birkaç dakika sonra, kendiliğinden eşitlemede geçiyordu)',
+    ],
+  },
+  {
     id: 157,
     title: 'Oyuncu-film eşleştirmesi daha esnek',
     items: [

@@ -728,8 +728,8 @@ function renderTab() {
   renderBrowse(v, TAB_KIND[S.tab]);
 }
 
-function emptyHtml(title, text, btn) {
-  return `<div class="empty"><h3>${esc(title)}</h3><p>${esc(text)}</p>${btn || ''}</div>`;
+function emptyHtml(title, text, btn, cls = '') {
+  return `<div class="empty${cls ? ' ' + cls : ''}"><h3>${esc(title)}</h3><p>${esc(text)}</p>${btn || ''}</div>`;
 }
 
 // İlk açılış tanıtımı: uygulamanın ne olduğu üç adımda; üyelik sistemi devredeyse deneme süresi ve sonrası da açıkça yazar.
@@ -744,9 +744,12 @@ function renderOnboarding(v) {
     'Başlamak için Xtream hesap bilgilerinizi, M3U liste bağlantınızı ya da telefondaki bir M3U dosyasını ekleyin. Uygulama içerik sağlamaz; yalnızca erişim hakkınız olan kaynakları ekleyin.',
     `<ol class="ob-steps">${steps.map(([ic, t, d]) => `<li>${icon(ic)}<span><b>${t}</b><small>${d}</small></span></li>`).join('')}</ol>` +
       (memOn() ? `<p class="ob-trial"><b>${TRIAL_DAYS} gün ücretsiz deneme.</b> Sonrasında uygulamayı kullanmak için yıllık Standart üyelik gerekir; ek özellikler Pro üyelikle açılır. <button class="linkbtn" id="ob-mem">Üyelik seçenekleri</button></p>` : '') +
-      '<button class="btn" id="ob-add">Kaynak ekle</button>',
+      // TV'de düğmeler adımların üstünde durur (CSS order) ve ekrana sığar; "Telefondan al": telefondaki listeyi QR/kodla TV'ye aktarır (Pro)
+      `<div class="ob-act"><button class="btn" id="ob-add">Kaynak ekle</button>${nativePlugin && isTvUi() ? '<button class="btn ghost" id="ob-phone" type="button">Telefondan al</button>' : ''}</div>`,
+    'ob',
   );
   $('#ob-add').addEventListener('click', () => sourceForm());
+  if ($('#ob-phone')) $('#ob-phone').addEventListener('click', () => needPro('tvlink') && castUi.receiverSheet());
   if ($('#ob-mem')) $('#ob-mem').addEventListener('click', () => memberSheet());
 }
 
