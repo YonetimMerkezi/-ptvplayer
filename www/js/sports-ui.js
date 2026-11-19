@@ -15,7 +15,7 @@ import { BADGE_HOST, badgeSearchUrl, pickBadge, sideLogo, logoHtml, nationFlags 
 import { FAV_CHIP, cleanFavs, isFavSide, hasFavMatch, toggleFav, autoRemindTargets, nextDone } from './sports-fav.js';
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
-const LS_CACHE_KEY = 'sports-ls:v1'; // LiveScore gün listeleri
+const LS_CACHE_KEY = 'sports-ls:v2'; // LiveScore gün listeleri
 const LS_CACHE_DAYS = 5;
 const BADGE_CACHE_KEY = 'sports-badges:v1'; // kulüp rozeti arama sonuçları (ad → adres ya da boş)
 const BADGE_HIT_MS = 30 * 864e5; // bulunan rozet bu süre geçerli
