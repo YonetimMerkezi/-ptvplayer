@@ -27,13 +27,15 @@ const sameNums = (a, b) => {
   return x === y;
 };
 
-// Eşik: iki yıl da biliniyorsa (±1) 0,8; kısa adlarda (2 sözcük altı) 0,9; yıl bilinmiyorsa 0,9 ve sıra numaraları aynı olmalı ("Toy Story" ≠ "Toy Story 2")
-export function acceptable(score, a, b, yearA, yearB) {
+// Eşik: iki yıl da biliniyorsa (±1) 0,8; kısa adlarda (3 sözcük altı) 0,9; yıl bilinmiyorsa 0,9 ve sıra numaraları aynı olmalı ("Toy Story" ≠ "Toy Story 2").
+// loose (makine çevirisiyle üretilmiş Türkçe tahmin adları): iki yıl biliniyorsa 0,6 (kısa adda 0,8); yıl bilinmiyorsa 0,8 ve sıra numaraları aynı.
+export function acceptable(score, a, b, yearA, yearB, loose = false) {
   if (yearA && yearB) {
     if (Math.abs(yearA - yearB) > 1) return false;
-    return score >= (Math.min(new Set(a).size, new Set(b).size) < 3 ? 0.9 : 0.8);
+    const short = Math.min(new Set(a).size, new Set(b).size) < 3;
+    return score >= (loose ? (short ? 0.8 : 0.6) : (short ? 0.9 : 0.8));
   }
-  return score >= 0.9 && sameNums(a, b);
+  return score >= (loose ? 0.8 : 0.9) && sameNums(a, b);
 }
 
 const MAX_POSTING = 3000; // çok yaygın sözcükler ("film", "love") aday toplamayı yavaşlatmasın
@@ -58,7 +60,7 @@ function tokenIndex(titleIndex) {
 }
 
 // Dizinde ada en çok benzeyen kayıt ({ it, year, score }) ya da null. İki farklı kayıt neredeyse eşit benzerse (belirsiz) null.
-export function fuzzyFind(titleIndex, name, year = 0) {
+export function fuzzyFind(titleIndex, name, year = 0, { loose = false } = {}) {
   if (!titleIndex || !titleIndex.size) return null;
   const a = tokensOf(name);
   if (new Set(a).size < 2) return null; // tek sözcüklü adlar yalnız tam eşleşir
@@ -73,9 +75,9 @@ export function fuzzyFind(titleIndex, name, year = 0) {
   for (const i of cand) {
     const { key, tokens } = keys[i];
     const score = dice(a, tokens);
-    if (score < 0.8) continue;
+    if (score < (loose ? 0.6 : 0.8)) continue;
     for (const e of titleIndex.get(key)) {
-      if (!acceptable(score, a, tokens, year, e.year)) continue;
+      if (!acceptable(score, a, tokens, year, e.year, loose)) continue;
       const hit = { it: e.it, year: e.year, score };
       if (!best || score > best.score) { second = best; best = hit; } else if (!second || score > second.score) second = hit;
     }

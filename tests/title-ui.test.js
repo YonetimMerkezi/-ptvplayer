@@ -186,7 +186,7 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
   assert.match(app, /const autoPlay = auto && setting\('trailerAuto'\)/, 'otomatik oynatma ayara bağlı (varsayılan açık)');
   assert.match(app, /chkRow\('trailerFind', 'Fragmanı otomatik ara'/);
   assert.match(app, /const trailerOn = \(\) => !kidActive\(\) && !isTvUi\(\)/, 'TV ve çocuk modunda fragman yok');
-  assert.match(app, /pp\.innerHTML = kidActive\(\) \? ''/, 'çocuk modunda oyuncu kartı yok');
+  assert.match(app, /const people = kidActive\(\) \? \[\] : peopleOf\(detail, provider\)/, 'çocuk modunda oyuncu kartı (ve fotoğraf araması) yok');
   assert.match(app, /if \(own\) return film\.type === 'series' \? openSeries\(own\) : openMovie\(own\)/, 'listedeyse kendi ekranı');
   assert.match(app, /auto: !extras\.shown/, 'dizi yeniden çizilince fragman yeniden başlamaz');
 });
@@ -394,13 +394,19 @@ test('fragman sahnesi: iframe yüklendi ama durum iletisi yoksa 4,5 sn sonra sah
 test('oyuncu ve vizyon ekranları: Türkçe adlar (Wikidata) gelince eşleşme yeniden hesaplanır ve ekran yeniden boyanır', () => {
   const app = kaynak('www/js/app.js');
   assert.match(app, /import \{ loadTrNames \} from '\.\/tr-names\.js'/);
-  assert.match(app, /async function enrichTrNames\(films\)[\s\S]*loadTrNames\(\{ net, cache: store\.cache, ids: need\.map\(\(f\) => f\.imdbId\) \}\)[\s\S]*f\.trNames = map\.get\(f\.imdbId\)/);
+  assert.match(app, /async function enrichTrNames\(films, onChange = \(\) => \{\}\)[\s\S]*loadTrNames\(\{ net, cache: store\.cache, ids: need\.map\(\(f\) => f\.imdbId\) \}\)[\s\S]*f\.trNames = map\.get\(f\.imdbId\)/);
+  assert.match(app, /f\.year && !Array\.isArray\(f\.trGuess\) && !inLibrary\(f\)\)\.slice\(0, 24\)/, 'ikinci aşama: listede olmayan, yılı bilinen en çok 24 yapım');
+  assert.match(app, /translateToTr\(\{ net, cache: store\.cache, text: f\.name \}\)[\s\S]*f\.trGuess = \[t\]/, 'adlar makine çevirisiyle Türkçeye çevrilir');
   const actor = app.slice(app.indexOf('function openActor'), app.indexOf('function openNewReleases'));
   assert.match(actor, /const paint = \(\) => \{[\s\S]*f\.inLib = !!inLibrary\(f\)[\s\S]*actorHtml\(name, role, films, photo\)/);
-  assert.match(actor, /enrichTrNames\(films\)\.then\(\(changed\) => \{ if \(changed && body\.isConnected\) paint\(\); \}\)/);
+  assert.match(actor, /enrichTrNames\(films, \(\) => \{ if \(body\.isConnected\) paint\(\); \}\)/);
+  assert.match(actor, /loadPersonPhotos\(\{ net, cache: store\.cache, names: \[name\] \}\)/, 'oyuncu sayfası: karttan fotoğraf gelmediyse kişinin kendi fotoğrafı aranır');
   const rel = app.slice(app.indexOf('function openNewReleases'), app.indexOf('function translatePlot'));
-  assert.match(rel, /enrichTrNames\(films\)\.then\(\(changed\) => \{ if \(changed && body\.isConnected\) paint\(\); \}\)/);
-  assert.match(app, /if \(newHome\) enrichTrNames\(newHome\.films\)\.then\(\(changed\) => \{ if \(changed\) fillHomeNew\(\); \}\)/);
+  assert.match(rel, /enrichTrNames\(films, \(\) => \{ if \(body\.isConnected\) paint\(\); \}\)/);
+  assert.match(app, /if \(newHome\) enrichTrNames\(newHome\.films, fillHomeNew\)/);
+  assert.match(app, /import \{ loadPersonPhotos, nameKey \} from '\.\/people-photos\.js'/);
+  assert.match(app, /function paintPhotos\(pp, people, imdbId\)[\s\S]*loadPersonPhotos\(\{ net, cache: store\.cache, names: people\.map\(\(p\) => p\.name\), imdbId: imdbId \|\| '' \}\)/, 'kadro kartları: fotoğraflar Wikidata\'dan');
+  assert.match(app, /paintPhotos\(pp, people, detail && detail\.imdbId\)/);
 });
 
 test('oyuncu fotoğrafı: kartta ve oyuncu sayfası başlığında yalnız https adresi; yüklenmezse baş harfler kalır; rol/karakter altyazısı', () => {

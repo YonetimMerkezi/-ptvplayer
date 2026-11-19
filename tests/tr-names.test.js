@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { trNamesQuery, parseTrNames, loadTrNames, WDQS, BATCH } from '../www/js/tr-names.js';
+import { trNamesQuery, parseTrNames, loadTrNames, WDQS, BATCH, API_MAX } from '../www/js/tr-names.js';
 
 const row = (imdb, label, alias) => ({ imdb: { value: imdb }, ...(label ? { label: { value: label } } : {}), ...(alias ? { alias: { value: alias } } : {}) });
 const mem = () => { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) }; };
@@ -47,4 +47,33 @@ test('yükleme: ağ hatasında boş döner ve önbelleğe yazılmaz; kimlikler B
   const net = { json: async () => { calls += 1; return { results: { bindings: [] } }; } };
   await loadTrNames({ net, cache: null, ids });
   assert.equal(calls, 2);
+});
+
+test('yedek yol: SPARQL hizmeti hata verirse Wikidata API ile (haswbstatement + toplu etiket) Türkçe adlar bulunur ve önbelleğe yazılır', async () => {
+  const cache = mem();
+  const urls = [];
+  const net = { json: async (u) => {
+    urls.push(u);
+    if (u.includes('query.wikidata.org')) throw new Error('503');
+    if (u.includes('list=search')) return { query: { search: u.includes('tt1') ? [{ title: 'Q111' }] : [] } };
+    return { entities: { Q111: { labels: { tr: { value: 'Ölü Gelin' } }, aliases: { tr: [{ value: 'Cesetler Gelini' }] } } } };
+  } };
+  const r = await loadTrNames({ net, cache, ids: ['tt1', 'tt2'] });
+  assert.deepEqual(r.get('tt1'), ['Ölü Gelin', 'Cesetler Gelini']);
+  assert.deepEqual(r.get('tt2'), [], 'Wikidata kaydı yok');
+  assert.ok(urls.some((u) => /haswbstatement%3AP345%3Dtt1/.test(u)));
+  assert.ok(urls.some((u) => u.includes('action=wbgetentities') && u.includes('ids=Q111')));
+  assert.deepEqual(cache.m.get('tr-names:v1:tt1').names, ['Ölü Gelin', 'Cesetler Gelini']);
+});
+
+test('yedek yol: o da başarısız olursa boş döner, önbelleğe yazılmaz; API en çok API_MAX kimlik için denenir', async () => {
+  const cache = mem();
+  const dead = { json: async () => { throw new Error('ağ yok'); } };
+  assert.equal((await loadTrNames({ net: dead, cache, ids: ['tt1'] })).size, 0);
+  assert.equal(cache.m.size, 0);
+  const ids = Array.from({ length: 30 }, (_, i) => 'tt' + (500 + i));
+  let searches = 0;
+  const net = { json: async (u) => { if (u.includes('query.wikidata.org')) throw new Error('x'); if (u.includes('list=search')) { searches += 1; return { query: { search: [] } }; } return { entities: {} }; } };
+  await loadTrNames({ net, cache: null, ids });
+  assert.equal(searches, API_MAX);
 });

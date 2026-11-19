@@ -77,6 +77,7 @@ import { translateToTr } from './translate.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { loadTrNames } from './tr-names.js';
+import { loadPersonPhotos, nameKey } from './people-photos.js';
 import { createHeroTrailer } from './hero-trailer.js';
 import { createHeroStage } from './hero-stage.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
@@ -2215,16 +2216,37 @@ const inLibrary = (film) => {
   const ix = libraryIndex();
   return findInLibrary(film, { titleIndex: film.type === 'series' ? ix.series : ix.movie, imdbIndex: ix.byImdb });
 };
-// Cinemeta'dan İngilizce adla gelen yapımlara Türkçe adlar eklenir (Wikidata, tek istek; tr-names.js): listeniz Türkçe adlıysa eşleşme böyle bulunur.
-// Listeyle eşleşme sonucu değiştiyse true döner (ekran yeniden boyanır). Ağ yoksa sessizce false.
-async function enrichTrNames(films) {
+// Cinemeta'dan İngilizce adla gelen yapımlar listenin Türkçe adlarıyla eşleştirilir; her aşamada eşleşme değişirse onChange çağrılır (ekran yeniden boyanır):
+//  1) Wikidata'dan Türkçe adlar (tr-names.js; SPARQL, olmazsa API) — tam ve bulanık eşleşme;
+//  2) hâlâ listede olmayan, yılı bilinen yapımların adı makine çevirisiyle Türkçeye çevrilir (en çok 24, 4 paralel) — yıl şartlı gevşek eşleşme (trGuess).
+// Ağ yoksa sessizce hiçbir şey yapmaz.
+async function enrichTrNames(films, onChange = () => {}) {
+  const snap = () => films.map((f) => !!inLibrary(f));
+  const changed = (before) => films.some((f, i) => !!inLibrary(f) !== before[i]);
   const need = films.filter((f) => !Array.isArray(f.trNames));
-  if (!need.length) return false;
-  const before = films.map((f) => !!inLibrary(f));
-  const map = await loadTrNames({ net, cache: store.cache, ids: need.map((f) => f.imdbId) }).catch(() => null);
-  if (!map || !map.size) return false;
-  for (const f of need) if (map.has(f.imdbId)) f.trNames = map.get(f.imdbId);
-  return films.some((f, i) => !!inLibrary(f) !== before[i]);
+  if (need.length) {
+    const before = snap();
+    const map = await loadTrNames({ net, cache: store.cache, ids: need.map((f) => f.imdbId) }).catch(() => null);
+    if (map && map.size) {
+      for (const f of need) if (map.has(f.imdbId)) f.trNames = map.get(f.imdbId);
+      if (changed(before)) onChange();
+    }
+  }
+  const rest = films.filter((f) => f.year && !Array.isArray(f.trGuess) && !inLibrary(f)).slice(0, 24);
+  if (rest.length) {
+    const before = snap();
+    for (const f of rest) f.trGuess = []; // aynı yapım için ikinci bir çağrı çeviriyi yinelemez
+    let at = 0;
+    const worker = async () => {
+      while (at < rest.length) {
+        const f = rest[at++];
+        const t = await translateToTr({ net, cache: store.cache, text: f.name }).catch(() => null);
+        if (t && t !== f.name) f.trGuess = [t];
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, rest.length) }, worker));
+    if (changed(before)) onChange();
+  }
 }
 const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı iframe'e takılır; çocuk modunda dış video yok
 
@@ -2271,7 +2293,31 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
       })();
     }
   }
-  if (pp) pp.innerHTML = kidActive() ? '' : peopleHtml(peopleOf(detail, provider));
+  if (pp) {
+    const people = kidActive() ? [] : peopleOf(detail, provider);
+    pp.innerHTML = peopleHtml(people);
+    paintPhotos(pp, people, detail && detail.imdbId);
+  }
+}
+
+// Oyuncu fotoğrafları (Wikidata; Cinemeta yalnız ad verir): kartlar önce baş harflerle çizilir, fotoğraflar gelince yeniden boyanır (yatay kaydırma korunur).
+function paintPhotos(pp, people, imdbId) {
+  if (!pp || !people.length) return;
+  const token = (pp._ph = (pp._ph || 0) + 1); // sonradan yapılan boyama eski sonucu geçersiz kılar
+  loadPersonPhotos({ net, cache: store.cache, names: people.map((p) => p.name), imdbId: imdbId || '' }).then((map) => {
+    if (!pp.isConnected || pp._ph !== token || !map.size) return;
+    let changed = false;
+    for (const p of people) {
+      const u = !p.photo && map.get(nameKey(p.name));
+      if (u) { p.photo = u; changed = true; }
+    }
+    if (!changed) return;
+    const row = $('.pp-row', pp);
+    const left = row ? row.scrollLeft : 0;
+    pp.innerHTML = peopleHtml(people);
+    const nrow = $('.pp-row', pp);
+    if (nrow) nrow.scrollLeft = left;
+  }).catch(() => {});
 }
 
 // Kütüphane öğesinin ekranında: IMDb kimliği çözülünce ayrıntıyı alır, onDetail ile boyar.
@@ -2315,19 +2361,27 @@ function openActor(name, role = '', photo = '') {
       }
       if (!body.isConnected) return;
       const films = [...found.movies, ...found.series].sort((a, b) => b.year - a.year);
+      let painted = false;
       const paint = () => {
         for (const f of films) f.inLib = !!inLibrary(f);
         const top = body.scrollTop;
         body.innerHTML = actorHtml(name, role, films, photo);
         body.scrollTop = top;
+        painted = true;
       };
       paint();
+      if (!photo) { // karttan fotoğraf gelmediyse (henüz yüklenmemiş / sağlayıcı kadrosu) kişinin kendi fotoğrafı aranır
+        loadPersonPhotos({ net, cache: store.cache, names: [name] }).then((m) => {
+          const u = m.get(nameKey(name));
+          if (u && body.isConnected) { photo = u; if (painted) paint(); }
+        }).catch(() => {});
+      }
       body.addEventListener('click', (e) => {
         const c = e.target.closest('[data-film]');
         const film = c && films.find((f) => f.imdbId === c.dataset.film);
         if (film) openTitleInfo(film);
       });
-      enrichTrNames(films).then((changed) => { if (changed && body.isConnected) paint(); }); // Türkçe adlar gelince eşleşenler "Oynat"a döner
+      enrichTrNames(films, () => { if (body.isConnected) paint(); }); // Türkçe adlar gelince eşleşenler "Oynat"a döner
     },
   });
 }
@@ -2346,7 +2400,7 @@ function ensureHomeNew() {
   loadNewReleases({ net, cache: store.cache }).then((r) => { newHome = r; }, () => {}).finally(() => {
     newBusy = false;
     fillHomeNew();
-    if (newHome) enrichTrNames(newHome.films).then((changed) => { if (changed) fillHomeNew(); });
+    if (newHome) enrichTrNames(newHome.films, fillHomeNew);
   });
 }
 function openNewReleases() {
@@ -2376,7 +2430,7 @@ function openNewReleases() {
         const film = c && films.find((f) => f.imdbId === c.dataset.film);
         if (film) openTitleInfo(film);
       });
-      enrichTrNames(films).then((changed) => { if (changed && body.isConnected) paint(); });
+      enrichTrNames(films, () => { if (body.isConnected) paint(); });
     },
   });
 }

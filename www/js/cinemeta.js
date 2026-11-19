@@ -196,17 +196,28 @@ export function buildTitleIndex(items) {
     if (!ct.key) continue;
     if (!map.has(ct.key)) map.set(ct.key, []);
     map.get(ct.key).push({ it, year: ct.year || 0 });
-    // "Katiller Devri (Jianyu)": parantez içi çoğu zaman özgün ad; o adla da bulunabilsin
+    // "Katiller Devri (Jianyu)": parantez içi çoğu zaman özgün ad; "Corpse Bride - Ölü Gelin" gibi ayraçlı adlarda her parça: o adlarla da bulunabilsin
+    const extra = new Set();
     const alt = ct.alt ? cleanTitle(ct.alt, ct.year) : null;
-    if (alt && alt.key && alt.key !== ct.key) {
-      if (!map.has(alt.key)) map.set(alt.key, []);
-      map.get(alt.key).push({ it, year: ct.year || 0 });
+    if (alt && alt.key) extra.add(alt.key);
+    const parts = String((it && it.name) || '').split(/\s+[-–—\/]\s+/).map((x) => x.trim()).filter(Boolean);
+    if (parts.length > 1 && parts.length <= 4) {
+      for (const part of parts) {
+        const pc = cleanTitle(part, ct.year);
+        if (pc.key && /[a-z]/.test(pc.key) && (pc.key.length >= 6 || pc.key.includes(' '))) extra.add(pc.key);
+      }
+    }
+    for (const key of extra) {
+      if (key === ct.key) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push({ it, year: ct.year || 0 });
     }
   }
   return map;
 }
 
-// film.trNames: Wikidata'dan gelen Türkçe adlar (varsa). Önce tam ad eşleşmesi (özgün + Türkçe adlar), bulunamazsa bulanık eşleşme (title-match.js).
+// film.trNames: Wikidata'dan gelen Türkçe adlar; film.trGuess: makine çevirisiyle üretilmiş Türkçe tahmin adları (yalnız gevşek eşikle aranır).
+// Önce tam ad eşleşmesi (özgün + Türkçe adlar), sonra bulanık eşleşme (title-match.js), en son tahmin adlarıyla gevşek eşleşme.
 export function findInLibrary(film, { titleIndex = null, imdbIndex = null } = {}) {
   if (!film) return null;
   if (imdbIndex && imdbIndex.has(film.imdbId)) return imdbIndex.get(film.imdbId);
@@ -222,6 +233,12 @@ export function findInLibrary(film, { titleIndex = null, imdbIndex = null } = {}
   for (const name of names) {
     const hit = fuzzyFind(titleIndex, cleanTitle(name, film.year).title || name, year);
     if (hit) return hit.it;
+  }
+  if (year && Array.isArray(film.trGuess)) {
+    for (const name of film.trGuess) {
+      const hit = fuzzyFind(titleIndex, cleanTitle(name, film.year).title || name, year, { loose: true });
+      if (hit) return hit.it;
+    }
   }
   return null;
 }

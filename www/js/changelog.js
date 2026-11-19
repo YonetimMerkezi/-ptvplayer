@@ -2,6 +2,22 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 157,
+    title: 'Oyuncu-film eşleştirmesi daha esnek',
+    items: [
+      'Oyuncu sayfasındaki yapımlar Türkçe adlarla daha sık eşleşir: Wikidata Türkçe adları (hizmet yanıt vermezse yedek yolla), “Özgün - Türkçe” ayraçlı adların her parçası ve küçük ad farkları hesaba katılır',
+      'Hâlâ eşleşmeyen yapımların adı Türkçeye çevrilip yıl şartıyla gevşek eşikle aranır; yanlış yapımla karışmaması için yıl ve sıra numarası denetlenir',
+    ],
+  },
+  {
+    id: 156,
+    title: 'Oyuncu fotoğrafları',
+    items: [
+      'Film, dizi ve bilgi ekranlarındaki oyuncu ve yönetmen kartlarında fotoğraf görünür (Wikimedia Commons; kadrodan, bulunamazsa ada göre aranır); fotoğraf yoksa baş harfler kalır',
+      'Oyuncu sayfasının başlığında da kişinin fotoğrafı görünür',
+    ],
+  },
+  {
     id: 155,
     title: 'Dikey vitrinde otomatik fragman',
     items: [

@@ -58,3 +58,31 @@ test('findInLibrary: IMDb dizini her zaman önce; yıl farkı 1\'den büyükse t
   assert.equal(findInLibrary({ imdbId: 'tt1', name: 'Ölü Gelin', year: 2010 }, { titleIndex: ix }), null);
   assert.equal(findInLibrary({ imdbId: 'tt1', name: 'Ölü Gelin', year: 2005 }, { titleIndex: ix }).id, 'm0');
 });
+
+test('gevşek eşik (makine çevirisi tahmin adları): yıl biliniyorsa kısmi örtüşme kabul edilir; yıl yoksa 0,8 ve sıra numarası şart', () => {
+  const ix = idx('Makas Eller (1990)', 'Makas Eller 2 (1993)');
+  assert.equal(fuzzyFind(ix, 'Edward Makas Eller', 1990), null, 'sıkı eşikte 0,8 yetmez (kısa ad)');
+  assert.equal(fuzzyFind(ix, 'Edward Makas Eller', 1990, { loose: true }).it.id, 'm0', 'gevşek eşikte bulunur');
+  assert.equal(fuzzyFind(ix, 'Edward Makas Eller', 1999, { loose: true }), null, 'yıl uyuşmazsa gevşek de eşleşmez');
+  const noYear = idx('Gece Yarısı Güneşi');
+  assert.equal(fuzzyFind(noYear, 'Gece Yarısı Güneşi Filmi', 0), null, 'sıkı eşikte yılsız 0,9 gerekir');
+  assert.equal(fuzzyFind(noYear, 'Gece Yarısı Güneşi Filmi', 0, { loose: true }).it.id, 'm0', 'gevşek eşikte yılsız 0,8 yeter');
+  assert.equal(fuzzyFind(noYear, 'Gece Yarısı Güneşi 2 Filmi', 0, { loose: true }), null, 'sıra numarası farklıysa yılsız eşleşme yok');
+});
+
+test('findInLibrary: tahmin adları (trGuess) yalnız yıl biliniyorsa ve gevşek eşikle aranır', () => {
+  const ix = idx('Makas Eller (1990)');
+  const film = { imdbId: 'tt0099487', name: 'Edward Scissorhands', year: 1990, trGuess: ['Edward Makas Eller'] };
+  assert.equal(findInLibrary(film, { titleIndex: ix }).id, 'm0');
+  assert.equal(findInLibrary({ ...film, year: 0 }, { titleIndex: ix }), null, 'yılsız film tahmin adıyla aranmaz');
+  assert.equal(findInLibrary({ ...film, trGuess: [] }, { titleIndex: ix }), null);
+});
+
+test('ad dizini: "Özgün - Türkçe" ayraçlı adlarda her parça ayrıca dizinlenir', () => {
+  const ix = idx('Corpse Bride - Ölü Gelin (2005)', 'Spider-Man 2002');
+  assert.equal(findInLibrary({ imdbId: 'tt0121164', name: 'Corpse Bride', year: 2005 }, { titleIndex: ix }).id, 'm0');
+  assert.equal(findInLibrary({ imdbId: 'tt0121164', name: 'Ölü Gelin', year: 2005 }, { titleIndex: ix }).id, 'm0');
+  assert.equal(findInLibrary({ imdbId: 'tt0121164', name: 'Ölü Gelin', year: 2012 }, { titleIndex: ix }), null, 'yıl yine korunur');
+  const pipe = idx('Ad Soyad | 2023 | 7.1 | NF | HD');
+  assert.equal(findInLibrary({ imdbId: 'tt1', name: '2023', year: 2023 }, { titleIndex: pipe }), null, 'boru ayraçlı üstveri parçası dizinlenmez');
+});
