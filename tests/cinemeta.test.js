@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerIds, trailerQuery, trailerSearchUrl, MAX_TRAILERS, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
+import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerIds, trailerQuery, trailerSearchUrl, genreTr, MAX_TRAILERS, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
 
 const FORREST = { id: 'tt0109830', imdb_id: 'tt0109830', name: 'Forrest Gump', year: '1994', runtime: '142 min', genres: ['Drama', 'Romance'], description: 'Özet', poster: 'https://p/x.jpg', trailers: [{ source: '0jKUpBmYO1Q', type: 'Trailer' }, { source: 'm-btyJIYLyI', type: 'Trailer' }, { source: 'BADID', type: 'Trailer' }, { source: 'abcdefghijk', type: 'Clip' }], trailerStreams: [{ title: 'x', ytId: '0jKUpBmYO1Q' }, { title: 'y', ytId: 'Mj9IA9tTfio' }], cast: ['Tom Hanks', 'Robin Wright', 'Gary Sinise'], director: ['Robert Zemeckis'], links: [{ category: 'Cast', name: 'Sally Field' }, { category: 'Cast', name: 'tom hanks' }, { category: 'Genres', name: 'Drama' }] };
 const mem = () => { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) }; };
@@ -195,4 +195,11 @@ test('fragman araması: katalog adındaki dil öneki, kalite etiketi ve yıl ay�
   assert.equal(trailerQuery('', ''), 'fragman');
   assert.equal(trailerQuery('Anatomy of a Scandal', 2022, 'official trailer'), 'Anatomy of a Scandal 2022 official trailer', 'özgün adla arama ek sözcüğü değişir');
   assert.equal(trailerSearchUrl('Kuruluş Osman 2020 fragman'), 'https://www.youtube.com/results?search_query=Kurulu%C5%9F%20Osman%202020%20fragman');
+});
+
+test('türler: İngilizce Cinemeta türleri Türkçeleşir; bilinmeyen tür olduğu gibi kalır', () => {
+  assert.deepEqual(['Drama', 'Horror', 'Mystery', 'Sci-Fi', 'Reality-TV', 'Action'].map(genreTr), ['Dram', 'Korku', 'Gizem', 'Bilim kurgu', 'Reality', 'Aksiyon']);
+  assert.equal(genreTr(' comedy '), 'Komedi');
+  assert.equal(genreTr('Zorlu Tür'), 'Zorlu Tür');
+  assert.equal(genreTr(null), '');
 });

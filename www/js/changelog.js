@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 142,
+    title: 'Vizyondakilerde Türkçe konu ve türler',
+    items: [
+      'Vizyondaki (listenizde olmayan) filmlerin konu açıklaması otomatik Türkçeye çevrilir; “Özgün metni göster” ile İngilizcesine dönebilirsiniz. Çeviri alınamazsa özgün metin kalır',
+      'Türler (Dram, Korku, Gizem…) ve süre (dk) de Türkçe gösterilir',
+    ],
+  },
+  {
     id: 141,
     title: 'Türkçe adlı yabancı yapımlarda fragman',
     items: [

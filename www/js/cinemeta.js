@@ -181,6 +181,15 @@ export function findInLibrary(film, { titleIndex = null, imdbIndex = null } = {}
   return hit ? hit.it : null;
 }
 
+// Cinemeta türleri İngilizce gelir; ekranda Türkçe gösterilir (bilinmeyen tür olduğu gibi kalır)
+export const GENRES_TR = {
+  action: 'Aksiyon', adventure: 'Macera', animation: 'Animasyon', biography: 'Biyografi', comedy: 'Komedi', crime: 'Suç', documentary: 'Belgesel', drama: 'Dram',
+  family: 'Aile', fantasy: 'Fantastik', 'film-noir': 'Kara film', 'game-show': 'Yarışma', history: 'Tarih', horror: 'Korku', music: 'Müzik', musical: 'Müzikal',
+  mystery: 'Gizem', news: 'Haber', 'reality-tv': 'Reality', romance: 'Romantik', 'sci-fi': 'Bilim kurgu', 'science fiction': 'Bilim kurgu', short: 'Kısa',
+  sport: 'Spor', 'talk-show': 'Talk show', thriller: 'Gerilim', war: 'Savaş', western: 'Vahşi Batı',
+};
+export const genreTr = (g) => GENRES_TR[String(g || '').trim().toLowerCase()] || String(g || '').trim();
+
 // ---- YouTube ----
 // Fragman kimlikleri: Cinemeta'nınkiler önce, sağlayıcının (Xtream "youtube_trailer") verdiği ardından; yinelenenler atılır.
 // Oynatıcı gömmeye izin vermeyen videoda sıradakine geçer, bu yüzden birden fazla kimlik tutulur.

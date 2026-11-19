@@ -1,7 +1,7 @@
 // Film/dizi ekranı ek parçaları: fragman bloğu, oyuncu kartları, oyuncu sayfası ve "listede yok" bilgi ekranı.
 // Burası yalnız HTML üretir ve fragman oynatıcısını denetler; sayfaları app.js açar (kütüphane eşleşmesi oradadır).
 import { esc } from './util.js';
-import { trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerSearchUrl } from './cinemeta.js';
+import { trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerSearchUrl, genreTr } from './cinemeta.js';
 
 const ic = (n) => `<svg class="ic"><use href="#i-${n}"/></svg>`;
 
@@ -165,6 +165,6 @@ export function titleInfoHtml(film, detail, loading = false) {
   const d = detail || {};
   const poster = d.poster || film.poster;
   const posterHtml = poster ? `<img src="${esc(poster)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(initialsOf(film.name));
-  const chips = [film.type === 'series' ? 'Dizi' : 'Film', d.year || film.year || '', d.runtime, ...(d.genres || [])].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
+  const chips = [film.type === 'series' ? 'Dizi' : 'Film', d.year || film.year || '', String(d.runtime || '').replace(/\s*min\b/i, ' dk'), ...(d.genres || []).map(genreTr)].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
   return `<div class="dt"><div class="dt-pos">${posterHtml}</div><div class="dt-head"><h1 class="dt-t">${esc(d.name || film.name)}</h1><div class="dt-m">${chips}</div><div class="dt-btns"><button class="btn lg" disabled>${ic('alert-triangle')}Listenizde yok</button></div></div><div class="dt-body"><div class="dt-tr" id="ti-trailer"></div><h2>Hakkında</h2><p class="dt-plot">${loading ? '<span class="dt-load">Yükleniyor…</span>' : esc(d.description || 'Bu yapım için özet bulunamadı.')}</p><div class="dt-pp" id="ti-people"></div></div></div>`;
 }

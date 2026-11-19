@@ -80,7 +80,7 @@ test('listede olmayan yapım ekranı: "Listenizde yok" düğmesi pasif, fragman 
   assert.match(h, /<button class="btn lg" disabled><svg[^>]*><use[^>]*\/><\/svg>Listenizde yok<\/button>/);
   assert.ok(h.indexOf('id="ti-trailer"') < h.indexOf('<h2>Hakkında</h2>'), 'fragman özetten önce');
   assert.match(h, /Bir cezaevi hikâyesi/);
-  assert.match(h, /<span>189 min<\/span><span>Drama<\/span>/);
+  assert.match(h, /<span>189 dk<\/span><span>Dram<\/span>/, 'süre ve tür Türkçe');
   assert.match(h, /src="https:\/\/p\/3"/, 'ayrıntıdaki afiş öncelikli');
   assert.match(titleInfoHtml(film, null, true), /Yükleniyor/);
   assert.match(titleInfoHtml(film, null), /özet bulunamadı/);
@@ -183,6 +183,15 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
   assert.match(app, /pp\.innerHTML = kidActive\(\) \? ''/, 'çocuk modunda oyuncu kartı yok');
   assert.match(app, /if \(own\) return film\.type === 'series' \? openSeries\(own\) : openMovie\(own\)/, 'listedeyse kendi ekranı');
   assert.match(app, /auto: !extras\.shown/, 'dizi yeniden çizilince fragman yeniden başlamaz');
+});
+
+test('bağlantı: bilgi ekranı özeti Türkçeye çevrilir; çeviri gelene kadar özgün metin, "Özgün metni göster" ile geri dönülür', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /import \{ translateToTr \} from '\.\/translate\.js'/);
+  assert.match(app, /translatePlot\(body, detail && detail\.description\);/);
+  assert.match(app, /if \(!body\.isConnected \|\| !p\.isConnected \|\| !tr \|\| tr === text\) return;/, 'çeviri yoksa özgün metin kalır');
+  assert.match(app, /const o = e\.target\.closest\('\[data-orig\]'\);\n\s+if \(o\) togglePlot\(body\);/);
+  assert.match(app, /'Türkçe çeviriyi göster' : 'Özgün metni göster'/);
 });
 
 test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik yoksa YouTube araması; eşleşme çözülemese de gösterilir', () => {

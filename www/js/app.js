@@ -73,6 +73,7 @@ import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
+import { translateToTr } from './translate.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
@@ -2218,6 +2219,29 @@ function openNewReleases() {
 }
 
 // Bir yapımın ekranı: listedeyse kendi film/dizi ekranı (Oynat), değilse "Listende yok" bilgi ekranı (önce fragman).
+// Cinemeta özeti İngilizce gelir: önce özgün metin görünür, çeviri gelince yerini alır; "Özgün metni göster" ile geri dönülür. Çeviri alınamazsa özgün metin kalır.
+function translatePlot(body, text) {
+  const p = $('.dt-plot', body);
+  if (!p || !text) return;
+  translateToTr({ net, cache: store.cache, text }).then((tr) => {
+    if (!body.isConnected || !p.isConnected || !tr || tr === text) return;
+    p.dataset.en = text;
+    p.dataset.tr = tr;
+    p.dataset.lang = 'tr';
+    p.textContent = tr;
+    p.insertAdjacentHTML('afterend', '<button class="dt-orig" type="button" data-orig>Özgün metni göster</button>');
+  });
+}
+function togglePlot(body) {
+  const p = $('.dt-plot', body);
+  const o = $('[data-orig]', body);
+  if (!p || !o || !p.dataset.tr) return;
+  const toEn = p.dataset.lang === 'tr';
+  p.dataset.lang = toEn ? 'en' : 'tr';
+  p.textContent = toEn ? p.dataset.en : p.dataset.tr;
+  o.textContent = toEn ? 'Türkçe çeviriyi göster' : 'Özgün metni göster';
+}
+
 function openTitleInfo(film) {
   const own = inLibrary(film);
   if (own) return film.type === 'series' ? openSeries(own) : openMovie(own);
@@ -2228,11 +2252,14 @@ function openTitleInfo(film) {
       body.addEventListener('click', (e) => {
         const b = e.target.closest('[data-person]');
         if (b) openActor(personOf(b).name, personOf(b).role);
+        const o = e.target.closest('[data-orig]');
+        if (o) togglePlot(body);
       });
       loadDetail({ net, cache: store.cache, imdbId: film.imdbId, type: film.type }).catch(() => null).then((detail) => {
         if (!body.isConnected) return;
         body.innerHTML = titleInfoHtml(film, detail);
         paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people', query: trailerQuery(film.name, film.year) });
+        translatePlot(body, detail && detail.description);
       });
     },
   });
