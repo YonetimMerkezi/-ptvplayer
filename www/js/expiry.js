@@ -2,6 +2,7 @@
 export const WARN_DAYS = 7; // son 7 gün: uyarı gösterilir
 export const PLAN_DAYS = 14; // son 14 gün: bildirim kurulur (aylar öncesinden Planlananlar'ı doldurmasın)
 export const LEAD_DAYS = 3; // bildirim bitişten kaç gün önce
+import { loc } from './i18n.js';
 const DAY = 86400000;
 
 export const daysLeft = (expires, now) => Math.ceil((expires - now) / DAY) + 0; // + 0: -0 olmasın
@@ -19,7 +20,7 @@ export function expiryText(info) {
   return info.days === 1 ? 'son gün' : `${info.days} gün kaldı`;
 }
 
-const fmtDay = (ms) => new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+const fmtDay = (ms) => new Date(ms).toLocaleDateString(loc(), { day: 'numeric', month: 'long' });
 
 // Bitişten LEAD_DAYS gün önce sabah 10:00'da bildirim; o an geçtiyse ve abonelik sürüyorsa birkaç saniye sonra. Süresi dolmuşsa null.
 // Plan türü 'rem' (Planlananlar ve yerel alarm aynı); note, bildirim metnini doğrudan verir.

@@ -44,7 +44,8 @@ NELER YAPAR
 • Canlı TV: kategoriler, arama, favoriler, son izlenenler
 • TV rehberi: şimdi ve sıradaki programlar, program hatırlatıcıları
 • Film ve diziler: yatay satırlar, vitrin, kaldığınız yerden devam, izleme listesi
-• Fragman ve oyuncular: film ekranında ve vitrinde kendiliğinden başlayan fragman, fotoğraflı oyuncu ve yönetmen kartları, oyuncunun listenizdeki diğer yapımları
+• Fragman ve oyuncular: film ekranında ve vitrinde fragman oynatma, fotoğraflı oyuncu ve yönetmen kartları, oyuncunun listenizdeki diğer yapımları
+• Türkçe ve İngilizce arayüz: dili ayarlardan seçin ya da cihaz dilini izletin
 • Ne izlesem: türe göre en fazla 3 öneri, “Şaşırt beni” ile tek film
 • Çoklu ekran: aynı anda birden fazla kanal
 • Kayıt ve indirme: canlı yayını kaydedin, filmleri çevrimdışı izleyin
@@ -54,15 +55,15 @@ NELER YAPAR
 • Renkli temalar, yedekleme ve geri yükleme
 
 ÜYELİK
-İlk 7 gün ücretsiz deneyin. Sonrasında uygulamayı kullanmak için yıllık Standart üyelik gerekir. Yıllık Pro üyelik ek özellikleri açar: çoklu ekran, kayıt, indirme, birden fazla kaynak, yatay satır görünümü, otomatik fragman, oyuncu ayrıntıları, renkli temalar, yedekleme, hatırlatıcılar, spor ayrıntıları, dizi ve takım takibi, TV'den oynatma, listeyi QR kodla TV'ye aktarma, çocuk kilidi ve profiller. Abonelik Google Play üzerinden alınır ve yıllık yenilenir; istediğiniz zaman Google Play'de Abonelikler bölümünden iptal edebilirsiniz.
+İlk 7 gün ücretsiz deneyin. Sonrasında uygulamayı kullanmak için yıllık Standart üyelik gerekir. Yıllık Pro üyelik ek özellikleri açar: çoklu ekran, kayıt, indirme, birden fazla kaynak, yatay satır görünümü, fragman oynatma, oyuncu ayrıntıları, renkli temalar, yedekleme, hatırlatıcılar, spor ayrıntıları, dizi ve takım takibi, TV'den oynatma, listeyi QR kodla TV'ye aktarma, çocuk kilidi ve profiller. Abonelik Google Play üzerinden alınır ve yıllık yenilenir; istediğiniz zaman Google Play'de Abonelikler bölümünden iptal edebilirsiniz.
 
 GİZLİLİK
 Hesap gerekmez. Reklam ve izleme yoktur. Kaynaklarınız, parolalarınız ve izleme geçmişiniz yalnızca cihazınızda kalır.
 ```
 
-**Yenilikler – Türkçe** (345/500)
+**Yenilikler – Türkçe** (293/500)
 ```
-Yeni: film ve dizi ekranında ve vitrinde fragman kendiliğinden başlar (Pro). Fotoğraflı oyuncu ve yönetmen kartları, oyuncunun diğer yapımları (Pro). Telefondaki listeyi QR kodla TV'ye aktarın; eşleşince liste TV'de açılır (Pro). Ne izlesem bölümünde en fazla 3 öneri, “Şaşırt beni” ile tek film. Tema kartları düzeltildi. 7 gün ücretsiz deneme.
+Yeni: uygulama dili Türkçe ya da İngilizce seçilebilir. Fragman oynatma (film ve dizi ekranı, vitrin) ve fotoğraflı oyuncu kartları Pro üyeliğe bağlandı. Telefondaki listeyi QR kodla TV'ye aktarın (Pro). Ne izlesem bölümünde en fazla 3 öneri, “Şaşırt beni” ile tek film. 7 gün ücretsiz deneme.
 ```
 
 **English (ek dil, istersen)** – Short description (80/80)
@@ -80,7 +81,7 @@ WHAT IT DOES
 • Live TV: categories, search, favourites, recently watched
 • TV guide: now and next programmes, programme reminders
 • Movies and series: horizontal rows, showcase, resume where you left off, watchlist
-• Trailers and cast: trailers that start by themselves on the title screen and showcase, cast and director cards with photos, a person's other titles in your list
+• Trailers and cast: trailer playback on the title screen and showcase, cast and director cards with photos, a person's other titles in your list
 • What to watch: up to 3 picks by genre, or one film with “Surprise me”
 • Multi-screen: several channels at once
 • Record and download: record live streams, watch movies offline
@@ -88,17 +89,18 @@ WHAT IT DOES
 • Today on TV, series schedule and sports screen: match times, team and series follow
 • Child lock, family profiles, app passcode
 • Colour themes, backup and restore
+• Turkish and English interface: pick the language in settings or follow the device
 
 MEMBERSHIP
-Try it free for 7 days. After that a yearly Standard membership is needed to keep using the app. A yearly Pro membership unlocks extra features: multi-screen, recording, downloads, multiple sources, row layout, automatic trailers, cast details, colour themes, backup, reminders, sports details, series and team follow, casting to TV, moving your list to the TV by QR code, child lock and profiles. Subscriptions are bought through Google Play and renew yearly; cancel any time in Google Play under Subscriptions.
+Try it free for 7 days. After that a yearly Standard membership is needed to keep using the app. A yearly Pro membership unlocks extra features: multi-screen, recording, downloads, multiple sources, row layout, trailer playback, cast details, colour themes, backup, reminders, sports details, series and team follow, casting to TV, moving your list to the TV by QR code, child lock and profiles. Subscriptions are bought through Google Play and renew yearly; cancel any time in Google Play under Subscriptions.
 
 PRIVACY
 No account needed. No ads, no tracking. Your sources, passwords and watch history stay on your device.
 ```
 
-What's new (342/500)
+What's new (272/500)
 ```
-New: trailers start by themselves on the title screen and showcase (Pro). Cast and director cards with photos, plus a person's other titles (Pro). Move your phone's list to the TV with a QR code; the list opens on the TV once paired (Pro). Up to 3 picks in What to watch, and “Surprise me” gives one film. Theme cards fixed. 7-day free trial.
+New: the app language can be Turkish or English. Trailer playback (title screen and showcase) and cast cards with photos are now Pro. Move your phone's list to the TV with a QR code (Pro). Up to 3 picks in What to watch, and “Surprise me” gives one film. 7-day free trial.
 ```
 
 **Kategori:** Video Oynatıcılar ve Düzenleyiciler. **Etiketler:** Medya oynatıcı. **İletişim e-postası:** senin e-postan (zorunlu). **Gizlilik politikası URL'si:**

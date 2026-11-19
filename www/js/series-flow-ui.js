@@ -1,6 +1,7 @@
 // "Dizi akışı" ekranı: haftalık 1001dizi takvimi, bugün/yarın için ücretsiz EPG tamamlaması ve hatırlatıcılar.
 // Satıra dokununca kanal kullanıcının listesinde bulunursa açılır; zil dizi başlamadan önce hatırlatıcı kurar (Planlananlar'da görünür).
 import { needPro } from './membership.js';
+import { loc } from './i18n.js';
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { WEEKDAYS, dayIndex, loadSeriesWeek, isSportsChannel } from './series-flow.js';
@@ -100,7 +101,7 @@ export function openSeriesFlow(env) {
     if (chan && !chs.includes(chan)) chan = '';
     q('#sf-chs').innerHTML = chs.length > 1 ? `<button class="chip${chan ? '' : ' on'}" data-chan="">Tümü</button>` + chs.map((c) => `<button class="chip${c === chan ? ' on' : ''}" data-chan="${esc(c)}">${esc(c)}</button>`).join('') : '';
 
-    const when = new Date(from).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', weekday: 'long', day: 'numeric', month: 'long' });
+    const when = new Date(from).toLocaleDateString(loc(), { timeZone: 'Europe/Istanbul', weekday: 'long', day: 'numeric', month: 'long' });
     page.setTitle(`Dizi akışı · ${when}`);
     const note = q('#sf-note');
     const diag = q('#sf-diag');

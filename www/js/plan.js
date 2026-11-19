@@ -2,6 +2,7 @@
 // Plan: { id, kind: 'rem' | 'rec', chId, chName, title, s, e, at, url?, headers? }
 //   at: tetiklenme zamanı (ms). rem → program başlamadan LEAD dk önce; rec → başlamadan 1 dk önce kayıt açılır.
 import { fold } from './util.js';
+import { loc } from './i18n.js';
 
 export const REMIND_LEAD_MIN = 5;
 export const REC_PRE_MS = 60000;
@@ -60,7 +61,7 @@ export function recConflict(list, plan) {
   return list.find((x) => x.kind === 'rec' && x.id !== plan.id && x.at < a1 && (x.until || x.e) > a0) || null;
 }
 
-export function planWhen(plan, now = Date.now(), fmt = (ms) => new Date(ms).toLocaleString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) {
+export function planWhen(plan, now = Date.now(), fmt = (ms) => new Date(ms).toLocaleString(loc(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) {
   if (plan.kind === 'rec' && plan.at <= now && (plan.until || plan.e) > now) return 'Kayıt sürüyor olmalı';
   return fmt(plan.s);
 }

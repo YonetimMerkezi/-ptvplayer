@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 161,
+    title: 'Dil seçeneği ve Pro fragman',
+    items: [
+      'Ayarlar › Genel ayarlar › Görünüm ve cihaz bölümünden uygulama dilini Türkçe ya da English seçebilirsiniz; “Otomatik” cihaz dilini izler. Dil değişince uygulama yeniden başlar',
+      'İngilizce çeviri ana ekranları, ayarları, oynatıcıyı, spor ve TV rehberi ekranlarını kapsar; kanal, film ve takım adları, bildirimler ile yönetici ekranı şimdilik Türkçe kalır',
+      'Fragman oynatma tümüyle Pro üyeliğe bağlandı (otomatik ve elle, YouTube’da arama dahil); deneme süresinde açıktır. Pro değilken fragman alanında kilitli bir kart çıkar, dokununca Pro sayfası açılır',
+    ],
+  },
+  {
     id: 160,
     title: 'Pro: otomatik fragman ve oyuncu ayrıntıları',
     items: [

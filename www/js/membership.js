@@ -19,7 +19,7 @@ export const PRO_FEATURES = [
   ['dl', 'İndirme', 'Film ve dizileri çevrimdışı izle'],
   ['sources', 'Birden fazla kaynak', 'İkinci ve sonraki listeleri ekle'],
   ['rows', 'Vitrinli satırlar', 'Yatay satırlar ve TV vitrini'],
-  ['trailer', 'Otomatik fragman', 'Film ve dizi ekranında ve vitrinde fragman kendiliğinden oynar'],
+  ['trailer', 'Fragman', 'Film ve dizi ekranında ve vitrinde fragman oynatma ve arama (otomatik ve elle)'],
   ['actors', 'Oyuncu ayrıntıları', 'Oyuncu fotoğrafları ve oyuncunun diğer film ve dizileri'],
   ['themes', 'Özel temalar', 'Pro olarak işaretli uygulama temaları'],
   ['backup', 'Yedekleme', 'Yedekle, geri yükle, TV ile eşitle'],

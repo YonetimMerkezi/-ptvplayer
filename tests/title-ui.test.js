@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { initialsOf, hueOfName, trailerHtml, wireTrailer, peopleHtml, filmCardHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from '../www/js/title-ui.js';
+import { initialsOf, hueOfName, trailerHtml, trailerLockedHtml, wireTrailer, peopleHtml, filmCardHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from '../www/js/title-ui.js';
 
 const kaynak = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
 
@@ -43,6 +43,14 @@ test('fragman bloğu: kimlik yokken "YouTube’da fragman ara" bağlantısı (T�
   assert.equal(trailerHtml(null, { query: '' }), '');
   assert.match(trailerHtml(['0jKUpBmYO1Q'], { query: 'x fragman' }), /data-q="x fragman"/, 'kimlik varken arama bağlantısı yok, sorgu yalnız hata sonrası için saklanır');
   assert.doesNotMatch(trailerHtml(['0jKUpBmYO1Q'], { query: 'x fragman' }), /tr-find/);
+});
+
+test('fragman kilidi: Pro olmayana oynatıcı, küçük resim ve YouTube bağlantısı yok; yalnız kilitli kart ve PRO işareti', () => {
+  const h = trailerLockedHtml();
+  assert.match(h, /<h2>Fragman<em class="set-pro">PRO<\/em><\/h2>/);
+  assert.match(h, /<button class="tr-find tr-lock" type="button" data-tr="lock">/);
+  assert.doesNotMatch(h, /iframe|<img|youtube|<a /i, 'oynatıcı ya da dış bağlantı yok');
+  assert.match(kaynak('www/css/app.css'), /\.tr-lock \{[^}]*width: 100%;/);
 });
 
 test('oyuncu kartları: yönetmen etiketi, ad kaçışlı, boşsa bölüm yok', () => {
@@ -273,7 +281,7 @@ test('bağlantı: bilgi ekranı özeti Türkçeye çevrilir; çeviri gelene kada
 test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik yoksa YouTube araması; eşleşme çözülemese de gösterilir', () => {
   const app = kaynak('www/js/app.js');
   assert.match(app, /const ids = trailerIds\(detail, provider && provider\.trailer\);/);
-  assert.match(app, /const find = trailerOn\(\) && !ids\.length && finds\.length > 0 && setting\('trailerFind'\);/, 'yalnız hazır fragman yokken ve ayar açıkken aranır');
+  assert.match(app, /const find = trailerOn\(\) && !locked && !ids\.length && finds\.length > 0 && setting\('trailerFind'\);/, 'yalnız Pro iken, hazır fragman yokken ve ayar açıkken aranır');
   assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted, year, onInfo: \(i\) => infos\.push\(i\) \}\)/);
   assert.match(app, /diag: picks\.length \? '' : describeFind\(infos\)/, 'bulunamayınca nedeni kartın altında yazar');
   assert.match(app, /if \(!tr\.isConnected \|\| tr\._find !== token\) return;/, 'yeni boyama eski aramanın sonucunu geçersiz kılar');

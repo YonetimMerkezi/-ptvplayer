@@ -1,6 +1,7 @@
 // "Bugün TV'de" ekranı: TV rehberinden bugünün (ya da yarının) spor, film ve dizi programları saatleriyle; kanallar seçilebilir.
 // Modül ilk kullanımda yüklenir (app.js openToday).
 import { needPro } from './membership.js';
+import { loc } from './i18n.js';
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage, openSheet } from './ui.js';
 import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf } from './today.js';
@@ -64,8 +65,8 @@ export function openToday(env) {
     if (root.isConnected) draw();
   }
 
-  const dayLabel = (d) => (d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : new Date(dayStart(now(), d)).toLocaleDateString('tr-TR', { weekday: 'long' }));
-  const dayDate = (d) => new Date(dayStart(now(), d)).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' });
+  const dayLabel = (d) => (d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : new Date(dayStart(now(), d)).toLocaleDateString(loc(), { weekday: 'long' }));
+  const dayDate = (d) => new Date(dayStart(now(), d)).toLocaleDateString(loc(), { day: 'numeric', month: 'long', weekday: 'long' });
 
   const page = openPage({
     title: `${dayLabel(day)} TV’de`,

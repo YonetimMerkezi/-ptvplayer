@@ -2,6 +2,7 @@
 import { esc, fmtDuration, fmtClock, debounce, fold, maskUrl } from './util.js';
 import { guideBlocks, guideNameParts, guideCatIconName } from './guide.js';
 import { createStore } from './store.js';
+import { startI18n, loc, LANG_CHOICES, normalizeLang } from './i18n.js';
 import { createNet } from './net.js';
 import { loadFreeData, matchFree, mergeEpgData } from './epg-free.js';
 import {
@@ -80,7 +81,7 @@ import { loadTrNames } from './tr-names.js';
 import { loadPersonPhotos, nameKey } from './people-photos.js';
 import { createHeroTrailer } from './hero-trailer.js';
 import { createHeroStage } from './hero-stage.js';
-import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
+import { trailerHtml, trailerLockedHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, homeRecent, statusText, RECENT_TABS, recentLatest, recentTabPick } from './home-extras.js';
@@ -97,6 +98,7 @@ import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.j
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
 const store = createStore();
+startI18n({ pref: store.pref('set.lang', 'auto'), device: (typeof navigator !== 'undefined' && navigator.language) || '' }); // Türkçe / İngilizce: ekrana basılan metinleri çevirir (i18n.js)
 const net = createNet(nativePlugin ? { native: nativePlugin, convertFileSrc: (p) => Cap.convertFileSrc(p) } : {});
 
 const CAT_KEY = { live: 'live', movie: 'movies', series: 'series' };
@@ -143,7 +145,9 @@ function memState() {
 // Sessiz soru: özellik bu üyelikte açık mı? (kilitler kapalıysa her şey açık)
 const proOk = (feature) => !memOn() || canUse(feature, memState());
 const memBlocked = () => memOn() && !canUseApp(memState());
-// Fragmanı otomatik oynat: ayar açık VE Pro (deneme dahil). Elle dokunup fragman izlemek herkese açık kalır.
+// Fragman tümüyle Pro'dur (deneme dahil): Pro değilken ekranda oynatıcı ve YouTube araması yerine kilitli kart çıkar.
+// Otomatik oynatma ayrıca "Fragmanı otomatik oynat" ayarına bağlıdır.
+const trailerLocked = () => memOn() && !proOk('trailer');
 const trailerAutoOn = () => setting('trailerAuto') && proOk('trailer');
 // Oyuncu ayrıntıları (fotoğraf, oyuncu sayfası) Pro'dur; kilitliyken kadro adları görünür, başlıkta PRO işareti çıkar.
 const actorsLocked = () => memOn() && !proOk('actors');
@@ -202,7 +206,7 @@ async function takeOverFlow(onTaken) {
     toast('Üyelik bu cihaza taşındı');
     onTaken && onTaken();
   } else if (r.status === 'limit') {
-    toast(`Üyelik son 30 günde 2 kez taşındı. ${new Date(r.next).toLocaleDateString('tr-TR')} tarihinden sonra yeniden taşıyabilirsiniz`, 6000);
+    toast(`Üyelik son 30 günde 2 kez taşındı. ${new Date(r.next).toLocaleDateString(loc())} tarihinden sonra yeniden taşıyabilirsiniz`, 6000);
   } else if (r.status === 'none') toast('Bu Google hesabında etkin üyelik bulunamadı', 4000);
   else toast('Üyelik sunucusuna ulaşılamadı. İnternetinizi denetleyip yeniden deneyin', 4000);
 }
@@ -1979,7 +1983,7 @@ function watchExpiry(now = Date.now()) {
   const info = expiryInfo(exp, now);
   if (!info) return;
   const key = `${src.id}:${exp}`;
-  const date = new Date(exp).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+  const date = new Date(exp).toLocaleDateString(loc(), { day: 'numeric', month: 'long' });
   const day = new Date(now).toDateString();
   const seen = store.pref('exp.seen', null);
   if (info.level !== 'ok' && !(seen && seen.key === key && seen.day === day)) {
@@ -2197,7 +2201,7 @@ async function paintMovieAdvisories(body, meta, failure = '', kind = 'movie', ct
       return '<article class="mv-warning-detail"><div><b>' + glyph + esc(label) + '</b>' + (level ? '<span>' + esc(level) + '</span>' : '') + '</div>' + (detail ? '<p>' + esc(detail) + '</p>' : '') + '<small>' + esc(source) + (w.url ? ' · <a href="' + esc(w.url) + '" target="_blank" rel="noopener">Kaynağı aç</a>' : '') + '</small></article>';
     }).join('');
     const sourceRows = Object.entries(record && record.sources || {}).map(([k, v]) => '<p class="mv-warning-checked">' + esc(sourceNames[k] || k) + ': ' + esc(v.status === 'found' ? 'Kayıt bulundu' : v.status === 'no_data' ? 'Kayıt bulunamadı' : v.status === 'unavailable' ? 'Kaynak sayfası veri sunmadı' : 'Kontrol edilemedi') + (v.message ? ' (' + esc(v.message) + ')' : '') + '</p>').join('');
-    const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString('tr-TR') : '';
+    const checked = record && record.checkedAt ? new Date(record.checkedAt).toLocaleDateString(loc()) : '';
     const guidance = record && record.guidance ? '<article class="mv-warning-detail"><b>Screenwise aile rehberi</b>' + (record.guidance.summary ? '<p>' + esc(advisoryTr(record.guidance.summary)) + '</p>' : '') + (record.guidance.ageFit ? '<p>' + esc(advisoryTr(record.guidance.ageFit)) + '</p>' : '') + (record.guidance.score != null ? '<small>Rehber puanı: ' + esc(record.guidance.score) + '/100</small>' : '') + '</article>' : '';
     const estRows = estimated.length
       ? '<h4 class="mv-warning-h">Tahmini uyarılar</h4><p class="mv-warning-checked">Tür, özet ve anahtar kelimelerden çıkarılmıştır; doğrulanmış kayıt değildir, eksik ya da hatalı olabilir.</p>' +
@@ -2276,11 +2280,14 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
   if (tr) {
     const ids = trailerIds(detail, provider && provider.trailer);
     const autoPlay = auto && trailerAutoOn();
-    const find = trailerOn() && !ids.length && finds.length > 0 && setting('trailerFind');
+    const locked = trailerLocked();
+    const find = trailerOn() && !locked && !ids.length && finds.length > 0 && setting('trailerFind');
     const stageBg = (detail && detail.background) || bg; // sahnenin gölgeli afişi: geniş arka plan görseli (yoksa videonun küçük resmi)
-    tr.innerHTML = trailerOn() ? trailerHtml(ids, { auto: autoPlay, origin: location.origin, query, searching: !!find, bg: stageBg }) : '';
+    const lockedCard = trailerOn() && locked && (ids.length > 0 || !!query || finds.length > 0);
+    tr.innerHTML = !trailerOn() ? '' : locked ? (lockedCard ? trailerLockedHtml() : '') : trailerHtml(ids, { auto: autoPlay, origin: location.origin, query, searching: !!find, bg: stageBg });
     stageMode(tr);
-    if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
+    if (lockedCard) $('[data-tr=lock]', tr).addEventListener('click', () => needPro('trailer')); // kilitli kart: Pro sayfası açılır
+    else if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
     const token = (tr._find = (tr._find || 0) + 1); // sonradan yapılan yeni boyama eski aramanın sonucunu geçersiz kılar
     if (find) {
       (async () => {
@@ -2759,7 +2766,7 @@ async function epgSheet(it) {
     const dayList = list.filter((p) => dayKey(p.s) === selected).sort((a, b) => a.s - b.s);
     const tabs = days.map((d) => {
       const date = new Date(d + 'T12:00:00');
-      const label = dayKey(now) === d ? 'Bugün' : date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' });
+      const label = dayKey(now) === d ? 'Bugün' : date.toLocaleDateString(loc(), { weekday: 'short', day: 'numeric', month: 'short' });
       return `<button class="chip ${selected === d ? 'on' : ''}" data-day="${d}">${esc(label)}</button>`;
     }).join('');
     const plans = readPlans();
@@ -2839,7 +2846,7 @@ function renderSources(v) {
       if (act) {
         lines.push(`${c.live.length} kanal · ${c.movies.length} film · ${c.series.length} dizi`);
         lines.push(`Son güncelleme: ${fmtAgo(c.fetchedAt)}`);
-        if (c.account && c.account.expires) lines.push(`Abonelik bitişi: ${new Date(c.account.expires).toLocaleDateString('tr-TR')}`);
+        if (c.account && c.account.expires) lines.push(`Abonelik bitişi: ${new Date(c.account.expires).toLocaleDateString(loc())}`);
         if (c.account && c.account.maxConnections) lines.push(`Aynı anda en çok ${c.account.maxConnections} cihaz`);
         if (S.epgInfo && S.epgInfo.error) lines.push(`TV rehberi alınamadı: ${esc(S.epgInfo.error)}`);
         else if (S.epg.ready) lines.push(`TV rehberi: ${Object.keys(S.epg.data.map).length} kanal eşleşti`);
@@ -3278,7 +3285,7 @@ function sourceSwitcher() {
 
 // ------------------------------------------------------------------ ana ekran
 
-const fmtDate = (d, o) => d.toLocaleDateString('tr-TR', o);
+const fmtDate = (d, o) => d.toLocaleDateString(loc(), o);
 
 // Ana ekrandaki bağlantı durumu: sabit "Bağlı" yerine gerçek durum (çevrimdışı, son yenileme hatası, boş liste).
 function linkState() {
@@ -3623,7 +3630,7 @@ function internetSpeedTestPage() {
           $id('speed-main').textContent = result.downloadMbps.toFixed(1);
           meter.style.setProperty('--speed-angle', Math.min(360, result.downloadMbps / 300 * 360) + 'deg');
           $id('speed-state').textContent = 'Test tamamlandı';
-          $id('speed-sub').textContent = 'Ölçüm ' + new Date(result.testedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) + ' saatinde tamamlandı.';
+          $id('speed-sub').textContent = 'Ölçüm ' + new Date(result.testedAt).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' }) + ' saatinde tamamlandı.';
           verdict(result);
         } catch (error) {
           const cancelled = error && error.name === 'AbortError';
@@ -4245,7 +4252,7 @@ function guideAxisHtml(ws) {
   for (let k = 0; k * GUIDE_STEP < GUIDE_SPAN; k++) {
     const t = ws + k * GUIDE_STEP * 60000;
     const hour = new Date(t).getMinutes() === 0;
-    const day = hour && new Date(t).getHours() === 0 ? new Date(t).toLocaleDateString('tr-TR', { weekday: 'short' }) + ' ' : '';
+    const day = hour && new Date(t).getHours() === 0 ? new Date(t).toLocaleDateString(loc(), { weekday: 'short' }) + ' ' : '';
     out += `<span class="tl-tick${hour ? '' : ' half'}" style="--m:${k * GUIDE_STEP}">${hour ? esc(day + fmtClock(t)) : ''}</span>`;
   }
   return out;
@@ -4373,8 +4380,8 @@ function guidePage() {
         for (let d = dayBase; d < Math.min(GUIDE_DAYS, dayBase + GUIDE_DAY_SHOW); d++) {
           const t = new Date(base);
           t.setDate(t.getDate() + d);
-          const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString('tr-TR', { weekday: 'short' });
-          const date = t.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) + (d === 0 ? ' ' + t.toLocaleDateString('tr-TR', { weekday: 'short' }) : '');
+          const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString(loc(), { weekday: 'short' });
+          const date = t.toLocaleDateString(loc(), { day: 'numeric', month: 'long' }) + (d === 0 ? ' ' + t.toLocaleDateString(loc(), { weekday: 'short' }) : '');
           cells.push(`<button class="gd-day${d === dayOff ? ' on' : ''}" data-day="${d}"><b>${esc(name)}</b><small>${esc(date)}</small></button>`);
         }
         $('#guide-days', body).innerHTML = `<button class="gd-arr" data-days="-1" aria-label="Önceki günler"${dayBase <= 0 ? ' disabled' : ''}>${icon('chev-l')}</button>${cells.join('')}<button class="gd-arr" data-days="1" aria-label="Sonraki günler"${dayBase + GUIDE_DAY_SHOW >= GUIDE_DAYS ? ' disabled' : ''}>${icon('chev-r')}</button>`;
@@ -4466,7 +4473,7 @@ function guidePage() {
       const dayWord = (ts) => {
         const d0 = new Date().setHours(0, 0, 0, 0);
         const diff = Math.round((new Date(ts).setHours(0, 0, 0, 0) - d0) / 86400000);
-        return diff === 0 ? 'Bugün' : diff === 1 ? 'Yarın' : diff === -1 ? 'Dün' : new Date(ts).toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' });
+        return diff === 0 ? 'Bugün' : diff === 1 ? 'Yarın' : diff === -1 ? 'Dün' : new Date(ts).toLocaleDateString(loc(), { weekday: 'short', day: 'numeric', month: 'short' });
       };
       const drawPrograms = (term) => {
         progHits = [];
@@ -4690,8 +4697,8 @@ function guidePage() {
           html: Array.from({ length: GUIDE_DAYS }, (_, d) => {
             const t = new Date(base);
             t.setDate(t.getDate() + d);
-            const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString('tr-TR', { weekday: 'long' });
-            return `<button class="list-item" data-pickday="${d}"><span class="t">${esc(name)}<small>${esc(t.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }))}</small></span>${d === dayOff ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`;
+            const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString(loc(), { weekday: 'long' });
+            return `<button class="list-item" data-pickday="${d}"><span class="t">${esc(name)}<small>${esc(t.toLocaleDateString(loc(), { day: 'numeric', month: 'long', weekday: 'long' }))}</small></span>${d === dayOff ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`;
           }).join(''),
         });
         sh.el.addEventListener('click', (e) => {
@@ -5161,10 +5168,11 @@ function generalSheet() {
         selRow('g-cap', 'Kutudaki ad', 'Afişin altında kaç satır görünsün', optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))),
         chkRow('showProg', 'Devam çubukları', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi'),
         chkRow('epThumbs', 'Bölüm küçük resimleri', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar sıkışık olur'),
-        chkRow('trailerFind', 'Fragmanı otomatik ara', 'Hazır fragman yoksa başlığı YouTube’da arar ve bulduğu resmî fragmanı ekranda gösterir; kapalıyken “YouTube’da ara” düğmesi çıkar'),
+        chkRow('trailerFind', 'Fragmanı otomatik ara', 'Hazır fragman yoksa başlığı YouTube’da arar ve bulduğu resmî fragmanı ekranda gösterir; kapalıyken “YouTube’da ara” düğmesi çıkar', 'trailer'),
         chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Film ve dizi ekranında ve vitrinde fragman sessiz başlar, “Sesi aç” ile açılır; kapalıyken küçük resme dokununca oynar. Çocuk modunda fragman gösterilmez', 'trailer'),
       ]) +
       setCard('Görünüm ve cihaz', 'gear', [
+        selRow('g-lang', 'Dil / Language', 'Uygulamanın dili; değişince uygulama yeniden başlar', LANG_CHOICES.map(([v, name]) => `<option value="${v}"${normalizeLang(store.pref('set.lang', 'auto')) === v ? ' selected' : ''}${v === 'auto' ? '' : ' translate="no"'}>${name}</option>`).join('')),
         selRow('g-fs', 'Yazı boyutu', '', optionsHtml(FONT_SCALES, Math.round(fontScale() * 100))),
         selRow('g-lite', 'Hafif mod', 'Animasyon, gölge ve bulanıklığı kapatır; otomatikte 2 GB ve altı bellekli cihazda açılır', optionsHtml(LITE_MODES, normalizeLite(store.pref('set.lite', DEFAULT_LITE)))),
         selRow('g-tv', 'TV modu', 'Kumanda ile kullanım: yatay, tam ekran, büyük yazı', optionsHtml(TV_MODES, normalizeTvMode(store.pref('set.tvmode', DEFAULT_TV_MODE)))),
@@ -5188,7 +5196,7 @@ function generalSheet() {
       body.addEventListener('click', (e) => {
         const c = e.target.closest('.chk');
         if (c) {
-          const pk = c.dataset.k === 'trailerAuto' ? 'trailer' : '';
+          const pk = c.dataset.k === 'trailerAuto' || c.dataset.k === 'trailerFind' ? 'trailer' : '';
           const on = pk && !proOk(pk) ? true : !setting(c.dataset.k);
           if (on && pk && !needPro(pk)) return; // Pro olmadan açılmaz: Pro sayfası açılır
           store.setPref('set.' + c.dataset.k, on);
@@ -5223,6 +5231,11 @@ function generalSheet() {
       $('#g-lite', body).addEventListener('change', (e) => {
         store.setPref('set.lite', normalizeLite(e.target.value));
         applyLiteMode();
+      });
+      $('#g-lang', body).addEventListener('change', (e) => {
+        store.setPref('set.lang', normalizeLang(e.target.value));
+        toast('Dil değiştiriliyor…', 1500);
+        setTimeout(() => location.reload(), 350); // metinler baştan çizilir; Türkçe'ye dönüş için yeniden yükleme gerekir
       });
       $('#g-tv', body).addEventListener('change', (e) => {
         store.setPref('set.tvmode', normalizeTvMode(e.target.value));

@@ -1,6 +1,7 @@
 // Futbol: maç takvimi, skorlar ve maçın hangi kanalda olduğu.
 // Veri: ESPN'in herkese açık skor tablosu (anahtarsız). Bu dosya saf mantıktır (ağ ve TV rehberi dışarıdan verilir); ekran sports-ui.js'te.
 import { fold } from './util.js';
+import { lang } from './i18n.js';
 
 export const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
 export const DAY = 86400000;
@@ -402,6 +403,9 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
 
 const DAYS_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+// İngilizce'de sözlükten değil buradan seçilir ('Ara' Türkçe'de hem Aralık hem Ara/Search olduğundan)
+const DAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Yerel takvim gününün sayısal anahtarı (gece yarısı, ms)
 export const dayStart = startOfDay;
@@ -412,7 +416,7 @@ export function dayLabel(dayMs, now = Date.now()) {
   if (diff === 1) return 'Yarın';
   if (diff === -1) return 'Dün';
   const d = new Date(dayMs);
-  return `${DAYS_TR[d.getDay()]} ${d.getDate()} ${MONTHS_TR[d.getMonth()]}`;
+  return lang() === 'en' ? `${DAYS_EN[d.getDay()]} ${d.getDate()} ${MONTHS_EN[d.getMonth()]}` : `${DAYS_TR[d.getDay()]} ${d.getDate()} ${MONTHS_TR[d.getMonth()]}`;
 }
 
 // Gün şeridi: dünden başlayıp ahead gün sonrasına kadar gün başlangıçları

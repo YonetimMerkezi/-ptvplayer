@@ -2,6 +2,7 @@
 // Yayın bölümü odaklanabilir satırlar içerir ve en üstte durur; altındaki içerik salt okunurdur, böylece kumandada aşağı ok
 // sayfayı yarım ekran adımlarla kaydırır (alttaki bir düğmeye sıçramaz).
 import { esc, fmtClock } from './util.js';
+import { loc } from './i18n.js';
 import { $, icon, openPage } from './ui.js';
 import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel, noScore } from './sports.js';
 import { LS_HOSTS, loadLsEvents } from './sports-ls.js';
@@ -104,7 +105,7 @@ export function openMatchDetail(env, m) {
     const stClass = st.state === 'in' ? 'sd-st live' : 'sd-st';
     const stText = none && st.state === 'pre' ? `Skor alınamadı · ${esc(dayLabel(dayStart(m.t), now()))} ${fmtClock(m.t)}` : st.state === 'pre' && !st.off ? `${esc(dayLabel(dayStart(m.t), now()))} · ${fmtClock(m.t)}` : esc(st.text || '');
     const where = [(data && data.venue) || m.venue, data && data.city].filter(Boolean).join(', ');
-    const meta = [where, data && data.referee ? `Hakem: ${data.referee}` : '', data && data.attendance ? `Seyirci: ${data.attendance.toLocaleString('tr-TR')}` : ''].filter(Boolean);
+    const meta = [where, data && data.referee ? `Hakem: ${data.referee}` : '', data && data.attendance ? `Seyirci: ${data.attendance.toLocaleString(loc())}` : ''].filter(Boolean);
     const had = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.follow : '';
     const follow = (side) => {
       if (!env.fav) return '';

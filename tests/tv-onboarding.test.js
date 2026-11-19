@@ -57,7 +57,7 @@ test('tema kartları: görsel kutusu 3:4\'ü yüzde dolguyla kurar, kart taşmaz
   assert.doesNotMatch(css, /\.theme-shot \{[^}]*aspect-ratio/);
 });
 
-test('Pro: fragmanı otomatik oynatma ve oyuncu ayrıntıları Pro özelliğidir; elle fragman izlemek ve QR ile liste aktarma kapıları yerinde', async () => {
+test('Pro: fragman oynatma (otomatik ve elle) ve oyuncu ayrıntıları Pro özelliğidir; QR ile liste aktarma kapıları yerinde', async () => {
   const { isProFeature, canUse } = await import('../www/js/membership.js');
   assert.ok(isProFeature('trailer') && isProFeature('actors') && isProFeature('tvlink'));
   assert.ok(canUse('trailer', { tier: 'pro' }) && !canUse('trailer', { tier: 'standard' }) && canUse('trailer', { tier: 'trial' }), 'yalnız Pro (ve denemede)');
@@ -65,6 +65,12 @@ test('Pro: fragmanı otomatik oynatma ve oyuncu ayrıntıları Pro özelliğidir
   const app = kaynak('www/js/app.js');
   assert.match(app, /const trailerAutoOn = \(\) => setting\('trailerAuto'\) && proOk\('trailer'\);/);
   assert.match(app, /const actorsLocked = \(\) => memOn\(\) && !proOk\('actors'\);/);
+  assert.match(app, /const trailerLocked = \(\) => memOn\(\) && !proOk\('trailer'\);/, 'fragman tümüyle Pro: elle oynatma da kilitli');
+  assert.match(app, /const find = trailerOn\(\) && !locked && !ids\.length/, 'Pro değilken YouTube araması yapılmaz');
+  assert.match(app, /locked \? \(lockedCard \? trailerLockedHtml\(\) : ''\) : trailerHtml\(/, 'Pro değilken oynatıcı yerine kilitli kart');
+  assert.match(app, /\$\('\[data-tr=lock\]', tr\)\.addEventListener\('click', \(\) => needPro\('trailer'\)\)/, 'kilitli karta dokununca Pro sayfası');
+  assert.match(app, /chkRow\('trailerFind', 'Fragmanı otomatik ara', '[^']*', 'trailer'\)/, 'otomatik arama ayarı da Pro');
+  assert.match(app, /c\.dataset\.k === 'trailerAuto' \|\| c\.dataset\.k === 'trailerFind' \? 'trailer' : ''/);
   assert.match(app, /function openActor\(name, role = '', photo = ''\) \{\s*if \(!needPro\('actors'\)\) return undefined;/, 'oyuncu sayfası kapıdan geçer (3 çağıran de)');
   assert.match(app, /if \(!actorsLocked\(\)\) paintPhotos\(pp, people, detail && detail\.imdbId\);/, 'Pro değilken fotoğraf araması yapılmaz');
   assert.match(app, /pp\.innerHTML = peopleHtml\(people, actorsLocked\(\)\);/);

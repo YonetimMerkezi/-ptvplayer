@@ -55,6 +55,11 @@ export function trailerHtml(ids, { auto = false, origin = '', query = '', search
   return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}" data-bg="${esc(bg)}"${notes.length ? ` data-notes="${esc(JSON.stringify(notes))}"` : ''}><div class="tr-hero"><div class="tr-box">${media}</div>${unmute}</div><div class="tr-more">${note}<div class="tr-bar"><a class="btn sm ghost tr-open" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div>${strip}</div></section>`;
 }
 
+// Pro olmayan üyelikte fragman bölümü: oynatıcı, küçük resim ve YouTube araması yerine tek kilitli kart (dokununca Pro sayfası açılır).
+export function trailerLockedHtml() {
+  return `<section class="tr tr-none tr-locked"><h2>Fragman<em class="set-pro">PRO</em></h2><button class="tr-find tr-lock" type="button" data-tr="lock">${ic('lock')}<span><b>Fragman izle</b><small>Pro üyelikle açılır</small></span></button></section>`;
+}
+
 // Fragman denetleyicisi: sessiz otomatik oynatma, "Sesi aç", hata → sıradaki fragman (hepsi bitince açıklama + YouTube araması), uygulama oynatıcısı açılınca durdurma.
 // host: .tr bölümü. win: iframe mesajlarını dinleyen pencere. Dönen işlev denetleyiciyi bırakır.
 export function wireTrailer(host, { win = typeof window !== 'undefined' ? window : null, doc = typeof document !== 'undefined' ? document : null } = {}) {
