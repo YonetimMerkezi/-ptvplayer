@@ -2,6 +2,22 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 155,
+    title: 'Dikey vitrinde otomatik fragman',
+    items: [
+      'Telefon dikeyken vitrinli satırlarda, öne çıkan yapımda yaklaşık 1,5 sn bekleyince fragman vitrin alanında otomatik başlar (sessiz); yapım değişince ya da ekran yatay çevrilince durur',
+      'Fragman oynarken vitrinin sağ üstünde yuvarlak ses düğmesi çıkar; dokununca ses açılır/kapanır',
+      'Telefonda bilgiler gizlenmez (liste kaydırılabilir kalır); “Fragmanı otomatik oynat” ayarı kapalıysa başlamaz',
+    ],
+  },
+  {
+    id: 154,
+    title: 'Fragman sahnesi yumuşak kenarlı',
+    items: [
+      'Film/dizi ekranındaki fragman sahnesinin kenarları artık keskin değil: üst ve alt kenar sayfaya karışır, yatay ekranda dört kenar da yumuşak solar',
+    ],
+  },
+  {
     id: 153,
     title: 'Oyuncu kadrosu ve fotoğrafları',
     items: [

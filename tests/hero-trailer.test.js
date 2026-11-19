@@ -254,11 +254,11 @@ test('bağlantı: vitrin boyanınca fragman denetleyicisine bildirilir; vitrin k
   const app = kaynak('www/js/app.js');
   assert.match(app, /if \(!box \|\| box\.hidden\) return;\n  heroTrailer\.focus\(it\);/, 'paintHero her boyamada odağı bildirir');
   assert.match(app, /function heroOff\(\) \{\n  document\.documentElement\.classList\.remove\('hero-on'\);\n  heroTrailer\.cancel\(\);/);
-  assert.match(app, /const heroTrailerOn = \(\) => isTvUi\(\) && !kidActive\(\) && setting\('trailerAuto'\) && !heroBusy\(\)/, 'TV, çocuk modu dışı, ayar açık, sayfa/oynatıcı yok');
+  assert.match(app, /const heroTrailerOn = \(\) => \(isTvUi\(\) \|\| phoneVitrin\(\)\) && !kidActive\(\) && setting\('trailerAuto'\) && !heroBusy\(\)/, 'TV ya da telefon dikey vitrin, çocuk modu dışı, ayar açık, sayfa/oynatıcı yok');
   assert.match(app, /document\.querySelector\('#sheets > \*'\) \|\| document\.body\.classList\.contains\('player-open'\)/);
   assert.match(app, /visibilitychange', \(\) => \{ if \(document\.visibilityState === 'hidden'\) heroTrailer\.cancel\(\)/);
   assert.match(app, /\['keydown', 'pointerdown', 'touchstart'\]/, 'tuş/dokunuş bilgiyi geri getirir');
-  assert.match(app, /setCine: \(on\) => document\.documentElement\.classList\.toggle\('hero-cine', on\)/);
+  assert.match(app, /setCine: \(on\) => \{ if \(isTvUi\(\) \|\| !on\) document\.documentElement\.classList\.toggle\('hero-cine', on\); \}/, 'sinema kipi yalnız TV\'de');
   assert.match(app, /new Promise\(\(res\) => loadTitleExtras\(it, meta && meta\.imdbId, type,/, 'sağlayıcı → Cinemeta → YouTube sırası');
   assert.match(app, /if \(!setting\('trailerFind'\)\) return \[\];/);
   const html = kaynak('www/index.html');
@@ -283,4 +283,36 @@ test('bağlantı: vitrinde ses düğmesi (TV, fragman oynarken), Oynat/Duraklat 
   const css = kaynak('www/css/app.css');
   assert.match(css, /\.hero-snd \{ display: none; \}/);
   assert.match(css, /html\.tv\.hero-live \.hero-snd \{ display: inline-flex;/);
+});
+
+test('vitrin sahnesi: opts.muted ile baştan sessiz başlar (telefon); seçenek yoksa sesli denenir', () => {
+  const a = stageRig();
+  a.stage.start(['a1'], { muted: true });
+  assert.match(a.host.innerHTML, /embed\/a1\?[^"]*mute=1/);
+  const b = stageRig();
+  b.stage.start(['a1']);
+  assert.match(b.host.innerHTML, /embed\/a1\?[^"]*mute=0/);
+});
+
+test('bağlantı: dikey telefon vitrininde de fragman (sessiz, sinema kipi yok, ses düğmesi); yatay çevrilince kesilir', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /const phoneVitrin = \(\) => !isTvUi\(\) && document\.documentElement\.classList\.contains\('hero-on'\) && document\.documentElement\.classList\.contains\('hero-rows'\) && !!\(window\.matchMedia && window\.matchMedia\('\(orientation: portrait\)'\)\.matches\)/);
+  assert.match(app, /start: \(ids\) => heroStage\.start\(ids, \{ muted: !isTvUi\(\) \}\)/, 'telefonda sessiz başlar');
+  assert.match(app, /matchMedia\('\(orientation: portrait\)'\)\.addEventListener\('change', \(\) => \{\s*if \(!heroTrailerOn\(\)\) heroTrailer\.cancel\(\);/);
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /html:not\(\.tv\) #hero-tr \{ bottom: auto; height: 58vh;/, 'fragman afişle aynı alanı (üst %58) kaplar');
+  assert.match(css, /html:not\(\.tv\) #hero-tr \.ht-frame \{ width: calc\(58vh \* 16 \/ 9\); left: 50%; transform: translateX\(-50%\); \}/, '16:9 video alanı doldurur, ortalı');
+  assert.match(css, /html:not\(\.tv\)\.hero-live \.hero-snd \{ display: grid;[^}]*position: absolute;/, 'telefonda yuvarlak ses düğmesi');
+  assert.match(css, /@media \(orientation: landscape\) \{ html:not\(\.tv\):not\(\.kbd\) #hero-tr \{ display: none !important; \} \}/);
+  assert.match(css, /@media not all and \(orientation: landscape\) \{ html:not\(\.tv\):not\(\.hero-rows\) #hero-tr \{ display: none !important; \} \}/);
+});
+
+test('bağlantı: fragman sahnesi kenarları keskin değil (maske ile solar), düğme kutunun dışında kalır', () => {
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /\.tr-box \{ position: relative; aspect-ratio: 16 \/ 9;[^}]*-webkit-mask-image: linear-gradient\(180deg, transparent 0[^}]*mask-image: linear-gradient\(180deg, transparent 0/);
+  assert.doesNotMatch(css, /\.tr-box::after \{[^}]*var\(--bg, #05080d\)/, 'sayfa zeminini taklit eden bant yok');
+  assert.match(css, /\.tr-box \{ border-radius: 0; -webkit-mask-image: linear-gradient\(90deg, transparent 0[^}]*mask-composite: intersect;/, 'yatayda dört kenar solar');
+  assert.doesNotMatch(css, /\.tr-box \{ border-radius: 14px; box-shadow/);
+  const ui = kaynak('www/js/title-ui.js');
+  assert.match(ui, /<div class="tr-hero"><div class="tr-box">\$\{media\}<\/div>\$\{unmute\}<\/div>/, 'düğme maskeli kutunun dışında');
 });

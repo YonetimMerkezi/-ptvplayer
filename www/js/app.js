@@ -1264,7 +1264,9 @@ function heroSync(kind, mode) {
 // oynarken ~6 sn sonra ekrandaki tüm bilgi solar (html.hero-cine); tuş/dokunuş bilgiyi geri getirir; odak başka yapıma geçince ya da video bitince durur.
 // Sayfa/oynatıcı açıkken ve uygulama arka plandayken çalışmaz. Ayar: "Fragmanı otomatik oynat" (kapalıyken vitrin eskisi gibi).
 const heroBusy = () => !!document.querySelector('#sheets > *') || document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing');
-const heroTrailerOn = () => isTvUi() && !kidActive() && setting('trailerAuto') && !heroBusy() && document.visibilityState !== 'hidden';
+// Telefon: dikey ekranda vitrinli satırlar açıkken de çalışır (üstteki yapımda bekleyince vitrin alanında sessiz oynar; sinema kipi yok, liste kaydırılabilir kalır)
+const phoneVitrin = () => !isTvUi() && document.documentElement.classList.contains('hero-on') && document.documentElement.classList.contains('hero-rows') && !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches);
+const heroTrailerOn = () => (isTvUi() || phoneVitrin()) && !kidActive() && setting('trailerAuto') && !heroBusy() && document.visibilityState !== 'hidden';
 // Fragman kimlikleri: sağlayıcı → Cinemeta → YouTube araması (ayar açıksa). Hepsi önbellekli; aynı yapıma yeniden odaklanınca anında gelir.
 async function heroTrailerIds(it) {
   const info = S.source ? peekVodInfo(S.source, it) : null;
@@ -1298,12 +1300,19 @@ function toggleHeroSound() {
 const heroTrailer = createHeroTrailer({
   enabled: () => heroTrailerOn(),
   resolve: heroTrailerIds,
-  start: (ids) => heroStage.start(ids),
+  start: (ids) => heroStage.start(ids, { muted: !isTvUi() }),
   stop: () => { heroStage.stop(); heroLive(false); },
-  setCine: (on) => document.documentElement.classList.toggle('hero-cine', on),
+  setCine: (on) => { if (isTvUi() || !on) document.documentElement.classList.toggle('hero-cine', on); }, // telefonda bilgi gizlenmez
 });
 for (const ev of ['keydown', 'pointerdown', 'touchstart']) document.addEventListener(ev, () => heroTrailer.activity(), { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') heroTrailer.cancel(); });
+if (window.matchMedia) {
+  // Telefon yatay çevrilince vitrin kapanır: fragman da kesilir; dikeye dönünce vitrin yine odaktaki yapımı gösteriyorsa bekleme yeniden başlar
+  window.matchMedia('(orientation: portrait)').addEventListener('change', () => {
+    if (!heroTrailerOn()) heroTrailer.cancel();
+    else if (hero.current && heroTrailer.state === 'idle') heroTrailer.focus(hero.current);
+  });
+}
 document.addEventListener('keydown', (e) => {
   if (heroTrailer.state !== 'playing' || e.repeat || (e.key !== 'MediaPlayPause' && e.key !== 'm' && e.key !== 'M')) return;
   if (/^(INPUT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) return;

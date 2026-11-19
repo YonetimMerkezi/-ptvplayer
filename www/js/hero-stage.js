@@ -78,10 +78,11 @@ export function createHeroStage({ host, win = typeof window !== 'undefined' ? wi
       else { command('unMute'); command('setVolume', [100]); }
       return muted;
     },
-    start(list) {
+    // opts.muted: baştan sessiz (telefonda dokunmadan başlayan fragman; ses düğmeyle açılır)
+    start(list, opts = {}) {
       ids = (list || []).filter(Boolean);
       at = 0;
-      muted = blocked;
+      muted = blocked || !!(opts && opts.muted);
       if (!ids.length) return onEnded();
       mount();
     },
