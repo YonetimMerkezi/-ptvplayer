@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, parseSahadan, parseLiveSoccerTv, loadSchedDay, SCHED_BASES, imgsOf, seChannelsFor, seInfoFor, seDiagText, seTime, logosOf, splitTitle, seMatches, mergeSe, fixTr, compGroup } from '../www/js/sports-se.js';
+import { seDateKey, seUrl, decodeEntities, tokensOf, extractChannels, splitChannels, parseSporEkrani, parseSahadan, parseLiveSoccerTv, loadSchedDay, SCHED_BASES, imgsOf, seChannelsFor, seInfoFor, seDiagText, seTime, logosOf, splitTitle, seMatches, mergeSe, fixTr, compGroup, findLsMatch } from '../www/js/sports-se.js';
 
 const DAYMS = new Date(2026, 10, 12, 0, 0, 0).getTime();
 const href = (id, y, m, d, slug) => `https://www.sporekrani.com/home/match/${id}/${y}/${m}/${d}/${slug}-hangi-kanalda`;
@@ -330,4 +330,15 @@ test('mergeSe / seInfoFor: aynı saatte "Menemen FK" ↔ "Menemenspor" (sözcük
   const other = [{ id: '22', t: t0, title: 'Elazığspor - Menemenspor TFF 2. Lig', teams: ['Elazığspor', 'Menemenspor'], comp: 'TFF 2. Lig', channels: [], logos: {} }];
   const ls2 = [{ id: 'ls:x', lg: 'x', t: t0, state: 'pre', text: '', home: { name: 'Elazigspor', score: null }, away: { name: 'Mus Spor', score: null } }];
   assert.equal(mergeSe(ls2, other).length, 2, 'aynı saatte rakip farklıysa satır ayrı maçtır');
+});
+
+test('findLsMatch: yayın sitesi maçının LiveScore karşılığı (saat ±35 dk, iki takım, sözcük başı), en yakın saatli seçilir', () => {
+  const t0 = Date.UTC(2026, 10, 18, 10, 0);
+  const se = seMatches([{ id: '21', t: t0, title: 'Elazığspor - Menemenspor TFF 2. Lig', teams: ['Elazığspor', 'Menemenspor'], comp: 'TFF 2. Lig', channels: [], logos: {} }])[0];
+  const mk = (id, t, h, a) => ({ id, t, home: { name: h }, away: { name: a } });
+  const ls = [mk('a', t0, 'Adana Demirspor', 'Kastamonuspor 1966'), mk('b', t0 + 10 * 60000, 'Elazigspor', 'Menemen FK'), mk('c', t0 + 5 * 3600e3, 'Elazigspor', 'Menemen FK')];
+  assert.equal(findLsMatch(se, ls).id, 'b');
+  assert.equal(findLsMatch(se, [ls[0], ls[2]]), null, 'saat çok uzaksa eşleşmez');
+  assert.equal(findLsMatch(se, []), null);
+  assert.equal(findLsMatch(null, ls), null);
 });

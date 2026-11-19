@@ -5,13 +5,18 @@ import { esc, fmtClock } from './util.js';
 import { loc } from './i18n.js';
 import { $, icon, openPage } from './ui.js';
 import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel, noScore } from './sports.js';
-import { LS_HOSTS, loadLsEvents } from './sports-ls.js';
+import { LS_HOSTS, loadLsEvents, loadLiveScoreDay } from './sports-ls.js';
+import { findLsMatch } from './sports-se.js';
 import { loadSummary, KIND_LABEL, broadcastGroups, shouldPoll } from './sports-detail.js';
 import { sideLogo, logoHtml } from './sports-logos.js';
 
 const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
 const LIVE_MS = 45e3;
+const LS_LOOKAHEAD_MS = 3 * 3600e3; // yayın sitesi maçı için LiveScore karşılığı, başlamasına bu kadar kala aranır
+const LS_RETRY_MS = 3 * 60e3; // karşılık bulunamadıysa ya da liste alınamadıysa yoklama turlarında bu aralıkla yeniden denenir (düğmeyle hemen)
+const lsDayCache = new Map(); // gün → { at, matches }: aynı günün listesi kısa süre yeniden indirilmez
+const LS_DAY_FRESH_MS = 2 * 60e3;
 
 // Kullanıcının kanallarından, rehberinde bu maç görünenlerin hepsi (en yakın başlangıçtan uzağa).
 export function channelsFor(env, m) {
@@ -65,7 +70,10 @@ export function openMatchDetail(env, m) {
   const now = env.now || (() => Date.now());
   const teamLogo = (side, other) => logoHtml(sideLogo(side, other, env.badgeOf), side.label, esc);
   const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || m.lgName || '';
-  const lite = m.src === 'se'; // yalnız yayın sitesinden gelen maç: olay/kadro ayrıntısı yok, yalnız skor, durum ve yayın
+  const lite = m.src === 'se'; // yalnız yayın sitesinden gelen maç: önce LiveScore'daki karşılığı aranır; bulunamazsa yalnız yayın ve not
+  let lsFound = null; // yayın sitesi maçının LiveScore karşılığı: bulunursa skor, olay, kadro ve istatistik oradan gelir
+  let lsNote = '';
+  let lsTriedAt = 0;
   let nRefresh = 0; // LiveScore yoklama sayacı: kadro ve istatistik her turda değil, seyrek istenir (istek sayısı kontrol altında)
   let data = null;
   let loading = false;
@@ -215,7 +223,10 @@ export function openMatchDetail(env, m) {
   }
 
   // Maçta gol atılmış mı (skordan): olay alınamadıysa nedeni yalnız o zaman gösterilir
-  const hasGoals = () => (Number(m.home.score) || 0) + (Number(m.away.score) || 0) > 0;
+  const hasGoals = () => {
+    const g = (side) => Number(data && data[side] && data[side].score != null ? data[side].score : m[side].score) || 0;
+    return g('home') + g('away') > 0;
+  };
 
   function drawBody() {
     const el = q('#sd-body');
@@ -231,7 +242,7 @@ export function openMatchDetail(env, m) {
     el.innerHTML =
       eventsHtml(data) + statsHtml(data) + lineupHtml(data) +
       (data.lsOnly
-        ? `<p class="sd-note">${data.events.length ? 'Bu maç için yalnız gol bilgisi var (kadro yok).' : 'Bu maç için olay ve kadro bilgisi yok.'}</p>${!data.events.length && data.evNote && hasGoals() ? `<p class="hint sd-diag">Gol dakikaları alınamadı (LiveScore: ${esc(data.evNote)})</p>` : ''}${data.evWarn ? `<p class="hint sd-diag">${esc(data.evWarn)}</p>` : ''}`
+        ? `<p class="sd-note">Bu maç için olay ve kadro bilgisi yok.</p>${data.evNote ? `<p class="hint sd-diag">${esc(data.evNote)}</p>` : ''}`
         : data.src === 'ls'
           ? `${data.empty ? `<p class="sd-note">${pre ? 'Kadro genelde maçtan yaklaşık 1 saat önce açıklanır; açıklanınca burada görünür. Olaylar maç başlayınca eklenir.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : ''}${!data.events.length && data.evNote && hasGoals() ? `<p class="hint sd-diag">Olaylar alınamadı (LiveScore: ${esc(data.evNote)})</p>` : ''}${data.evWarn ? `<p class="hint sd-diag">${esc(data.evWarn)}</p>` : ''}`
         : data.empty ? `<p class="sd-note">${pre ? 'Kadro genelde maçtan yaklaşık 1 saat önce açıklanır; açıklanınca burada görünür. Olaylar maç başlayınca eklenir.' : 'Bu maç için ayrıntı verisi bulunamadı.'}</p>` : '');
@@ -243,7 +254,7 @@ export function openMatchDetail(env, m) {
     el.textContent = loading && fetchedAt ? 'Güncelleniyor…' : err && fetchedAt ? `Güncellenemedi · son veri ${fmtClock(fetchedAt)}` : fetchedAt ? `Son güncelleme ${fmtClock(fetchedAt)}${live() === 'in' ? ' · canlı maçta 45 sn’de bir yenilenir' : live() === 'pre' && shouldPoll('pre', m.t, now()) ? ' · kadro için 45 sn’de bir yenilenir' : ''}` : '';
   }
 
-  async function refresh() {
+  async function refresh(force = false) {
     if (loading) return;
     const was = live();
     loading = true;
@@ -252,17 +263,34 @@ export function openMatchDetail(env, m) {
     if (!data) drawBody();
     drawStatus();
     try {
-      if (lite) {
-        data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], lineups: {}, intl: [], empty: true, lsOnly: true, evNote: '' };
-      } else if (m.src === 'ls') {
+      let lm = m.src === 'ls' ? m : lsFound;
+      if (!lm && lite && m.t - now() < LS_LOOKAHEAD_MS && (force || !lsTriedAt || now() - lsTriedAt > LS_RETRY_MS)) {
+        lsTriedAt = now();
+        try {
+          const d = dayStart(m.t);
+          let c = lsDayCache.get(d);
+          if (!c || now() - c.at > LS_DAY_FRESH_MS) {
+            const r = await loadLiveScoreDay({ net: env.net, dayMs: d, now: now(), hosts: env.lsHosts || LS_HOSTS, timeoutMs: 12000 });
+            c = { at: now(), matches: r.matches };
+            lsDayCache.set(d, c);
+          }
+          lm = lsFound = findLsMatch(m, c.matches);
+          lsNote = lm ? '' : 'LiveScore listesinde bu maç bulunamadı';
+        } catch (e) {
+          lsNote = `LiveScore: ${(e && (e.detail || e.message)) || 'alınamadı'}`;
+        }
+      }
+      if (!lm && lite) {
+        data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], lineups: {}, intl: [], empty: true, lsOnly: true, evNote: lsNote };
+      } else if (lm) {
         // LiveScore maçı: durum+skor+olaylar her turda; kadro (oyuncu değişiklikleri dahil) 3 turda bir, istatistik 4 turda bir; başlamamış maçta yalnız kadro.
         const prev = data && data.src === 'ls' ? data : null;
-        const st = live();
+        const st = data && data.status ? data.status.state : lm.state; // yayın sitesi maçında durum LiveScore karşılığından
         const first = !prev;
         nRefresh++;
         const wantLu = first || st === 'pre' || st === 'post' || nRefresh % 3 === 0 || !(prev.lineups && (prev.lineups.home || prev.lineups.away));
         const wantStats = st !== 'pre' && (first || st === 'post' || nRefresh % 4 === 0);
-        const r = await loadLsEvents({ net: env.net, match: m, hosts: env.lsHosts || LS_HOSTS, lineups: wantLu, stats: wantStats, incidents: st !== 'pre' });
+        const r = await loadLsEvents({ net: env.net, match: lm, hosts: env.lsHosts || LS_HOSTS, lineups: wantLu, stats: wantStats, incidents: st !== 'pre' });
         const lineups = r.lineups || (prev && prev.lineups) || {};
         const stats = r.stats !== undefined ? r.stats : prev ? prev.stats : [];
         const events = st === 'pre' && prev ? prev.events : r.events;
@@ -297,11 +325,11 @@ export function openMatchDetail(env, m) {
     drawBody();
     drawStatus();
     // LiveScore maçı bu turda bitti: yoklama durur; kadro ve istatistiğin son hâli için bir tur daha yenilenir
-    if (m.src === 'ls' && was === 'in' && live() === 'post' && !err) setTimeout(() => root.isConnected && refresh(), 1500);
+    if ((m.src === 'ls' || lsFound) && was === 'in' && live() === 'post' && !err) setTimeout(() => root.isConnected && refresh(), 1500);
   }
 
   root.addEventListener('click', (e) => {
-    if (e.target.closest('#sd-ref') || e.target.closest('#sd-retry')) return refresh();
+    if (e.target.closest('#sd-ref') || e.target.closest('#sd-retry')) return refresh(true);
     const fol = env.fav && e.target.closest('[data-follow]');
     if (fol) {
       env.fav.toggle(m[fol.dataset.follow]);

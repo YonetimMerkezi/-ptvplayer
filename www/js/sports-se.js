@@ -409,6 +409,19 @@ function rowFits(match, r, ph) {
   return (hasAny(padded, ph.hp) && shareWord(padded, match.away.name)) || (hasAny(padded, ph.ap) && shareWord(padded, match.home.name));
 }
 
+// Yayın akışından gelen maçın LiveScore karşılığı: başlama saati ±tolerance içinde, iki takımı da eşleşen en yakın maç (yoksa null).
+export function findLsMatch(seMatch, lsMatches, { tolerance = 35 * 60000 } = {}) {
+  if (!seMatch || !seMatch.home || !seMatch.away) return null;
+  const row = { t: seMatch.t, title: `${seMatch.home.name} ${seMatch.away.name}` };
+  let best = null;
+  for (const m of lsMatches || []) {
+    if (!m || !m.home || !m.away || Math.abs(m.t - seMatch.t) > tolerance) continue;
+    if (!rowFits(m, row, phrasesOf(m))) continue;
+    if (!best || Math.abs(m.t - seMatch.t) < Math.abs(best.t - seMatch.t)) best = m;
+  }
+  return best;
+}
+
 // Maçın yayın bilgisi: saat ±tolerance içinde, satır başlığında iki takımın da adı geçen satırların kanalları (tekrarsız) ve logoları.
 export function seInfoFor(match, rows, { tolerance = 35 * 60000 } = {}) {
   const channels = [];

@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 166,
+    title: 'Spor: skorsuz maçlar',
+    items: [
+      'Yayın sitesinden gelen maç açılınca LiveScore\'daki karşılığı aranır; bulunursa skor, olaylar, kadro ve istatistik görünür',
+      'Bulunamazsa ya da LiveScore alınamazsa maç ekranında nedeni yazılır; yenile düğmesi aramayı hemen yineler',
+    ],
+  },
+  {
     id: 165,
     title: 'Spor: uluslararası yarışmalar',
     items: [
