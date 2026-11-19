@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 150,
+    title: 'TV vitrininde otomatik fragman',
+    items: [
+      'TV’de film/dizi listesinde bir yapımın üzerinde birkaç saniye beklenince fragman tam ekran, kontrolsüz oynar; başka yapıma geçince durur',
+      'Fragman oynarken kısa süre sonra ekrandaki tüm bilgiler solar ve fragman ekranı kaplar; herhangi bir tuş bilgiyi geri getirir',
+      'Ayarlar › “Fragmanı otomatik oynat” kapalıysa vitrin eskisi gibi kalır',
+    ],
+  },
+  {
     id: 149,
     title: 'Fragman kontrolsüz, afişin yerinde',
     items: [

@@ -437,6 +437,16 @@ html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !impo
 #hero-bg i img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 22%; }
 #hero-bg i.poster img { object-fit: fill; }
 #hero-bg i.poster { left: auto; right: 5%; width: calc(100vh * var(--pr, 0.667)); -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28%, #000 72%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 28%, #000 72%, transparent 100%); } /* afiş sağda, kendi en-boy oranında bütün; iki kenarı (afişe göre) arkadaki yansımaya karışır */
+/* TV vitrininde fragman (hero-stage.js): afişin üstünde tam ekran, kontrolsüz oynatıcı; oynamaya başlayınca yumuşakça belirir.
+   Oynatıcı ekrandan büyük ve yukarı kaydırılmış: YouTube'un üst başlık şeridi ekran dışında kalır. Cine kipinde (html.hero-cine) tüm bilgi solar. */
+#hero-tr { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: #000; visibility: hidden; opacity: 0; transition: opacity 0.9s ease, visibility 0s linear 0.9s; }
+#hero-tr.live { visibility: visible; opacity: 1; transition: opacity 0.9s ease; }
+html.native-playing #hero-tr, html.native-preview #hero-tr { display: none !important; }
+#hero-tr .ht-frame { position: absolute; left: 0; top: -35%; width: 100%; height: 170%; border: 0; }
+#hero-tr::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 75%), linear-gradient(180deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0.6) 62%, rgba(0, 0, 0, 0.92) 100%); transition: opacity 0.9s ease; } /* yazı/liste okunur kalsın diye gölge */
+html.hero-on #app { transition: opacity 0.9s ease; }
+html.hero-cine #app { opacity: 0; }
+html.hero-cine #hero-tr::after { opacity: 0; }
 #hero-bg canvas.glow { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.4s ease; } /* afişin bulanık yansıması: sağdaki afişin arkasında ekranı doldurur */
 #hero-bg canvas.glow.show { opacity: 0.6; }
 #hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.62) 38%, rgba(0, 0, 0, 0.12) 78%, rgba(0, 0, 0, 0.5) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.95) 100%); } /* kenarları gölgeli: sol-sağ ve üst-alt */

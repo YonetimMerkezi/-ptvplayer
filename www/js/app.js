@@ -76,6 +76,8 @@ import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
+import { createHeroTrailer } from './hero-trailer.js';
+import { createHeroStage } from './hero-stage.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
@@ -1116,6 +1118,7 @@ const hero = createHero({
 function paintHero(it, info, final) {
   const box = $('#hero');
   if (!box || box.hidden) return;
+  heroTrailer.focus(it); // TV: odakta bir süre bekleyince fragman başlar
   const m = heroModel(it, info);
   box.innerHTML =
     `<h2 class="hero-t">${esc(m.title)}</h2>` +
@@ -1213,6 +1216,7 @@ function paintHeroBg(urls, nWide = urls.length) {
 
 function heroOff() {
   document.documentElement.classList.remove('hero-on');
+  heroTrailer.cancel();
   hero.stop();
   paintHeroBg([]);
 }
@@ -1250,6 +1254,55 @@ function heroSync(kind, mode) {
   const keep = cur && (rows ? S.list.hasItem(cur.id) : S.items.some((x) => x.id === cur.id));
   hero.stop();
   hero.focus(keep ? cur : first);
+}
+
+// ---- TV vitrininde fragman (hero-trailer.js denetler, hero-stage.js oynatır): odakta ~3,5 sn bekleyince tam ekran, kontrolsüz oynar;
+// oynarken ~6 sn sonra ekrandaki tüm bilgi solar (html.hero-cine); tuş/dokunuş bilgiyi geri getirir; odak başka yapıma geçince ya da video bitince durur.
+// Sayfa/oynatıcı açıkken ve uygulama arka plandayken çalışmaz. Ayar: "Fragmanı otomatik oynat" (kapalıyken vitrin eskisi gibi).
+const heroBusy = () => !!document.querySelector('#sheets > *') || document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing');
+const heroTrailerOn = () => isTvUi() && !kidActive() && setting('trailerAuto') && !heroBusy() && document.visibilityState !== 'hidden';
+// Fragman kimlikleri: sağlayıcı → Cinemeta → YouTube araması (ayar açıksa). Hepsi önbellekli; aynı yapıma yeniden odaklanınca anında gelir.
+async function heroTrailerIds(it) {
+  const info = S.source ? peekVodInfo(S.source, it) : null;
+  const year = (info && info.year) || it.year;
+  const type = it.kind === 'series' ? 'series' : 'movie';
+  const meta = await (type === 'series' ? loadSeriesMetadata(net, it, store) : loadMovieMetadata(net, it, info, store)).catch(() => null);
+  const { detail, origin } = await new Promise((res) => loadTitleExtras(it, meta && meta.imdbId, type, (d, o) => res({ detail: d, origin: o }), year));
+  const ids = trailerIds(detail, (info && info.trailer) || it.trailer);
+  if (ids.length) return ids;
+  if (!setting('trailerFind')) return [];
+  const t = trailerSearch(it.name, year, origin);
+  for (const q of t.finds.filter(Boolean)) {
+    const picks = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted: t.wanted, year: t.year }).catch(() => null);
+    const good = (picks || []).filter((p) => p.good);
+    if (good.length) return good.map((p) => p.id);
+  }
+  return [];
+}
+const heroStage = createHeroStage({ host: $('#hero-tr'), origin: location.origin, onPlaying: () => heroTrailer.playing(), onEnded: () => heroTrailer.ended() });
+const heroTrailer = createHeroTrailer({
+  enabled: () => heroTrailerOn(),
+  resolve: heroTrailerIds,
+  start: (ids) => heroStage.start(ids),
+  stop: () => heroStage.stop(),
+  setCine: (on) => document.documentElement.classList.toggle('hero-cine', on),
+});
+for (const ev of ['keydown', 'pointerdown', 'touchstart']) document.addEventListener(ev, () => heroTrailer.activity(), { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') heroTrailer.cancel(); });
+{
+  // Sayfa/oynatıcı açılınca fragman kesilir; kapanınca vitrin yine odaktaki yapımı gösteriyorsa bekleme yeniden başlar
+  let wasBusy = false;
+  const sync = () => {
+    const busy = heroBusy();
+    if (busy === wasBusy) return;
+    wasBusy = busy;
+    if (busy) heroTrailer.cancel();
+    else if (document.documentElement.classList.contains('hero-on') && hero.current) heroTrailer.focus(hero.current);
+  };
+  const mo = new MutationObserver(sync);
+  mo.observe($('#sheets'), { childList: true });
+  mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 }
 
 function recentItemSheet(it) {
