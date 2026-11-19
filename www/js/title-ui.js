@@ -25,18 +25,24 @@ const thumbHtml = (id) => `<button class="tr-thumb" data-tr="play" aria-label="F
 const searchBtn = (query, cls) => `<a class="${cls}" href="${esc(trailerSearchUrl(query))}" target="_blank" rel="noopener">${ic('search')}`;
 const failHtml = (query) => `<div class="tr-fail"><p>Fragman uygulamada oynatılamıyor; video sahibi gömmeyi kapatmış olabilir.</p>${query ? `${searchBtn(query, 'btn sm')}YouTube’da ara</a>` : ''}</div>`;
 
+const foundNote = (f) => (f ? `YouTube aramasıyla bulundu: ${f.title}${f.channel ? ' · ' + f.channel : ''}` : '');
+
 // ids: YouTube kimlikleri (ilki oynar; gömmeye izin vermeyen videoda sıradakine geçilir). auto: sessiz otomatik başlar, değilse küçük resim.
-// Kimlik yoksa ve query varsa "YouTube’da fragman ara" bağlantısı; ikisi de yoksa boş.
-export function trailerHtml(ids, { auto = false, origin = '', query = '' } = {}) {
+// found: YouTube aramasıyla bulunan [{ id, title, channel }]; oynayan videonun adı altta görünür (yanlışsa kullanıcı fark eder).
+// Kimlik yoksa: searching ise "aranıyor", yoksa query varsa "YouTube’da fragman ara" bağlantısı; hiçbiri yoksa boş.
+export function trailerHtml(ids, { auto = false, origin = '', query = '', searching = false, found = null } = {}) {
   const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
   const id = list[0];
   if (!id) {
+    if (searching) return '<section class="tr tr-none"><h2>Fragman</h2><div class="tr-wait" role="status">YouTube’da fragman aranıyor…</div></section>';
     return query ? `<section class="tr tr-none"><h2>Fragman</h2>${searchBtn(query, 'tr-find')}<span><b>YouTube’da fragman ara</b><small>Bu yapım için hazır fragman bulunamadı</small></span></a></section>` : '';
   }
   const watch = esc(trailerWatchUrl(id));
   const media = auto ? frameHtml(id, { muted: true, origin }) : thumbHtml(id);
   const unmute = auto ? `<button class="btn sm tr-unmute" data-tr="unmute" hidden>${ic('audio')}Sesi aç</button>` : '';
-  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}"><h2>Fragman</h2><div class="tr-box">${media}</div><div class="tr-bar">${unmute}<a class="btn sm ghost" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div></section>`;
+  const notes = found && found.length ? list.map((x) => foundNote(found.find((f) => f.id === x))) : [];
+  const note = notes[0] ? `<p class="tr-note">${esc(notes[0])}</p>` : '';
+  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}"${notes.length ? ` data-notes="${esc(JSON.stringify(notes))}"` : ''}><h2>Fragman</h2><div class="tr-box">${media}</div>${note}<div class="tr-bar">${unmute}<a class="btn sm ghost" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div></section>`;
 }
 
 // Fragman denetleyicisi: sessiz otomatik oynatma, "Sesi aç", hata → sıradaki fragman (hepsi bitince açıklama + YouTube araması), uygulama oynatıcısı açılınca durdurma.
@@ -56,6 +62,11 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     const u = host.querySelector('.tr-unmute');
     if (u && u.dataset.done !== '1') u.hidden = false;
   };
+  const setNote = () => {
+    const n = host.querySelector('.tr-note');
+    if (!n || !host.dataset.notes) return;
+    try { n.textContent = JSON.parse(host.dataset.notes)[at] || ''; } catch { /* bozuk not */ }
+  };
   const bindFrame = (f) => {
     if (f) f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ } showUnmute(); });
   };
@@ -72,11 +83,14 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     if (at + 1 < list.length) {
       at += 1;
       host.dataset.id = list[at];
+      setNote();
       host.querySelector('.tr-box').innerHTML = frameHtml(list[at], { muted, origin });
       bindFrame(frame());
       return;
     }
     host.querySelector('.tr-box').innerHTML = failHtml(host.dataset.q || '');
+    const n = host.querySelector('.tr-note');
+    if (n) n.remove();
   };
   let obs = null;
   const dispose = () => {

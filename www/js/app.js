@@ -74,7 +74,8 @@ import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
-import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery } from './cinemeta.js';
+import { findTrailerOnYoutube } from './yt-search.js';
+import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
@@ -2129,13 +2130,32 @@ const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı ifra
 
 // Fragman ve oyuncu kartlarını boyar. detail yoksa (IMDb eşleşmesi ya da ağ yok) yalnız sağlayıcının oyuncu listesi kartlanır.
 // Fragman: Cinemeta'nınkiler önce, sağlayıcının (provider.trailer) ardından; hiçbiri yoksa query ile "YouTube’da fragman ara" bağlantısı (Türk yapımlarında Cinemeta'da çoğu zaman fragman yok).
-function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '' }) {
+// Hazır fragman yoksa (ve "Fragmanı otomatik ara" açıksa) başlık YouTube'da aranır; bulunan resmî fragman uygulama içinde oynar, bulunamazsa arama düğmesi kalır.
+// onFound: aramayla fragman bulununca çağrılır (dizi ekranı yeniden çizildiğinde otomatik başlamasın diye).
+function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '', finds = [], wanted = [], onFound = null }) {
   if (!body.isConnected) return;
   const tr = trailer ? $(trailer, body) : null;
   const pp = $(people, body);
   if (tr) {
-    tr.innerHTML = trailerOn() ? trailerHtml(trailerIds(detail, provider && provider.trailer), { auto: auto && setting('trailerAuto'), origin: location.origin, query }) : '';
+    const ids = trailerIds(detail, provider && provider.trailer);
+    const autoPlay = auto && setting('trailerAuto');
+    const find = trailerOn() && !ids.length && finds.length > 0 && setting('trailerFind');
+    tr.innerHTML = trailerOn() ? trailerHtml(ids, { auto: autoPlay, origin: location.origin, query, searching: !!find }) : '';
     if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
+    const token = (tr._find = (tr._find || 0) + 1); // sonradan yapılan yeni boyama eski aramanın sonucunu geçersiz kılar
+    if (find) {
+      (async () => {
+        let picks = [];
+        for (const q of finds) {
+          const r = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted }).catch(() => null);
+          if (r && r.length) { picks = r; break; }
+        }
+        if (!tr.isConnected || tr._find !== token) return;
+        tr.innerHTML = trailerHtml(picks.map((p) => p.id), { auto: autoPlay, origin: location.origin, query, found: picks });
+        if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
+        if (picks.length && onFound) onFound();
+      })();
+    }
   }
   if (pp) pp.innerHTML = kidActive() ? '' : peopleHtml(peopleOf(detail, provider));
 }
@@ -2149,8 +2169,14 @@ function loadTitleExtras(it, imdbId, type, onDetail, year = '') {
   if (imdbId) return detailOf(imdbId, null);
   resolveTitleOrigin(net, it.name, year, store).catch(() => null).then((origin) => (origin && origin.imdbId ? detailOf(origin.imdbId, origin) : onDetail(null, origin)));
 }
-// Fragman araması: özgün ad biliniyorsa onunla (yabancı yapımların fragmanı özgün adla bulunur), değilse katalog adıyla
-const titleQueryOf = (name, year, origin) => (origin && origin.original ? trailerQuery(origin.original, origin.year || year, 'official trailer') : trailerQuery(name, year));
+// Fragman araması: YouTube Türkçe adla da doğru sonucu verir, bu yüzden önce katalog adı ("… 2022 fragman"), sonra bilinen özgün ad ("… official trailer").
+// query: "YouTube’da ara" düğmesi; finds: uygulamanın kendi aramaları (sırayla); wanted: bulunan videonun başlığıyla karşılaştırılacak adlar.
+function trailerSearch(name, year, origin) {
+  const query = trailerQuery(name, year);
+  const original = origin && origin.original ? origin.original : '';
+  const second = original ? trailerQuery(original, (origin && origin.year) || year, 'official trailer') : '';
+  return { query, finds: [...new Set([query, second].filter(Boolean))], wanted: [trailerTitle(name, year).title, original].filter(Boolean) };
+}
 
 const personOf = (b) => ({ name: b.dataset.person, role: (b.querySelector('small') || {}).textContent || '' });
 
@@ -2258,7 +2284,7 @@ function openTitleInfo(film) {
       loadDetail({ net, cache: store.cache, imdbId: film.imdbId, type: film.type }).catch(() => null).then((detail) => {
         if (!body.isConnected) return;
         body.innerHTML = titleInfoHtml(film, detail);
-        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people', query: trailerQuery(film.name, film.year) });
+        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people', ...trailerSearch(film.name, film.year, null) });
         translatePlot(body, detail && detail.description);
       });
     },
@@ -2312,7 +2338,7 @@ function openMovie(it) {
         advStarted = true;
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
         const provider = { cast: (info && info.cast) || it.cast, director: (info && info.director) || it.director, trailer: (info && info.trailer) || it.trailer };
-        const extrasOf = (meta, origin) => ({ trailer: '#mv-trailer', people: '#mv-people', query: titleQueryOf(it.name, (info && info.year) || (meta && meta.year), origin) });
+        const extrasOf = (meta, origin) => ({ trailer: '#mv-trailer', people: '#mv-people', ...trailerSearch(it.name, (info && info.year) || (meta && meta.year), origin) });
         resolveAdvisoryMeta(it, info).then(({ meta, advisoryMeta }) => {
           if (!body.isConnected) return;
           loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail, origin) => paintTitleExtras(body, detail, provider, extrasOf(meta, origin)), (info && info.year) || (meta && meta.year));
@@ -2416,7 +2442,7 @@ function openSeries(it) {
       // Fragman, eşleşme çözülene kadar (ready) boyanmaz: önce sağlayıcınınki, sonra Cinemeta'nınki gelirse video değişip yeniden başlardı.
       const extras = { detail: null, origin: null, ready: false, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director, trailer: info.trailer || it.trailer } };
       const paintExtras = () => {
-        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', auto: !extras.shown, query: titleQueryOf(it.name, info.year || it.year, extras.origin) });
+        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', auto: !extras.shown, onFound: () => { extras.shown = true; }, ...trailerSearch(it.name, info.year || it.year, extras.origin) });
         if (extras.ready && trailerIds(extras.detail, extras.provider.trailer).length && trailerOn()) extras.shown = true;
       };
       const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
@@ -4895,6 +4921,7 @@ function generalSheet() {
         selRow('g-cap', 'Kutudaki ad', 'Afişin altında kaç satır görünsün', optionsHtml(CAPTION_LINES, normalizeCaption(store.pref('set.caption', DEFAULT_CAPTION)))),
         chkRow('showProg', 'Devam çubukları', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi'),
         chkRow('epThumbs', 'Bölüm küçük resimleri', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar sıkışık olur'),
+        chkRow('trailerFind', 'Fragmanı otomatik ara', 'Hazır fragman yoksa başlığı YouTube’da arar ve bulduğu resmî fragmanı ekranda gösterir; kapalıyken “YouTube’da ara” düğmesi çıkar'),
         chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Film ve dizi ekranında fragman sessiz başlar, “Sesi aç” ile açılır; kapalıyken küçük resme dokununca oynar. TV’de ve çocuk modunda fragman gösterilmez'),
       ]) +
       setCard('Görünüm ve cihaz', 'gear', [

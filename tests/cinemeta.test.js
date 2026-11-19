@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerIds, trailerQuery, trailerSearchUrl, genreTr, MAX_TRAILERS, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
+import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerIds, trailerQuery, trailerTitle, trailerSearchUrl, genreTr, MAX_TRAILERS, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
 
 const FORREST = { id: 'tt0109830', imdb_id: 'tt0109830', name: 'Forrest Gump', year: '1994', runtime: '142 min', genres: ['Drama', 'Romance'], description: 'Özet', poster: 'https://p/x.jpg', trailers: [{ source: '0jKUpBmYO1Q', type: 'Trailer' }, { source: 'm-btyJIYLyI', type: 'Trailer' }, { source: 'BADID', type: 'Trailer' }, { source: 'abcdefghijk', type: 'Clip' }], trailerStreams: [{ title: 'x', ytId: '0jKUpBmYO1Q' }, { title: 'y', ytId: 'Mj9IA9tTfio' }], cast: ['Tom Hanks', 'Robin Wright', 'Gary Sinise'], director: ['Robert Zemeckis'], links: [{ category: 'Cast', name: 'Sally Field' }, { category: 'Cast', name: 'tom hanks' }, { category: 'Genres', name: 'Drama' }] };
 const mem = () => { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) }; };
@@ -202,4 +202,10 @@ test('türler: İngilizce Cinemeta türleri Türkçeleşir; bilinmeyen tür oldu
   assert.equal(genreTr(' comedy '), 'Komedi');
   assert.equal(genreTr('Zorlu Tür'), 'Zorlu Tür');
   assert.equal(genreTr(null), '');
+});
+
+test('fragman adı: dil öneki ve etiketler ayıklanır, adda yıl varsa ayrılır', () => {
+  assert.deepEqual(trailerTitle('TR | Kuruluş Osman (2020)'), { title: 'Kuruluş Osman', year: 2020 });
+  assert.deepEqual(trailerTitle('Asla Teslim Olma'), { title: 'Asla Teslim Olma', year: 0 });
+  assert.deepEqual(trailerTitle('', ''), { title: '', year: 0 });
 });

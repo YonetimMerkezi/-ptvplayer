@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 143,
+    title: 'Fragmanı YouTube’da kendisi bulsun',
+    items: [
+      'Hazır fragman yoksa uygulama başlığı YouTube’da Türkçe adıyla arar (örn. “Asla Teslim Olma 2026 fragman”); olmazsa özgün adla “official trailer” dener ve bulduğu resmî fragmanı ekranda oynatır',
+      'Bulunan videonun adı ve kanalı altında yazar; yanlış çıkarsa sıradaki video denenir, hiçbiri olmazsa “YouTube’da ara” düğmesi kalır',
+      'Ayarlar → Genel → “Fragmanı otomatik ara” ile kapatılabilir',
+    ],
+  },
+  {
     id: 142,
     title: 'Vizyondakilerde Türkçe konu ve türler',
     items: [

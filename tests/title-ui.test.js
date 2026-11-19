@@ -178,11 +178,33 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
   assert.match(app, /id="sr-people"/);
   assert.match(app, /openActor\(personOf\(b\)\.name, personOf\(b\)\.role\)/);
   assert.match(app, /chkRow\('trailerAuto', 'Fragmanı otomatik oynat'/);
-  assert.match(app, /auto: auto && setting\('trailerAuto'\)/, 'otomatik oynatma ayara bağlı (varsayılan açık)');
+  assert.match(app, /const autoPlay = auto && setting\('trailerAuto'\)/, 'otomatik oynatma ayara bağlı (varsayılan açık)');
+  assert.match(app, /chkRow\('trailerFind', 'Fragmanı otomatik ara'/);
   assert.match(app, /const trailerOn = \(\) => !kidActive\(\) && !isTvUi\(\)/, 'TV ve çocuk modunda fragman yok');
   assert.match(app, /pp\.innerHTML = kidActive\(\) \? ''/, 'çocuk modunda oyuncu kartı yok');
   assert.match(app, /if \(own\) return film\.type === 'series' \? openSeries\(own\) : openMovie\(own\)/, 'listedeyse kendi ekranı');
   assert.match(app, /auto: !extras\.shown/, 'dizi yeniden çizilince fragman yeniden başlamaz');
+});
+
+test('fragman bloğu: aranırken bekleme satırı; aramayla bulunanlar için video adı notu, sıradakine geçince not güncellenir, hepsi bitince kalkar', () => {
+  assert.match(trailerHtml([], { searching: true, query: 'x fragman' }), /class="tr tr-none"><h2>Fragman<\/h2><div class="tr-wait" role="status">YouTube’da fragman aranıyor…<\/div>/);
+  assert.doesNotMatch(trailerHtml([], { searching: true, query: 'x' }), /tr-find/);
+  const found = [{ id: 'aaaaaaaaaaa', title: 'Never Surrender | Official Trailer | Netflix', channel: 'Netflix' }, { id: 'bbbbbbbbbbb', title: 'Asla Teslim Olma | Resmi Fragman', channel: '' }];
+  const h = trailerHtml(['aaaaaaaaaaa', 'bbbbbbbbbbb'], { auto: true, found, query: 'q' });
+  assert.match(h, /<p class="tr-note">YouTube aramasıyla bulundu: Never Surrender \| Official Trailer \| Netflix · Netflix<\/p>/);
+  assert.match(h, /data-notes="\[&quot;YouTube aramasıyla bulundu: Never Surrender/);
+  assert.doesNotMatch(trailerHtml(['aaaaaaaaaaa'], { auto: true }), /tr-note|data-notes/, 'hazır fragmanda not yok');
+
+  const note = { textContent: 'ilk', removed: false, remove() { this.removed = true; } };
+  const { host, frameWin } = fakeHost({ dataset: { id: 'aaaaaaaaaaa', ids: 'aaaaaaaaaaa,bbbbbbbbbbb', notes: JSON.stringify(['not 1', 'not 2']) } });
+  const q = host.querySelector;
+  host.querySelector = (sel) => (sel === '.tr-note' ? note : q(sel));
+  const win = fakeWin();
+  wireTrailer(host, { win, doc: null });
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 101 }) });
+  assert.equal(note.textContent, 'not 2', 'sıradaki videonun adı');
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 150 }) });
+  assert.equal(note.removed, true, 'hepsi başarısızsa video adı notu kalkar');
 });
 
 test('bağlantı: bilgi ekranı özeti Türkçeye çevrilir; çeviri gelene kadar özgün metin, "Özgün metni göster" ile geri dönülür', () => {
@@ -196,13 +218,20 @@ test('bağlantı: bilgi ekranı özeti Türkçeye çevrilir; çeviri gelene kada
 
 test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik yoksa YouTube araması; eşleşme çözülemese de gösterilir', () => {
   const app = kaynak('www/js/app.js');
-  assert.match(app, /trailerHtml\(trailerIds\(detail, provider && provider\.trailer\), \{ auto: auto && setting\('trailerAuto'\), origin: location\.origin, query \}\)/);
+  assert.match(app, /const ids = trailerIds\(detail, provider && provider\.trailer\);/);
+  assert.match(app, /const find = trailerOn\(\) && !ids\.length && finds\.length > 0 && setting\('trailerFind'\);/, 'yalnız hazır fragman yokken ve ayar açıkken aranır');
+  assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted \}\)/);
+  assert.match(app, /if \(!tr\.isConnected \|\| tr\._find !== token\) return;/, 'yeni boyama eski aramanın sonucunu geçersiz kılar');
+  assert.match(app, /trailerHtml\(picks\.map\(\(p\) => p\.id\), \{ auto: autoPlay, origin: location\.origin, query, found: picks \}\)/);
+  assert.match(app, /onFound: \(\) => \{ extras\.shown = true; \}/, 'dizi: aramayla bulunan fragman yeniden çizimde otomatik başlamaz');
   assert.match(app, /trailer: \(info && info\.trailer\) \|\| it\.trailer/, 'film: sağlayıcı fragmanı');
   assert.match(app, /trailer: info\.trailer \|\| it\.trailer/, 'dizi: sağlayıcı fragmanı');
-  assert.match(app, /query: trailerQuery\(film\.name, film\.year\)/, 'bilgi ekranı');
+  assert.match(app, /\.\.\.trailerSearch\(film\.name, film\.year, null\)/, 'bilgi ekranı');
+  assert.match(app, /\.\.\.trailerSearch\(it\.name, \(info && info\.year\) \|\| \(meta && meta\.year\), origin\)/);
   assert.match(app, /paintTitleExtras\(body, null, provider, extrasOf\(null, null\)\)/, 'film: eşleşme çözülemese de fragman');
   assert.match(app, /resolveTitleOrigin\(net, it\.name, year, store\)/, 'IMDb eşleşmesi yoksa Türkçe ad özgün ada çevrilir');
-  assert.match(app, /origin && origin\.original \? trailerQuery\(origin\.original, origin\.year \|\| year, 'official trailer'\)/, 'YouTube araması özgün adla');
+  assert.match(app, /const query = trailerQuery\(name, year\);/, 'düğme ve ilk arama Türkçe katalog adıyla');
+  assert.match(app, /trailerQuery\(original, \(origin && origin\.year\) \|\| year, 'official trailer'\)/, 'ikinci arama özgün adla');
   assert.match(app, /loadTitleExtras\(it, meta && meta\.imdbId, 'movie', \(detail, origin\) => paintTitleExtras\(body, detail, provider, extrasOf\(meta, origin\)\)/);
   assert.match(app, /loadTitleExtras\(it, meta && meta\.imdbId, 'series', \(detail, origin\) => \{ extras\.detail = detail; extras\.origin = origin;/);
   assert.match(app, /if \(!extras\.ready\) \{ extras\.ready = true; paintExtras\(\); \}/, 'dizi: eşleşme çözülemese de fragman');
