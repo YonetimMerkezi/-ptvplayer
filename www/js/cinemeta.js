@@ -210,6 +210,8 @@ export function trailerTitle(name, year) {
   const c = cleanTitle(stripped, yearOf(year) || undefined);
   return { title: (c.title || stripped).trim(), year: c.year || 0 };
 }
+// Uygulamanın kendi YouTube araması: ad tırnak içinde (tam öbek eşleşmesi) aranır; yoksa "2026 fragman" gibi genel sözcükler başka filmleri öne çıkarır.
+export const trailerPhrase = (title, suffix = 'fragman', year = '') => [`"${String(title ?? '').replace(/"/g, '').trim()}"`, year || '', suffix].filter(Boolean).join(' ');
 export const trailerSearchUrl = (query) => `https://www.youtube.com/results?search_query=${encodeURIComponent(String(query || '').trim())}`;
 export const trailerWatchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
 export const trailerThumbUrl = (id) => `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;

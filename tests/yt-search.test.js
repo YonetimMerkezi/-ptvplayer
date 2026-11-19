@@ -34,29 +34,37 @@ test('parseYoutubeResults: sayfada ya da JSON’da sorun varsa boş döner; dizg
   assert.equal(parseYoutubeResults(page([vr(id('h'), 'T', 'K', '1:00'), vr(id('h'), 'T', 'K', '1:00')])).length, 1, 'aynı video tek sayılır');
 });
 
-test('pickTrailers: resmî fragman önce; anlatım/özet/tam film ve çok uzun/kısa videolar elenir', () => {
-  const picks = pickTrailers(parseYoutubeResults(page(RESULTS)), ['Asla Teslim Olma']);
-  assert.deepEqual(picks.map((p) => p.id), [id('a'), id('e')]);
+test('pickTrailers: tırnaklı aramada YouTube sırası esas; anlatım/özet/tam film ve çok uzun/kısa videolar elenir, resmî kanal şart değil', () => {
+  const picks = pickTrailers(parseYoutubeResults(page(RESULTS)), ['Asla Teslim Olma'], { quoted: true });
+  assert.deepEqual(picks.map((p) => p.id), [id('a'), id('e')], 'ilk sıradaki (adı başlıkta geçmeyen) fragman da kabul');
   assert.deepEqual(picks[0], { id: id('a'), title: 'Never Surrender | Official Trailer | Netflix', channel: 'Netflix' });
+  // resmî olmayan kanalın ilk sıradaki fragmanı da seçilir
+  const fan = parseYoutubeResults(page([vr(id('x'), 'Yabancı Ad | Official Trailer', 'Rastgele Kanal', '1:30'), vr(id('y'), 'Asla Teslim Olma Fragman', 'Kanal2', '1:20')]));
+  assert.equal(pickTrailers(fan, ['Asla Teslim Olma'], { quoted: true })[0].id, id('x'), 'eşit puanda YouTube sırası kazanır');
 });
 
-test('pickTrailers: başlığı aranan adla örtüşmeyen ve resmî olmayan ya da sıralamada geride kalan video kabul edilmez', () => {
-  const r = [
-    vr(id('a'), 'Başka Bir Film | Official Trailer', 'Rastgele Kanal', '2:00'),
+test('pickTrailers: tırnaksız aramada başlık aranan adla örtüşmeli; başlık örtüşen ve “resmi fragman” yazan hafif öne geçer', () => {
+  const r = parseYoutubeResults(page([
+    vr(id('a'), 'Başka Bir Film | Official Trailer', 'Netflix', '2:00', true),
     vr(id('b'), 'Kuruluş Osman Fragman', 'Rastgele Kanal', '1:50'),
-    vr(id('c'), 'Alakasız Dizi | Official Trailer', 'Netflix', '2:00', true),
-    vr(id('d'), 'Alakasız Film | Official Trailer', 'Netflix', '2:00', true),
-    vr(id('e'), 'Üçüncü Alakasız | Official Trailer', 'Netflix', '2:00', true),
-    vr(id('f'), 'Dördüncü Alakasız | Official Trailer', 'Netflix', '2:00', true),
-  ];
-  const ids = pickTrailers(parseYoutubeResults(page(r)), ['Kuruluş Osman']).map((p) => p.id);
-  assert.ok(ids.includes(id('b')), 'ad örtüşen kabul');
-  assert.ok(!ids.includes(id('a')), 'resmî olmayan ve örtüşmeyen elenir');
-  assert.ok(ids.includes(id('c')), 'ilk üç sıradaki resmî kanal örtüşmese de kabul');
-  assert.ok(!ids.includes(id('d')) && !ids.includes(id('f')), 'dördüncü sıradan sonraki örtüşmeyen elenir');
-  assert.ok(ids.length <= MAX_FOUND);
+    vr(id('c'), 'Kuruluş Osman | Resmi Fragman', 'TRT', '1:40'),
+  ]));
+  assert.deepEqual(pickTrailers(r, ['Kuruluş Osman']).map((p) => p.id), [id('c'), id('b')], 'örtüşmeyen resmî kanal bile elenir');
+  assert.deepEqual(pickTrailers(r, ['Kuruluş Osman'], { quoted: true }).map((p) => p.id), [id('c'), id('a'), id('b')], 'tırnaklıda hepsi aday; puan: sıra + ad uyumu + resmi fragman yazısı');
   assert.deepEqual(pickTrailers([], ['x']), []);
   assert.deepEqual(pickTrailers(null, null), []);
+});
+
+test('pickTrailers: başlıktaki yıl aranan yıldan ±1’den fazla ayrılıyorsa (başka filmin fragmanı) elenir', () => {
+  const r = parseYoutubeResults(page([
+    vr(id('a'), 'AS GOOD AS DEAD 2 — Official Trailer (2026)', 'MTube', '1:49', true),
+    vr(id('b'), 'Asla Teslim Olma (1998) Fragman', 'Kanal', '1:30'),
+    vr(id('c'), 'Asla Teslim Olma (2026) Fragman', 'Kanal', '1:30'),
+    vr(id('d'), 'Asla Teslim Olma Fragman', 'Kanal', '1:30'),
+  ]));
+  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 2026 }).map((p) => p.id), [id('c'), id('d')], 'tırnaksız: ad örtüşmeyen “As Good As Dead 2” de elenir');
+  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 2026, quoted: true }).map((p) => p.id), [id('a'), id('c'), id('d')], '1998 elenir');
+  assert.deepEqual(pickTrailers(r, ['Asla Teslim Olma'], { year: 0, quoted: true }).map((p) => p.id), [id('a'), id('b'), id('c')].slice(0, MAX_FOUND), 'yıl bilinmiyorsa süzgeç yok');
 });
 
 test('pickTrailers: süre sınırları ve özgün ad eşleşmesi', () => {
@@ -77,15 +85,15 @@ test('findTrailerOnYoutube: arar, önbelleğe yazar; ikinci çağrı ağa gitmez
   const mem = new Map();
   const cache = { get: async (k) => mem.get(k), set: async (k, v) => { mem.set(k, v); } };
   const net = { text: async (url, opts) => { calls.push({ url, opts }); return page(RESULTS); } };
-  const picks = await findTrailerOnYoutube({ net, cache, query: 'Asla Teslim Olma 2026 fragman', wanted: ['Asla Teslim Olma'] });
+  const picks = await findTrailerOnYoutube({ net, cache, query: '"Asla Teslim Olma" fragman', wanted: ['Asla Teslim Olma'] });
   assert.equal(picks[0].id, id('a'));
-  assert.match(calls[0].url, /^https:\/\/www\.youtube\.com\/results\?search_query=Asla%20Teslim%20Olma%202026%20fragman/);
+  assert.match(calls[0].url, /^https:\/\/www\.youtube\.com\/results\?search_query=%22Asla%20Teslim%20Olma%22%20fragman/);
   assert.equal(calls[0].opts.fast, true);
   assert.match(calls[0].opts.headers['accept-language'], /^tr-TR/);
-  assert.equal((await findTrailerOnYoutube({ net, cache, query: 'asla teslim olma 2026 fragman', wanted: ['x'] }))[0].id, id('a'));
+  assert.equal((await findTrailerOnYoutube({ net, cache, query: '"asla teslim olma" fragman', wanted: ['x'] }))[0].id, id('a'));
   assert.equal(calls.length, 1, 'önbellekten (büyük/küçük harf fark etmez)');
   const later = Date.now() + FIND_TTL + 1000;
-  await findTrailerOnYoutube({ net, cache, query: 'Asla Teslim Olma 2026 fragman', wanted: ['Asla Teslim Olma'], now: later });
+  await findTrailerOnYoutube({ net, cache, query: '"Asla Teslim Olma" fragman', wanted: ['Asla Teslim Olma'], now: later });
   assert.equal(calls.length, 2, 'süresi dolan önbellek yenilenir');
   const noMatch = { text: async () => page([vr(id('z'), 'Alakasız Video', 'Kanal', '10:00')]) };
   assert.deepEqual(await findTrailerOnYoutube({ net: noMatch, cache, query: 'Bulunamayan', wanted: [] }), []);

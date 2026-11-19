@@ -75,7 +75,7 @@ import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from '.
 import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
-import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
+import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery, trailerTitle, trailerPhrase } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
@@ -2133,7 +2133,7 @@ const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı ifra
 // Fragman: Cinemeta'nınkiler önce, sağlayıcının (provider.trailer) ardından; hiçbiri yoksa query ile "YouTube’da fragman ara" bağlantısı (Türk yapımlarında Cinemeta'da çoğu zaman fragman yok).
 // Hazır fragman yoksa (ve "Fragmanı otomatik ara" açıksa) başlık YouTube'da aranır; bulunan resmî fragman uygulama içinde oynar, bulunamazsa arama düğmesi kalır.
 // onFound: aramayla fragman bulununca çağrılır (dizi ekranı yeniden çizildiğinde otomatik başlamasın diye).
-function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '', finds = [], wanted = [], onFound = null }) {
+function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '', finds = [], wanted = [], year = 0, onFound = null }) {
   if (!body.isConnected) return;
   const tr = trailer ? $(trailer, body) : null;
   const pp = $(people, body);
@@ -2149,7 +2149,7 @@ function paintTitleExtras(body, detail, provider, { trailer, people, auto = true
         let picks = [];
         const infos = [];
         for (const q of finds) {
-          const r = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted, onInfo: (i) => infos.push(i) }).catch((e) => { infos.push({ error: String((e && e.message) || e) }); return null; });
+          const r = await findTrailerOnYoutube({ net, cache: store.cache, query: q, wanted, year, onInfo: (i) => infos.push(i) }).catch((e) => { infos.push({ error: String((e && e.message) || e) }); return null; });
           if (r && r.length) { picks = r; break; }
         }
         if (!tr.isConnected || tr._find !== token) return;
@@ -2175,9 +2175,13 @@ function loadTitleExtras(it, imdbId, type, onDetail, year = '') {
 // query: "YouTube’da ara" düğmesi; finds: uygulamanın kendi aramaları (sırayla); wanted: bulunan videonun başlığıyla karşılaştırılacak adlar.
 function trailerSearch(name, year, origin) {
   const query = trailerQuery(name, year);
+  const t = trailerTitle(name, year);
+  const y = t.year || Number((/\b(?:19|20)\d{2}\b/.exec(String(year ?? '')) || [])[0]) || 0;
   const original = origin && origin.original ? origin.original : '';
-  const second = original ? trailerQuery(original, (origin && origin.year) || year, 'official trailer') : '';
-  return { query, finds: [...new Set([query, second].filter(Boolean))], wanted: [trailerTitle(name, year).title, original].filter(Boolean) };
+  const oy = (origin && origin.year) || y;
+  // uygulamanın kendi aramaları tırnaklı ad ile gider (tam öbek); düğmedeki serbest aramada kullanıcı sonucu kendisi seçer
+  const finds = [trailerPhrase(t.title, 'fragman'), original ? trailerPhrase(original, 'official trailer', oy || '') : ''].filter(Boolean);
+  return { query, finds: [...new Set(finds)], wanted: [t.title, original].filter(Boolean), year: oy };
 }
 
 const personOf = (b) => ({ name: b.dataset.person, role: (b.querySelector('small') || {}).textContent || '' });

@@ -1,4 +1,4 @@
-// Hazır fragman yoksa başlığı YouTube arama sayfasında arar ve ilk uygun resmi fragmanı seçer (anahtarsız; sayfadaki ytInitialData okunur).
+// Hazır fragman yoksa başlığı YouTube arama sayfasında arar ve en alakalı fragmanı seçer (anahtarsız; sayfadaki ytInitialData okunur).
 // Sayfa düzeni değişirse ya da ağ yoksa boş döner; çağıran "YouTube’da ara" düğmesine düşer. Oynatma resmî gömülü oynatıcıyla yapılır.
 import { fold } from './util.js';
 
@@ -129,20 +129,31 @@ export function parseYoutubeResults(html) {
   return [];
 }
 
-// Sonuçlardan en uygun fragmanlar. wanted: aranan adlar (Türkçe ve özgün); başlık bunlarla örtüşüyorsa ya da ilk sıralardaki resmî (doğrulanmış/stüdyo/platform) kanalsa kabul edilir.
-export function pickTrailers(results, wanted = []) {
+// Başlıkta geçen yıllar (1900–2099)
+const yearsIn = (s) => (String(s || '').match(/\b(?:19|20)\d{2}\b/g) || []).map(Number);
+
+// Sonuçlardan en alakalı fragmanlar; resmî kanal şartı yoktur. Yanlış filmin fragmanı hiç fragman olmamasından kötü olduğu için:
+//  • arama tırnaklı öbek aramasıysa (ad video bilgisinde geçiyor) YouTube'un sıralaması esas alınır: fragman gibi görünen, süresi uygun,
+//    anlatım/özet/tam film olmayan ilk sonuçlar seçilir;
+//  • tırnaksızsa başlığın aranan adla (Türkçe ya da özgün) örtüşmesi gerekir;
+//  • başlıktaki yıl aranan yıldan ±1'den fazla ayrılıyorsa elenir.
+// Sıralama: YouTube sırası, başlığı ada uyanlar ve "official trailer / resmi fragman" yazanlar hafif öne geçer.
+export function pickTrailers(results, wanted = [], { year = 0, quoted = false } = {}) {
   const names = (Array.isArray(wanted) ? wanted : [wanted]).map(tokens).filter((t) => t.length);
   const overlap = (title) => {
     const have = new Set(tokens(title));
     return Math.max(0, ...names.map((n) => n.filter((t) => have.has(t)).length / n.length));
   };
+  const y = Number(year) || 0;
   return (Array.isArray(results) ? results : [])
-    .map((r, i) => {
-      const official = !!r.verified || officialChannel.test(r.channel || '');
-      return { r, i, official, ov: overlap(r.title) };
+    .map((r, i) => ({ r, i, official: !!r.verified || officialChannel.test(r.channel || ''), ov: overlap(r.title) }))
+    .filter(({ r, ov }) => {
+      if (!trailerish.test(r.title) || unwanted.test(r.title) || r.seconds < MIN_SECONDS || r.seconds > MAX_SECONDS) return false;
+      const ys = yearsIn(r.title);
+      if (y && ys.length && !ys.some((v) => Math.abs(v - y) <= 1)) return false;
+      return quoted || ov >= 0.6;
     })
-    .filter(({ r, i, official, ov }) => trailerish.test(r.title) && !unwanted.test(r.title) && r.seconds >= MIN_SECONDS && r.seconds <= MAX_SECONDS && (ov >= 0.6 || (official && i < 3)))
-    .map((x) => ({ ...x, score: 20 - x.i + (x.ov >= 0.6 ? 6 : 0) + (x.official ? 4 : 0) + (/official trailer|resmi fragman/i.test(x.r.title) ? 2 : 0) }))
+    .map((x) => ({ ...x, score: 20 - x.i + (x.ov >= 0.6 ? 3 : 0) + (x.official ? 1 : 0) + (/official trailer|resmi fragman/i.test(x.r.title) ? 2 : 0) }))
     .sort((a, b) => b.score - a.score || a.i - b.i)
     .slice(0, MAX_FOUND)
     .map(({ r }) => ({ id: r.id, title: r.title, channel: r.channel }));
@@ -152,11 +163,11 @@ export const resultsUrl = (query) => `${YT_RESULTS}?search_query=${encodeURIComp
 
 // query ile arar; bulunamayan sonuç yalnız sayfa okunabildiyse (video sayısı > 0) önbelleğe yazılır, ağ hatasında null döner ve yazılmaz.
 // onInfo({ read, bytes, error, cached }): ekranda "neden bulunamadı" bilgisi göstermek için.
-export async function findTrailerOnYoutube({ net, cache = null, query, wanted = [], now = Date.now(), onInfo = null }) {
+export async function findTrailerOnYoutube({ net, cache = null, query, wanted = [], year = 0, now = Date.now(), onInfo = null }) {
   const q = String(query || '').trim();
   if (!q) return [];
   const info = (i) => { if (onInfo) onInfo(i); };
-  const key = 'yt-trailer:v2:' + fold(q);
+  const key = 'yt-trailer:v3:' + fold(q) + ':' + (Number(year) || 0);
   const hit = cache ? await cache.get(key).catch(() => null) : null;
   if (hit && Array.isArray(hit.picks) && typeof hit.at === 'number' && now - hit.at < (hit.picks.length ? FIND_TTL : FIND_MISS_TTL)) {
     info({ read: Number(hit.read) || hit.picks.length, bytes: 0, error: '', cached: true });
@@ -170,7 +181,7 @@ export async function findTrailerOnYoutube({ net, cache = null, query, wanted = 
     return null;
   }
   const results = parseYoutubeResults(html);
-  const picks = pickTrailers(results, wanted);
+  const picks = pickTrailers(results, wanted, { year, quoted: q.includes('"') });
   info({ read: results.length, bytes: String(html || '').length, error: '', cached: false });
   if (cache && (picks.length || results.length)) await cache.set(key, { at: now, picks, read: results.length }).catch(() => {});
   return picks;

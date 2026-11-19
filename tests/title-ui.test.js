@@ -223,7 +223,7 @@ test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik y
   const app = kaynak('www/js/app.js');
   assert.match(app, /const ids = trailerIds\(detail, provider && provider\.trailer\);/);
   assert.match(app, /const find = trailerOn\(\) && !ids\.length && finds\.length > 0 && setting\('trailerFind'\);/, 'yalnız hazır fragman yokken ve ayar açıkken aranır');
-  assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted, onInfo: \(i\) => infos\.push\(i\) \}\)/);
+  assert.match(app, /findTrailerOnYoutube\(\{ net, cache: store\.cache, query: q, wanted, year, onInfo: \(i\) => infos\.push\(i\) \}\)/);
   assert.match(app, /diag: picks\.length \? '' : describeFind\(infos\)/, 'bulunamayınca nedeni kartın altında yazar');
   assert.match(app, /if \(!tr\.isConnected \|\| tr\._find !== token\) return;/, 'yeni boyama eski aramanın sonucunu geçersiz kılar');
   assert.match(app, /trailerHtml\(picks\.map\(\(p\) => p\.id\), \{ auto: autoPlay, origin: location\.origin, query, found: picks, diag: /);
@@ -235,7 +235,8 @@ test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik y
   assert.match(app, /paintTitleExtras\(body, null, provider, extrasOf\(null, null\)\)/, 'film: eşleşme çözülemese de fragman');
   assert.match(app, /resolveTitleOrigin\(net, it\.name, year, store\)/, 'IMDb eşleşmesi yoksa Türkçe ad özgün ada çevrilir');
   assert.match(app, /const query = trailerQuery\(name, year\);/, 'düğme ve ilk arama Türkçe katalog adıyla');
-  assert.match(app, /trailerQuery\(original, \(origin && origin\.year\) \|\| year, 'official trailer'\)/, 'ikinci arama özgün adla');
+  assert.match(app, /trailerPhrase\(t\.title, 'fragman'\)/, 'uygulamanın aramasında ad tırnak içinde (tam öbek)');
+  assert.match(app, /trailerPhrase\(original, 'official trailer', oy \|\| ''\)/, 'ikinci arama özgün adla');
   assert.match(app, /loadTitleExtras\(it, meta && meta\.imdbId, 'movie', \(detail, origin\) => paintTitleExtras\(body, detail, provider, extrasOf\(meta, origin\)\)/);
   assert.match(app, /loadTitleExtras\(it, meta && meta\.imdbId, 'series', \(detail, origin\) => \{ extras\.detail = detail; extras\.origin = origin;/);
   assert.match(app, /if \(!extras\.ready\) \{ extras\.ready = true; paintExtras\(\); \}/, 'dizi: eşleşme çözülemese de fragman');

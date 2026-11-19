@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 147,
+    title: 'Fragman araması doğru filmi bulsun',
+    items: [
+      'Arama artık adı tırnak içinde (tam öbek) yapar; “2026 fragman” gibi genel sözcükler yüzünden başka bir filmin fragmanı çıkmaz',
+      'Resmî kanal şartı kalktı: YouTube’un en alakalı bulduğu fragman gösterilir. Başlıktaki yıl farklıysa (başka bir yapım) video elenir',
+      'Önceki hatalı arama sonuçları temizlendi',
+    ],
+  },
+  {
     id: 146,
     title: 'Fragman araması telefonda düzeltildi',
     items: [
