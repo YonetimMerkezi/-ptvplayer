@@ -1,7 +1,7 @@
 // Film/dizi ekranı ek parçaları: fragman bloğu, oyuncu kartları, oyuncu sayfası ve "listede yok" bilgi ekranı.
 // Burası yalnız HTML üretir ve fragman oynatıcısını denetler; sayfaları app.js açar (kütüphane eşleşmesi oradadır).
 import { esc } from './util.js';
-import { trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl } from './cinemeta.js';
+import { trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerSearchUrl } from './cinemeta.js';
 
 const ic = (n) => `<svg class="ic"><use href="#i-${n}"/></svg>`;
 
@@ -20,19 +20,26 @@ export function hueOfName(name) {
 }
 
 // ---- fragman ----
-// state: 'thumb' (küçük resim + oynat), 'auto' (sessiz otomatik başlar; "Sesi aç" düğmesi)
-export function trailerHtml(ids, { auto = false, origin = '' } = {}) {
-  const id = Array.isArray(ids) ? ids[0] : ids;
-  if (!id) return '';
+const frameHtml = (id, { muted, origin }) => `<iframe class="tr-frame" src="${esc(trailerEmbedUrl(id, { muted, origin }))}" title="Fragman" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+const thumbHtml = (id) => `<button class="tr-thumb" data-tr="play" aria-label="Fragmanı oynat"><img src="${esc(trailerThumbUrl(id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"><span class="tr-play">${ic('play')}</span></button>`;
+const searchBtn = (query, cls) => `<a class="${cls}" href="${esc(trailerSearchUrl(query))}" target="_blank" rel="noopener">${ic('search')}`;
+const failHtml = (query) => `<div class="tr-fail"><p>Fragman uygulamada oynatılamıyor; video sahibi gömmeyi kapatmış olabilir.</p>${query ? `${searchBtn(query, 'btn sm')}YouTube’da ara</a>` : ''}</div>`;
+
+// ids: YouTube kimlikleri (ilki oynar; gömmeye izin vermeyen videoda sıradakine geçilir). auto: sessiz otomatik başlar, değilse küçük resim.
+// Kimlik yoksa ve query varsa "YouTube’da fragman ara" bağlantısı; ikisi de yoksa boş.
+export function trailerHtml(ids, { auto = false, origin = '', query = '' } = {}) {
+  const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+  const id = list[0];
+  if (!id) {
+    return query ? `<section class="tr tr-none"><h2>Fragman</h2>${searchBtn(query, 'tr-find')}<span><b>YouTube’da fragman ara</b><small>Bu yapım için hazır fragman bulunamadı</small></span></a></section>` : '';
+  }
   const watch = esc(trailerWatchUrl(id));
-  const media = auto
-    ? `<iframe class="tr-frame" src="${esc(trailerEmbedUrl(id, { muted: true, origin }))}" title="Fragman" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`
-    : `<button class="tr-thumb" data-tr="play" aria-label="Fragmanı oynat"><img src="${esc(trailerThumbUrl(id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"><span class="tr-play">${ic('play')}</span></button>`;
+  const media = auto ? frameHtml(id, { muted: true, origin }) : thumbHtml(id);
   const unmute = auto ? `<button class="btn sm tr-unmute" data-tr="unmute" hidden>${ic('audio')}Sesi aç</button>` : '';
-  return `<section class="tr" data-id="${esc(id)}"><h2>Fragman</h2><div class="tr-box">${media}</div><div class="tr-bar">${unmute}<a class="btn sm ghost" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div></section>`;
+  return `<section class="tr" data-id="${esc(id)}" data-ids="${esc(list.join(','))}" data-origin="${esc(origin)}" data-q="${esc(query)}"><h2>Fragman</h2><div class="tr-box">${media}</div><div class="tr-bar">${unmute}<a class="btn sm ghost" href="${watch}" target="_blank" rel="noopener">${ic('link')}YouTube’da aç</a></div></section>`;
 }
 
-// Fragman denetleyicisi: sessiz otomatik oynatma, "Sesi aç", hata → küçük resim, uygulama oynatıcısı açılınca durdurma.
+// Fragman denetleyicisi: sessiz otomatik oynatma, "Sesi aç", hata → sıradaki fragman (hepsi bitince açıklama + YouTube araması), uygulama oynatıcısı açılınca durdurma.
 // host: .tr bölümü. win: iframe mesajlarını dinleyen pencere. Dönen işlev denetleyiciyi bırakır.
 export function wireTrailer(host, { win = typeof window !== 'undefined' ? window : null, doc = typeof document !== 'undefined' ? document : null } = {}) {
   if (!host || !win) return () => {};
@@ -41,14 +48,35 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     const f = frame();
     if (f && f.contentWindow) f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: cmd, args: [] }), '*');
   };
+  const ids = () => String(host.dataset.ids || host.dataset.id || '').split(',').filter(Boolean);
+  const origin = host.dataset.origin || '';
+  let at = 0; // oynayan fragmanın sırası
+  let muted = !!frame(); // sessiz otomatik başladıysa sıradaki de sessiz başlar; dokunarak başlatılan sesli devam eder
+  const showUnmute = () => {
+    const u = host.querySelector('.tr-unmute');
+    if (u && u.dataset.done !== '1') u.hidden = false;
+  };
+  const bindFrame = (f) => {
+    if (f) f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ } showUnmute(); });
+  };
   const toThumb = () => {
-    const f = frame();
-    if (!f) return;
-    const id = host.dataset.id;
-    const box = host.querySelector('.tr-box');
-    box.innerHTML = `<button class="tr-thumb" data-tr="play" aria-label="Fragmanı oynat"><img src="${esc(trailerThumbUrl(id))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"><span class="tr-play">${ic('play')}</span></button>`;
+    if (!frame()) return;
+    host.querySelector('.tr-box').innerHTML = thumbHtml(host.dataset.id);
     const u = host.querySelector('.tr-unmute');
     if (u) u.hidden = true;
+  };
+  const nextOrFail = () => {
+    const list = ids();
+    const u = host.querySelector('.tr-unmute');
+    if (u) u.hidden = true;
+    if (at + 1 < list.length) {
+      at += 1;
+      host.dataset.id = list[at];
+      host.querySelector('.tr-box').innerHTML = frameHtml(list[at], { muted, origin });
+      bindFrame(frame());
+      return;
+    }
+    host.querySelector('.tr-box').innerHTML = failHtml(host.dataset.q || '');
   };
   let obs = null;
   const dispose = () => {
@@ -62,25 +90,23 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     let d = e.data;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
     if (!d || typeof d !== 'object') return;
-    if (d.event === 'onError') { toThumb(); return; }
-    if (d.event === 'onReady' || d.event === 'initialDelivery' || d.event === 'infoDelivery') {
-      const u = host.querySelector('.tr-unmute');
-      if (u && u.dataset.done !== '1') u.hidden = false;
-    }
+    if (d.event === 'onError') { nextOrFail(); return; }
+    if (d.event === 'onReady' || d.event === 'initialDelivery' || d.event === 'infoDelivery') showUnmute();
   }
   win.addEventListener('message', onMsg);
-  const f0 = frame();
-  if (f0) f0.addEventListener('load', () => { try { f0.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ } const u = host.querySelector('.tr-unmute'); if (u && u.dataset.done !== '1') u.hidden = false; });
+  bindFrame(frame());
   host.addEventListener('click', (e) => {
     const b = e.target.closest('[data-tr]');
     if (!b) return;
     if (b.dataset.tr === 'unmute') {
       post('unMute');
+      muted = false;
       b.dataset.done = '1';
       b.hidden = true;
     } else if (b.dataset.tr === 'play') {
-      const id = host.dataset.id;
-      host.querySelector('.tr-box').innerHTML = `<iframe class="tr-frame" src="${esc(trailerEmbedUrl(id, { muted: false }))}" title="Fragman" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+      muted = false;
+      host.querySelector('.tr-box').innerHTML = frameHtml(host.dataset.id, { muted: false, origin });
+      bindFrame(frame());
     }
   });
   // Uygulama oynatıcısı açılınca fragman sesi kesilsin

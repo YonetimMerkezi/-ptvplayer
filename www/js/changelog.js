@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 140,
+    title: 'Türk yapımlarında ve Türkçe adlı filmlerde fragman',
+    items: [
+      'Sağlayıcının (IPTV panelinin) verdiği fragman artık kullanılıyor; internetteki kayıtta fragman olmasa da film ve dizi ekranında görünür',
+      'Türkçe adlı filmler panelin verdiği özgün adla da aranır; bir video gömülmeye izin vermezse sıradaki fragman otomatik denenir',
+      'Hiçbir fragman bulunamazsa “YouTube’da fragman ara” düğmesi çıkar; oynatılamayan fragmanda açıklama ve arama bağlantısı gösterilir',
+    ],
+  },
+  {
     id: 139,
     title: 'Film ve dizi kategorileri görselli',
     items: [

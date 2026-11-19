@@ -1,6 +1,6 @@
 // Cinemeta (Stremio) üstverisi: fragman (YouTube kimliği), oyuncu/yönetmen ve bir oyuncunun filmleri.
 // Ağ yoksa ya da eşleşme bulunamazsa sessizce boş döner; sonuçlar önbellekte tutulur.
-import { fold } from './util.js';
+import { fold, youtubeIdOf } from './util.js';
 import { cleanTitle } from './titleclean.js';
 
 export const CINEMETA = 'https://v3-cinemeta.strem.io';
@@ -9,7 +9,6 @@ export const MISS_TTL = 6 * 3600000;
 export const PERSON_TTL = 7 * 86400000;
 export const MAX_CAST = 20;
 
-const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const IMDB_ID = /^tt\d+$/;
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const yearOf = (v) => {
@@ -34,7 +33,7 @@ export function parseDetail(meta, type = 'movie') {
   const trailers = uniq([
     ...(Array.isArray(meta.trailers) ? meta.trailers.filter((t) => !t || !t.type || /trailer|teaser/i.test(String(t.type))).map((t) => str(t && t.source)) : []),
     ...(Array.isArray(meta.trailerStreams) ? meta.trailerStreams.map((t) => str(t && t.ytId)) : []),
-  ].filter((id) => YT_ID.test(id)));
+  ].map(youtubeIdOf).filter(Boolean));
   const links = Array.isArray(meta.links) ? meta.links : [];
   const cast = uniq([
     ...(Array.isArray(meta.cast) ? meta.cast.map(str) : []),
@@ -183,6 +182,22 @@ export function findInLibrary(film, { titleIndex = null, imdbIndex = null } = {}
 }
 
 // ---- YouTube ----
+// Fragman kimlikleri: Cinemeta'nınkiler önce, sağlayıcının (Xtream "youtube_trailer") verdiği ardından; yinelenenler atılır.
+// Oynatıcı gömmeye izin vermeyen videoda sıradakine geçer, bu yüzden birden fazla kimlik tutulur.
+export const MAX_TRAILERS = 4;
+export function trailerIds(detail, providerTrailer) {
+  const all = [...(detail && Array.isArray(detail.trailers) ? detail.trailers : []), providerTrailer].map(youtubeIdOf).filter(Boolean);
+  return [...new Set(all)].slice(0, MAX_TRAILERS);
+}
+
+// Fragman bulunamadığında YouTube araması: katalog adındaki dil öneki ("TR | "), kalite etiketleri ve yıl ayıklanır.
+export function trailerQuery(name, year) {
+  const stripped = String(name ?? '').replace(/^\s*[A-Za-z]{2,3}\s*[|⇒»]\s*/, '');
+  const c = cleanTitle(stripped, yearOf(year) || undefined);
+  const title = (c.title || stripped).trim();
+  return [title, c.year || yearOf(year) || '', 'fragman'].filter(Boolean).join(' ');
+}
+export const trailerSearchUrl = (query) => `https://www.youtube.com/results?search_query=${encodeURIComponent(String(query || '').trim())}`;
 export const trailerWatchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
 export const trailerThumbUrl = (id) => `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
 // origin: sayfanın kökeni (https://localhost gibi); YouTube gömmeyi (Hata 153) kökenden tanır.

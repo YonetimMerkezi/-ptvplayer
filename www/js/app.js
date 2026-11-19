@@ -73,7 +73,7 @@ import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
-import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary } from './cinemeta.js';
+import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, trailerIds, trailerQuery } from './cinemeta.js';
 import { trailerHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
@@ -2127,12 +2127,13 @@ const inLibrary = (film) => {
 const trailerOn = () => !kidActive() && !isTvUi(); // TV'de kumanda odağı iframe'e takılır; çocuk modunda dış video yok
 
 // Fragman ve oyuncu kartlarını boyar. detail yoksa (IMDb eşleşmesi ya da ağ yok) yalnız sağlayıcının oyuncu listesi kartlanır.
-function paintTitleExtras(body, detail, provider, { trailer, people, auto = true }) {
+// Fragman: Cinemeta'nınkiler önce, sağlayıcının (provider.trailer) ardından; hiçbiri yoksa query ile "YouTube’da fragman ara" bağlantısı (Türk yapımlarında Cinemeta'da çoğu zaman fragman yok).
+function paintTitleExtras(body, detail, provider, { trailer, people, auto = true, query = '' }) {
   if (!body.isConnected) return;
-  const tr = $(trailer, body);
+  const tr = trailer ? $(trailer, body) : null;
   const pp = $(people, body);
   if (tr) {
-    tr.innerHTML = detail && detail.trailers.length && trailerOn() ? trailerHtml(detail.trailers, { auto: auto && setting('trailerAuto'), origin: location.origin }) : '';
+    tr.innerHTML = trailerOn() ? trailerHtml(trailerIds(detail, provider && provider.trailer), { auto: auto && setting('trailerAuto'), origin: location.origin, query }) : '';
     if (tr.firstElementChild) wireTrailer(tr.firstElementChild);
   }
   if (pp) pp.innerHTML = kidActive() ? '' : peopleHtml(peopleOf(detail, provider));
@@ -2226,7 +2227,7 @@ function openTitleInfo(film) {
       loadDetail({ net, cache: store.cache, imdbId: film.imdbId, type: film.type }).catch(() => null).then((detail) => {
         if (!body.isConnected) return;
         body.innerHTML = titleInfoHtml(film, detail);
-        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people' });
+        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people', query: trailerQuery(film.name, film.year) });
       });
     },
   });
@@ -2278,17 +2279,22 @@ function openMovie(it) {
         if (advStarted) return;
         advStarted = true;
         // Yerel katalog eşleşmesi ve içerik uyarıları; puan gösterilmez.
+        const provider = { cast: (info && info.cast) || it.cast, director: (info && info.director) || it.director, trailer: (info && info.trailer) || it.trailer };
+        const extrasOf = (meta) => ({ trailer: '#mv-trailer', people: '#mv-people', query: trailerQuery(it.name, (info && info.year) || (meta && meta.year)) });
         resolveAdvisoryMeta(it, info).then(({ meta, advisoryMeta }) => {
           if (!body.isConnected) return;
-          const provider = { cast: (info && info.cast) || it.cast, director: (info && info.director) || it.director };
-          loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail) => paintTitleExtras(body, detail, provider, { trailer: '#mv-trailer', people: '#mv-people' }));
+          loadTitleExtras(it, meta && meta.imdbId, 'movie', (detail) => paintTitleExtras(body, detail, provider, extrasOf(meta)));
           const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
           loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paintMovieAdvisories(body, advisoryMeta, meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.', 'movie', advCtx)).catch(() => paintMovieAdvisories(body, advisoryMeta, 'İçerik uyarısı kaynağına erişilemedi.', wk, 'movie', advCtx));
           if (info) {
             const chips = [it.group, yearOf((info && info.year) || (meta && meta.year)), info && info.genre, info && info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info && (info.rating || it.rating))];
             $('#mv-meta', body).innerHTML = chipsOf(chips);
           }
-        }).catch(() => { if (body.isConnected) paintMovieAdvisories(body, null, 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.'); });
+        }).catch(() => {
+          if (!body.isConnected) return;
+          paintTitleExtras(body, null, provider, extrasOf(null)); // eşleşme çözülemese de sağlayıcı fragmanı / YouTube araması gösterilir
+          paintMovieAdvisories(body, null, 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.');
+        });
       };
       const plot = $('#mv-plot', body);
       loadVodInfo(S.source, net, it)
@@ -2375,10 +2381,11 @@ function openSeries(it) {
       // İçerik uyarıları (dizi): sayfa her yeniden çizildiğinde (sezon/favori) son durum yeniden boyanır.
       let adv = { meta: null, failure: '', wk: null };
       // Fragman ve oyuncu kartları: sayfa yeniden çizilince fragman yeniden başlamasın diye otomatik oynatma yalnız ilk boyamada olur.
-      const extras = { detail: null, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director } };
+      // Fragman, eşleşme çözülene kadar (ready) boyanmaz: önce sağlayıcınınki, sonra Cinemeta'nınki gelirse video değişip yeniden başlardı.
+      const extras = { detail: null, ready: false, shown: false, provider: { cast: info.cast || it.cast, director: info.director || it.director, trailer: info.trailer || it.trailer } };
       const paintExtras = () => {
-        paintTitleExtras(body, extras.detail, extras.provider, { trailer: '#sr-trailer', people: '#sr-people', auto: !extras.shown });
-        if (extras.detail && extras.detail.trailers.length && trailerOn()) extras.shown = true;
+        paintTitleExtras(body, extras.detail, extras.provider, { trailer: extras.ready ? '#sr-trailer' : '', people: '#sr-people', auto: !extras.shown, query: trailerQuery(it.name, info.year || it.year) });
+        if (extras.ready && trailerIds(extras.detail, extras.provider.trailer).length && trailerOn()) extras.shown = true;
       };
       const paintAdv = () => paintMovieAdvisories(body, adv.meta, adv.failure, 'series', { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' });
       const draw = () => {
@@ -2429,13 +2436,18 @@ function openSeries(it) {
       // Cinemeta (IMDb kimliği) + Screenwise; KTB film sitesi diziler için kullanılmaz.
       loadSeriesMetadata(net, it, store).catch(() => null).then((meta) => {
         if (!body.isConnected) return;
-        loadTitleExtras(it, meta && meta.imdbId, 'series', (detail) => { extras.detail = detail; paintExtras(); });
+        loadTitleExtras(it, meta && meta.imdbId, 'series', (detail) => { extras.detail = detail; extras.ready = true; paintExtras(); });
         const parsed = parseMovieCatalogTitle(it.name || '');
         const base = meta || { title: parsed.title || it.name, year: yearOf(info.year || it.year) || parsed.year || 0 };
         const advisoryMeta = { ...base, kind: 'series' };
         adv = { meta: advisoryMeta, failure: meta ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.' };
         return loadMovieAdvisories(net, store, advisoryMeta, it, 'series').catch(() => { adv.failure = 'İçerik uyarısı kaynağına erişilemedi.'; }).then(() => { if (body.isConnected) paintAdv(); });
-      }).catch(() => { adv = { ...adv, failure: 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.' }; if (body.isConnected) paintAdv(); });
+      }).catch(() => {
+        adv = { ...adv, failure: 'İçerik uyarıları alınamadı; internet bağlantınızı kontrol edin.' };
+        if (!body.isConnected) return;
+        if (!extras.ready) { extras.ready = true; paintExtras(); } // eşleşme çözülemese de sağlayıcı fragmanı / YouTube araması gösterilir
+        paintAdv();
+      });
     },
   });
 }

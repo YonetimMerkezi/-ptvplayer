@@ -1,5 +1,5 @@
 // Xtream Codes API: adres kurma ve yanıtları ortak biçime çevirme.
-import { decodeBase64Utf8 } from './util.js';
+import { decodeBase64Utf8, youtubeIdOf } from './util.js';
 
 export function normalizeServer(server) {
   let s = String(server || '').trim();
@@ -145,6 +145,7 @@ export function mapSeries(list, cats) {
     group: cm.get(String(s.category_id)) || '',
     plot: s.plot || '',
     backdrop: firstUrl(s.backdrop_path),
+    trailer: youtubeIdOf(s.youtube_trailer),
     rating: num(s.rating_5based || s.rating),
     added: num(s.last_modified),
   }));
@@ -179,6 +180,7 @@ export function mapSeriesInfo(json) {
     year: info.releaseDate || info.release_date || '',
     rating: info.rating_5based || info.rating || '',
     logo: info.cover || '',
+    trailer: youtubeIdOf(info.youtube_trailer), // sağlayıcının fragmanı (Türk yapımlarında Cinemeta'da çoğu zaman yok)
     seasons,
   };
 }
@@ -196,6 +198,8 @@ export function mapVodInfo(json) {
     durationSec: num(i.duration_secs),
     logo: i.movie_image || (Array.isArray(i.backdrop_path) ? i.backdrop_path[0] : '') || '',
     backdrop: firstUrl(i.backdrop_path),
+    trailer: youtubeIdOf(i.youtube_trailer),
+    originalName: String(i.o_name || i.original_name || '').trim(), // Türkçe adlı filmlerde IMDb eşleşmesi özgün adla da aranır
   };
 }
 

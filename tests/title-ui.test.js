@@ -28,6 +28,17 @@ test('fragman bloğu: otomatikte sessiz iframe + "Sesi aç"; kapalıyken küçü
   assert.doesNotMatch(thumb, /tr-unmute/);
   assert.equal(trailerHtml([]), '');
   assert.equal(trailerHtml(null), '');
+  assert.match(auto, /data-ids="0jKUpBmYO1Q,m-btyJIYLyI" data-origin="https:\/\/localhost"/, 'sıradaki fragman ve köken denetleyiciye taşınır');
+});
+
+test('fragman bloğu: kimlik yokken "YouTube’da fragman ara" bağlantısı (Türk yapımları); sorgu da yoksa boş', () => {
+  const h = trailerHtml([], { query: 'Kuruluş Osman 2020 fragman' });
+  assert.match(h, /^<section class="tr tr-none"><h2>Fragman<\/h2><a class="tr-find" href="https:\/\/www\.youtube\.com\/results\?search_query=Kurulu%C5%9F%20Osman%202020%20fragman" target="_blank" rel="noopener">/);
+  assert.match(h, /YouTube’da fragman ara/);
+  assert.doesNotMatch(h, /<iframe|tr-box/);
+  assert.equal(trailerHtml(null, { query: '' }), '');
+  assert.match(trailerHtml(['0jKUpBmYO1Q'], { query: 'x fragman' }), /data-q="x fragman"/, 'kimlik varken arama bağlantısı yok, sorgu yalnız hata sonrası için saklanır');
+  assert.doesNotMatch(trailerHtml(['0jKUpBmYO1Q'], { query: 'x fragman' }), /tr-find/);
 });
 
 test('oyuncu kartları: yönetmen etiketi, ad kaçışlı, boşsa bölüm yok', () => {
@@ -77,7 +88,7 @@ test('listede olmayan yapım ekranı: "Listenizde yok" düğmesi pasif, fragman 
 });
 
 // ---- fragman denetleyicisi (sahte DOM) ----
-function fakeHost({ withFrame = true } = {}) {
+function fakeHost({ withFrame = true, dataset = {} } = {}) {
   const handlers = {};
   const unmute = { hidden: true, dataset: {} };
   const box = { innerHTML: '' };
@@ -86,9 +97,9 @@ function fakeHost({ withFrame = true } = {}) {
   const frame = { contentWindow: frameWin, addEventListener: (ev, fn) => (handlers['frame:' + ev] = fn) };
   const host = {
     isConnected: true,
-    dataset: { id: '0jKUpBmYO1Q' },
+    dataset: { id: '0jKUpBmYO1Q', ...dataset },
     handlers,
-    querySelector: (sel) => (sel === '.tr-frame' ? (withFrame && box.innerHTML === '' ? frame : null) : sel === '.tr-box' ? box : sel === '.tr-unmute' ? unmute : null),
+    querySelector: (sel) => (sel === '.tr-frame' ? ((withFrame && box.innerHTML === '') || /<iframe/.test(box.innerHTML) ? frame : null) : sel === '.tr-box' ? box : sel === '.tr-unmute' ? unmute : null),
     addEventListener: (ev, fn) => (handlers[ev] = fn),
   };
   return { host, unmute, box, posted, frameWin, frame };
@@ -110,19 +121,46 @@ test('denetleyici: yüklenince "Sesi aç" görünür, dokununca sesi açar ve gi
   assert.deepEqual(posted.at(-1), { event: 'command', func: 'unMute', args: [] });
 });
 
-test('denetleyici: YouTube hata bildirirse küçük resme döner; başka iframe\'in mesajı yoksayılır; sayfa kapanınca dinleyici bırakılır', () => {
-  const { host, box, frameWin } = fakeHost();
+test('denetleyici: yabancı iframe mesajı yoksayılır; tek fragman hata verirse açıklama + YouTube araması; sayfa kapanınca dinleyici bırakılır', () => {
+  const { host, box, frameWin } = fakeHost({ dataset: { ids: '0jKUpBmYO1Q', q: 'Kuruluş Osman fragman' } });
   const win = fakeWin();
   wireTrailer(host, { win, doc: null });
   win.emit({ source: {}, data: JSON.stringify({ event: 'onError' }) });
   assert.equal(box.innerHTML, '', 'yabancı kaynak yoksayılır');
   win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 153 }) });
-  assert.match(box.innerHTML, /data-tr="play"/);
-  assert.match(box.innerHTML, /hqdefault\.jpg/);
+  assert.match(box.innerHTML, /class="tr-fail"[^>]*><p>Fragman uygulamada oynatılamıyor/);
+  assert.match(box.innerHTML, /href="https:\/\/www\.youtube\.com\/results\?search_query=Kurulu%C5%9F%20Osman%20fragman"/);
+  assert.doesNotMatch(box.innerHTML, /data-tr="play"/, 'aynı hatayı tekrarlayan küçük resim yok');
   assert.equal(win.ls.size, 1);
   host.isConnected = false;
   win.emit({ source: frameWin, data: '{}' });
   assert.equal(win.ls.size, 0, 'bağlantısı kopan sayfa dinleyiciyi bırakır');
+});
+
+test('denetleyici: YouTube hata verirse sıradaki fragmana geçer (sessiz başladıysa sessiz); hepsi bitince açıklama; arama sorgusu yoksa düğme yok', () => {
+  const { host, box, frameWin, unmute } = fakeHost({ dataset: { id: 'aaaaaaaaaaa', ids: 'aaaaaaaaaaa,bbbbbbbbbbb,ccccccccccc', origin: 'https://localhost' } });
+  const win = fakeWin();
+  wireTrailer(host, { win, doc: null });
+  unmute.hidden = false;
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 101 }) });
+  assert.match(box.innerHTML, /embed\/bbbbbbbbbbb\?[^"]*mute=1[^"]*origin=https%3A%2F%2Flocalhost/);
+  assert.equal(host.dataset.id, 'bbbbbbbbbbb', 'küçük resim/YouTube bağlantısı için geçerli kimlik güncellenir');
+  assert.equal(unmute.hidden, true, 'yeni video yüklenene kadar "Sesi aç" gizli');
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 150 }) });
+  assert.match(box.innerHTML, /embed\/ccccccccccc\?/);
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 153 }) });
+  assert.match(box.innerHTML, /class="tr-fail"/);
+  assert.doesNotMatch(box.innerHTML, /results\?search_query/, 'sorgu yoksa arama düğmesi yok');
+});
+
+test('denetleyici: dokunarak başlatılan (sesli) fragman hata verirse sıradaki de sesli açılır', () => {
+  const { host, box, frameWin } = fakeHost({ withFrame: false, dataset: { id: 'aaaaaaaaaaa', ids: 'aaaaaaaaaaa,bbbbbbbbbbb' } });
+  const win = fakeWin();
+  wireTrailer(host, { win, doc: null });
+  host.handlers.click({ target: { closest: () => ({ dataset: { tr: 'play' } }) } });
+  assert.match(box.innerHTML, /embed\/aaaaaaaaaaa\?[^"]*mute=0/);
+  win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError' }) });
+  assert.match(box.innerHTML, /embed\/bbbbbbbbbbb\?[^"]*mute=0/);
 });
 
 test('denetleyici: küçük resme dokununca sesli iframe açılır', () => {
@@ -145,6 +183,18 @@ test('bağlantı: film ve dizi ekranı fragman/oyuncu alanlarını taşır; oyun
   assert.match(app, /pp\.innerHTML = kidActive\(\) \? ''/, 'çocuk modunda oyuncu kartı yok');
   assert.match(app, /if \(own\) return film\.type === 'series' \? openSeries\(own\) : openMovie\(own\)/, 'listedeyse kendi ekranı');
   assert.match(app, /auto: !extras\.shown/, 'dizi yeniden çizilince fragman yeniden başlamaz');
+});
+
+test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik yoksa YouTube araması; eşleşme çözülemese de gösterilir', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /trailerHtml\(trailerIds\(detail, provider && provider\.trailer\), \{ auto: auto && setting\('trailerAuto'\), origin: location\.origin, query \}\)/);
+  assert.match(app, /trailer: \(info && info\.trailer\) \|\| it\.trailer/, 'film: sağlayıcı fragmanı');
+  assert.match(app, /trailer: info\.trailer \|\| it\.trailer/, 'dizi: sağlayıcı fragmanı');
+  assert.match(app, /query: trailerQuery\(film\.name, film\.year\)/, 'bilgi ekranı');
+  assert.match(app, /paintTitleExtras\(body, null, provider, extrasOf\(null\)\)/, 'film: eşleşme çözülemese de fragman');
+  assert.match(app, /if \(!extras\.ready\) \{ extras\.ready = true; paintExtras\(\); \}/, 'dizi: eşleşme çözülemese de fragman');
+  assert.match(app, /trailer: extras\.ready \? '#sr-trailer' : ''/, 'dizi: eşleşme çözülmeden fragman boyanmaz (video değişip yeniden başlamasın)');
+  assert.match(app, /if \(extras\.ready && trailerIds\(extras\.detail, extras\.provider\.trailer\)\.length && trailerOn\(\)\) extras\.shown = true/);
 });
 
 test('bağlantı: oyuncu sayfası sınıfı çok renkli tema listesinde; sayfa kapanınca fragman dinleyicisi bırakılır', () => {

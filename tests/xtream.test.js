@@ -125,3 +125,16 @@ test('geniş arka plan: backdrop_path dizi ya da metin gelebilir, geçersiz adre
   assert.equal(info.logo, 'm.jpg');
   assert.equal(X.mapVodInfo({ info: { movie_image: 'm.jpg' } }).backdrop, '');
 });
+
+test('sağlayıcı fragmanı ve özgün ad: youtube_trailer kimlik ya da adres olabilir; yoksa boş; o_name film ayrıntısında', () => {
+  const v = X.mapVodInfo({ info: { youtube_trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', o_name: ' The Original ' } });
+  assert.equal(v.trailer, 'dQw4w9WgXcQ');
+  assert.equal(v.originalName, 'The Original');
+  assert.equal(X.mapVodInfo({ info: { youtube_trailer: 'dQw4w9WgXcQ', original_name: 'Orig' } }).originalName, 'Orig');
+  assert.equal(X.mapVodInfo({ info: { youtube_trailer: 'geçersiz' } }).trailer, '');
+  assert.equal(X.mapVodInfo({}).trailer, '');
+  assert.equal(X.mapSeriesInfo({ info: { youtube_trailer: 'dQw4w9WgXcQ' }, episodes: {} }).trailer, 'dQw4w9WgXcQ');
+  assert.equal(X.mapSeriesInfo({ episodes: {} }).trailer, '');
+  assert.equal(X.mapSeries([{ series_id: 4, name: 'D', youtube_trailer: 'https://youtu.be/dQw4w9WgXcQ' }], [])[0].trailer, 'dQw4w9WgXcQ');
+  assert.equal(X.mapSeries([{ series_id: 5, name: 'D' }], [])[0].trailer, '');
+});

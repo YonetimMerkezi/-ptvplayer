@@ -912,6 +912,14 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .tr-play .ic { width: 30px; height: 30px; }
 .tr-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .tr-bar .btn { min-height: 36px; }
+.tr-fail { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; text-align: center; background: #0b1118; color: #d5dde6; font-size: 0.875rem; }
+.tr-fail p { margin: 0; max-width: 34ch; }
+.tr-find { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; text-decoration: none; color: #fff; background: color-mix(in srgb, var(--accent) 14%, #070b14); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.tr-find > .ic { flex: none; box-sizing: content-box; width: 22px; height: 22px; padding: 10px; border-radius: 50%; background: var(--accent); color: var(--accent-ink, #0a1118); }
+.tr-find > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tr-find b { font-size: 1rem; }
+.tr-find small { color: color-mix(in srgb, var(--accent) 55%, #fff); font-weight: 600; }
+.tr-find:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pp { margin: 4px 0 16px; min-width: 0; }
 .pp-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 12px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
 .pp-card { flex: 0 0 92px; min-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--text); text-align: center; scroll-snap-align: start; cursor: pointer; }

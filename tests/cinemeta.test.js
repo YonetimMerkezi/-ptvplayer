@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
+import { parseDetail, loadDetail, peopleOf, personFilms, searchPerson, parseNewCatalog, loadNewReleases, buildTitleIndex, findInLibrary, trailerEmbedUrl, trailerWatchUrl, trailerThumbUrl, trailerIds, trailerQuery, trailerSearchUrl, MAX_TRAILERS, MISS_TTL, DETAIL_TTL, NEW_TTL, NEW_MAX, NEW_MIN, CINEMETA } from '../www/js/cinemeta.js';
 
 const FORREST = { id: 'tt0109830', imdb_id: 'tt0109830', name: 'Forrest Gump', year: '1994', runtime: '142 min', genres: ['Drama', 'Romance'], description: 'Özet', poster: 'https://p/x.jpg', trailers: [{ source: '0jKUpBmYO1Q', type: 'Trailer' }, { source: 'm-btyJIYLyI', type: 'Trailer' }, { source: 'BADID', type: 'Trailer' }, { source: 'abcdefghijk', type: 'Clip' }], trailerStreams: [{ title: 'x', ytId: '0jKUpBmYO1Q' }, { title: 'y', ytId: 'Mj9IA9tTfio' }], cast: ['Tom Hanks', 'Robin Wright', 'Gary Sinise'], director: ['Robert Zemeckis'], links: [{ category: 'Cast', name: 'Sally Field' }, { category: 'Cast', name: 'tom hanks' }, { category: 'Genres', name: 'Drama' }] };
 const mem = () => { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) }; };
@@ -175,4 +175,23 @@ test('yeni çıkanlar yükleme: yıl başında az film varsa önceki yıl da ekl
   const late = [];
   await loadNewReleases({ net: { json: async (u) => (late.push(u), { metas: [meta(1)] }) }, cache: null, date: new Date(2026, 8, 1) });
   assert.equal(late.length, 1, 'yılın ilerleyen aylarında önceki yıl istenmez');
+});
+
+test('fragman kimlikleri: Cinemeta önce, sağlayıcının fragmanı ardından; yinelenen ve geçersiz atılır; en çok 4', () => {
+  assert.deepEqual(trailerIds({ trailers: ['aaaaaaaaaaa', 'bbbbbbbbbbb'] }, 'https://youtu.be/bbbbbbbbbbb'), ['aaaaaaaaaaa', 'bbbbbbbbbbb']);
+  assert.deepEqual(trailerIds({ trailers: ['aaaaaaaaaaa'] }, 'ccccccccccc'), ['aaaaaaaaaaa', 'ccccccccccc']);
+  assert.deepEqual(trailerIds(null, 'ccccccccccc'), ['ccccccccccc'], 'Cinemeta eşleşmesi yoksa yalnız sağlayıcının fragmanı');
+  assert.deepEqual(trailerIds({ trailers: [] }, ''), []);
+  assert.deepEqual(trailerIds(null, 'geçersiz'), []);
+  assert.deepEqual(trailerIds({ trailers: ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc', 'ddddddddddd', 'eeeeeeeeeee'] }, 'fffffffffff').length, MAX_TRAILERS);
+});
+
+test('fragman araması: katalog adındaki dil öneki, kalite etiketi ve yıl ayıklanır; adres kaçışlıdır', () => {
+  assert.equal(trailerQuery('TR | Kuruluş Osman (2020)'), 'Kuruluş Osman 2020 fragman');
+  assert.equal(trailerQuery('TR ⇒ Çılgın Dersane'), 'Çılgın Dersane fragman');
+  assert.equal(trailerQuery('Aşk-ı Memnu 2008 FHD'), 'Aşk-ı Memnu 2008 fragman');
+  assert.equal(trailerQuery('The Matrix [4K]', '1999-03-31'), 'The Matrix 1999 fragman');
+  assert.equal(trailerQuery('Yüzüklerin Efendisi: Yüzük Kardeşliği', 2001), 'Yüzüklerin Efendisi: Yüzük Kardeşliği 2001 fragman');
+  assert.equal(trailerQuery('', ''), 'fragman');
+  assert.equal(trailerSearchUrl('Kuruluş Osman 2020 fragman'), 'https://www.youtube.com/results?search_query=Kurulu%C5%9F%20Osman%202020%20fragman');
 });

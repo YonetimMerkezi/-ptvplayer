@@ -24,6 +24,14 @@ export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+// YouTube kimliği: 11 karakterlik kimlik ya da watch/embed/shorts/youtu.be adresi → kimlik; geçersizse ''
+export function youtubeIdOf(v) {
+  const s = String(v ?? '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  const m = s.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|v\/))([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/);
+  return m ? m[1] : '';
+}
+
 export function fmtDuration(ms) {
   if (!Number.isFinite(ms) || ms < 0) return '0:00';
   const t = Math.floor(ms / 1000);
