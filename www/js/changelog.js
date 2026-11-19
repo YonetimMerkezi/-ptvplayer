@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 167,
+    title: 'Spor: Mackolik yedek kaynağı',
+    items: [
+      'LiveScore\'a ulaşılamayan bağlantılarda Türkiye ligleri (Süper Lig, 1., 2. ve 3. Lig, kupalar) Mackolik\'ten alınır: skor, dakika ve durum canlı güncellenir',
+      'Mackolik maçlarında olay ve kadro yoktur; maç ekranında skor ve durum görünür',
+    ],
+  },
+  {
     id: 166,
     title: 'Spor: skorsuz maçlar',
     items: [

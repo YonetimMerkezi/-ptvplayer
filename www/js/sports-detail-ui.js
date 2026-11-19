@@ -7,6 +7,7 @@ import { $, icon, openPage } from './ui.js';
 import { ESPN_BASE, LEAGUES, findPrograms, dayStart, dayLabel, noScore } from './sports.js';
 import { LS_HOSTS, loadLsEvents, loadLiveScoreDay } from './sports-ls.js';
 import { findLsMatch } from './sports-se.js';
+import { loadMackolikDay } from './sports-mk.js';
 import { loadSummary, KIND_LABEL, broadcastGroups, shouldPoll } from './sports-detail.js';
 import { sideLogo, logoHtml } from './sports-logos.js';
 
@@ -17,6 +18,8 @@ const LS_LOOKAHEAD_MS = 3 * 3600e3; // yayın sitesi maçı için LiveScore kar�
 const LS_RETRY_MS = 3 * 60e3; // karşılık bulunamadıysa ya da liste alınamadıysa yoklama turlarında bu aralıkla yeniden denenir (düğmeyle hemen)
 const lsDayCache = new Map(); // gün → { at, matches }: aynı günün listesi kısa süre yeniden indirilmez
 const LS_DAY_FRESH_MS = 2 * 60e3;
+const mkDayCache = new Map(); // gün → { at, matches } (Mackolik): canlı skor yoklaması 30 sn'den sık istek atmaz
+const MK_DAY_FRESH_MS = 30e3;
 
 // Kullanıcının kanallarından, rehberinde bu maç görünenlerin hepsi (en yakın başlangıçtan uzağa).
 export function channelsFor(env, m) {
@@ -70,7 +73,8 @@ export function openMatchDetail(env, m) {
   const now = env.now || (() => Date.now());
   const teamLogo = (side, other) => logoHtml(sideLogo(side, other, env.badgeOf), side.label, esc);
   const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || m.lgName || '';
-  const lite = m.src === 'se'; // yalnız yayın sitesinden gelen maç: önce LiveScore'daki karşılığı aranır; bulunamazsa yalnız yayın ve not
+  const mk = m.src === 'mk'; // Mackolik maçı: yalnız skor ve durum (olay/kadro yok); canlıda skor Mackolik listesinden tazelenir
+  const lite = m.src === 'se' || mk; // yalnız yayın sitesinden gelen maç: önce LiveScore'daki karşılığı aranır; bulunamazsa yalnız yayın ve not
   let lsFound = null; // yayın sitesi maçının LiveScore karşılığı: bulunursa skor, olay, kadro ve istatistik oradan gelir
   let lsNote = '';
   let lsTriedAt = 0;
@@ -264,7 +268,7 @@ export function openMatchDetail(env, m) {
     drawStatus();
     try {
       let lm = m.src === 'ls' ? m : lsFound;
-      if (!lm && lite && m.t - now() < LS_LOOKAHEAD_MS && (force || !lsTriedAt || now() - lsTriedAt > LS_RETRY_MS)) {
+      if (!lm && m.src === 'se' && m.t - now() < LS_LOOKAHEAD_MS && (force || !lsTriedAt || now() - lsTriedAt > LS_RETRY_MS)) {
         lsTriedAt = now();
         try {
           const d = dayStart(m.t);
@@ -280,7 +284,17 @@ export function openMatchDetail(env, m) {
           lsNote = `LiveScore: ${(e && (e.detail || e.message)) || 'alınamadı'}`;
         }
       }
-      if (!lm && lite) {
+      if (mk) {
+        const d = dayStart(m.t);
+        let c = mkDayCache.get(d);
+        if (!c || now() - c.at > MK_DAY_FRESH_MS || force) {
+          const r = await loadMackolikDay({ net: env.net, dayMs: d, now: now() });
+          c = { at: now(), matches: r.matches };
+          mkDayCache.set(d, c);
+        }
+        const f = c.matches.find((x) => x.id === m.id);
+        data = { status: f ? { state: f.state, text: f.text, off: f.off } : null, home: { score: f ? f.home.score : null }, away: { score: f ? f.away.score : null }, venue: '', city: '', attendance: 0, referee: '', events: [], lineups: {}, intl: [], empty: true, lsOnly: true, evNote: '' };
+      } else if (!lm && lite) {
         data = { status: null, home: { score: null }, away: { score: null }, venue: '', city: '', attendance: 0, referee: '', events: [], lineups: {}, intl: [], empty: true, lsOnly: true, evNote: lsNote };
       } else if (lm) {
         // LiveScore maçı: durum+skor+olaylar her turda; kadro (oyuncu değişiklikleri dahil) 3 turda bir, istatistik 4 turda bir; başlamamış maçta yalnız kadro.
@@ -373,7 +387,7 @@ export function openMatchDetail(env, m) {
   }
   timer = setInterval(() => {
     if (!root.isConnected) return clearInterval(timer);
-    if (shouldPoll(live(), m.t, now())) refresh();
+    if (shouldPoll(live(), m.t, now()) && (!mk || live() === 'in' || Math.abs(now() - m.t) < 10 * 60e3)) refresh();
   }, LIVE_MS);
 
   return page;

@@ -9,6 +9,7 @@ import {
   matchesOnDay, sections, chipsFor, capSections, hasLive, noScore,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
+import { loadMackolikDay } from './sports-mk.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
 import { SCHED_BASES, loadSchedDay, seInfoFor, mergeSe } from './sports-se.js';
 import { BADGE_HOST, badgeSearchUrl, pickBadge, sideLogo, logoHtml, nationFlags } from './sports-logos.js';
@@ -16,6 +17,8 @@ import { FAV_CHIP, cleanFavs, isFavSide, hasFavMatch, toggleFav, autoRemindTarge
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v2'; // LiveScore gün listeleri
+const MK_CACHE_KEY = 'sports-mk:v1'; // Mackolik gün listeleri (LiveScore alınamazsa Türkiye ligleri için yedek)
+const LS_DOWN_MS = 10 * 60e3; // LiveScore alınamadıysa bu süre yeniden denenmez; doğrudan yedek kaynağa gidilir
 const LS_CACHE_DAYS = 5;
 const BADGE_CACHE_KEY = 'sports-badges:v1'; // kulüp rozeti arama sonuçları (ad → adres ya da boş)
 const BADGE_HIT_MS = 30 * 864e5; // bulunan rozet bu süre geçerli
@@ -47,7 +50,11 @@ export function openSports(env) {
   let matches = []; // birleşik liste (ESPN + diğer kaynaklarda olup ESPN'de olmayanlar)
   let espn = [];
   const lsDays = new Map(); // gün → { at, matches } (LiveScore)
-  const lsPending = new Map(); // gün → devam eden indirme
+  const mkDays = new Map(); // gün → { at, matches } (Mackolik; yalnız Türkiye ligleri)
+  const lsPending = new Map(); // gün → devam eden indirme (LiveScore, olmazsa Mackolik)
+  let lsDownAt = 0;
+  let mkErr = '';
+  let mkDetail = '';
   let lsBusy = 0;
   let lsErr = '';
   let lsDetail = '';
@@ -424,7 +431,7 @@ export function openSports(env) {
     else if (loading || lsPending.has(day)) text = 'Güncelleniyor…'; // seçili günün LiveScore listesi inerken de belirtilir
     else if (err && !have) text = err;
     else if (err && at) text = `Güncellenemedi · kayıtlı veri (${fmtClock(at)})`;
-    else if (at) text = `Son güncelleme ${fmtClock(at)}${espnErr || failed.length || (lsErr && !lsDays.has(day)) ? ' · bazı veriler alınamadı' : ''}`;
+    else if (at) text = `Son güncelleme ${fmtClock(at)}${espnErr || failed.length || (lsErr && !lsDays.has(day) && !mkDays.has(day)) ? ' · bazı veriler alınamadı' : ''}`;
     else if (lsBusy || tvPending.size) text = 'Maçlar yükleniyor…';
     else text = '';
     el.textContent = text;
@@ -434,7 +441,7 @@ export function openSports(env) {
   function sourceNote() {
     const bits = [];
     if (espnErr && matches.length) bits.push(`ESPN: ${espnDetail || espnErr}`);
-    if (lsErr && !lsBusy && !lsDays.has(day)) bits.push(`LiveScore: ${lsDetail || lsErr}`);
+    if (lsErr && !lsBusy && !lsDays.has(day)) bits.push(`LiveScore: ${lsDetail || lsErr}${mkDays.has(day) ? ' · yedek kaynak Mackolik kullanılıyor' : mkErr ? ` · Mackolik: ${mkDetail || mkErr}` : ''}`);
     if (tvErr && !tvDays.has(day)) bits.push(tvDetail || tvErr);
     const tvd = tvDays.get(day);
     if (tvd && tvd.seNote) bits.push(`Yayın akışı: ${tvd.seNote}`);
@@ -492,6 +499,14 @@ export function openSports(env) {
       /* kayıtlı veri yok */
     }
     try {
+      const c = await store.cache.get(MK_CACHE_KEY);
+      if (c && Array.isArray(c.days)) {
+        for (const [d, v] of c.days) if (v && Array.isArray(v.matches) && v.at && now() - v.at < CACHE_MAX_AGE) mkDays.set(Number(d), v);
+      }
+    } catch {
+      /* kayıtlı veri yok */
+    }
+    try {
       const c = await store.cache.get(BADGE_CACHE_KEY);
       if (c && c.map && typeof c.map === 'object') {
         for (const [k, v] of Object.entries(c.map)) if (Array.isArray(v) && typeof v[1] === 'number') badges.set(k, { u: typeof v[0] === 'string' ? v[0] : '', at: v[1] });
@@ -511,9 +526,20 @@ export function openSports(env) {
   }
 
   // Birleşik liste: ESPN + diğer kaynaklarda olup ESPN'de karşılığı bulunmayan maçlar (yayın akışı sayfasındaki satırlar dahil).
+  // Günün ikinci kaynak listesi: LiveScore; alınamıyorsa (ya da Mackolik daha yeniyse) Mackolik
+  function dayList(d) {
+    const l = lsDays.get(d);
+    const k = mkDays.get(d);
+    if (l && k) return k.at > l.at + FRESH_MS ? k : l;
+    return l || k || null;
+  }
+
   function recompute() {
     const ls = [];
-    for (const v of lsDays.values()) ls.push(...v.matches);
+    for (const d of new Set([...lsDays.keys(), ...mkDays.keys()])) {
+      const v = dayList(d);
+      if (v) ls.push(...v.matches);
+    }
     const base = ls.length ? mergeSources(espn, ls).matches : espn;
     const rows = [];
     for (const v of tvDays.values()) if (v.src === 'se') rows.push(...v.rows);
@@ -613,7 +639,7 @@ export function openSports(env) {
     keepFocus(draw);
   }
 
-  const lastAt = () => Math.max(fetchedAt, ...[...lsDays.values()].map((v) => v.at), ...[...tvDays.values()].map((v) => v.at));
+  const lastAt = () => Math.max(fetchedAt, ...[...lsDays.values()].map((v) => v.at), ...[...mkDays.values()].map((v) => v.at), ...[...tvDays.values()].map((v) => v.at));
 
   async function loadEspn() {
     try {
@@ -634,37 +660,60 @@ export function openSports(env) {
     }
   }
 
-  // Bir günün LiveScore listesi. Aynı gün için indirme sürüyorsa onu bekler.
+  // Bir günün ikinci kaynak listesi: önce LiveScore; alınamazsa (ya da kısa süre önce alınamamışsa) Türkiye ligleri için Mackolik. Aynı gün için indirme sürüyorsa onu bekler.
   function loadLs(d) {
     if (lsPending.has(d)) return lsPending.get(d);
     lsBusy++;
     const p = (async () => {
-      try {
-        const r = await loadLiveScoreDay({ net, dayMs: d, now: now(), hosts: lsHosts });
-        lsDays.delete(d);
-        lsDays.set(d, { at: now(), matches: r.matches });
-        lsErr = '';
-        lsDetail = '';
+      let lsOk = false;
+      if (!lsDownAt || now() - lsDownAt >= LS_DOWN_MS) {
         try {
-          await store.cache.set(LS_CACHE_KEY, { at: now(), days: [...lsDays].slice(-LS_CACHE_DAYS) });
-        } catch {
-          /* kayıt başarısız olsa da liste çalışır */
+          const r = await loadLiveScoreDay({ net, dayMs: d, now: now(), hosts: lsHosts });
+          lsDays.delete(d);
+          lsDays.set(d, { at: now(), matches: r.matches });
+          lsErr = '';
+          lsDetail = '';
+          lsDownAt = 0;
+          lsOk = true;
+          try {
+            await store.cache.set(LS_CACHE_KEY, { at: now(), days: [...lsDays].slice(-LS_CACHE_DAYS) });
+          } catch {
+            /* kayıt başarısız olsa da liste çalışır */
+          }
+        } catch (e) {
+          lsErr = (e && e.message) || 'LiveScore verisi alınamadı';
+          lsDetail = (e && e.detail) || '';
+          lsDownAt = now();
         }
-      } catch (e) {
-        lsErr = (e && e.message) || 'LiveScore verisi alınamadı';
-        lsDetail = (e && e.detail) || '';
-      } finally {
-        lsBusy--;
-        lsPending.delete(d);
       }
-    })();
+      if (!lsOk) {
+        try {
+          const r = await loadMackolikDay({ net, dayMs: d, now: now() });
+          mkDays.delete(d);
+          mkDays.set(d, { at: now(), matches: r.matches });
+          mkErr = '';
+          mkDetail = '';
+          try {
+            await store.cache.set(MK_CACHE_KEY, { at: now(), days: [...mkDays].slice(-LS_CACHE_DAYS) });
+          } catch {
+            /* kayıt başarısız olsa da liste çalışır */
+          }
+        } catch (e) {
+          mkErr = (e && e.message) || 'Mackolik verisi alınamadı';
+          mkDetail = (e && e.detail) || '';
+        }
+      }
+    })().finally(() => {
+      lsBusy--;
+      lsPending.delete(d);
+    });
     lsPending.set(d, p);
     return p;
   }
 
   // Günün LiveScore listesi eskiyse (ya da hiç yoksa) indirir; gelince ekranı tazeler. Odak, düğme yeniden çizilse de korunur.
   function lsStale(d) {
-    const v = lsDays.get(d);
+    const v = dayList(d);
     if (!v) return true;
     const t0 = dayStart(now());
     const age = now() - v.at;
@@ -695,7 +744,7 @@ export function openSports(env) {
     if (el && el.focus) el.focus({ preventScroll: true });
   }
 
-  const lsLiveDay = (d) => matchesOnDay(matches, d).some((m) => m.src === 'ls' && (m.state === 'in' || (m.state === 'pre' && m.t - now() < 10 * 60e3 && m.t - now() > -60e3)));
+  const lsLiveDay = (d) => matchesOnDay(matches, d).some((m) => (m.src === 'ls' || m.src === 'mk') && (m.state === 'in' || (m.state === 'pre' && m.t - now() < 10 * 60e3 && m.t - now() > -60e3)));
 
   async function refresh({ quiet = false } = {}) {
     if (loading) return;
@@ -705,19 +754,19 @@ export function openSports(env) {
     if (!quiet) drawStatus();
     const d0 = day;
     if (!quiet) tvFailAt.clear(); // elle yenilemede yayın listesi de yeniden denenir
-    const lsDue = !quiet || (lsLiveDay(d0) && now() - ((lsDays.get(d0) || {}).at || 0) >= LS_LIVE_MS);
+    const lsDue = !quiet || (lsLiveDay(d0) && now() - ((dayList(d0) || {}).at || 0) >= LS_LIVE_MS);
     try {
       await Promise.all([loadEspn(), lsDue ? loadLs(d0) : null]);
     } finally {
       loading = false;
     }
-    const lsAny = [...lsDays.values()].some((v) => v.matches.length);
+    const lsAny = [...lsDays.values(), ...mkDays.values()].some((v) => v.matches.length);
     if (espnErr && !lsAny) {
       // ESPN yok ve ikinci kaynaktan da maç gelmedi: kayıtlı veri varsa onu gösterir, yoksa (yayın akışı da maç getirmezse) hata ekranı
       err = espnErr;
       errDetail = [espnDetail || espnErr, lsErr && (lsDetail || lsErr)].filter(Boolean).join(' · ');
       if (fetchedAt && !quiet) toast('Skorlar güncellenemedi', 2200);
-    } else if (lsDays.size) {
+    } else if (lsDays.size || mkDays.size) {
       fetchedAt = Math.max(fetchedAt, lastAt());
     }
     if (!page.el.isConnected) return;
