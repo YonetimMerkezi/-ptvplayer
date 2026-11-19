@@ -77,6 +77,7 @@ import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
 import { createFilmResolver } from './film-lookup.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
+import { loadVizyon, sourcesNote } from './vizyon.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, hasExactTitle, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { loadTrNames } from './tr-names.js';
 import { loadPersonPhotos, nameKey } from './people-photos.js';
@@ -2405,7 +2406,7 @@ function openActor(name, role = '', photo = '') {
       }
       body.addEventListener('click', (e) => {
         const c = e.target.closest('[data-film]');
-        const film = c && films.find((f) => f.imdbId === c.dataset.film);
+        const film = c && films.find((f) => (f.id || f.imdbId) === c.dataset.film);
         if (film) openTitleInfo(film);
       });
       enrichTrNames(films, () => { if (body.isConnected) paint(); }); // Türkçe adlar gelince eşleşenler "Oynat"a döner
@@ -2413,9 +2414,10 @@ function openActor(name, role = '', photo = '') {
   });
 }
 
-// Vizyondaki filmler (Cinemeta "yeni çıkanlar"): ana sayfa satırı oturumda bir kez doldurulur, 6 saat saklanır; kart yapımın ekranını açar (listedeyse Oynat, değilse fragmanlı bilgi). Çocuk modunda yok.
+// Vizyondaki filmler (Türkiye sinema siteleri: Beyazperde, Paribu Cineverse, Biletinial; vizyon.js — alınamazsa Cinemeta "yeni çıkanlar"): ana sayfa satırı oturumda bir kez doldurulur, 6 saat saklanır; kart yapımın ekranını açar (listedeyse Oynat, değilse fragmanlı bilgi). Çocuk modunda yok.
 let newHome = null;
 let newBusy = false;
+const loadVizyonList = () => loadVizyon({ net, cache: store.cache, fallback: () => loadNewReleases({ net, cache: store.cache }) });
 function fillHomeNew() {
   const el = $('#home-new');
   if (el) el.innerHTML = kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f));
@@ -2424,7 +2426,7 @@ function ensureHomeNew() {
   if (kidActive() || newBusy) return;
   if (newHome) return fillHomeNew();
   newBusy = true;
-  loadNewReleases({ net, cache: store.cache }).then((r) => { newHome = r; }, () => {}).finally(() => {
+  loadVizyonList().then((r) => { newHome = r; }, () => {}).finally(() => {
     newBusy = false;
     fillHomeNew();
     if (newHome) enrichTrNames(newHome.films, fillHomeNew);
@@ -2438,7 +2440,7 @@ function openNewReleases() {
     html: actorLoadingHtml('Vizyondaki filmler'),
     mount: async (body) => {
       try {
-        if (!newHome) newHome = await loadNewReleases({ net, cache: store.cache });
+        if (!newHome) newHome = await loadVizyonList();
       } catch {
         if (body.isConnected) body.innerHTML = emptyHtml('Filmler alınamadı', 'İnternet bağlantınızı kontrol edin.');
         return;
@@ -2448,7 +2450,7 @@ function openNewReleases() {
       const paint = () => {
         for (const f of films) f.inLib = !!inLibrary(f);
         const top = body.scrollTop;
-        body.innerHTML = releasesPageHtml(films);
+        body.innerHTML = releasesPageHtml(films, { sources: sourcesNote(newHome.sources), stale: newHome.stale, fallback: newHome.fallback });
         body.scrollTop = top;
       };
       paint();
@@ -2499,10 +2501,16 @@ function openTitleInfo(film) {
         const o = e.target.closest('[data-orig]');
         if (o) togglePlot(body);
       });
-      loadDetail({ net, cache: store.cache, imdbId: film.imdbId, type: film.type }).catch(() => null).then((detail) => {
+      // Sinema sitelerinden gelen filmin IMDb kaydı yoktur: Türkçe ad + yıl ile Wikidata'dan bulunur (bulunamazsa fragman Türkçe adla aranır, özet yoktur)
+      const originOf = film.imdbId ? Promise.resolve(null) : resolveTitleOrigin(net, film.name, film.year, store).catch(() => null);
+      originOf.then((origin) => {
+        if (origin && origin.imdbId) film.imdbId = origin.imdbId;
+        const detail = film.imdbId ? loadDetail({ net, cache: store.cache, imdbId: film.imdbId, type: film.type }).catch(() => null) : null;
+        return Promise.resolve(detail).then((d) => [d, origin]);
+      }).then(([detail, origin]) => {
         if (!body.isConnected) return;
         body.innerHTML = titleInfoHtml(film, detail);
-        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people', ...trailerSearch(film.name, film.year, null) });
+        paintTitleExtras(body, detail, {}, { trailer: '#ti-trailer', people: '#ti-people', ...trailerSearch(film.name, film.year, origin) });
         translatePlot(body, detail && detail.description);
       });
     },
@@ -3512,7 +3520,7 @@ function renderHome(v) {
     }
     const nc = e.target.closest('[data-nid]');
     if (nc) {
-      const film = newHome && newHome.films.find((f) => f.imdbId === nc.dataset.nid);
+      const film = newHome && newHome.films.find((f) => (f.id || f.imdbId) === nc.dataset.nid);
       if (film) return openTitleInfo(film);
     }
     const hc = e.target.closest('[data-hid]');

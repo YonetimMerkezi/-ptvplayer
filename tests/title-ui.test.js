@@ -289,7 +289,8 @@ test('bağlantı: fragman Cinemeta + sağlayıcı kimliğiyle boyanır; kimlik y
   assert.match(app, /onFound: \(\) => \{ extras\.shown = true; \}/, 'dizi: aramayla bulunan fragman yeniden çizimde otomatik başlamaz');
   assert.match(app, /trailer: \(info && info\.trailer\) \|\| it\.trailer/, 'film: sağlayıcı fragmanı');
   assert.match(app, /trailer: info\.trailer \|\| it\.trailer/, 'dizi: sağlayıcı fragmanı');
-  assert.match(app, /\.\.\.trailerSearch\(film\.name, film\.year, null\)/, 'bilgi ekranı');
+  assert.match(app, /\.\.\.trailerSearch\(film\.name, film\.year, origin\)/, 'bilgi ekranı: IMDb kaydı olmayan (sinema sitesi) filmde Wikidata özgün adı ile aranır');
+  assert.match(app, /film\.imdbId \? Promise\.resolve\(null\) : resolveTitleOrigin\(net, film\.name, film\.year, store\)/, 'IMDb kimliği yoksa Türkçe ad + yıl ile bulunur');
   assert.match(app, /\.\.\.trailerSearch\(it\.name, \(info && info\.year\) \|\| \(meta && meta\.year\), origin\)/);
   assert.match(app, /paintTitleExtras\(body, null, provider, extrasOf\(null, null\)\)/, 'film: eşleşme çözülemese de fragman');
   assert.match(app, /resolveTitleOrigin\(net, it\.name, year, store\)/, 'IMDb eşleşmesi yoksa Türkçe ad özgün ada çevrilir');

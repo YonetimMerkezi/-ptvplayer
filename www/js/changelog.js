@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 169,
+    title: 'Vizyondaki filmler: Türkiye sinema programı',
+    items: [
+      'Vizyondaki filmler artık Türkiye sinemalarında gösterilen filmlerdir: Beyazperde, Paribu Cineverse ve Biletinial listeleri birleştirilir (eskiden yalnız genel “yeni çıkanlar” vardı, çoğu film eksikti)',
+      'Listede olmayan filme dokununca fragman ve bilgi açılır; IMDb kaydı Türkçe ad ve yıldan bulunur',
+      'Liste sayfasının altında hangi kaynaktan kaç film geldiği, alınamayan kaynağın nedeni yazar; hiçbir site açılmazsa eski liste gösterilir',
+    ],
+  },
+  {
     id: 168,
     title: 'Spor: Mackolik skor düzeltmesi',
     items: [

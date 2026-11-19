@@ -223,7 +223,7 @@ export function peopleHtml(people, locked = false) {
 export function filmCardHtml(f, i = 0) {
   const img = f.poster ? `<img src="${esc(f.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const meta = [f.type === 'series' ? 'Dizi' : 'Film', f.year || ''].filter(Boolean).join(' · ');
-  return `<button class="ac-card k${i % 6}${f.inLib ? ' lib' : ' off'}" data-film="${esc(f.imdbId)}" data-type="${esc(f.type)}" aria-label="${esc(f.name)}${f.inLib ? '' : ', listende yok'}"><span class="ac-poster"><i>${esc(initialsOf(f.name))}</i>${img}</span><b>${esc(f.name)}</b><small>${esc(meta)}</small><em>${f.inLib ? `${ic('play')}Oynat` : 'Listende yok'}</em></button>`;
+  return `<button class="ac-card k${i % 6}${f.inLib ? ' lib' : ' off'}" data-film="${esc(f.id || f.imdbId)}" data-type="${esc(f.type)}" aria-label="${esc(f.name)}${f.inLib ? '' : ', listende yok'}"><span class="ac-poster"><i>${esc(initialsOf(f.name))}</i>${img}</span><b>${esc(f.name)}</b><small>${esc(meta)}</small><em>${f.inLib ? `${ic('play')}Oynat` : 'Listende yok'}</em></button>`;
 }
 
 export function actorHtml(name, role, films, photo = '') {
@@ -242,14 +242,17 @@ export const actorLoadingHtml = (name, photo = '') => `<div class="ac"><div clas
 // films: [{ imdbId, type, name, year, poster }]; inLibOf(film) → listede mi
 export function releasesRowHtml(films, inLibOf = () => false) {
   if (!films || !films.length) return '';
-  const cards = films.slice(0, 12).map((f) => `<div class="card nw" role="button" tabindex="0" data-nid="${esc(f.imdbId)}" aria-label="${esc(f.name)}"><div class="poster"><div class="ph">${esc(initialsOf(f.name))}</div><img src="${esc(f.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">${inLibOf(f) ? '<span class="nw-tag">Listende</span>' : ''}</div><div class="cap">${esc(f.name)}</div></div>`).join('');
+  const cards = films.slice(0, 12).map((f) => `<div class="card nw" role="button" tabindex="0" data-nid="${esc(f.id || f.imdbId)}" aria-label="${esc(f.name)}"><div class="poster"><div class="ph">${esc(initialsOf(f.name))}</div><img src="${esc(f.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">${inLibOf(f) ? '<span class="nw-tag">Listende</span>' : ''}</div><div class="cap">${esc(f.name)}</div></div>`).join('');
   return `<section class="home-row nw-row"><div class="home-row-h"><b>🎬 Vizyondaki filmler</b><button data-go="new">Tümünü gör</button></div><div class="home-row-s">${cards}</div></section>`;
 }
 
-// films: [{ ..., inLib }]
-export function releasesPageHtml(films) {
+// films: [{ ..., inLib }]; info: { sources: "Beyazperde 62 · …" (kaynak özeti), stale, fallback }
+export function releasesPageHtml(films, info = {}) {
   if (!films || !films.length) return '<div class="ac"><div class="empty"><p>Şu an gösterilecek film bulunamadı.</p></div></div>';
-  return `<div class="ac"><p class="ac-note">Yeni çıkan filmler. Listendekiler “Oynat”; olmayanlara dokununca fragman ve bilgi açılır.</p><div class="ac-grid">${films.map((f, i) => filmCardHtml(f, i)).join('')}</div></div>`;
+  const local = films.some((f) => f.local);
+  const lead = local ? 'Türkiye sinemalarında vizyondaki filmler.' : 'Yeni çıkan filmler.';
+  const notes = [info.fallback ? 'Sinema siteleri alınamadığı için genel yeni çıkanlar listesi gösteriliyor.' : '', info.stale ? 'Güncel liste alınamadı; son kaydedilen gösteriliyor.' : '', info.sources || ''].filter(Boolean);
+  return `<div class="ac"><p class="ac-note">${lead} Listendekiler “Oynat”; olmayanlara dokununca fragman ve bilgi açılır.</p><div class="ac-grid">${films.map((f, i) => filmCardHtml(f, i)).join('')}</div>${notes.map((n) => `<p class="ac-note ac-src">${esc(n)}</p>`).join('')}</div>`;
 }
 
 // ---- listede olmayan yapım için bilgi ekranı (Cinemeta ayrıntısından) ----
