@@ -5,7 +5,7 @@ import { esc, fmtClock, fold } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { MATCH_LEADS, MATCH_LEAD_DEFAULT, leadLabel, matchPlanId, canRemind, makeMatchPlan } from './plan.js';
 import {
-  ESPN_BASE, leagueOf, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
+  ESPN_BASE, lgLine, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
   matchesOnDay, sections, chipsFor, capSections, hasLive, noScore,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
@@ -13,7 +13,7 @@ import { loadMackolikDay } from './sports-mk.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
 import { SCHED_BASES, loadSchedDay, seInfoFor, mergeSe } from './sports-se.js';
 import { BADGE_HOST, badgeSearchUrl, pickBadge, sideLogo, logoHtml, nationFlags } from './sports-logos.js';
-import { FAV_CHIP, cleanFavs, isFavSide, hasFavMatch, toggleFav, autoRemindTargets, nextDone } from './sports-fav.js';
+import { FAV_CHIP, FAV_KEY, LEAD_KEY, cleanFavs, isFavSide, hasFavMatch, toggleFav, applyAutoRemind, readDone as readDoneOf } from './sports-fav.js';
 
 const CACHE_KEY = 'sports:v1'; // ESPN maçları
 const LS_CACHE_KEY = 'sports-ls:v2'; // LiveScore gün listeleri
@@ -81,8 +81,6 @@ export function openSports(env) {
   let loading = false;
   let day = dayStart(now());
   let lg = '';
-  const FAV_KEY = 'sp.favs'; // takip edilen takımlar
-  const FAV_DONE_KEY = 'sp.favdone'; // otomatik hatırlatıcısı kurulmuş maç kimlikleri (elle kaldırılan yeniden kurulmaz)
   let favs = cleanFavs(store.pref(FAV_KEY, []));
   let chan = new Map(); // maç kimliği → { item, p }
   let byId = new Map();
@@ -132,7 +130,6 @@ export function openSports(env) {
     const pen = m.home.pen != null && m.away.pen != null && m.state === 'post' ? `<small> (${m.home.pen}-${m.away.pen})</small>` : '';
     return `<b class="sp-sc">${m.home.score} – ${m.away.score}${pen}</b>`;
   };
-  const lgLine = (m) => [m.lgName || (leagueOf(m.lg) || {}).name || '', m.round].filter(Boolean).join(' · ');
 
   // Listenizde bu adla bulunan kanalın logosu (ad başına bir kez aranır)
   function playlistLogo(name) {
@@ -237,7 +234,6 @@ export function openSports(env) {
   const teamHtml = (side, other) => `<span class="sp-tm">${favs.length && isFavSide(favs, side) ? '<i class="sp-fv" aria-label="Takip ediliyor">★</i>' : ''}${logoHtml(sideLogo(side, other, badgeOf), side.label, esc)}<span>${esc(side.label)}</span></span>`;
 
   // ---- maç hatırlatıcısı: satırdaki zil (dokunmatik; kumandada ayrıntı sayfasındaki seçeneklerle kurulur) ----
-  const LEAD_KEY = 'sp.lead';
   let remIds = new Set();
   const bellAttrs = (on) => `aria-label="${on ? 'Hatırlatıcıyı kaldır' : 'Maç için hatırlat'}" title="${on ? 'Hatırlatıcıyı kaldır' : 'Maç için hatırlat'}"`;
   const bellHtml = (m) => (rem && canRemind(m, now()) ? `<button class="sp-bell${remIds.has(matchPlanId(m)) ? ' on' : ''}" tabindex="-1" data-bell ${bellAttrs(remIds.has(matchPlanId(m)))}>${icon('bell')}</button>` : '');
@@ -304,36 +300,10 @@ export function openSports(env) {
 
   // ---- favori takımlar: takip edilen takımların oynanmamış maçları için hatırlatıcı kendiliğinden kurulur ----
   // Aynı maç tekrar kurulmaz (kaldırdığınız hatırlatıcı geri gelmez); takip bırakılırsa kendiliğinden kurulanlar kaldırılır.
-  const readDone = () => {
-    const v = store.pref(FAV_DONE_KEY, []);
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
-  };
+  const readDone = () => readDoneOf(store);
   function autoRemind() {
     if (!rem || !favs.length || !matches.length || !hasPro('teamfollow')) return 0;
-    let planned = [];
-    try {
-      planned = (rem.list() || []).map((x) => x.id);
-    } catch {
-      return 0;
-    }
-    const todo = autoRemindTargets(matches, favs, { now: now(), done: readDone(), planned });
-    const lead = Number(store.pref(LEAD_KEY, MATCH_LEAD_DEFAULT));
-    const ids = [];
-    for (const m of todo) {
-      try {
-        rem.set(makeMatchPlan(m, { lead, ...remindInfo(m) }));
-        ids.push(matchPlanId(m));
-      } catch {
-        /* bu maç için kurulamadı; sonra yeniden denenir */
-      }
-    }
-    if (todo.length || readDone().length) {
-      try {
-        store.setPref(FAV_DONE_KEY, nextDone(readDone(), ids, now()));
-      } catch {
-        /* kayıt başarısız */
-      }
-    }
+    const ids = applyAutoRemind({ matches, favs, rem, store, now: now(), info: remindInfo });
     if (ids.length) syncBells();
     return ids.length;
   }

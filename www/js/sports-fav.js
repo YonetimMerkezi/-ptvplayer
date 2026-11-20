@@ -1,9 +1,12 @@
 // Favori takımlar: takip listesi, maç eşleştirme ve takip edilen takımların maçları için otomatik hatırlatıcı seçimi.
 // Saf mantık (ağ ve ekran yok). Takımlar kaynaklar arasında farklı yazılabildiği için (Galatasaray / Galatasaray SK) eşleştirme teamKeys ile yapılır.
 import { teamKeys, norm } from './sports.js';
-import { canRemind, matchPlanId } from './plan.js';
+import { canRemind, matchPlanId, makeMatchPlan, MATCH_LEAD_DEFAULT } from './plan.js';
 
 export const FAV_MAX = 30;
+export const FAV_KEY = 'sp.favs'; // takip edilen takımlar (kayıtlı ayar)
+export const FAV_DONE_KEY = 'sp.favdone'; // otomatik hatırlatıcısı kurulmuş maç kimlikleri (elle kaldırılan yeniden kurulmaz)
+export const LEAD_KEY = 'sp.lead'; // maç hatırlatıcısı kaç dakika önce
 export const FAV_CHIP = '__fav'; // lig çipi kimliği: yalnız takip edilen takımların maçları
 export const AUTO_DONE_MAX = 400;
 
@@ -79,4 +82,41 @@ export function nextDone(done, addIds, now = Date.now()) {
     return typeof id === 'string' && (!Number.isFinite(t) || t > now - 864e5);
   });
   return [...new Set(keep)].slice(-AUTO_DONE_MAX);
+}
+
+// Otomatik kurulmuş maç kimlikleri (kayıtlı ayardan)
+export function readDone(store) {
+  const v = store.pref(FAV_DONE_KEY, []);
+  return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+}
+
+// Takip edilen takımların oynanmamış maçları için hatırlatıcıları kurar; Spor ekranı ve kendiliğinden eşitleme (follow-sync.js) aynı yolu kullanır.
+// rem: { list(), set(plan) }; info(m): hatırlatıcıya yazılacak { chId, chName, src }. Döner: kurulan maçların plan kimlikleri.
+export function applyAutoRemind({ matches, favs, rem, store, now = Date.now(), info }) {
+  if (!rem || !favs.length || !matches.length) return [];
+  let planned = [];
+  try {
+    planned = (rem.list() || []).map((x) => x.id);
+  } catch {
+    return [];
+  }
+  const todo = autoRemindTargets(matches, favs, { now, done: readDone(store), planned });
+  const lead = Number(store.pref(LEAD_KEY, MATCH_LEAD_DEFAULT));
+  const ids = [];
+  for (const m of todo) {
+    try {
+      rem.set(makeMatchPlan(m, { lead, ...info(m) }));
+      ids.push(matchPlanId(m));
+    } catch {
+      /* bu maç için kurulamadı; sonra yeniden denenir */
+    }
+  }
+  if (todo.length || readDone(store).length) {
+    try {
+      store.setPref(FAV_DONE_KEY, nextDone(readDone(store), ids, now));
+    } catch {
+      /* kayıt başarısız */
+    }
+  }
+  return ids;
 }

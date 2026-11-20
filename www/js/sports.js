@@ -22,6 +22,8 @@ export const LEAGUES = [
   { id: 'uefa.euroq', name: 'EURO Elemeleri' },
 ];
 export const leagueOf = (id) => LEAGUES.find((l) => l.id === id) || null;
+// Maçın lig satırı: "Lig adı · tur" (ekranda ve hatırlatıcıda yayıncı bilinmiyorsa gösterilir)
+export const lgLine = (m) => [m.lgName || (leagueOf(m.lg) || {}).name || '', m.round].filter(Boolean).join(' · ');
 
 // Aynı saatteki maçların sırası: önce ESPN ligleri (LEAGUES sırasıyla), sonra diğerleri (kendi sıralarıyla)
 export function matchRank(m) {

@@ -584,6 +584,7 @@ async function activate(id, { force = false } = {}) {
   const stale = !cached || Date.now() - cached.fetchedAt > staleCatalogMs();
   if (force || stale) await refreshCatalog({ quiet: !!cached && !force });
   else maybeRefreshEpg();
+  scheduleFollowSync(20000); // liste hazır: takip edilenlerin hatırlatıcıları (günde bir kez) güncellenir
 }
 
 // Katalog ya da eşitleme sonrası ekran tazelenir. Liste açıksa baştan kurulmaz: açık kategori ve kaydırma yeri korunur
@@ -2042,6 +2043,42 @@ async function ensurePlanPermissions() {
   }
 }
 
+// Hatırlatıcı arayüzü: Spor, Bugün, Dizi akışı ekranları ve kendiliğinden eşitleme aynı plan listesine yazar.
+const planApi = {
+  list: () => readPlans(),
+  set: (plan) => {
+    const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) }; // başlamasına az kaldıysa hemen haber verir
+    setPlans(addPlan(readPlans(), p));
+    ensurePlanPermissions();
+    return p;
+  },
+  remove: (id) => setPlans(removePlan(readPlans(), id)),
+};
+
+// Takip ettikleriniz (diziler, takımlar) için kendiliğinden eşitleme: sayfa açmadan yeni maç ve bölümlerin hatırlatıcılarını kurar (follow-sync.js).
+// Uygulama açılınca ve öne gelince denenir; ne zaman çalışacağına (günde bir kez, hata olursa 3 saat sonra) modül kendisi karar verir.
+let followBusy = false;
+let followTimer = 0;
+const hasFollows = () => ((store.pref('series.followed.v1', []) || []).length || (store.pref('sp.favs', []) || []).length) > 0;
+function scheduleFollowSync(delayMs = 15000) {
+  clearTimeout(followTimer);
+  followTimer = setTimeout(runFollowing, delayMs);
+}
+async function runFollowing() {
+  if (followBusy || !S.source || document.visibilityState !== 'visible' || !hasFollows()) return;
+  followBusy = true;
+  try {
+    const m = await import('./follow-sync.js'); // spor modülleri yalnız takip varken yüklenir
+    const r = await m.runFollowSync({ net, store, rem: planApi, liveItems: () => visibleAll('live'), sourceId: () => sid(), online: navigator.onLine !== false });
+    const n = (r.series || 0) + (r.teams || 0);
+    if (n) toast(`Takip ettikleriniz için ${n} hatırlatıcı kuruldu`, 3200);
+  } catch {
+    /* eşitleme sessizce atlanır; sonraki açılışta yeniden denenir */
+  } finally {
+    followBusy = false;
+  }
+}
+
 const planIdOf = (kind, it, p) => planId(kind, it.id, p.s, sid());
 
 // Programa hatırlatıcı ya da zamanlı kayıt ekler; planı varsa kaldırır. Dönen değer: plan artık var mı.
@@ -2952,16 +2989,7 @@ async function openSportsPage() {
       play: (items, index) => playLive(items, index),
       sourceId: () => sid(),
       // Maç hatırlatıcıları, program hatırlatıcılarıyla aynı plan listesinde durur (Planlananlar ekranında görünür, alarm uygulama kapalıyken de çalışır)
-      reminders: {
-        list: () => readPlans(),
-        set: (plan) => {
-          const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) }; // başlamasına az kaldıysa hemen haber verir
-          setPlans(addPlan(readPlans(), p));
-          ensurePlanPermissions();
-          return p;
-        },
-        remove: (id) => setPlans(removePlan(readPlans(), id)),
-      },
+      reminders: planApi,
     });
   } catch (e) {
     toast('Spor ekranı açılamadı: ' + ((e && e.message) || e));
@@ -3025,16 +3053,7 @@ async function openToday() {
       setFilmChannels: (ids) => store.setPref('today.film.ch.' + sid(), ids),
       sourceId: () => sid(),
       toast,
-      reminders: {
-        list: () => readPlans(),
-        set: (plan) => {
-          const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) };
-          setPlans(addPlan(readPlans(), p));
-          ensurePlanPermissions();
-          return p;
-        },
-        remove: (id) => setPlans(removePlan(readPlans(), id)),
-      },
+      reminders: planApi,
       openFlow: openSeriesFlow,
     });
   } catch (e) {
@@ -3053,16 +3072,7 @@ async function openSeriesFlow() {
       liveItems: () => visibleAll('live'),
       play: (items, index) => playLive(items, index),
       // Hatırlatıcılar maç hatırlatıcılarıyla aynı plan listesinde durur (Planlananlar ekranında görünür)
-      reminders: {
-        list: () => readPlans(),
-        set: (plan) => {
-          const p = { ...plan, at: Math.max(plan.at, Date.now() + 3000) };
-          setPlans(addPlan(readPlans(), p));
-          ensurePlanPermissions();
-          return p;
-        },
-        remove: (id) => setPlans(removePlan(readPlans(), id)),
-      },
+      reminders: planApi,
     });
   } catch (e) {
     toast('Dizi akışı açılamadı: ' + ((e && e.message) || e));
@@ -7173,6 +7183,7 @@ document.addEventListener('visibilitychange', () => {
   refreshManaged();
   refreshRemoteConfig();
   syncBilling();
+  scheduleFollowSync(5000);
 });
 setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
 setInterval(() => {

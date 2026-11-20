@@ -4,28 +4,13 @@ import { needPro } from './membership.js';
 import { loc } from './i18n.js';
 import { esc, fmtClock } from './util.js';
 import { $, icon, openPage } from './ui.js';
-import { WEEKDAYS, dayIndex, loadSeriesWeek, isSportsChannel } from './series-flow.js';
+import { WEEKDAYS, dayIndex, isSportsChannel, FLOW_FRESH_MS, readFlowCache, refreshFlow } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
 import { channelsByName } from './sports-tv.js';
 import { MATCH_LEAD_DEFAULT, leadLabel } from './plan.js';
 import { normalizeFollowed, toggleFollowed, isFollowed, buildNewEpisodePlans, followKey } from './series-follow.js';
 
-const CACHE_KEY = 'series-flow:v1';
-const FRESH_MS = 3 * 3600e3;
-const MAX_AGE = 8 * 864e5; // yalnız aynı yayın haftasının önbelleği kullanılabilir
-const SHOW_MS = 150 * 60e3; // dizi en çok bu kadar sürüyor sayılır ("şimdi" göstergesi)
 const REM_PREFIX = 'drem:';
-
-const istDateKey = (ms) => {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
-  const part = (type) => parts.find((x) => x.type === type)?.value || '';
-  return part('year') + '-' + part('month') + '-' + part('day');
-};
-const weekKey = (ms) => {
-  const d = new Date(istDateKey(ms) + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
-};
 
 // env: { net, store, toast, liveItems(), play(items, index), reminders: { list(), set(plan), remove(id) }, now?, base? }
 export function openSeriesFlow(env) {
@@ -158,25 +143,14 @@ export function openSeriesFlow(env) {
     }
   }
 
-  async function persist() {
-    try {
-      await store.cache.set(CACHE_KEY, { at: data.at, weekKey: weekKey(data.at), dateKey: istDateKey(data.at), data: { ...data, weekKey: weekKey(data.at) } });
-    } catch {
-      /* kayıt başarısız olsa da liste çalışır */
-    }
-  }
-
   async function refresh(force = false) {
     if (busy) return;
     busy = true;
     draw();
     try {
-      const r = await loadSeriesWeek({ net, base: env.base, nowMs: now() });
-      // İki günlük EPG yedeği, aynı haftanın geçerli 7 günlük önbelleğini asla ezmez.
-      if (r.coverageDays === 2 && data && data.coverageDays !== 2 && data.weekKey === weekKey(now())) throw Object.assign(new Error('Yalnız bugün ve yarının listesi alınabildi'), { detail: r.note });
-      data = { at: now(), weekKey: weekKey(now()), ...r };
+      // İki günlük EPG yedeği, aynı haftanın geçerli 7 günlük önbelleğini asla ezmez (refreshFlow hata verir); indirilen akış kaydedilir.
+      data = await refreshFlow({ net, store, base: env.base, nowMs: now(), prev: data });
       err = null;
-      persist();
       syncFollowReminders();
     } catch (e) {
       err = e;
@@ -257,20 +231,10 @@ export function openSeriesFlow(env) {
   });
 
   (async () => {
-    try {
-      const c = await store.cache.get(CACHE_KEY);
-      if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && now() - c.at < MAX_AGE) {
-        const coverage = c.data.coverageDays || (c.data.todayOnly ? 1 : 7);
-        const savedWeek = c.weekKey || weekKey(c.at);
-        const valid = coverage === 2 ? c.dateKey === istDateKey(now()) : coverage === 7 && !c.data.todayOnly && savedWeek === weekKey(now());
-        if (valid) data = { ...c.data, coverageDays: coverage, weekKey: savedWeek };
-      }
-    } catch {
-      /* kayıtlı veri yok */
-    }
+    data = await readFlowCache(store, now());
     draw();
     syncFollowReminders();
-    if (!data || now() - data.at > FRESH_MS) refresh();
+    if (!data || now() - data.at > FLOW_FRESH_MS) refresh();
   })();
 
   // şimdi/biten durumu dakikada bir yenilenir

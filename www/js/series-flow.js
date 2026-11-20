@@ -356,3 +356,48 @@ export async function loadSeriesWeek({ net, base = DIZI_BASE, timeoutMs = 20000,
   err.detail = notes.join(' · ').slice(0, 500);
   throw err;
 }
+
+// ---- haftalık akışın önbelleği: Dizi akışı ekranı ve kendiliğinden eşitleme (follow-sync.js) aynı kaydı kullanır ----
+export const FLOW_CACHE_KEY = 'series-flow:v1';
+export const FLOW_FRESH_MS = 3 * 3600e3; // bundan yeni akış yeniden indirilmez
+export const FLOW_MAX_AGE = 8 * 864e5; // yalnız aynı yayın haftasının önbelleği kullanılabilir
+
+export const istDateKey = (ms) => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
+  const part = (type) => parts.find((x) => x.type === type)?.value || '';
+  return part('year') + '-' + part('month') + '-' + part('day');
+};
+export const weekKey = (ms) => {
+  const d = new Date(istDateKey(ms) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+};
+
+// Kayıtlı haftalık akış; yoksa, çok eskiyse ya da başka haftaya (iki günlük yedekte başka güne) aitse null.
+export async function readFlowCache(store, nowMs = Date.now()) {
+  try {
+    const c = await store.cache.get(FLOW_CACHE_KEY);
+    if (c && c.data && Array.isArray(c.data.days) && c.data.days.length === 7 && c.at && nowMs - c.at < FLOW_MAX_AGE) {
+      const coverage = c.data.coverageDays || (c.data.todayOnly ? 1 : 7);
+      const savedWeek = c.weekKey || weekKey(c.at);
+      const valid = coverage === 2 ? c.dateKey === istDateKey(nowMs) : coverage === 7 && !c.data.todayOnly && savedWeek === weekKey(nowMs);
+      if (valid) return { ...c.data, coverageDays: coverage, weekKey: savedWeek };
+    }
+  } catch {
+    /* kayıtlı veri yok */
+  }
+  return null;
+}
+
+// Akışı indirir ve kaydeder. prev: elde olan akış; iki günlük EPG yedeği, aynı haftanın geçerli 7 günlük kaydını asla ezmez (hata fırlatır).
+export async function refreshFlow({ net, store, base, nowMs = Date.now(), prev = null, load = loadSeriesWeek } = {}) {
+  const r = await load({ net, base, nowMs });
+  if (r.coverageDays === 2 && prev && prev.coverageDays !== 2 && prev.weekKey === weekKey(nowMs)) throw Object.assign(new Error('Yalnız bugün ve yarının listesi alınabildi'), { detail: r.note });
+  const data = { at: nowMs, weekKey: weekKey(nowMs), ...r };
+  try {
+    await store.cache.set(FLOW_CACHE_KEY, { at: data.at, weekKey: weekKey(data.at), dateKey: istDateKey(data.at), data: { ...data, weekKey: weekKey(data.at) } });
+  } catch {
+    /* kayıt başarısız olsa da liste çalışır */
+  }
+  return data;
+}

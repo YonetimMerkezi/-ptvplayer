@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 174,
+    title: 'Takip ettikleriniz için kendiliğinden hatırlatıcı',
+    items: [
+      'Takip ettiğiniz takımların maçları ve dizilerin yeni bölümleri için hatırlatıcılar, Spor ya da Dizi akışı sayfasını açmanıza gerek kalmadan kurulur',
+      'Uygulama açıldığında ya da öne geldiğinde günde en çok bir kez güncellenir; kurulan hatırlatıcılar uygulama kapalıyken de çalışır (uygulamayı hiç açmazsanız yeni maç ve bölümler eklenmez)',
+      'Bu yolla kurulan maç hatırlatıcılarında kanal yerine lig adı yazar; kanal, Spor sayfası açılınca eşleşir',
+    ],
+  },
+  {
     id: 173,
     title: 'Canlı yayında geri sarma',
     items: [

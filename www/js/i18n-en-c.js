@@ -472,4 +472,5 @@ export const EN_C = [
   ["Arşiv bu noktada bitti, canlıya geçildi", "The archive ends here, switched to live"],
   ["Geriden izleme", "Time-shifted viewing"],
   ["CANLI", "LIVE"],
+  ["Takip ettikleriniz için {0} hatırlatıcı kuruldu", "{0} reminders set for what you follow"],
 ];
