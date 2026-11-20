@@ -3,7 +3,7 @@ import { ctx, open, pop, top, cikis } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
 import { actionOf } from './keys.js';
-import { saatleriYaz } from './ui.js';
+import { saatleriYaz, toast } from './ui.js';
 import * as K from './log.js';
 import { homeScreen } from './screens/home.js';
 import { addSourceScreen } from './screens/addsource.js';
@@ -38,10 +38,31 @@ export function tuslariBagla(doc) {
   let okAsagida = false;
   let okUzun = false;
   let okT = 0;
+  let geriBasildi = false; // Geri için keydown görüldü mü (bazı yazılımlarda yalnız keyup gelir)
+  let sonKokGeri = 0;
+  let izSayac = 0;
 
   const aktifGiris = () => {
     const a = doc.activeElement;
     return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') ? a : null;
+  };
+  // Geri ve tanınmayan tuşların kodu Hata kaydına yazılır: TV'nin ne gönderdiği ekrandan okunabilsin
+  const iz = (tur, e, a) => {
+    if (izSayac >= 60 || aktifGiris()) return;
+    if (a && a !== 'back') return;
+    izSayac++;
+    K.bilgi('Tuş ' + tur + ' ' + e.keyCode + (a ? ' → ' + a : ' (tanımsız)'));
+  };
+  // Kök ekranda Geri: kazara çıkmasın diye iki kez basılması istenir
+  const kokGeri = () => {
+    const s = Date.now();
+    if (sonKokGeri && s - sonKokGeri < 2500) {
+      sonKokGeri = 0;
+      cikis();
+      return;
+    }
+    sonKokGeri = s;
+    toast('Çıkmak için Geri tuşuna tekrar basın');
   };
   const gonder = (t, a) => {
     if (!t) return;
@@ -52,12 +73,11 @@ export function tuslariBagla(doc) {
       K.hata(e);
     }
     if (!tuketildi && a === 'back') {
-      if (!pop()) cikis();
+      if (!pop()) kokGeri();
     }
   };
-
-  doc.addEventListener('keydown', (e) => {
-    const a = actionOf(e.keyCode);
+  // keydown gövdesi; Geri keyup ile gelirse aynı yoldan geçirilir
+  const isle = (e, a) => {
     const t = top();
     if (!t) return;
     const giris = aktifGiris();
@@ -68,6 +88,7 @@ export function tuslariBagla(doc) {
     }
     if (!a) return;
     e.preventDefault();
+    if (a === 'back' && e.repeat) return; // tuşa basılı tutmak art arda çıkış sayılmasın
     if (a === 'ok') {
       if (t.longOk) {
         if (!okAsagida) {
@@ -87,9 +108,26 @@ export function tuslariBagla(doc) {
       if (e.repeat) return;
     }
     gonder(t, a);
+  };
+
+  doc.addEventListener('keydown', (e) => {
+    const a = actionOf(e.keyCode);
+    iz('keydown', e, a);
+    if (a === 'back') geriBasildi = true;
+    isle(e, a);
   });
   doc.addEventListener('keyup', (e) => {
-    if (actionOf(e.keyCode) !== 'ok' || !okAsagida) return;
+    const a = actionOf(e.keyCode);
+    if (a === 'back') {
+      const gordu = geriBasildi;
+      geriBasildi = false;
+      if (!gordu) {
+        iz('keyup', e, a);
+        isle(e, a);
+      }
+      return;
+    }
+    if (a !== 'ok' || !okAsagida) return;
     okAsagida = false;
     clearTimeout(okT);
     const uzundu = okUzun;

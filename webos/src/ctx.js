@@ -1,6 +1,7 @@
 // Ortak bağlam: depo, ağ, etkin kaynağın veri sağlayıcısı ve ekran yığını.
 import { createProvider } from './data.js';
 import { saatleriYaz } from './ui.js';
+import { luna } from './luna.js';
 import * as K from './log.js';
 
 export const ctx = {
@@ -86,20 +87,31 @@ export function resetTo(ad, arg) {
 
 export const top = ust;
 
+// Uygulamadan çıkış. TV yazılımına göre işe yarayan yol değiştiği için sırayla denenir:
+// platformBack → window.close → (hâlâ açıksak) TV ana ekranını açma.
 export function cikis() {
+  let yontem = 'yok';
   try {
     if (window.PalmSystem && window.PalmSystem.platformBack) {
       window.PalmSystem.platformBack();
-      return;
+      yontem = 'platformBack';
     }
   } catch (e) {
-    /* yoksay */
+    K.hata(e);
   }
-  try {
-    window.close();
-  } catch (e) {
-    /* yoksay */
-  }
+  K.bilgi('Çıkış istendi (' + yontem + ')');
+  setTimeout(() => {
+    try {
+      window.close();
+    } catch (e) {
+      /* yoksay */
+    }
+  }, 250);
+  setTimeout(() => {
+    // Buraya gelindiyse uygulama kapanmamıştır; en azından TV ana ekranına dön
+    K.uyar('Uygulama kapanmadı; ana ekran açılıyor');
+    luna('luna://com.webos.applicationManager/launch', { id: 'com.webos.app.home' }, 5000).catch((e) => K.hata(e));
+  }, 1000);
 }
 
 export const ikon = {

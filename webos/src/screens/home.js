@@ -20,7 +20,7 @@ export function homeScreen() {
     ustCubuk('Iptv Player Pro', src ? esc(src.name) : '') +
     '<div class="tiles">' +
     KAROLAR.map((k, i) => '<div class="tile" data-i="' + i + '"><i class="ic">' + k.ic + '</i><span>' + k.ad + '</span></div>').join('') +
-    '</div><div class="hint">Gezin: ▲▼◀▶ · Seç: OK · Çıkış: Geri</div>';
+    '</div><div class="hint">Gezin: ▲▼◀▶ · Seç: OK · Çıkış: Geri ×2</div>';
   let sec = 0;
   const dugumler = kok.querySelectorAll('.tile');
   const isaretle = () => {
