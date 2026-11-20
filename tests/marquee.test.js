@@ -17,3 +17,11 @@ test('taşan ad, taşma kadar kayar; süre taşmayla orantılı ve en az 3 sn', 
   assert.equal(b.dur, 12);
   assert.ok(marqueeFor(204, 200).dur >= 3);
 });
+
+test('TV: kayan ad animasyonu yalnız odaktaki satırda; telefonda her zaman', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../www/css/app.css', import.meta.url), 'utf8');
+  assert.match(css, /html\.tv \.mq > \.mq-i \{ animation: none; \}/, 'TV\'de kayma varsayılan olarak kapalı olmalı');
+  assert.match(css, /html\.tv \[tabindex\]:focus \.mq > \.mq-i \{ animation: mq /, 'odaktaki satırın adı kaymalı');
+  assert.match(css, /^\.mq > \.mq-i \{ animation: mq /m, 'telefonda ad kendiliğinden kaymaya devam eder');
+});

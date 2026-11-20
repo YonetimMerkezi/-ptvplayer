@@ -87,24 +87,48 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   const SCOPED = ['fav.', 'favx.', 'rec.', 'prog.', 'progx.'];
   let pid = '';
   const keyOf = (k) => P + (pid && SCOPED.some((x) => k.startsWith(x)) ? 'p.' + pid + '.' + k : k);
-  const read = (k, d) => {
+  // Bellek önbelleği: depodaki her kayıt (ayarlar, favoriler, son izlenenler, ilerleme…) ilk okunuşta bir kez ayrıştırılıp bellekte tutulur;
+  // sonraki okumalar depoya ve JSON.parse'a gitmez (ekran çizimlerinde yüzlerce kez okunuyordu; zayıf TV kutusunda kasıyordu).
+  // Yazma ve silme kaydı önbellekten düşürür, bir sonraki okuma depodakini yeniden alır: bellek her zaman depoyla aynıdır.
+  // Okuyana önbelleğin kendisi değil sığ kopyası verilir (dizi/nesne üzerinde sıralama, ekleme, silme depoyu bozmasın).
+  const MISSING = Symbol('yok'); // depoda yok ya da bozuk
+  const memo = new Map(); // tam anahtar → ayrıştırılmış değer | MISSING
+  const parsed = (full) => {
+    if (memo.has(full)) return memo.get(full);
+    let x = MISSING;
     try {
-      const v = storage.getItem(keyOf(k));
-      if (v == null) return d;
-      const x = JSON.parse(v);
-      // Bozulmuş kayıt (beklenen dizi/nesne değilse) varsayılana düşer; listeleri okuyan kod çökmez.
-      if (Array.isArray(d)) return Array.isArray(x) ? x : d;
-      if (d && typeof d === 'object') return x && typeof x === 'object' && !Array.isArray(x) ? x : d;
-      return x;
+      const v = storage.getItem(full);
+      if (v != null) x = JSON.parse(v);
     } catch {
-      return d;
+      x = MISSING;
     }
+    memo.set(full, x);
+    return x;
+  };
+  const copyOf = (x) => (Array.isArray(x) ? x.slice() : x && typeof x === 'object' ? { ...x } : x);
+  const read = (k, d) => {
+    const x = parsed(keyOf(k));
+    if (x === MISSING) return d;
+    // Bozulmuş kayıt (beklenen dizi/nesne değilse) varsayılana düşer; listeleri okuyan kod çökmez.
+    if (Array.isArray(d)) return Array.isArray(x) ? copyOf(x) : d;
+    if (d && typeof d === 'object') return x && typeof x === 'object' && !Array.isArray(x) ? copyOf(x) : d;
+    return copyOf(x);
   };
   const write = (k, v) => {
+    const full = keyOf(k);
+    memo.delete(full);
     try {
-      storage.setItem(keyOf(k), JSON.stringify(v));
+      storage.setItem(full, JSON.stringify(v));
     } catch {
       /* kota dolu: sessizce geç */
+    }
+  };
+  const remove = (full) => {
+    memo.delete(full);
+    try {
+      storage.removeItem(full);
+    } catch {
+      /* yok say */
     }
   };
 
@@ -133,13 +157,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   };
   api.removeSource = (id) => {
     write('sources', api.sources().filter((s) => s.id !== id));
-    for (const k of ['fav.', 'favx.', 'rec.', 'prog.', 'progx.', 'cats.', 'pref.bad.', 'pref.hidch.', 'pref.hhist.']) {
-      try {
-        storage.removeItem(P + k + id);
-      } catch {
-        /* yok say */
-      }
-    }
+    for (const k of ['fav.', 'favx.', 'rec.', 'prog.', 'progx.', 'cats.', 'pref.bad.', 'pref.hidch.', 'pref.hhist.']) remove(P + k + id);
     for (const pr of extraProfiles()) dropScoped(pr.id, id); // diğer profillerdeki favori/son izlenen/ilerleme de gider
     cache.del('cat:' + id);
     cache.del('epg:' + id);
@@ -150,13 +168,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   const MAX_PROFILES = 6;
   const extraProfiles = () => read('profiles', []).filter((x) => x && typeof x.id === 'string' && x.id && typeof x.name === 'string');
   const dropScoped = (profileId, sid) => {
-    for (const k of SCOPED) {
-      try {
-        storage.removeItem(P + 'p.' + profileId + '.' + k + sid);
-      } catch {
-        /* yok say */
-      }
-    }
+    for (const k of SCOPED) remove(P + 'p.' + profileId + '.' + k + sid);
   };
   api.MAX_PROFILES = MAX_PROFILES;
   api.profiles = () => [{ id: '', name: String(read('profile.main', '') || 'Ana profil') }, ...extraProfiles().map((x) => ({ id: x.id, name: x.name }))];
@@ -286,6 +298,23 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   api.pref = (k, d) => read('pref.' + k, d);
   api.setPref = (k, v) => write('pref.' + k, v);
 
+  // ---- bellek önbelleği denetimi ----
+  // reload: depo bu store dışından değiştiyse bellek bırakılır; sonraki okuma depodakini alır.
+  api.reload = () => memo.clear();
+  // preload: tüm kayıtları belleğe alır (açılışta ve ara sıra). Kısa parçalar halinde çalışır, arada arayüze nefes aldırır;
+  // onProgress(biten, toplam). reload: önce belleği bırakır (ara sıra tazeleme). Dönen: kayıt sayısı.
+  api.preload = async ({ reload = false, onProgress = () => {}, chunk = 25, tick = () => new Promise((r) => setTimeout(r, 0)) } = {}) => {
+    if (reload) memo.clear();
+    const keys = api.keys();
+    for (let i = 0; i < keys.length; i += chunk) {
+      for (const k of keys.slice(i, i + chunk)) parsed(P + k);
+      onProgress(Math.min(keys.length, i + chunk), keys.length);
+      await tick();
+    }
+    onProgress(keys.length, keys.length);
+    return keys.length;
+  };
+
   // ---- ham erişim (yedekle / geri yükle): 'iptv.' önekinden sonraki anahtar adlarıyla ----
   api.keys = () => {
     const out = [];
@@ -302,13 +331,7 @@ export function createStore({ storage = pickStorage(), cache = createCache() } =
   };
   api.get = (k) => read(k, undefined);
   api.put = (k, v) => write(k, v);
-  api.drop = (k) => {
-    try {
-      storage.removeItem(P + k);
-    } catch {
-      /* yok say */
-    }
-  };
+  api.drop = (k) => remove(P + k);
 
   return api;
 }

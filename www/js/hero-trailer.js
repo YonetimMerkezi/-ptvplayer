@@ -3,12 +3,13 @@
 //   → oynamaya başlayınca CINE_MS sonra ekrandaki bilgiler kaybolur (sinema kipi)
 //   → herhangi bir tuş/dokunuş bilgiyi geri getirir, hareketsiz kalınca yine kaybolur → odak başka yapıma geçince ya da video bitince durur.
 // resolve(it): Promise<string[]> (YouTube kimlikleri; boşsa fragman yok). start(ids, it): oynatıcıyı kurar. stop(): kaldırır.
-// setCine(bool): bilgileri gizler/gösterir. enabled(it): bu yapım için çalışsın mı. timers: sınama için sahte zamanlayıcı.
+// setCine(bool): bilgileri gizler/gösterir. enabled(it): bu yapım için KENDİLİĞİNDEN çalışsın mı (ayar açıkken). timers: sınama için sahte zamanlayıcı.
+// play(it): "Fragmanı oynat" düğmesi; beklemeden ve otomatik oynatma ayarından bağımsız başlar (allowed(it) izin vermeli); fragman yoksa notFound(it) çağrılır.
 export const DWELL_MS = 1500;
 export const PREFETCH_MS = 400;
 export const CINE_MS = 4000;
 
-export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, cine = CINE_MS, resolve, start, stop, setCine, enabled = () => true, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
+export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, cine = CINE_MS, resolve, start, stop, setCine, enabled = () => true, allowed = enabled, notFound = () => {}, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
   let cur = null; // odaktaki yapım
   let state = 'idle'; // idle | arming | resolving | loading | playing
   let skip = ''; // bitmiş / başarısız / fragmanı olmayan yapım: odak değişene dek yeniden denenmez
@@ -69,6 +70,37 @@ export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, ci
         state = 'loading';
         start(ids, cur);
       }, dwell);
+    },
+    // Kullanıcı "Fragmanı oynat"a bastı: bekleme yok, otomatik oynatma ayarına bakılmaz. Başlatılamazsa false (izin yok / yapım yok).
+    play(it) {
+      const target = it || cur;
+      if (!target || !allowed(target)) return false;
+      halt();
+      cur = target;
+      skip = '';
+      state = 'resolving';
+      const my = seq;
+      Promise.resolve()
+        .then(() => resolve(target))
+        .then((r) => r || [], () => [])
+        .then((ids) => {
+          if (my !== seq || state !== 'resolving') return;
+          if (!ids.length) {
+            state = 'idle';
+            skip = target.id;
+            notFound(target);
+            return;
+          }
+          state = 'loading';
+          start(ids, target);
+        });
+      return true;
+    },
+    // Kullanıcı fragmanı kapattı: oynatıcı kalkar, aynı yapımda kendiliğinden yeniden başlamaz
+    stop() {
+      const id = cur && cur.id;
+      halt();
+      skip = id || '';
     },
     // Oynatıcıdan: video oynamaya başladı
     playing() {

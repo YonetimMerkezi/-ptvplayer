@@ -6,12 +6,27 @@ import { fold } from './util.js';
 
 const sourceCfg = (src) => ({ server: src.server, user: src.user, pass: src.pass });
 
+// Arama dizini (it.f = sadeleştirilmiş ad) yalnız eksik olanlar için hesaplanır; katalogla birlikte diskte saklanır, bu yüzden
+// açılışta yeniden hesaplanmaz (100 bin adda ~0,25 sn masaüstünde, zayıf TV kutusunda saniyeler sürüyordu). Dönen: liste.
 export function prepare(list) {
-  for (const it of list) it.f = fold(it.name);
+  for (const it of list) if (it.f === undefined) it.f = fold(it.name);
   return list;
 }
 
-const strip = (list) => list.map(({ f, ...r }) => r);
+const nextTick = () => new Promise((r) => setTimeout(r, 0));
+
+// Aynısının ilerlemeli sürümü: eksik adlar parça parça hesaplanır, arada arayüze nefes aldırılır. onProgress(0..1); dönen: hesaplanan ad sayısı.
+export async function prepareAsync(lists, { onProgress = () => {}, chunk = 4000, tick = nextTick } = {}) {
+  const todo = [];
+  for (const list of lists) for (const it of list) if (it.f === undefined) todo.push(it);
+  for (let i = 0; i < todo.length; i += chunk) {
+    for (const it of todo.slice(i, i + chunk)) it.f = fold(it.name);
+    onProgress(Math.min(1, (i + chunk) / todo.length));
+    await tick();
+  }
+  onProgress(1);
+  return todo.length;
+}
 
 export function emptyCatalog() {
   return { live: [], movies: [], series: [], epgUrls: [], warnings: [], fetchedAt: 0 };
@@ -73,8 +88,9 @@ export async function loadCatalog(source, net, { onStage = () => {}, onProgress 
   return cat;
 }
 
+// Saklanan katalog: arama dizini (f) dahil, olduğu gibi (kopya yapılmaz; bellekte ikinci bir liste de oluşmaz).
 export function catalogToStorable(cat) {
-  return { ...cat, live: strip(cat.live), movies: strip(cat.movies), series: strip(cat.series) };
+  return cat;
 }
 
 export function catalogFromStorable(raw) {
@@ -83,6 +99,16 @@ export function catalogFromStorable(raw) {
   prepare(raw.movies || (raw.movies = []));
   prepare(raw.series || (raw.series = []));
   return raw;
+}
+
+// Saklanandan okuma, ilerlemeli: dizini eksik (eski sürümden kalma) katalog parça parça tamamlanır. Dönen: { cat, computed } (computed > 0 ise
+// katalog dizinle birlikte yeniden saklanmalıdır; bir kez yapılır). Geçersiz kayıtta cat null.
+export async function catalogFromStorableAsync(raw, opts = {}) {
+  if (!raw || !Array.isArray(raw.live)) return { cat: null, computed: 0 };
+  raw.movies = raw.movies || [];
+  raw.series = raw.series || [];
+  const computed = await prepareAsync([raw.live, raw.movies, raw.series], opts);
+  return { cat: raw, computed };
 }
 
 export function search(list, query, limit = 300) {

@@ -182,7 +182,7 @@ function stageRig() {
 test('vitrin sahnesi: kontrolsüz, sesli başlar; oynayınca katman görünür ve oynuyor bildirilir; bitince kaldırılır', () => {
   const r = stageRig();
   r.stage.start(['a1', 'b2']);
-  assert.match(r.host.innerHTML, /<iframe class="ht-frame" src="https:\/\/www\.youtube\.com\/embed\/a1\?[^"]*mute=0[^"]*controls=0[^"]*disablekb=1[^"]*fs=0/);
+  assert.match(r.host.innerHTML, /<iframe class="ht-frame lo" src="https:\/\/www\.youtube\.com\/embed\/a1\?[^"]*mute=0[^"]*controls=0[^"]*disablekb=1[^"]*fs=0/);
   assert.match(r.host.innerHTML, /tabindex="-1"/, 'kumanda odağı iframe\'e girmez');
   assert.equal(r.cls.has('live'), false, 'oynamadan görünmez');
   r.msg({ event: 'infoDelivery', info: { playerState: 1 } });
@@ -254,7 +254,7 @@ test('bağlantı: vitrin boyanınca fragman denetleyicisine bildirilir; vitrin k
   const app = kaynak('www/js/app.js');
   assert.match(app, /if \(!box \|\| box\.hidden\) return;\n  heroTrailer\.focus\(it\);/, 'paintHero her boyamada odağı bildirir');
   assert.match(app, /function heroOff\(\) \{\n  document\.documentElement\.classList\.remove\('hero-on'\);\n  heroTrailer\.cancel\(\);/);
-  assert.match(app, /const heroTrailerOn = \(\) => \(isTvUi\(\) \|\| phoneVitrin\(\)\) && !kidActive\(\) && trailerAutoOn\(\) && !heroBusy\(\)/, 'TV ya da telefon dikey vitrin, çocuk modu dışı, ayar açık ve Pro, sayfa/oynatıcı yok');
+  assert.match(app, /const heroTrailerCan = \(\) => \(isTvUi\(\) \|\| phoneVitrin\(\)\) && !kidActive\(\) && !heroBusy\(\) && document\.visibilityState !== 'hidden';\nconst heroTrailerOn = \(\) => heroTrailerCan\(\) && trailerAutoOn\(\);/, 'TV ya da telefon dikey vitrin, çocuk modu dışı, sayfa/oynatıcı yok; kendiliğinden oynama ayrıca ayara ve Pro\'ya bağlı');
   assert.match(app, /document\.querySelector\('#sheets > \*'\) \|\| document\.body\.classList\.contains\('player-open'\)/);
   assert.match(app, /visibilitychange', \(\) => \{ if \(document\.visibilityState === 'hidden'\) heroTrailer\.cancel\(\)/);
   assert.match(app, /\['keydown', 'pointerdown', 'touchstart'\]/, 'tuş/dokunuş bilgiyi geri getirir');
@@ -315,4 +315,119 @@ test('bağlantı: fragman sahnesi kenarları keskin değil (maske ile solar), d�
   assert.doesNotMatch(css, /\.tr-box \{ border-radius: 14px; box-shadow/);
   const ui = kaynak('www/js/title-ui.js');
   assert.match(ui, /<div class="tr-hero"><div class="tr-box">\$\{media\}<\/div>\$\{unmute\}<\/div>/, 'düğme maskeli kutunun dışında');
+});
+
+// ---- elle "Fragmanı oynat", düşük kalite, varsayılan kapalı ----
+const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
+test('elle oynatma: beklemeden başlar, otomatik oynatma kapalıyken de çalışır; izin yoksa başlamaz; fragman yoksa notFound', async () => {
+  const c = clock();
+  const log = [];
+  let allow = true;
+  let ids = ['v1'];
+  const ht = createHeroTrailer({
+    timers: c,
+    enabled: () => false, // otomatik oynatma kapalı (varsayılan)
+    allowed: () => allow,
+    notFound: (it) => log.push('yok:' + it.id),
+    resolve: async (it) => { log.push('resolve:' + it.id); return ids; },
+    start: (list, it) => log.push('start:' + list.join(',') + ':' + it.id),
+    stop: () => log.push('stop'),
+    setCine: () => {},
+  });
+  ht.focus(A);
+  await c.advance(DWELL_MS * 3);
+  assert.deepEqual(log, [], 'otomatik kapalıyken odakta bekleyince hiçbir şey olmaz (ağ da kullanılmaz)');
+  assert.equal(ht.play(A), true);
+  await flush();
+  assert.deepEqual(log, ['resolve:' + A.id, 'start:v1:' + A.id], 'bekleme yok');
+  assert.equal(ht.state, 'loading');
+  ht.playing();
+  assert.equal(ht.state, 'playing');
+  ht.stop();
+  assert.equal(ht.state, 'idle');
+  assert.equal(log.at(-1), 'stop');
+  // durdurulan yapımda kendiliğinden yeniden başlamaz; elle yine başlar
+  log.length = 0;
+  ids = [];
+  assert.equal(ht.play(A), true);
+  await flush();
+  assert.deepEqual(log, ['resolve:' + A.id, 'yok:' + A.id]);
+  assert.equal(ht.state, 'idle');
+  allow = false;
+  assert.equal(ht.play(A), false, 'izin yoksa (çocuk modu, Pro değil, sayfa açık) başlamaz');
+});
+
+test('elle oynatma: çözülürken odak başka yapıma geçerse eski sonuç kullanılmaz', async () => {
+  const c = clock();
+  const log = [];
+  let release;
+  const ht = createHeroTrailer({
+    timers: c,
+    enabled: () => false,
+    allowed: () => true,
+    resolve: () => new Promise((r) => { release = () => r(['x']); }),
+    start: (ids) => log.push('start:' + ids),
+    stop: () => log.push('stop'),
+    setCine: () => {},
+  });
+  ht.play(A);
+  await flush(); // çözme başladı, sonuç bekleniyor
+  ht.focus(B);
+  release();
+  await flush();
+  assert.deepEqual(log, []);
+  assert.equal(ht.state, 'idle');
+});
+
+test('vitrin sahnesi: oynatıcı düşük kaliteyle (yarı boy) kurulur; 4 sn sorunsuz oynarsa tam boya alınır; hafif modda düşük kalır', async () => {
+  const mk = (canUpgrade) => {
+    const c = clock();
+    const cls = new Set(['ht-frame', 'lo']);
+    const posted = [];
+    const host = { innerHTML: '', classList: { toggle() {} }, querySelector: () => (host.innerHTML ? host.frame : null) };
+    host.frame = { contentWindow: { postMessage: (m) => posted.push(JSON.parse(m)) }, addEventListener() {}, classList: { remove: (k) => cls.delete(k) } };
+    const ls = new Set();
+    const win = { addEventListener: (ev, fn) => ev === 'message' && ls.add(fn), removeEventListener() {}, emit: (e) => [...ls].forEach((f) => f(e)) };
+    const stage = createHeroStage({ host, win, timers: c, canUpgrade });
+    return { c, cls, posted, host, stage, play: () => win.emit({ source: host.frame.contentWindow, data: JSON.stringify({ event: 'infoDelivery', info: { playerState: 1 } }) }) };
+  };
+  const a = mk(() => true);
+  a.stage.start(['a1']);
+  assert.match(a.host.innerHTML, /class="ht-frame lo"/);
+  assert.equal(a.cls.has('lo'), true);
+  a.play();
+  await a.c.advance(3999);
+  assert.equal(a.cls.has('lo'), true, 'daha erken yükseltilmez');
+  await a.c.advance(1);
+  assert.equal(a.cls.has('lo'), false, 'tam boya alındı');
+  assert.deepEqual(a.posted.at(-1), { event: 'command', func: 'setPlaybackQuality', args: ['large'] });
+  // oynamadan durdurulursa yükseltme zamanlayıcısı kalmaz
+  const d = mk(() => true);
+  d.stage.start(['a1']);
+  d.play();
+  d.stage.stop();
+  assert.equal(d.c.pending(), 0);
+  // hafif mod: düşük kalır
+  const b = mk(() => false);
+  b.stage.start(['a1']);
+  b.play();
+  await b.c.advance(60000);
+  assert.equal(b.cls.has('lo'), true);
+});
+
+test('bağlantı: fragman otomatik oynatma varsayılan KAPALI (ayar ekranı ve kod aynı varsayılanı kullanır); vitrinde "Fragmanı oynat" düğmesi (TV ve telefon)', () => {
+  const app = kaynak('www/js/app.js');
+  assert.match(app, /const SETTING_DEFAULTS = \{ trailerAuto: false \};/);
+  assert.match(app, /const setting = \(k, d = settingDefault\(k\)\) => store\.pref\('set\.' \+ k, d\);/, 'chkRow ve tıklama aynı setting() varsayılanını okur');
+  assert.ok(!/setting\('trailerAuto', true\)/.test(app));
+  assert.match(app, /data-hero="trailer"/);
+  assert.match(app, /if \(b && b\.dataset\.hero === 'trailer'\) return toggleHeroTrailer\(\);/, 'kumanda Tamam\'ı (kbd) da çalışır: kbd dönüşünden önce');
+  assert.match(app, /if \(trailerLocked\(\)\) return void needPro\('trailer'\);/, 'fragman Pro: kilitliyse Pro sayfası');
+  assert.match(app, /allowed: \(\) => heroTrailerCan\(\) && proOk\('trailer'\)/);
+  assert.match(app, /canUpgrade: \(\) => !document\.documentElement\.dataset\.lite/, 'hafif modda düşük kalite');
+  assert.match(app, /kidActive\(\) \? '' : `<button class="hero-trb"/, 'çocuk modunda düğme yok');
+  const css = kaynak('www/css/app.css');
+  assert.match(css, /\.hero-trb \{ display: none; \}/);
+  assert.match(css, /html\.tv\.hero-on \.hero-trb \{ display: inline-flex;/);
+  assert.match(css, /#hero-tr \.ht-frame\.lo \{ width: 50%; height: 85%; transform-origin: 0 0; transform: scale\(2\); \}/, 'yarı boy kurulup 2× büyütülür: kapladığı alan tam boyla aynı');
 });

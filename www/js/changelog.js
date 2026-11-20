@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 175,
+    title: 'TV’de akıcılık: fragman isteğe bağlı, veriler belleğe alınıyor',
+    items: [
+      'Vitrin fragmanı artık kendiliğinden oynamaz (Ayarlar’dan açılabilir); vitrinde “Fragmanı oynat” düğmesi var. Fragman düşük kalitede başlar, birkaç saniye sonra yükselir (Hafif modda yükselmez)',
+      'Liste, ayarlar ve arama dizini açılışta bir kez belleğe alınır; her seferinde yeniden hazırlanmaz. Bu sırada ilerleme çubuğu ve “Bu sırada biraz kasma olabilir” notu görünür; yaklaşık yarım saatte bir hafif bir yenileme de yapılır',
+      'Ana sayfadaki “Yeni eklenenler” ve “En çok oy alanlar” listeleri daha hızlı hazırlanır; görseller en çok dört tanesi aynı anda indirilir; TV’de kayan adlar yalnız odaktaki satırda kayar',
+    ],
+  },
+  {
     id: 174,
     title: 'Takip ettikleriniz için kendiliğinden hatırlatıcı',
     items: [

@@ -6,7 +6,7 @@ import { startI18n, loc, LANG_CHOICES, normalizeLang } from './i18n.js';
 import { createNet } from './net.js';
 import { loadFreeData, matchFree, mergeEpgData } from './epg-free.js';
 import {
-  loadCatalog, catalogToStorable, catalogFromStorable, emptyCatalog, search, groupList, inGroup,
+  loadCatalog, catalogToStorable, catalogFromStorable, catalogFromStorableAsync, emptyCatalog, search, groupList, inGroup,
   playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, peekVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
   loadArchiveEpg, archiveTargets, recordTarget,
 } from './catalog.js';
@@ -64,6 +64,7 @@ import { searchAll } from './multisearch.js';
 import { PLAYER_TOOLS, normalizeLabels } from './ptools.js';
 import { isPlay, loadDist } from './dist.js';
 import { finishIntro } from './intro.js';
+import { runWarm, duePeriodic, progressHtml, MEM_CHECK_MS } from './memwarm.js';
 import { redeem, syncManaged, fetchConfig, giftFor, deviceId, fmtDeviceId, CHECK_MS, LAUNCH_MS } from './managed.js';
 import { BIND_URL, subId, bestToken, callClaim, nextBind, bindAllowed, bindDue } from './devbind.js';
 import { buildReport, encodeReport, describeReport, pushError } from './report.js';
@@ -118,7 +119,10 @@ const hoursMs = (k, d) => {
 };
 const staleCatalogMs = () => hoursMs('auto.cat', 12);
 const staleEpgMs = () => hoursMs('auto.epg', 6);
-const setting = (k, d = true) => store.pref('set.' + k, d);
+// Varsayılanı açık olmayan ayarlar: fragman kendiliğinden oynamaz (zayıf TV kutularını yorar); "Fragmanı oynat" düğmesiyle elle başlar.
+const SETTING_DEFAULTS = { trailerAuto: false };
+const settingDefault = (k) => (Object.prototype.hasOwnProperty.call(SETTING_DEFAULTS, k) ? SETTING_DEFAULTS[k] : true);
+const setting = (k, d = settingDefault(k)) => store.pref('set.' + k, d);
 // Yazı boyutu (Ayarlar → Genel ayarlar): tüm metinler rem ile yazıldığından kök ölçek yeter; sabit yükseklikli listeler de ölçeklenir.
 const FONT_SCALES = [[90, 'Küçük'], [100, 'Normal'], [115, 'Büyük'], [130, 'Çok büyük'], [150, 'Dev']];
 const fontScale = () => {
@@ -266,6 +270,7 @@ import('./version.js').then((m) => { VERSION = m.VERSION; restoreUpd(); if (S.ta
 const kc = (i) => ' k' + (i % 6);
 
 const S = {
+  memWarm: 0, // verilerin en son belleğe alındığı an (0: bu oturumda henüz alınmadı)
   linkErr: false, // son liste yenilemesi başarısız mı (ana ekrandaki bağlantı durumu için)
   source: null,
   cat: emptyCatalog(),
@@ -461,7 +466,49 @@ function banner(text, { err = false, spin = false } = {}) {
   }
   b.hidden = false;
   b.className = err ? 'err' : '';
+  delete b.dataset.mem;
   b.innerHTML = (spin ? '<span class="spin"></span>' : '') + `<span>${esc(text)}</span>`;
+}
+
+// ---- Belleğe alma ilerlemesi (memwarm.js): veriler açılışta ve ara sıra belleğe alınır; ilerleme ve "biraz kasma olabilir" notu gösterilir.
+// Açılış animasyonu sürerken ilerleme onun içinde, sonra uyarı çubuğunda görünür. Uyarı çubuğu kapalıyken çok kısa işlerde titrememesi için
+// 200 ms sonra açılır (bu sürede biterse hiç görünmez); çubuk zaten açıksa (liste güncelleniyor) hemen.
+let memShowT = 0;
+function memHide() {
+  clearTimeout(memShowT);
+  memShowT = 0;
+  const ip = document.querySelector('#intro .in-prog');
+  if (ip) ip.remove();
+  const b = $('#banner');
+  if (b && b.dataset.mem) {
+    delete b.dataset.mem;
+    b.hidden = true;
+  }
+}
+function memProgress({ label, pct }) {
+  if (!label) return memHide();
+  const html = progressHtml(label, pct, esc);
+  const intro = document.getElementById('intro');
+  if (intro && !intro.dataset.ending) {
+    let ip = intro.querySelector('.in-prog');
+    if (!ip) {
+      ip = document.createElement('div');
+      ip.className = 'in-prog';
+      intro.appendChild(ip);
+    }
+    ip.innerHTML = html;
+    return;
+  }
+  const b = $('#banner');
+  const paint = () => {
+    memShowT = 0;
+    b.hidden = false;
+    b.className = '';
+    b.dataset.mem = '1';
+    b.innerHTML = '<span class="spin"></span>' + html;
+  };
+  if (b.dataset.mem || !b.hidden) paint();
+  else if (!memShowT) memShowT = setTimeout(paint, 200);
 }
 
 function setCatalog(raw) {
@@ -573,14 +620,40 @@ async function activate(id, { force = false } = {}) {
   S.source = src;
   S.prog = store.progressAll(id);
   S.epgInfo = null;
-  const raw = await store.cache.get('cat:' + id);
-  const cached = catalogFromStorable(raw);
+  // Veriler belleğe alınır (ilerleme gösterilir): oturumda ilk açılışta tüm depo kayıtları, her seferinde katalog. Katalogla birlikte saklanan arama
+  // dizini sayesinde ad sadeleştirme yeniden yapılmaz; yalnız eski sürümden kalma katalogda bir kez hesaplanır ve geri yazılır.
+  let cached = null;
+  let computed = 0;
+  await runWarm([
+    !S.memWarm && { label: 'Ayarlar ve kayıtlar belleğe alınıyor…', weight: 1, run: (rep) => store.preload({ onProgress: (d, t) => rep(t ? d / t : 1) }) },
+    {
+      label: 'Liste belleğe alınıyor…',
+      weight: 8,
+      run: async (rep) => {
+        rep(0.1);
+        const raw = await store.cache.get('cat:' + id);
+        rep(0.4);
+        const r = await catalogFromStorableAsync(raw, { onProgress: (p) => rep(0.4 + p * 0.6) });
+        cached = r.cat;
+        computed = r.computed;
+      },
+    },
+  ], { onProgress: memProgress });
+  S.memWarm = Date.now();
   resetGroups();
   setCatalog(cached || emptyCatalog());
-  S.epg = new EpgView(await store.cache.get('epg:' + id));
+  S.epg = new EpgView(null); // rehber ilk çizimi bekletmesin: ilk ekran çizilir, rehber ardından belleğe alınır
   renderTop();
   renderTab();
   finishIntro(); // açılış animasyonu: arayüz ilk kez çizildi
+  memProgress({ label: 'Rehber belleğe alınıyor…', pct: 30 });
+  const epgData = await store.cache.get('epg:' + id).catch(() => null);
+  memHide();
+  if (S.source && S.source.id === id && epgData && !S.epg.data) {
+    S.epg = new EpgView(epgData);
+    rerenderKeepingList();
+  }
+  if (computed > 0 && cached) setTimeout(() => store.cache.set('cat:' + id, catalogToStorable(cached)).catch(() => {}), 1500); // dizin eksikti: bir kez geri yazılır
   const stale = !cached || Date.now() - cached.fetchedAt > staleCatalogMs();
   if (force || stale) await refreshCatalog({ quiet: !!cached && !force });
   else maybeRefreshEpg();
@@ -607,10 +680,14 @@ async function refreshCatalog({ quiet = false } = {}) {
       onProgress: (n) => banner(`Liste indiriliyor… ${(n / 1048576).toFixed(1)} MB`, { spin: true }),
     });
     if (!S.source || S.source.id !== id) return;
+    memProgress({ label: 'Liste belleğe kaydediliyor…', pct: 25 });
     await store.cache.set('cat:' + id, catalogToStorable(cat));
+    memProgress({ label: 'Liste belleğe alınıyor…', pct: 65 });
     S.linkErr = false;
     setCatalog(cat);
     if (S.tab !== 'multi') rerenderKeepingList(); // çoklu ekranda yayınlar kesilmesin
+    S.memWarm = Date.now();
+    memHide();
     banner(cat.warnings.length ? cat.warnings[0] : null, { err: cat.warnings.length > 0 });
     if (!quiet) toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi`);
     maybeRefreshEpg(true);
@@ -621,6 +698,7 @@ async function refreshCatalog({ quiet = false } = {}) {
     if (S.tab !== 'sources' && S.tab !== 'multi') rerenderKeepingList();
   } finally {
     S.loading = false;
+    memHide();
   }
 }
 
@@ -1147,8 +1225,10 @@ function paintHero(it, info, final) {
     (m.plot ? `<p class="hero-p">${esc(m.plot)}</p>` : '') +
     // Telefonda (dokunmatik) vitrinin altında Netflix gibi iki düğme; TV'de CSS gizler, kumanda kutuya odaklanır
     // TV: fragman oynarken görünür; kumandada aşağıdaki ilk kutudan yukarı basınca odaklanır, Tamam sesi açar/kapatır
+    // TV'de "Fragmanı oynat": ilk kutudan yukarı basınca odaklanır (çocuk modunda yok)
+    (kidActive() ? '' : `<button class="hero-trb" data-hero="trailer">${icon('play')}<span>${heroTrailerLabel(false)}</span></button>`) +
     `<button class="hero-snd" data-hero="sound" aria-label="${heroStage.muted ? 'Sesi aç' : 'Sesi kapat'}">${icon(heroStage.muted ? 'mute' : 'audio')}<span>${heroStage.muted ? 'Sesi aç' : 'Sesi kapat'}</span></button>` +
-    `<div class="hero-btns"><button class="hero-b hero-b-play" data-hero="play">${icon('play')}<span>${it.kind === 'series' ? 'İzle' : 'Oynat'}</span></button><button class="hero-b" data-hero="info">${icon('info')}<span>Bilgi</span></button></div>`;
+    `<div class="hero-btns"><button class="hero-b hero-b-play" data-hero="play">${icon('play')}<span>${it.kind === 'series' ? 'İzle' : 'Oynat'}</span></button><button class="hero-b" data-hero="info">${icon('info')}<span>Bilgi</span></button>${kidActive() ? '' : `<button class="hero-b" data-hero="trailer">${icon('play')}<span>${heroTrailerLabel(true)}</span></button>`}</div>`;
   // Ayrıntı yoldayken yalnız dikey afiş varsa çizilmez: geniş ekranda kırpık görünüp sonra geniş görsele dönüşüyordu.
   // Geniş görsel gelene (ya da ayrıntı gelmeyeceği anlaşılana) dek önceki arka plan kalır.
   if (final || m.wide) paintHeroBg(m.bg, m.backs);
@@ -1255,6 +1335,7 @@ function heroSync(kind, mode) {
     const it = hero.current;
     const b = e.target.closest && e.target.closest('[data-hero]');
     if (b && b.dataset.hero === 'sound') return toggleHeroSound();
+    if (b && b.dataset.hero === 'trailer') return toggleHeroTrailer();
     if (!it || document.documentElement.classList.contains('kbd')) return;
     if (b && b.dataset.hero === 'play' && kind === 'movie') return startPlay(it, { ctx: movieCtx(it) }); // dizide “İzle” bölümler ekranını açar
     kind === 'movie' ? openMovie(it) : openSeries(it);
@@ -1280,11 +1361,13 @@ function heroSync(kind, mode) {
 
 // ---- TV vitrininde fragman (hero-trailer.js denetler, hero-stage.js oynatır): odakta ~3,5 sn bekleyince tam ekran, kontrolsüz oynar;
 // oynarken ~6 sn sonra ekrandaki tüm bilgi solar (html.hero-cine); tuş/dokunuş bilgiyi geri getirir; odak başka yapıma geçince ya da video bitince durur.
-// Sayfa/oynatıcı açıkken ve uygulama arka plandayken çalışmaz. Ayar: "Fragmanı otomatik oynat" (kapalıyken vitrin eskisi gibi).
+// Sayfa/oynatıcı açıkken ve uygulama arka plandayken çalışmaz. Ayar: "Fragmanı otomatik oynat" (varsayılan kapalı; kapalıyken vitrindeki "Fragmanı oynat" düğmesiyle elle başlar).
 const heroBusy = () => !!document.querySelector('#sheets > *') || document.body.classList.contains('player-open') || document.documentElement.classList.contains('native-playing');
 // Telefon: dikey ekranda vitrinli satırlar açıkken de çalışır (üstteki yapımda bekleyince vitrin alanında sessiz oynar; sinema kipi yok, liste kaydırılabilir kalır)
 const phoneVitrin = () => !isTvUi() && document.documentElement.classList.contains('hero-on') && document.documentElement.classList.contains('hero-rows') && !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches);
-const heroTrailerOn = () => (isTvUi() || phoneVitrin()) && !kidActive() && trailerAutoOn() && !heroBusy() && document.visibilityState !== 'hidden';
+// Elle "Fragmanı oynat": otomatik oynatma ayarından bağımsız; yine de çocuk modunda, sayfa/oynatıcı açıkken ve arka planda çalışmaz.
+const heroTrailerCan = () => (isTvUi() || phoneVitrin()) && !kidActive() && !heroBusy() && document.visibilityState !== 'hidden';
+const heroTrailerOn = () => heroTrailerCan() && trailerAutoOn();
 // Fragman kimlikleri: sağlayıcı → Cinemeta → YouTube araması (ayar açıksa). Hepsi önbellekli; aynı yapıma yeniden odaklanınca anında gelir.
 async function heroTrailerIds(it) {
   const info = S.source ? peekVodInfo(S.source, it) : null;
@@ -1303,8 +1386,28 @@ async function heroTrailerIds(it) {
   }
   return [];
 }
-const heroLive = (on) => document.documentElement.classList.toggle('hero-live', on); // fragman oynuyor: vitrinde ses düğmesi görünür
-const heroStage = createHeroStage({ host: $('#hero-tr'), origin: location.origin, onPlaying: () => { heroLive(true); heroTrailer.playing(); }, onEnded: () => heroTrailer.ended() });
+const heroLive = (on) => {
+  document.documentElement.classList.toggle('hero-live', on); // fragman oynuyor: vitrinde ses düğmesi görünür
+  syncHeroTrailerBtn();
+};
+// Vitrindeki "Fragmanı oynat" düğmeleri (TV: yuvarlak hap, telefon: Oynat/Bilgi yanında): fragman yolda ya da oynarken "durdur" olur.
+const heroTrailerBusy = () => ['resolving', 'loading', 'playing'].includes(heroTrailer.state);
+const heroTrailerLabel = (phone) => (heroTrailerBusy() ? (phone ? 'Durdur' : 'Fragmanı durdur') : phone ? 'Fragman' : 'Fragmanı oynat');
+function syncHeroTrailerBtn() {
+  for (const b of $$('#hero [data-hero="trailer"]')) {
+    const sp = b.querySelector('span');
+    if (sp) sp.textContent = heroTrailerLabel(b.classList.contains('hero-b'));
+  }
+}
+function toggleHeroTrailer() {
+  const it = hero.current;
+  if (!it || kidActive()) return;
+  if (trailerLocked()) return void needPro('trailer'); // fragman Pro: Pro sayfası açılır
+  if (heroTrailerBusy()) heroTrailer.stop();
+  else if (!heroTrailer.play(it)) toast('Fragman şu an oynatılamıyor', 2200);
+  syncHeroTrailerBtn();
+}
+const heroStage = createHeroStage({ host: $('#hero-tr'), origin: location.origin, canUpgrade: () => !document.documentElement.dataset.lite, onPlaying: () => { heroLive(true); heroTrailer.playing(); }, onEnded: () => heroTrailer.ended() });
 // Ses: vitrindeki düğmeden (Tamam) ya da kumandada Oynat/Duraklat (ya da M) tuşundan
 function toggleHeroSound() {
   const muted = heroStage.toggleMute();
@@ -1317,6 +1420,8 @@ function toggleHeroSound() {
 }
 const heroTrailer = createHeroTrailer({
   enabled: () => heroTrailerOn(),
+  allowed: () => heroTrailerCan() && proOk('trailer'),
+  notFound: () => { toast('Bu yapım için fragman bulunamadı', 2600); syncHeroTrailerBtn(); },
   resolve: heroTrailerIds,
   start: (ids) => heroStage.start(ids, { muted: !isTvUi() }),
   stop: () => { heroStage.stop(); heroLive(false); },
@@ -5246,7 +5351,7 @@ function generalSheet() {
         chkRow('showProg', 'Devam çubukları', 'Film ve dizi kutularında ve bölümlerde izleme ilerlemesi'),
         chkRow('epThumbs', 'Bölüm küçük resimleri', 'Yatay ekranda dizi bölümlerinin yanındaki resim; kapatınca satırlar sıkışık olur'),
         chkRow('trailerFind', 'Fragmanı otomatik ara', 'Hazır fragman yoksa başlığı YouTube’da arar ve bulduğu resmî fragmanı ekranda gösterir; kapalıyken “YouTube’da ara” düğmesi çıkar', 'trailer'),
-        chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Film ve dizi ekranında ve vitrinde fragman sessiz başlar, “Sesi aç” ile açılır; kapalıyken küçük resme dokununca oynar. Çocuk modunda fragman gösterilmez', 'trailer'),
+        chkRow('trailerAuto', 'Fragmanı otomatik oynat', 'Açıkken film ve dizi ekranında ve vitrinde fragman sessiz kendiliğinden başlar (zayıf TV kutularını yorar); kapalıyken (varsayılan) “Fragmanı oynat” düğmesiyle ya da küçük resme dokununca oynar. Çocuk modunda fragman gösterilmez', 'trailer'),
       ]) +
       setCard('Görünüm ve cihaz', 'gear', [
         selRow('g-lang', 'Dil / Language', 'Uygulamanın dili; değişince uygulama yeniden başlar', LANG_CHOICES.map(([v, name]) => `<option value="${v}"${normalizeLang(store.pref('set.lang', 'auto')) === v ? ' selected' : ''}${v === 'auto' ? '' : ' translate="no"'}>${name}</option>`).join('')),
@@ -7186,6 +7291,21 @@ document.addEventListener('visibilitychange', () => {
   scheduleFollowSync(5000);
 });
 setInterval(() => document.visibilityState === 'visible' && castUi.autoSync(), 10 * 60 * 1000);
+// Ara sıra belleğe alma: uygulama açık ve boştayken (oynatıcı, liste yükleme, çoklu ekran yokken) kayıtlar depodan yeniden belleğe alınır;
+// ilerleme ve "biraz kasma olabilir" notu gösterilir. Ağır iş (katalog dizini) yalnız açılışta ve liste güncellenirken olur.
+let memBusy = false;
+setInterval(async () => {
+  const busy = memBusy || pui.isOpen() || S.loading || S.tab === 'multi' || !S.source || document.body.classList.contains('player-open');
+  if (!duePeriodic({ last: S.memWarm, visible: document.visibilityState === 'visible', busy })) return;
+  memBusy = true;
+  try {
+    await runWarm([{ label: 'Veriler belleğe alınıyor…', weight: 1, run: (rep) => store.preload({ reload: true, onProgress: (d, t) => rep(t ? d / t : 1) }) }], { onProgress: memProgress });
+  } finally {
+    S.memWarm = Date.now();
+    memBusy = false;
+    memHide();
+  }
+}, MEM_CHECK_MS);
 setInterval(() => {
   if (S.list && S.tab === 'live' && document.visibilityState === 'visible' && !pui.isOpen()) S.list.refreshRows();
 }, 60000);

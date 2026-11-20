@@ -92,6 +92,7 @@ test('kategori düzeni: kaynak ve tür başına saklanır, bozuk kayıt toparlan
   assert.deepEqual(store.catPrefs(a.id, 'movie').hidden, ['g:Korku']);
   assert.deepEqual(store.catPrefs(a.id, 'series'), { order: [], hidden: [], locked: [], folders: [] });
   m.set('iptv.cats.' + a.id, '{bozuk');
+  store.reload(); // depo store dışından değiştirildi: bellek bırakılır
   assert.deepEqual(store.catPrefs(a.id, 'live'), { order: [], hidden: [], locked: [], folders: [] });
   store.setCatPrefs(a.id, 'live', { order: ['g:A'], hidden: [], folders: [] });
   store.removeSource(a.id);
@@ -114,4 +115,54 @@ test('bozulmuş depo kaydı (beklenen dizi/nesne değil) varsayılana düşer, o
   assert.deepEqual(store.continueWatching('a'), []);
   assert.deepEqual(store.catPrefs('a', 'live').folders, []);
   assert.deepEqual(store.pref('cast.tvs', []), []);
+});
+
+test('bellek önbelleği: depo bir kez okunur; yazma/silme önbelleği düşürür; okuyana sığ kopya verilir; reload dışarıdan değişikliği alır', () => {
+  const m = new Map();
+  let okuma = 0;
+  const storage = { getItem: (k) => { okuma++; return m.has(k) ? m.get(k) : null; }, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+  const store = createStore({ storage, cache: { get: async () => null, set: async () => {}, del: async () => {} } });
+  store.setPref('x', { a: 1 });
+  store.setPref('fav', [3, 1, 2]);
+  okuma = 0;
+  for (let i = 0; i < 50; i++) store.pref('x', {}), store.pref('fav', []), store.pref('yok', 7);
+  assert.equal(okuma, 3, 'her anahtar yalnız bir kez okunur (yok olan da)');
+  // sığ kopya: sıralama/ekleme depoyu ve sonraki okumayı bozmaz
+  const l = store.pref('fav', []);
+  l.sort();
+  l.push(9);
+  assert.deepEqual(store.pref('fav', []), [3, 1, 2]);
+  const o = store.pref('x', {});
+  o.a = 5;
+  assert.deepEqual(store.pref('x', {}), { a: 1 });
+  // yazma önbelleği düşürür
+  store.setPref('x', { a: 2 });
+  assert.deepEqual(store.pref('x', {}), { a: 2 });
+  // drop / dışarıdan değişiklik
+  store.drop('pref.x');
+  assert.deepEqual(store.pref('x', { d: 1 }), { d: 1 });
+  m.set('iptv.pref.fav', '[7]');
+  assert.deepEqual(store.pref('fav', []), [3, 1, 2], 'dışarıdan yazma kendiliğinden görülmez');
+  store.reload();
+  assert.deepEqual(store.pref('fav', []), [7]);
+});
+
+test('preload: tüm kayıtlar parça parça belleğe alınır, ilerleme bildirilir; sonrasında okuma depoya gitmez; reload ile yeniden alınır', async () => {
+  const m = new Map();
+  let okuma = 0;
+  const storage = { length: 0, key: (i) => [...m.keys()][i], getItem: (k) => { okuma++; return m.has(k) ? m.get(k) : null; }, setItem: (k, v) => { m.set(k, String(v)); storage.length = m.size; }, removeItem: (k) => { m.delete(k); storage.length = m.size; } };
+  const store = createStore({ storage, cache: { get: async () => null, set: async () => {}, del: async () => {} } });
+  for (let i = 0; i < 10; i++) store.setPref('k' + i, i);
+  store.reload();
+  const prog = [];
+  const n = await store.preload({ chunk: 4, tick: async () => {}, onProgress: (d, t) => prog.push([d, t]) });
+  assert.equal(n, 10);
+  assert.deepEqual(prog.at(-1), [10, 10]);
+  assert.ok(prog.every(([d, t], i) => t === 10 && (i === 0 || d >= prog[i - 1][0])));
+  okuma = 0;
+  for (let i = 0; i < 10; i++) assert.equal(store.pref('k' + i, -1), i);
+  assert.equal(okuma, 0, 'bellekten okunur');
+  m.set('iptv.pref.k0', '99');
+  await store.preload({ reload: true, tick: async () => {} });
+  assert.equal(store.pref('k0', -1), 99, 'reload: depodaki yeniden alınır');
 });

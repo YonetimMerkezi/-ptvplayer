@@ -615,6 +615,9 @@ test('görsel önbelleği: WebView istemcisi bağlı, yalnız dış adresli gör
   assert.ok(/getCacheDir\(\)/.test(ic), 'önbellek sistem önbellek klasöründe durmalı (Android yer açabilsin)');
   assert.ok(/MAX_BYTES/.test(ic) && /MAX_ITEM/.test(ic) && /TTL_MS/.test(ic), 'boyut ve süre sınırları');
   assert.ok(/createTempFile\("dl_"/.test(ic), 'geçici dosya öneki en az 3 karakter');
+  assert.ok(/new Semaphore\(\d\)/.test(ic) && /GATE\.acquireUninterruptibly\(\);\s*try \{[\s\S]*?fetch\([\s\S]*?\} finally \{\s*GATE\.release\(\)/.test(ic), 'eşzamanlı indirme sınırlı olmalı, izin her durumda geri verilmeli (aksi halde görseller sonsuza dek bekler)');
+  assert.ok(/KNOWN\.put\(key, ext\)/.test(ic) && /KNOWN\.clear\(\)/.test(ic), 'bellek içi dizin indirmede dolar, temizlemede boşalır');
+  assert.ok(!/String\.format\(/.test(ic), 'anahtar üretiminde her bayt için String.format çağrılmamalı (TV kutusunda yavaş)');
   assert.ok(/return null;/.test(ic) && /catch \(Throwable t\) \{\s*return null;/.test(ic), 'indirilemezse null: WebView görseli kendisi dener');
   const warm = kaynak.match(/public void warmImages\([\s\S]*?\n    }\n/);
   assert.ok(warm && /unmeteredNet\(\)/.test(warm[0]), 'önden indirme ölçülü ağda çalışmamalı');

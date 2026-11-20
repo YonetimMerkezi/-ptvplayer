@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 
 // Görsel önbelleği: afişler, kanal logoları, takım rozetleri ve bayraklar cihazda kalır, her açılışta yeniden inmez.
 // WebView'in görsel isteklerine (ImageWebViewClient) araya girilir: önbellekte varsa dosyadan verilir, yoksa indirilip kaydedilir ve verilir;
@@ -36,6 +37,12 @@ final class ImageCache {
             {"png", "image/png"}, {"jpg", "image/jpeg"}, {"gif", "image/gif"}, {"webp", "image/webp"},
             {"svg", "image/svg+xml"}, {"avif", "image/avif"}, {"bmp", "image/bmp"}, {"ico", "image/x-icon"},
     };
+
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+    // Aynı anda en çok bu kadar indirme: zayıf TV kutusunda yüzlerce afiş birden inerse ağ, işlemci ve WebView iş parçacıkları tıkanıp arayüz kasıyordu.
+    private static final Semaphore GATE = new Semaphore(4);
+    // Anahtar → uzantı: önbellekte olan görseller için her istekte 8 dosya yoklaması yapılmaz (kaydı yoksa eski yoklama sürer).
+    private static final Map<String, String> KNOWN = new ConcurrentHashMap<>();
 
     private static volatile File dir;
     private static final Object TRIM = new Object();
@@ -68,8 +75,8 @@ final class ImageCache {
     private static String keyOf(String url) {
         try {
             byte[] h = MessageDigest.getInstance("SHA-1").digest(url.getBytes("UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : h) sb.append(String.format(Locale.US, "%02x", b));
+            StringBuilder sb = new StringBuilder(40);
+            for (byte b : h) sb.append(HEX[(b >> 4) & 15]).append(HEX[b & 15]);
             return sb.toString();
         } catch (Exception e) {
             return Integer.toHexString(url.hashCode());
@@ -98,10 +105,19 @@ final class ImageCache {
         File d = dir;
         if (d == null) return null;
         String key = keyOf(url);
+        String ext = KNOWN.get(key);
+        if (ext != null) {
+            File f = new File(d, key + "." + ext);
+            if (f.isFile() && System.currentTimeMillis() - f.lastModified() < TTL_MS && f.length() > 0) return f;
+            KNOWN.remove(key); // silinmiş ya da süresi geçmiş: aşağıdaki yoklama karar verir
+        }
         for (String[] ty : TYPES) {
             File f = new File(d, key + "." + ty[0]);
             if (!f.isFile()) continue;
-            if (System.currentTimeMillis() - f.lastModified() < TTL_MS && f.length() > 0) return f;
+            if (System.currentTimeMillis() - f.lastModified() < TTL_MS && f.length() > 0) {
+                KNOWN.put(key, ty[0]);
+                return f;
+            }
             f.delete();
         }
         return null;
@@ -162,10 +178,19 @@ final class ImageCache {
         synchronized (lock) {
             try {
                 File f = cached(url); // bekleyen başka istek indirmiş olabilir
-                return f != null ? f : fetch(url, key, ua, accept, lang);
+                return f != null ? f : fetchGated(url, key, ua, accept, lang);
             } finally {
                 locks.remove(key);
             }
+        }
+    }
+
+    private static File fetchGated(String url, String key, String ua, String accept, String lang) {
+        GATE.acquireUninterruptibly();
+        try {
+            return fetch(url, key, ua, accept, lang);
+        } finally {
+            GATE.release();
         }
     }
 
@@ -212,6 +237,7 @@ final class ImageCache {
             File out = new File(dir, key + "." + ext);
             for (String[] ty : TYPES) new File(dir, key + "." + ty[0]).delete(); // tür değiştiyse eskisi kalmasın
             if (!tmp.renameTo(out)) return null;
+            KNOWN.put(key, ext);
             trim(size);
             return out;
         } catch (Throwable t) {
@@ -288,6 +314,7 @@ final class ImageCache {
             if (all != null) for (File f : all) f.delete();
             total = 0;
             failed.clear();
+            KNOWN.clear();
         }
     }
 

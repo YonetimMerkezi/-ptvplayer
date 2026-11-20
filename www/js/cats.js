@@ -174,16 +174,33 @@ export const SPECIAL_MAX = 40;
 export const SPECIAL_MIN = 6; // bundan az yapımla "Yeni eklenenler" / "En çok puan alanlar" satırı anlamsız
 export const TOP_RATING = 4; // 5 üzerinden
 
+// Büyük listeden (on binlerce yapım) yalnız en iyi `max` kayıt gerekir: tam sıralama yerine tek geçişte ilk-N tutulur (zayıf TV kutusunda
+// ana ekran her çizildiğinde tüm listeyi sıralamak kasıyordu). Sıra: ölçüt azalan, eşitlikte listedeki sıra. Dönen: { top, count } (count: süzgeçten geçen sayı).
+function topN(items, pass, key, max) {
+  const top = []; // { it, k, i } en iyiden en kötüye
+  let count = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!pass(it)) continue;
+    count += 1;
+    const k = key(it);
+    if (top.length >= max && k <= top[top.length - 1].k) continue; // eşitlikte sonraki gelen (daha büyük sıra) kaybeder
+    let at = top.length;
+    while (at > 0 && top[at - 1].k < k) at -= 1;
+    top.splice(at, 0, { it, k, i });
+    if (top.length > max) top.pop();
+  }
+  return { top: top.map((x) => x.it), count };
+}
+
 // "Yeni eklenenler": eklenme zamanı bilinenlerin en yenileri (M3U listelerinde zaman yoktur → satır çıkmaz)
 export function newestItems(items, max = SPECIAL_MAX) {
-  const dated = items.filter((it) => it.added > 0);
-  if (dated.length < SPECIAL_MIN) return [];
-  return dated.map((it, i) => ({ it, i })).sort((a, b) => b.it.added - a.it.added || a.i - b.i).slice(0, max).map((x) => x.it);
+  const r = topN(items, (it) => it.added > 0, (it) => it.added, max);
+  return r.count < SPECIAL_MIN ? [] : r.top;
 }
 
 // "En çok puan alanlar": 5 üzerinden en az TOP_RATING puanlılar, puana göre
 export function topRatedItems(items, max = SPECIAL_MAX) {
-  const rated = items.filter((it) => Number(it.rating) >= TOP_RATING);
-  if (rated.length < SPECIAL_MIN) return [];
-  return rated.map((it, i) => ({ it, i })).sort((a, b) => Number(b.it.rating) - Number(a.it.rating) || a.i - b.i).slice(0, max).map((x) => x.it);
+  const r = topN(items, (it) => Number(it.rating) >= TOP_RATING, (it) => Number(it.rating), max);
+  return r.count < SPECIAL_MIN ? [] : r.top;
 }

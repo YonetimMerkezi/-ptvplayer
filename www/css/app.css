@@ -277,6 +277,15 @@ html.tv body.on-home #btn-home { display: none; }
 #upd-note .un-t .ic { width: 16px; height: 16px; flex: none; color: var(--accent); }
 #upd-note .btn { flex: none; }
 body.kid-mode #upd-note { display: none; }
+/* Belleğe alma ilerlemesi (memwarm.js): aşama adı + yüzde, çubuk, kasma notu. Uyarı çubuğunda ve açılış ekranında aynı işaretleme. */
+.mw { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.mw-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.mw-h b { font-weight: 700; color: var(--text, #fff); font-size: 0.85rem; }
+.mw-h em { font-style: normal; font-weight: 800; color: var(--accent, #4ade80); font-variant-numeric: tabular-nums; }
+.mw-bar { display: block; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.mw-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent, #4ade80); transition: width 0.18s linear; }
+.mw small { color: var(--muted, #9fb3bb); font-size: 0.72rem; }
+#intro .in-prog { position: absolute; left: 50%; bottom: 12vh; transform: translateX(-50%); width: min(82vw, 440px); }
 #banner .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; flex: none; }
 @keyframes sp { to { transform: rotate(360deg); } }
 
@@ -451,6 +460,8 @@ html.native-playing #hero-bg, html.native-preview #hero-bg { display: none !impo
 #hero-tr.live { visibility: visible; opacity: 1; transition: opacity 0.9s ease; }
 html.native-playing #hero-tr, html.native-preview #hero-tr { display: none !important; }
 #hero-tr .ht-frame { position: absolute; left: 0; top: -35%; width: 100%; height: 170%; border: 0; }
+/* Düşük kalite aşaması: oynatıcı yarı boyutta kurulur, 2× büyütülür (kapladığı alan aynı); YouTube çözünürlüğü oynatıcı boyutuna göre seçer. Tam boyuta geçince .lo kalkar. */
+#hero-tr .ht-frame.lo { width: 50%; height: 85%; transform-origin: 0 0; transform: scale(2); }
 #hero-tr::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 75%), linear-gradient(180deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0.6) 62%, rgba(0, 0, 0, 0.92) 100%); transition: opacity 0.9s ease; } /* yazı/liste okunur kalsın diye gölge */
 html.hero-on #app { transition: opacity 0.9s ease; }
 html.hero-cine #app { opacity: 0; }
@@ -468,6 +479,12 @@ html.hero-cine #hero-tr::after { opacity: 0; }
 .hero-c b { margin-right: 0.5em; color: var(--muted); font-weight: 600; }
 .hero-p { margin: 0.5em 0 0; font-size: 1.02em; line-height: 1.4; color: #e3ebee; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .hero-snd { display: none; } /* ses düğmesi yalnız TV'de ve fragman oynarken (html.hero-live) görünür */
+.hero-trb { display: none; } /* "Fragmanı oynat": TV'de vitrin açıkken görünür (telefonda Oynat/Bilgi yanındaki düğme kullanılır) */
+html.tv.hero-on .hero-trb { display: inline-flex; align-items: center; gap: 0.5em; min-height: 2.4em; margin: 0.7em 0.6em 6px 0; padding: 0 1em; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; font: inherit; font-size: 0.95em; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.5); }
+html.tv.hero-on .hero-trb .ic { width: 1.3em; height: 1.3em; }
+html.tv.hero-on .hero-d { display: none; } /* "Fragmanı oynat" düğmesine yer açılır: TV vitrininde yönetmen satırı gizli, özet iki satır */
+html.tv.hero-on .hero-p { -webkit-line-clamp: 2; }
+html.tv.hero-on .hero-trb:focus { color: var(--accent-ink, #0a1118); background: var(--accent); border-color: var(--accent); }
 html.tv.hero-live .hero-snd { display: inline-flex; align-items: center; gap: 0.5em; min-height: 2.4em; margin-top: 0.7em; padding: 0 1em; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; font: inherit; font-size: 0.95em; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.5); }
 html.tv.hero-live .hero-snd .ic { width: 1.3em; height: 1.3em; }
 html.tv.hero-live .hero-snd { margin-bottom: 6px; }
@@ -498,6 +515,7 @@ html.tv.hero-live .hero-p { -webkit-line-clamp: 2; }
   /* Fragman (vitrinde bekleyince sessiz başlar): afişle aynı alanı (üst %58) kaplar; 16:9 video alanı dolduracak büyüklükte ve ortalı, kenarlar afiş gibi sayfaya karışır */
   html:not(.tv) #hero-tr { bottom: auto; height: 58vh; background: transparent; -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
   html:not(.tv) #hero-tr .ht-frame { width: calc(58vh * 16 / 9); left: 50%; transform: translateX(-50%); }
+  html:not(.tv) #hero-tr .ht-frame.lo { width: calc(29vh * 16 / 9); height: 85%; transform-origin: 50% 0; transform: translateX(-50%) scale(2); }
   html:not(.tv) #hero-tr::after { background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.05) 30%, rgba(0, 0, 0, 0.78) 100%); }
   /* ses düğmesi: vitrinin sağ üstünde yuvarlak simge (yazısız) */
   html:not(.tv) #hero:not([hidden]) { position: relative; }
@@ -881,6 +899,8 @@ html[data-theme="solid"][data-multi] .set-card > h3 { margin-bottom: 4px; paddin
 .mq-i { display: inline-block; white-space: nowrap; }
 .mq { text-overflow: clip; }
 .mq > .mq-i { animation: mq var(--mqd, 6s) ease-in-out 0.8s infinite alternate; }
+html.tv .mq > .mq-i { animation: none; } /* TV'de yüzlerce satırın adı aynı anda kaymasın: zayıf kutularda sürekli animasyon kasma yapıyordu; yalnız odaktaki satırınki kayar */
+html.tv [tabindex]:focus .mq > .mq-i { animation: mq var(--mqd, 6s) ease-in-out 0.8s infinite alternate; }
 @keyframes mq { 0%, 12% { transform: translateX(0); } 88%, 100% { transform: translateX(calc(-1 * var(--mq, 0px))); } }
 @media (prefers-reduced-motion: reduce) { .mq > .mq-i { animation: none; } .mq { text-overflow: ellipsis; } }
 

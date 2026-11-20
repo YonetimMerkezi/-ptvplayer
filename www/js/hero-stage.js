@@ -5,32 +5,42 @@ import { trailerEmbedUrl } from './cinemeta.js';
 
 export const SOUND_WAIT_MS = 2500;
 export const MUTED_WAIT_MS = 6000;
+// Kalite: oynatıcı önce yarı boyutlu kurulur ve CSS ile büyütülür (YouTube çözünürlüğü oynatıcının boyutuna göre seçer: düşük çözünürlük hızlı başlar,
+// zayıf TV kutusunu yormaz); UPGRADE_MS boyunca sorunsuz oynarsa tam boyuta alınır, çözünürlük yükselir. canUpgrade() false ise (hafif mod) düşük kalır.
+export const UPGRADE_MS = 4000;
 
-export function createHeroStage({ host, win = typeof window !== 'undefined' ? window : null, origin = '', onPlaying = () => {}, onEnded = () => {}, soundWait = SOUND_WAIT_MS, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
+export function createHeroStage({ host, win = typeof window !== 'undefined' ? window : null, origin = '', onPlaying = () => {}, onEnded = () => {}, soundWait = SOUND_WAIT_MS, upgradeMs = UPGRADE_MS, canUpgrade = () => true, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
   let ids = [];
   let at = 0;
   let muted = false;
   let blocked = false; // sesli başlatma engellendi: sonraki fragmanlar sessiz başlar
   let frame = null;
   let waitT = null;
+  let upT = null;
   let live = false;
   const clearWait = () => {
     if (waitT) timers.clear(waitT);
     waitT = null;
   };
-  const html = (id) => `<iframe class="ht-frame" src="${trailerEmbedUrl(id, { muted, origin }).replace(/&/g, '&amp;')}" title="" tabindex="-1" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  const clearUp = () => {
+    if (upT) timers.clear(upT);
+    upT = null;
+  };
+  const html = (id) => `<iframe class="ht-frame lo" src="${trailerEmbedUrl(id, { muted, origin }).replace(/&/g, '&amp;')}" title="" tabindex="-1" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
   const setLive = (v) => {
     live = v;
     if (host.classList) host.classList.toggle('live', v);
   };
   const mount = () => {
     clearWait();
+    clearUp();
     setLive(false);
     host.innerHTML = html(ids[at]);
     frame = host.querySelector('iframe');
     if (frame) {
       frame.addEventListener('load', () => {
         try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch { /* çapraz köken */ }
+        command('setPlaybackQuality', ['medium']); // eski ipucu (YouTube artık çoğunlukla boyuta bakar)
       });
     }
     waitT = timers.set(retry, muted ? MUTED_WAIT_MS : soundWait); // sessiz deneme yavaş TV kutularında daha uzun beklenir
@@ -57,11 +67,22 @@ export function createHeroStage({ host, win = typeof window !== 'undefined' ? wi
     if (!d || typeof d !== 'object') return;
     if (d.event === 'onError') { clearWait(); next(); return; }
     const st = d.event === 'onStateChange' ? d.info : d.info && d.info.playerState;
-    if (st === 1 && !live) { clearWait(); setLive(true); onPlaying(); } else if (st === 0) { stop(); onEnded(); }
+    if (st === 1 && !live) { clearWait(); setLive(true); armUpgrade(); onPlaying(); } else if (st === 0) { stop(); onEnded(); }
   }
   if (win) win.addEventListener('message', onMsg);
+  // Düşük kaliteyle sorunsuz oynadı: oynatıcı tam boyuta alınır (yeniden yüklenmez), çözünürlük yükselir
+  function armUpgrade() {
+    clearUp();
+    upT = timers.set(() => {
+      upT = null;
+      if (!frame || !canUpgrade()) return;
+      if (frame.classList) frame.classList.remove('lo');
+      command('setPlaybackQuality', ['large']);
+    }, upgradeMs);
+  }
   function stop() {
     clearWait();
+    clearUp();
     setLive(false);
     frame = null;
     host.innerHTML = '';

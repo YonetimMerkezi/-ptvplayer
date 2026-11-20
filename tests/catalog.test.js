@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadCatalog, loadEpg, EpgView, search, groupList, inGroup, playTargets, archiveTargets, recordTarget, catalogToStorable, catalogFromStorable, loadSeriesInfo } from '../www/js/catalog.js';
+import { loadCatalog, loadEpg, EpgView, search, groupList, inGroup, playTargets, archiveTargets, recordTarget, catalogToStorable, catalogFromStorable, catalogFromStorableAsync, loadSeriesInfo } from '../www/js/catalog.js';
 import { createNet } from '../www/js/net.js';
 
 const b64 = (s) => Buffer.from(s).toString('base64');
@@ -90,13 +90,29 @@ test('gruplar ve süzme', async () => {
   assert.equal(groupList(cat.series)[0].name, 'Diğer');
 });
 
-test('depolama gidiş-dönüş: arama alanı atılır ve yeniden kurulur', async () => {
+test('depolama gidiş-dönüş: arama dizini katalogla birlikte saklanır, açılışta yeniden hesaplanmaz', async () => {
   const cat = await loadCatalog({ type: 'm3u', url: 'http://srv/list.m3u' }, fakeServer([[/list/, M3U]]));
   const st = JSON.parse(JSON.stringify(catalogToStorable(cat)));
-  assert.equal('f' in st.live[0], false);
+  assert.equal(st.live[0].f, 'trt 1', 'f saklanır');
+  st.live[0].f = 'ELLE'; // saklanan dizin olduğu gibi kullanılır
   const back = catalogFromStorable(st);
-  assert.equal(back.live[0].f, 'trt 1');
+  assert.equal(back.live[0].f, 'ELLE', 'dolu dizin yeniden hesaplanmaz');
   assert.equal(catalogFromStorable({}), null);
+});
+
+test('eski sürümden kalma katalog (dizinsiz): ilerlemeli tamamlanır, kaç ad hesaplandığı bildirilir; tam katalogda hesap yok', async () => {
+  const cat = await loadCatalog({ type: 'm3u', url: 'http://srv/list.m3u' }, fakeServer([[/list/, M3U]]));
+  const old = JSON.parse(JSON.stringify(catalogToStorable(cat)));
+  const n = old.live.length + old.movies.length + old.series.length;
+  for (const l of [old.live, old.movies, old.series]) for (const it of l) delete it.f;
+  const prog = [];
+  const r = await catalogFromStorableAsync(old, { chunk: 2, tick: async () => {}, onProgress: (p) => prog.push(p) });
+  assert.equal(r.computed, n);
+  assert.equal(r.cat.live[0].f, 'trt 1');
+  assert.ok(prog.length >= 2 && prog.at(-1) === 1 && prog.every((p, i) => i === 0 || p >= prog[i - 1]), "ilerleme artar ve 1'de biter");
+  const again = await catalogFromStorableAsync(r.cat, { tick: async () => {} });
+  assert.equal(again.computed, 0, 'dizin tamam: yeniden hesap yok');
+  assert.deepEqual(await catalogFromStorableAsync(null), { cat: null, computed: 0 });
 });
 
 test('oynatma adresleri', async () => {
