@@ -36,8 +36,9 @@ test('kimlik doğrulama yanıtları', () => {
 
 test('canlı, film, dizi eşlemesi', () => {
   const cats = [{ category_id: '1', category_name: 'Ulusal' }];
-  const live = X.mapLive([{ stream_id: 10, name: ' TRT 1 ', stream_icon: 'i.png', category_id: '1', epg_channel_id: 'trt1', num: 3, tv_archive: 1 }], cats);
-  assert.deepEqual(live[0], { id: 'x10', streamId: '10', kind: 'live', name: 'TRT 1', logo: 'i.png', group: 'Ulusal', tvgId: 'trt1', num: 3, archive: true });
+  const live = X.mapLive([{ stream_id: 10, name: ' TRT 1 ', stream_icon: 'i.png', category_id: '1', epg_channel_id: 'trt1', num: 3, tv_archive: 1, tv_archive_duration: '3' }], cats);
+  assert.deepEqual(live[0], { id: 'x10', streamId: '10', kind: 'live', name: 'TRT 1', logo: 'i.png', group: 'Ulusal', tvgId: 'trt1', num: 3, archive: true, archiveDays: 3 });
+  assert.equal(X.mapLive([{ stream_id: 11, name: 'A', category_id: '1' }], cats)[0].archiveDays, 0, 'arşiv süresi bildirilmeyen kanalda 0');
   const vod = X.mapVod([{ stream_id: 4, name: 'Film', container_extension: 'mkv', category_id: '9', rating_5based: '3.5' }], []);
   assert.equal(vod[0].ext, 'mkv');
   assert.equal(vod[0].rating, 3.5);

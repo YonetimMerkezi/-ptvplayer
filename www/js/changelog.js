@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 173,
+    title: 'Canlı yayında geri sarma',
+    items: [
+      'Arşivi olan (Xtream) kanallarda canlı yayın izlerken geri sarabilirsiniz: sarma çubuğu, −10 sn düğmesi, kumanda ileri/geri tuşları ve yatay kaydırma',
+      'Çubuk son 6 saati (kanalın arşivi daha kısaysa onu) gösterir; “Canlı −12:30” gibi canlıdan ne kadar geride olduğunuz yazar, “Canlıya dön” ile geri dönersiniz',
+      'Arşiv dakika duyarlığıyla açılır; sarmalar arasında kısa bir yeniden bağlanma olabilir',
+    ],
+  },
+  {
     id: 172,
     title: 'Vizyondaki filmler: afiş tamamlama ve kart düzeltmesi',
     items: [

@@ -108,6 +108,7 @@ export function mapLive(list, cats) {
     tvgId: s.epg_channel_id || '',
     num: num(s.num),
     archive: num(s.tv_archive) === 1,
+    archiveDays: num(s.tv_archive_duration), // arşivin kaç gün geriye gittiği; yoksa 0 (geri sarmada 1 gün sayılır)
   }));
 }
 

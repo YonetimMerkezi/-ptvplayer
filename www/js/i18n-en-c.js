@@ -468,4 +468,8 @@ export const EN_C = [
   ["Telefon", "Phone"],
   ["Sürüm: {0} · {1} · Cihaz kimliği: {2}", "Version: {0} · {1} · Device ID: {2}"],
   ["({0} gün kaldı)", "({0} days left)"],
+  ["Zaten canlıdasınız", "You are already live"],
+  ["Arşiv bu noktada bitti, canlıya geçildi", "The archive ends here, switched to live"],
+  ["Geriden izleme", "Time-shifted viewing"],
+  ["CANLI", "LIVE"],
 ];

@@ -643,9 +643,10 @@ html.native-playing #vid { display: none; }
 .pl-bot { padding: 6px 14px 10px; background: linear-gradient(#0000, #000c); }
 .pl-prog { display: flex; align-items: center; gap: 10px; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 .pl-prog input { flex: 1; accent-color: var(--accent); height: 28px; }
-.pl-prog.live input { display: none; }
+.pl-prog.live:not(.shiftable) input { display: none; }
 .pl-prog.live #pl-dur::before { content: "● CANLI"; color: var(--danger); font-weight: 700; }
 .pl-prog.live #pl-dur { font-size: 0; }
+.pl-prog.shifted #pl-dur { color: var(--danger); font-weight: 700; } /* arşivden izlerken sağ uç: canlı kenarı */
 .pl-prog.live #pl-dur::before { font-size: 0.8125rem; }
 .pl-epgline { font-size: 0.8125rem; color: #dbe3f2; min-height: 18px; margin: 2px 0 4px; }
 .pl-epgline .bar { height: 3px; background: #fff3; border-radius: 2px; margin-top: 5px; overflow: hidden; max-width: 320px; }
@@ -670,7 +671,7 @@ html.native-playing #vid { display: none; }
 .pl-status .btn { margin-top: 12px; }
 .pl-status .rc, .sp-status .rc, .mp-st .rc { margin-top: 10px; font-size: 0.8125rem; color: #cbd5e1; }
 .spinner { width: 34px; height: 34px; border: 3px solid #fff4; border-top-color: #fff; border-radius: 50%; animation: sp 0.8s linear infinite; margin: 0 auto; }
-body.live-mode #pl-rew, body.live-mode #pl-fwd { display: none; }
+body.live-mode:not(.live-shift) #pl-rew, body.live-mode #pl-fwd { display: none; }
 body.vod-mode #pl-prev, body.vod-mode #pl-next { }
 
 .logo.ok { font-size: 0; }

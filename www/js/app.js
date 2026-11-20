@@ -15,6 +15,7 @@ import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
 import { createPlayerUI } from './player-ui.js';
+import { canShift as canShiftLive, shiftPlan, archiveMs, floorMin, stalled } from './shift.js';
 import { fmtBytes, recItem, recEndMessage, recSub, fmtRecDate, isEmptyRec } from './rec.js';
 import { makeBackup, parseBackup, applyBackup, backupFileName } from './backup.js';
 import { CHANGELOG, LATEST_ID, unseenEntries } from './changelog.js';
@@ -342,6 +343,8 @@ const pui = createPlayerUI({
     unlockCat: (key) => ensureUnlocked('live', key),
     playLive: (items, index, meta) => playLive(items, index, meta),
     onEpgSheet: (it) => epgSheet(it),
+    canShift: (it) => canShiftLive(it, S.source),
+    onShift: (ch, target, dir, ctx, prev) => shiftTo(ch, target, dir, ctx, prev),
     pref: (k, d) => store.pref(k, d),
     setPref: (k, v) => store.setPref(k, v),
     langPref: () => ({ audio: normalizeAudioLang(store.pref('set.audioLang', 'auto')), sub: normalizeSubLang(store.pref('set.subLang', 'auto')), subIfMissing: setting('subMissing') }),
@@ -2076,14 +2079,37 @@ function togglePlan(kind, it, p) {
   return true;
 }
 
-// Arşivden (catch-up) izleme: bitmiş ya da süren programı baştan açar; oynatıcıdaki "Canlıya dön" kanala geçirir.
-function playArchive(it, p) {
+// Arşivden (catch-up) izleme: bitmiş ya da süren programı baştan açar; canlıdan geri sarma da bu yoldan açılır (shiftTo).
+// Arşiv akışı `shift` taşır: akışın başladığı dakika (base), kalan saniye (skip) ve istenen süre (span); oynatıcı çubuğu bunu "canlıdan geride" süreye çevirir.
+// "Canlıya dön" kanala geçirir; canlıdan gelindiyse kanal listesi bağlamı (liveCtx) korunur, kanal ↑↓ çalışır.
+let arcSeq = 0;
+function playArchive(it, p, { ctx: liveCtx = null, shift = null } = {}) {
   const tz = (S.cat.account && S.cat.account.timezone) || '';
   const targets = archiveTargets(S.source, it, p, tz);
   if (!targets.length) return toast('Bu kanalda arşiv (geriye dönük izleme) yok');
-  const item = { id: `arc:${it.id}:${p.s}`, kind: 'recording', name: `${it.name} · ${p.t || 'Program'}`, logo: it.logo };
-  const ctx = { items: [it], index: 0, play: (x) => startPlay(x, { ctx: { items: [x], index: 0, play: ctx.play } }) };
+  const base = floorMin(p.s);
+  const item = {
+    id: `arc:${it.id}:${p.s}:${++arcSeq}`,
+    kind: 'recording',
+    name: `${it.name} · ${p.t || 'Geriden izleme'}`,
+    logo: it.logo,
+    shift: shift || { ch: it.id, base, skip: p.s - base, span: p.e - p.s },
+  };
+  const ctx = liveCtx || { items: [it], index: 0, play: (x) => startPlay(x, { ctx: { items: [x], index: 0, play: ctx.play } }) };
   pui.open(item, targets, { ep: null, startAt: 0, ctx });
+}
+
+// Canlı yayında geri sarma: hedef an arşiv adresine çevrilir; hedef canlıya çok yakınsa ya da arşiv bu noktada bittiyse canlıya dönülür.
+function shiftTo(ch, target, dir, ctx, prev) {
+  const plan = shiftPlan(Date.now(), target, { dir, archive: archiveMs(ch) });
+  const liveCtx = ctx && ctx.items && ctx.items[ctx.index] && ctx.items[ctx.index].id === ch.id ? ctx : null;
+  const goLive = () => (liveCtx ? liveCtx.play(liveCtx.items[liveCtx.index], liveCtx.index) : playLive([ch], 0));
+  if (plan.live) return goLive();
+  if (prev && stalled(prev, target)) {
+    toast('Arşiv bu noktada bitti, canlıya geçildi');
+    return goLive();
+  }
+  playArchive(ch, plan.p, { ctx: liveCtx, shift: { ch: ch.id, base: plan.start, skip: plan.skip, span: plan.span } });
 }
 
 // Bildirime dokununca ilgili kanal açılır (kaynak başkaysa önce o kaynağa geçilir).

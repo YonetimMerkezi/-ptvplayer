@@ -5,6 +5,7 @@ import { $, icon, openSheet, toast } from './ui.js';
 import { pushLayer, popLayer } from './nav.js';
 import { normalizeLabels } from './ptools.js';
 import { classify, seekDelta, seekTarget, levelFrom, seekStep, fmtDelta, pinchMode, dist2 } from './gestures.js';
+import { barMs, barWall, barValue, wallOf, behindOf, behindLabel, endedWall, LIVE_EDGE_MS } from './shift.js';
 import { channelNumber, resolveChannel, createChannelNumber } from './chnum.js';
 import { SLEEP_OPTIONS, createSleepTimer, fmtRemaining } from './sleep.js';
 import { REC_LIMITS, fmtElapsed } from './rec.js';
@@ -83,6 +84,12 @@ export function createPlayerUI({ engine, player, env }) {
   };
   let resizeIdx = Math.max(0, RESIZE.findIndex(([id]) => id === (env.pref ? env.pref('resize', 'fit') : 'fit')));
   let seeking = false;
+  // Arşivli canlıda geri sarma: art arda sarmalar toplanıp tek açılışta uygulanır (her açılış yeniden bağlanmadır).
+  let shiftAcc = 0;
+  let shiftAnchor = 0;
+  let shiftTimer = 0;
+  let shiftHopFor = '';
+  let shiftSkipFor = '';
   let shortEpgFor = null;
   let tracksLoadedFor = null;
 
@@ -243,12 +250,16 @@ export function createPlayerUI({ engine, player, env }) {
       if (m === 'h' && musicNow) {
         gest.mode = 'swipe'; // müzik çalar: yatay kaydırma şarkı değiştirir
       } else if (m === 'h') {
-        if (st.live || !(st.dur > 0)) {
+        if (shiftCh(st)) {
+          gest.mode = 'hs'; // arşivli kanal: sürükleyerek geri/ileri sarma (gerçek an üzerinden)
+          gest.base = wallNow(st);
+        } else if (st.live || !(st.dur > 0)) {
           gest.mode = 'none';
           return hud('info', 'Canlı yayında sarma yok');
+        } else {
+          gest.mode = 'h';
+          gest.base = st.pos;
         }
-        gest.mode = 'h';
-        gest.base = st.pos;
       } else {
         gest.mode = 'v';
         gest.kind = gest.x0 < gest.videoRect.left + gest.videoRect.width / 2 ? 'brightness' : 'volume';
@@ -263,6 +274,11 @@ export function createPlayerUI({ engine, player, env }) {
       gest.target = seekTarget(gest.base, sec, st.dur);
       const real = (gest.target - gest.base) / 1000;
       hud(real >= 0 ? 'fwd' : 'rew', `${fmtDelta(real)} · ${fmtDuration(gest.target)}`);
+    } else if (gest.mode === 'hs') {
+      const at = Date.now();
+      const sec = Math.min(seekDelta(dx, gest.videoRect.width), (at - gest.base) / 1000); // canlıdan ileri gidilmez
+      gest.target = gest.base + sec * 1000;
+      hud(sec >= 0 ? 'fwd' : 'rew', `${fmtDelta(sec)} · ${behindLabel(behindOf(at, gest.target))}`);
     } else if (gest.mode === 'v') {
       const v = levelFrom(gest.start, dy, gest.videoRect.height);
       levels[gest.kind] = v;
@@ -342,11 +358,60 @@ export function createPlayerUI({ engine, player, env }) {
     }
     if (gest.mode === 'swipe') finishSwipe(e.clientX - gest.x0, e.type === 'pointerup');
     if (gest.mode === 'h' && gest.target != null) player.seek(gest.target);
+    if (gest.mode === 'hs' && gest.target != null && Math.abs(gest.target - gest.base) >= 3000) shiftToWall(gest.target, gest.target < gest.base ? -1 : 1);
     if (gest.mode === 'v') {
       applyLevel(gest.kind, levels[gest.kind]);
       if (gest.kind === 'brightness' && env.setPref) env.setPref('brightness', levels.brightness);
     }
     gest.mode = null;
+  }
+
+  // Geri sarılabilen kanal: canlıdayken kendisi; arşivden izlerken oynatma bağlamındaki canlı kanal (arşiv akışı `shift` taşır).
+  function shiftCh(st) {
+    if (!st || !st.item || !env.canShift) return null;
+    const ch = st.item.kind === 'live' ? st.item : st.item.shift && ctx && ctx.items ? ctx.items[ctx.index] : null;
+    return ch && env.canShift(ch) ? ch : null;
+  }
+  // Şu an izlenen yayının gerçek anı: canlıda şimdi, arşivde akışın başladığı an + konum.
+  const wallNow = (st) => (st.item.shift ? wallOf(st.item.shift, st.pos) : Date.now());
+  // Hedef ana sar: arşiv akışı sarılabiliyorsa (HLS) akış içinde atlanır, değilse arşiv o dakikadan yeniden açılır; canlıya çok yakınsa canlıya dönülür.
+  function shiftToWall(target, dir) {
+    const st = player.state();
+    const ch = shiftCh(st);
+    if (!ch || !env.onShift) return false;
+    const now = Date.now();
+    const cur = st.item.shift;
+    if (cur && st.dur > 0) {
+      const rel = target - cur.base;
+      if (rel >= 0 && rel < st.dur - 3000 && now - target > LIVE_EDGE_MS) {
+        player.seek(rel);
+        return true;
+      }
+    }
+    if (!cur && now - target <= LIVE_EDGE_MS) return true; // zaten canlı
+    env.onShift(ch, target, dir, ctx, null);
+    return true;
+  }
+  // Düğme ve tuşla sarma: basışlar toplanır, kısa bir bekleyişten sonra tek seferde uygulanır. Arşivli kanal değilse false (eski davranış).
+  function shiftBy(deltaMs) {
+    const st = player.state();
+    if (!shiftCh(st)) return false;
+    if (!shiftTimer && st.item.kind === 'live' && deltaMs > 0) {
+      hud('info', 'Zaten canlıdasınız');
+      return true;
+    }
+    if (!shiftTimer) {
+      shiftAnchor = wallNow(st);
+      shiftAcc = 0;
+    }
+    shiftAcc = Math.min(shiftAcc + deltaMs, Date.now() - shiftAnchor); // canlıdan ileri gidilmez
+    hud(shiftAcc >= 0 ? 'fwd' : 'rew', `${fmtDelta(shiftAcc / 1000)} · ${behindLabel(behindOf(Date.now(), shiftAnchor + shiftAcc))}`);
+    clearTimeout(shiftTimer);
+    shiftTimer = setTimeout(() => {
+      shiftTimer = 0;
+      shiftToWall(shiftAnchor + shiftAcc, shiftAcc < 0 ? -1 : 1);
+    }, 700);
+    return true;
   }
 
   // Kumanda: art arda sağ/sol (ya da ileri/geri sar tuşları) sarar, basılı tutuldukça adım büyür.
@@ -360,6 +425,7 @@ export function createPlayerUI({ engine, player, env }) {
     const step = dir * seekStep(keyStreak);
     keyTotal = (chained ? keyTotal : 0) + step;
     keyAt = now;
+    if (shiftBy(step * 1000)) return;
     player.seekBy(step * 1000);
     hud(dir > 0 ? 'fwd' : 'rew', fmtDelta(keyTotal));
   }
@@ -562,6 +628,11 @@ export function createPlayerUI({ engine, player, env }) {
     fitPortraitVideo(st);
     renderVodShelf(st);
     q('#pl-prog').classList.toggle('live', live);
+    const sh = shiftCh(st); // arşivli kanalda canlıdan geri sarma açık
+    const shifted = !!sh && !!st.item.shift; // arşivden izleniyor (çubuk "canlıdan geride" süreyi gösterir)
+    document.body.classList.toggle('live-shift', live && !!sh);
+    q('#pl-prog').classList.toggle('shiftable', !!sh);
+    q('#pl-prog').classList.toggle('shifted', shifted);
     const pausing = st.status === 'playing' || st.status === 'buffering' || st.status === 'loading';
     q('#pl-play').innerHTML = icon(pausing ? 'pause' : 'play');
     q('#pl-play').setAttribute('aria-label', pausing ? 'Duraklat' : 'Oynat');
@@ -574,11 +645,23 @@ export function createPlayerUI({ engine, player, env }) {
     q('#pl-info-fav').style.color = q('#pl-fav').style.color;
     q('#pl-epg').hidden = st.item.kind !== 'live' || !!st.item.cast || !!st.item.radio; // radyoda program rehberi yok
     if (!live && !seeking) {
-      q('#pl-pos').textContent = fmtDuration(st.pos);
-      q('#pl-dur').textContent = st.dur > 0 ? fmtDuration(st.dur) : '';
-      q('#pl-seek').value = st.dur > 0 ? Math.round((st.pos / st.dur) * 1000) : 0;
+      if (shifted) {
+        const wall = wallOf(st.item.shift, st.pos); // arşiv akışı: konum gerçek ana, çubuk "canlıdan geride" süreye çevrilir
+        q('#pl-pos').textContent = behindLabel(behindOf(Date.now(), wall));
+        q('#pl-dur').textContent = 'CANLI';
+        q('#pl-seek').value = barValue(Date.now(), wall, barMs(sh));
+        if (st.item.shift.skip > 0 && st.dur > 0 && shiftSkipFor !== st.item.id) {
+          shiftSkipFor = st.item.id; // akış sarılabiliyorsa dakikaya yuvarlanan başlangıçtan kalan saniyeler atlanır
+          player.seek(Math.min(st.item.shift.skip, Math.max(0, st.dur - 3000)));
+        }
+      } else {
+        q('#pl-pos').textContent = fmtDuration(st.pos);
+        q('#pl-dur').textContent = st.dur > 0 ? fmtDuration(st.dur) : '';
+        q('#pl-seek').value = st.dur > 0 ? Math.round((st.pos / st.dur) * 1000) : 0;
+      }
     }
     if (live) q('#pl-pos').textContent = '';
+    if (live && sh && !seeking) q('#pl-seek').value = 1000;
     renderMusicButtons();
     renderMusicArt(st);
     const hasNav = !!ctx && ctx.items.length > 1;
@@ -629,6 +712,10 @@ export function createPlayerUI({ engine, player, env }) {
     }
     renderNextUp(st);
     renderIntro(st);
+    if (st.status === 'ended' && shifted && shiftHopFor !== st.item.id && env.onShift) {
+      shiftHopFor = st.item.id; // arşiv akışı bitti: kaldığı yerden sürer, canlıya ulaştıysa canlıya geçer
+      env.onShift(sh, endedWall(st.item.shift, st), -1, ctx, st.item.shift);
+    }
     if (st.status === 'ended' && musicNow && !st.item.radio) {
       if (prev !== 'ended') musicGo(1, true); // bitişte bir kez: sıradaki şarkı, karışık seçim ya da tekrar
     } else if (st.status === 'ended' && ctx && ctx.autoNext && autoNextOn() && epKey(st) !== nextDismissed && ctx.index < ctx.items.length - 1) go(1);
@@ -1437,7 +1524,7 @@ export function createPlayerUI({ engine, player, env }) {
     root.classList.remove('vod-portrait');
     setPortraitSplit(false);
     syncDock(); // open artık false: araç düğmeleri kendi yerine döner
-    document.body.classList.remove('player-open', 'live-mode', 'vod-mode');
+    document.body.classList.remove('player-open', 'live-mode', 'live-shift', 'vod-mode');
     document.documentElement.classList.remove('native-playing');
     q('#pl-hud').hidden = true;
     q('#pl-nextup').hidden = true;
@@ -1695,11 +1782,11 @@ export function createPlayerUI({ engine, player, env }) {
     showUi(false);
   });
   q('#pl-rew').addEventListener('click', () => {
-    player.seekBy(-10000);
+    if (!shiftBy(-10000)) player.seekBy(-10000);
     showUi(false);
   });
   q('#pl-fwd').addEventListener('click', () => {
-    player.seekBy(10000);
+    if (!shiftBy(10000)) player.seekBy(10000);
     showUi(false);
   });
   q('#pl-shuffle').addEventListener('click', () => {
@@ -1879,13 +1966,17 @@ export function createPlayerUI({ engine, player, env }) {
   seek.addEventListener('input', () => {
     seeking = true;
     const st = player.state();
-    q('#pl-pos').textContent = fmtDuration((seek.value / 1000) * st.dur);
+    const sh = shiftCh(st);
+    const at = Date.now();
+    q('#pl-pos').textContent = sh ? behindLabel(behindOf(at, barWall(at, Number(seek.value), barMs(sh)))) : fmtDuration((seek.value / 1000) * st.dur);
     showUi(true);
   });
   seek.addEventListener('change', () => {
     const st = player.state();
     seeking = false;
-    player.seek((seek.value / 1000) * st.dur);
+    const sh = shiftCh(st);
+    if (sh) shiftToWall(barWall(Date.now(), Number(seek.value), barMs(sh)), 0);
+    else player.seek((seek.value / 1000) * st.dur);
     showUi(false);
   });
 
@@ -1936,7 +2027,7 @@ export function createPlayerUI({ engine, player, env }) {
     }
     const inCtl = open && ui.classList.contains('show') && !!e.target.closest && !!e.target.closest('#pl-ui');
     if (inCtl && k.startsWith('Arrow')) {
-      if (e.target.id === 'pl-seek' && !live && (k === 'ArrowLeft' || k === 'ArrowRight')) {
+      if (e.target.id === 'pl-seek' && (!live || shiftCh(st)) && (k === 'ArrowLeft' || k === 'ArrowRight')) {
         keySeek(k === 'ArrowLeft' ? -1 : 1);
         showUi(false);
         e.preventDefault();
@@ -1950,7 +2041,7 @@ export function createPlayerUI({ engine, player, env }) {
     if (k.startsWith('Arrow')) revealControls();
     else if (k === 'ChannelDown' && live) go(-1);
     else if (k === 'ChannelUp' && live) go(1);
-    else if (seekKey && !live) keySeek(seekKey);
+    else if (seekKey && (!live || shiftCh(st))) keySeek(seekKey);
     else if (seekKey) hud('info', 'Canlı yayında sarma yok');
     else if (k === 'ChannelUp' || k === 'ChannelDown') go(k === 'ChannelUp' ? 1 : -1);
     else if (k === 'PageUp' || k === 'MediaTrackPrevious') go(-1);
