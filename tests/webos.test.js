@@ -339,3 +339,23 @@ test('keys: TV keyCode göndermese de key / keyIdentifier adından Geri tanını
   assert.equal(actionOfEvent({ keyCode: 13 }), 'ok');
   assert.equal(actionOfEvent(null), null);
 });
+
+// ---- Geri tuşu ve seçim paneli
+test('paket: Geri tuşu uygulamaya ulaşsın diye geçmiş (History) API\'si kapalı', () => {
+  const app = JSON.parse(oku('appinfo.json'));
+  // LG kuralı: true değilse Geri'yi TV kendi geçmişiyle yönetir, keydown 461 uygulamaya gelmeyebilir
+  assert.strictEqual(app.disableBackHistoryAPI, true);
+  assert.match(oku('src', 'keys.js'), /461: 'back'/);
+});
+
+test('oynatıcı: Ses/Altyazı/Ekran seçilince panel kapanır; ◀ ve zaman aşımı da kapatır', () => {
+  const k = oku('src', 'screens', 'player.js');
+  for (const ad of ["toast('Ses: '", "toast(i ? 'Altyazı: '", "ctx.store.setSetting('aspect', ORAN[i][0]);"]) {
+    const i = k.indexOf(ad);
+    assert.ok(i > 0, ad + ' bulunamadı');
+    assert.match(k.slice(i, i + 160), /secimKapat\(\);/, ad + ' sonrası panel kapanmalı');
+  }
+  assert.match(k, /a === 'left' && !sc\.yan/, 'yan ayarı olmayan panelde ◀ kapatır');
+  assert.match(k, /setTimeout\(\(\) => \{\s*if \(secim\) secimKapat\(\);\s*\}, 12000\)/, 'panel 12 sn sonra kendiliğinden kapanır');
+  assert.match(k, /function secimKapat\(\) \{\s*clearTimeout\(secimT\);/, 'kapanınca zamanlayıcı temizlenir');
+});

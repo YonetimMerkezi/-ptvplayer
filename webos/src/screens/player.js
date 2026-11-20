@@ -428,13 +428,23 @@ export function playerScreen({ list, index, fresh }) {
     pickEl.innerHTML = h;
     pickEl.className = 'p-pick on';
   }
+  // Panel kendiliğinden kapanır: Geri tuşu bir TV'de ulaşmasa bile ekranda takılı kalmasın
+  let secimT = 0;
+  function secimZamanla() {
+    clearTimeout(secimT);
+    secimT = setTimeout(() => {
+      if (secim) secimKapat();
+    }, 12000);
+  }
   function secimAc(s) {
     s.idx = Math.max(0, Math.min(s.satirlar.length - 1, s.idx || 0));
     secim = s;
     odakAyarla('sec');
     secimCiz();
+    secimZamanla();
   }
   function secimKapat() {
+    clearTimeout(secimT);
     secim = null;
     pickEl.className = 'p-pick';
     odakAyarla('alt');
@@ -462,9 +472,8 @@ export function playerScreen({ list, index, fresh }) {
       idx: Math.max(0, yap().map((x) => x.on).indexOf(true)),
       calis(i) {
         for (let j = 0; j < t.length; j++) t[j].enabled = j === i;
-        this.satirlar = yap();
-        secimCiz();
-        toast('Ses: ' + this.satirlar[i].ad);
+        toast('Ses: ' + yap()[i].ad);
+        secimKapat();
       },
     });
   }
@@ -481,9 +490,8 @@ export function playerScreen({ list, index, fresh }) {
       idx: Math.max(0, yap().map((x) => x.on).indexOf(true)),
       calis(i) {
         for (let j = 0; j < l.length; j++) l[j].mode = j === i - 1 ? 'showing' : 'disabled';
-        this.satirlar = yap();
-        secimCiz();
-        toast(i ? 'Altyazı: ' + this.satirlar[i].ad : 'Altyazı kapalı');
+        toast(i ? 'Altyazı: ' + yap()[i].ad : 'Altyazı kapalı');
+        secimKapat();
       },
     });
   }
@@ -497,8 +505,7 @@ export function playerScreen({ list, index, fresh }) {
       calis(i) {
         ctx.store.setSetting('aspect', ORAN[i][0]);
         oranUygula();
-        this.satirlar = yap();
-        secimCiz();
+        secimKapat();
       },
     });
   }
@@ -630,7 +637,8 @@ export function playerScreen({ list, index, fresh }) {
       // Odak Geri düğmesinde / düğme çubuğunda / kanal listesinde iken yön tuşları oradadır
       if (odak === 'sec') {
         const sc = secim;
-        if (!sc || a === 'back' || a === 'stop' || a === 'info') {
+        if (sc) secimZamanla();
+        if (!sc || a === 'back' || a === 'stop' || a === 'info' || (a === 'left' && !sc.yan)) {
           if (sc) secimKapat();
           else odakAyarla('alt');
           return true;
