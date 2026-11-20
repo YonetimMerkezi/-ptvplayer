@@ -182,6 +182,13 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .p-bar i { display: block; height: 100%; width: 0; background: #2dd4bf; }
 .p-time { font-size: 1.6rem; color: #c9d2e6; margin-top: .6rem; min-height: 2rem; }
 .p-hint { font-size: 1.4rem; color: #8b97b1; margin-top: .6rem; }
+.p-acts { margin-top: 1rem; min-height: 4rem; }
+.p-b { display: inline-block; margin-right: 1rem; padding: .6rem 1.6rem; font-size: 1.7rem; border-radius: .8rem; background: rgba(21,27,43,.88); color: #e8ecf4; }
+.p-b.on { background: #2dd4bf; color: #04141a; }
+.p-ov.on .p-b { pointer-events: auto; }
+.p-list { display: none; position: absolute; top: 9rem; right: 0; bottom: 0; width: 38rem; background: rgba(10,14,23,.94); }
+.p-list.on { display: block; }
+.p-list-in { position: absolute; top: 1rem; left: 1rem; right: 1rem; bottom: 1rem; }
 .p-spin { display: none; position: absolute; top: 50%; left: 50%; width: 6rem; height: 6rem; margin: -3rem 0 0 -3rem; border: .6rem solid rgba(255,255,255,.2); border-top-color: #2dd4bf; border-radius: 50%; -webkit-animation: dn 0.9s linear infinite; animation: dn 0.9s linear infinite; }
 .p-spin.on { display: block; }
 @-webkit-keyframes dn { from { -webkit-transform: rotate(0deg); } to { -webkit-transform: rotate(360deg); } }

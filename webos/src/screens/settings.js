@@ -39,6 +39,7 @@ export function settingsScreen() {
       { id: 'keys', ad: 'Kumanda tuşları', deger: () => '', yardim: 'Kırmızı / yeşil / sarı / mavi tuşlara oynatıcıda ve ana sayfada yapılacak eylemi atayın' },
       { id: 'fontScale', ad: 'Yazı boyutu', deger: () => ad(YAZI, ctx.store.setting('fontScale', '1')), yardim: 'Tüm ekranlardaki yazı ve düğme boyutunu büyütür ya da küçültür' },
       { id: 'aspect', ad: 'Görüntü oranı', deger: () => ad(ORAN, ctx.store.setting('aspect', 'contain')), yardim: 'Videonun ekrana yerleşimi: sığdır, doldur (kenarları kırp) ya da uzat. Oynatıcıda renkli tuşla da değişir' },
+      { id: 'arrowZap', ad: 'Oynatıcıda ▲▼ tuşları', deger: () => (ctx.store.setting('arrowZap', false) ? 'Kanal değiştir' : 'Menü'), yardim: 'Menü: ▲ Geri düğmesine, ▼ düğme çubuğuna geçer (kanal için P+ / P− ya da numara tuşları). Kanal değiştir: eski davranış' },
       { id: 'autoNext', ad: 'Sıradaki bölüm', deger: () => (ctx.store.setting('autoNext', true) ? 'Açık' : 'Kapalı'), yardim: 'Bölüm bitince sıradaki bölüm kendiliğinden açılır' },
       { id: 'autoplay', ad: 'Açılışta son kanal', deger: () => (ctx.store.setting('autoplay', false) ? 'Açık' : 'Kapalı'), yardim: 'Uygulama açılınca en son izlenen canlı kanalı doğrudan oynatır' },
       { id: 'liveFmt', ad: 'Canlı yayın biçimi', deger: () => ad(FORMAT, ctx.store.setting('liveFmt', 'm3u8')), yardim: 'Yayın açılmıyorsa diğer biçimi deneyin (yalnız Xtream)' },
@@ -92,6 +93,7 @@ export function settingsScreen() {
       open('settings');
       return;
     } else if (r.id === 'aspect') ctx.store.setSetting('aspect', sonraki(ORAN, ctx.store.setting('aspect', 'contain'), yon));
+    else if (r.id === 'arrowZap') ctx.store.setSetting('arrowZap', !ctx.store.setting('arrowZap', false));
     else if (r.id === 'autoNext') ctx.store.setSetting('autoNext', !ctx.store.setting('autoNext', true));
     else if (r.id === 'autoplay') ctx.store.setSetting('autoplay', !ctx.store.setting('autoplay', false));
     else if (r.id === 'liveFmt') ctx.store.setSetting('liveFmt', sonraki(FORMAT, ctx.store.setting('liveFmt', 'm3u8'), yon));
@@ -116,7 +118,7 @@ export function settingsScreen() {
     onKey(a) {
       if (a === 'left' || a === 'right') {
         const r = list.cur;
-        if (r && /^(liveFmt|netMode|fontScale|aspect|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
+        if (r && /^(liveFmt|netMode|fontScale|aspect|arrowZap|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
         return true;
       }
       return list.key(a);

@@ -2,6 +2,7 @@
 // film/bölümde ileri-geri sarma, kaldığı yerden devam ve bölüm sonunda sıradaki bölüm.
 import { ctx, provider, pop } from '../ctx.js';
 import { rakam } from '../keys.js';
+import { VList } from '../vlist.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
 import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
@@ -20,7 +21,8 @@ export function playerScreen({ list, index, fresh }) {
   kok.innerHTML =
     '<video id="vid"></video>' +
     '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">‹ Geri</div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
-    '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-hint"></div></div></div>' +
+    '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-acts"></div><div class="p-hint"></div></div></div>' +
+    '<div class="p-list"><div class="p-list-in"></div></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
   kok.addEventListener('mousemove', () => {
     if (!kapali) goster();
@@ -34,6 +36,8 @@ export function playerScreen({ list, index, fresh }) {
   const barI = barEl.firstChild;
   const timeEl = kok.querySelector('.p-time');
   const hintEl = kok.querySelector('.p-hint');
+  const actsEl = kok.querySelector('.p-acts');
+  const listEl = kok.querySelector('.p-list');
   const spin = kok.querySelector('.p-spin');
   const msg = kok.querySelector('.p-msg');
   const numEl = kok.querySelector('.p-num');
@@ -52,6 +56,9 @@ export function playerScreen({ list, index, fresh }) {
   let sarmaAdim = 10;
   let hata = false;
   let onceki = -1; // önceki kanalın sırası ("önceki kanal" eylemi)
+  let odak = 'video'; // 'video' (yayın), 'ust' (Geri düğmesi), 'alt' (düğme çubuğu), 'liste' (kanal listesi)
+  let altIdx = 0;
+  let kanalListe = null; // VList (ilk açılışta kurulur)
   let uykuDk = 0;
   let uykuT = 0;
   let uykuUyariT = 0;
@@ -71,12 +78,75 @@ export function playerScreen({ list, index, fresh }) {
   function goster(ms) {
     ov.className = 'p-ov on';
     clearTimeout(ovT);
-    if (ms !== 0) ovT = setTimeout(gizle, ms || 4500);
+    if (ms !== 0 && odak === 'video') ovT = setTimeout(gizle, ms || 4500);
   }
   function gizle() {
-    if (hata) return;
+    if (hata || odak !== 'video') return;
     ov.className = 'p-ov';
   }
+  // Odak bölgesini değiştirir: Geri düğmesi / düğme çubuğu açıkken katman ekranda kalır
+  function odakAyarla(o) {
+    odak = o;
+    const geri = kok.querySelector('.top-back');
+    if (geri) geri.className = 'top-back' + (o === 'ust' ? ' on' : '');
+    barCiz();
+    listEl.className = 'p-list' + (o === 'liste' ? ' on' : '');
+    if (o === 'video') goster();
+    else goster(0);
+  }
+  // Düğme çubuğu: canlıda kanal işlemleri, filmde sarma
+  const dugmeler = () =>
+    canli()
+      ? [['list', 'Kanallar'], ['last', 'Önceki kanal'], ['fav', 'Favori'], ['aspect', 'Oran'], ['sleep', 'Uyku'], ['fmt', 'Biçim']]
+      : [['rw', '−10 sn'], ['pp', v.paused ? 'Oynat' : 'Duraklat'], ['ff', '+10 sn'], ['aspect', 'Oran'], ['sleep', 'Uyku']].concat(it.kind === 'episode' && list.length > 1 ? [['next', 'Sonraki bölüm']] : []);
+  function barCiz() {
+    const d = dugmeler();
+    altIdx = Math.max(0, Math.min(d.length - 1, altIdx));
+    actsEl.innerHTML = d.map((x, i) => '<span class="p-b' + (odak === 'alt' && i === altIdx ? ' on' : '') + '" data-a="' + x[0] + '">' + x[1] + '</span>').join('');
+  }
+  function listeAc() {
+    if (list.length < 2) return toast('Başka kanal yok');
+    if (!kanalListe) {
+      listEl.className = 'p-list on'; // boyut ölçülebilsin
+      kanalListe = new VList(kok.querySelector('.p-list-in'), {
+        rowH: Math.round(parseFloat(getComputedStyle(document.documentElement).fontSize) * 3.8),
+        render: (c) => '<span class="num">' + (c.num || '') + '</span><span class="nm">' + esc(c.name) + '</span>',
+        onActivate: (c, i) => {
+          if (i !== idx) {
+            onceki = idx;
+            idx = i;
+            baslat();
+          }
+          odakAyarla('alt');
+        },
+      });
+    }
+    odakAyarla('liste');
+    kanalListe.setItems(list, true);
+    kanalListe.setIndex(idx);
+    kanalListe.setActive(true);
+  }
+  // Düğme çubuğu ve imleç tıklaması için ortak eylem yürütücüsü
+  function dugmeCalistir(id) {
+    if (id === 'list') return listeAc();
+    if (id === 'rw') return sar(-1);
+    if (id === 'ff') return sar(1);
+    if (id === 'pp') {
+      if (v.paused) v.play();
+      else v.pause();
+      barCiz();
+      return;
+    }
+    if (id === 'next') return kanal(1);
+    oyunEylem(id);
+    barCiz();
+  }
+  const oklarKanal = () => canli() && ctx.store.setting('arrowZap', false);
+  kok.addEventListener('click', (e) => {
+    let n = e.target;
+    while (n && n !== kok && !(n.getAttribute && n.getAttribute('data-a'))) n = n.parentNode;
+    if (n && n !== kok) dugmeCalistir(n.getAttribute('data-a'));
+  });
   const renkliIpucu = () => {
     const at = atamalar(ctx.store, 'oyn');
     const r = [['red', 'Kırmızı'], ['green', 'Yeşil'], ['yellow', 'Sarı'], ['blue', 'Mavi']];
@@ -84,8 +154,9 @@ export function playerScreen({ list, index, fresh }) {
   };
   const ipucu = () => {
     hintEl.innerHTML = canli()
-      ? '▲▼ kanal · 0-9 numara · renkli tuşlar: ' + renkliIpucu() + ' · Geri: çık'
-      : '◀▶ 10 sn · OK: duraklat · ' + (list.length > 1 ? 'CH: bölüm · ' : '') + 'Geri: çık';
+      ? '▲ Geri düğmesi · ▼ düğmeler · P+ / P−: kanal · 0-9 numara · ' + renkliIpucu()
+      : '◀▶ 10 sn · OK: duraklat · ▲ Geri düğmesi · ▼ düğmeler' + (list.length > 1 ? ' · P+ / P−: bölüm' : '');
+    barCiz();
   };
 
   function zamanGuncelle() {
@@ -227,9 +298,11 @@ export function playerScreen({ list, index, fresh }) {
   v.addEventListener('timeupdate', zamanGuncelle);
   v.addEventListener('durationchange', zamanGuncelle);
   v.addEventListener('pause', () => {
+    barCiz();
     if (!kapali && !v.ended) goster(0);
   });
   v.addEventListener('play', () => {
+    barCiz();
     if (!kapali) goster();
   });
   v.addEventListener('error', () => {
@@ -331,6 +404,9 @@ export function playerScreen({ list, index, fresh }) {
       idx = onceki;
       onceki = t;
       baslat();
+    } else if (e === 'list') {
+      listeAc();
+      return;
     } else if (e === 'info') {
       if (ov.className.indexOf('on') >= 0 && !hata) gizle();
       else goster();
@@ -345,6 +421,49 @@ export function playerScreen({ list, index, fresh }) {
       baslat();
     },
     onKey(a) {
+      // Odak Geri düğmesinde / düğme çubuğunda / kanal listesinde iken yön tuşları oradadır
+      if (odak === 'liste') {
+        if (a === 'back' || a === 'left') {
+          odakAyarla('alt');
+          return true;
+        }
+        if (a === 'up' || a === 'down' || a === 'ok' || a === 'chup' || a === 'chdown') return kanalListe.key(a);
+        return true;
+      }
+      if (odak === 'ust') {
+        if (a === 'ok') {
+          kaydet();
+          pop();
+          return true;
+        }
+        if (a === 'down') {
+          odakAyarla('alt');
+          return true;
+        }
+        if (a === 'up' || a === 'left' || a === 'right') return true;
+        if (a !== 'back') odakAyarla('video');
+      } else if (odak === 'alt') {
+        const d = dugmeler();
+        if (a === 'left' || a === 'right') {
+          altIdx = Math.max(0, Math.min(d.length - 1, altIdx + (a === 'right' ? 1 : -1)));
+          barCiz();
+          goster(0);
+          return true;
+        }
+        if (a === 'ok') {
+          dugmeCalistir(d[altIdx][0]);
+          return true;
+        }
+        if (a === 'up') {
+          odakAyarla('ust');
+          return true;
+        }
+        if (a === 'down') {
+          odakAyarla('video');
+          return true;
+        }
+        if (a !== 'back' && a !== 'stop') odakAyarla('video');
+      }
       const n = rakam(a);
       if (n >= 0 && canli()) {
         numBuf = (numBuf + n).slice(0, 4);
@@ -388,6 +507,14 @@ export function playerScreen({ list, index, fresh }) {
       if (a === 'right' || a === 'ff') {
         if (!canli()) sar(1);
         else goster();
+        return true;
+      }
+      if (a === 'down' && !oklarKanal()) {
+        odakAyarla('alt');
+        return true;
+      }
+      if (a === 'up' && !oklarKanal()) {
+        odakAyarla('ust');
         return true;
       }
       if (a === 'down' || a === 'chdown') {

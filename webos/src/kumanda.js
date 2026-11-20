@@ -14,6 +14,7 @@ export const OYNATICI = [
   ['fav', 'Favoriye ekle / çıkar'],
   ['aspect', 'Görüntü oranı'],
   ['fmt', 'Canlı yayın biçimi (HLS / TS)'],
+  ['list', 'Kanal listesi'],
   ['sleep', 'Uyku zamanlayıcısı'],
   ['last', 'Önceki kanal'],
   ['info', 'Program bilgisi'],
