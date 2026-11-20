@@ -772,6 +772,7 @@ export function playerScreen({ list, index, fresh }) {
       kaydet();
       kapali = true;
       clearInterval(saveT);
+      clearTimeout(secimT);
       clearTimeout(ovT);
       clearTimeout(beklT);
       clearTimeout(epgT);

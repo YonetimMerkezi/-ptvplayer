@@ -160,7 +160,7 @@ function dugmeAc(o, sira) {
   o.tus('ok');
 }
 
-test('oynatıcı: Ses düğmesi ses yollarını listeler, seçileni açar; Geri paneli kapatır', () => {
+test('oynatıcı: Ses düğmesi ses yollarını listeler, seçileni açar ve paneli kapatır', () => {
   const o = kur();
   const v = o.q('#vid');
   v.audioTracks = [{ label: '', language: 'tur', enabled: true }, { label: 'Dublaj', language: 'eng', enabled: false }];
@@ -172,9 +172,24 @@ test('oynatıcı: Ses düğmesi ses yollarını listeler, seçileni açar; Geri 
   o.tus('ok');
   assert.equal(v.audioTracks[1].enabled, true);
   assert.equal(v.audioTracks[0].enabled, false);
+  assert.equal(o.q('.p-pick').className, 'p-pick', 'seçim yapılınca panel kapanır');
+  assert.equal(top().name, 'player');
+  o.bitir();
+});
+
+test('oynatıcı: Geri ve ◀ paneli kapatır, ekrandan çıkarmaz', () => {
+  const o = kur();
+  o.q('#vid').audioTracks = [{ label: '', language: 'tur', enabled: true }, { label: 'Dublaj', language: 'eng', enabled: false }];
+  dugmeAc(o, 3);
+  assert.equal(o.q('.p-pick').className, 'p-pick on');
   o.tus('back');
   assert.equal(o.q('.p-pick').className, 'p-pick');
   assert.equal(top().name, 'player', 'Geri yalnız paneli kapattı');
+  o.tus('ok'); // odak çubukta kaldı: Ses yeniden açılır
+  assert.equal(o.q('.p-pick').className, 'p-pick on');
+  o.tus('left');
+  assert.equal(o.q('.p-pick').className, 'p-pick', '◀ yan ayarı olmayan paneli kapatır');
+  assert.equal(top().name, 'player');
   o.bitir();
 });
 
@@ -200,9 +215,12 @@ test('oynatıcı: Altyazı düğmesi altyazıyı açar ve kapatır', () => {
   o.tus('ok');
   assert.equal(v.textTracks[0].mode, 'showing');
   assert.equal(v.textTracks[1].mode, 'disabled', 'altyazı olmayan iz dokunulmadı');
+  assert.equal(o.q('.p-pick').className, 'p-pick', 'seçim yapılınca panel kapanır');
+  o.tus('ok'); // odak çubukta kaldı: Altyazı paneli yeniden açılır, seçili satır = açık olan
   o.tus('up');
   o.tus('ok');
   assert.equal(v.textTracks[0].mode, 'disabled');
+  assert.equal(o.q('.p-pick').className, 'p-pick');
   o.bitir();
 });
 
@@ -216,10 +234,9 @@ test('oynatıcı: Ekran düğmesi boyutu seçer, ayara yazar ve videoya uygular'
   assert.equal(ctx.store.setting('aspect', ''), 'z125');
   assert.equal(v.style.transform, 'scale(1.25)');
   assert.equal(v.style.objectFit, 'contain');
-  o.tus('up');
-  o.tus('up');
-  o.tus('up');
-  o.tus('up');
+  assert.equal(o.q('.p-pick').className, 'p-pick', 'seçim yapılınca panel kapanır');
+  o.tus('ok'); // Ekran paneli yeniden açılır; seçili satır = Yakınlaştır %25
+  for (let i = 0; i < 4; i++) o.tus('up');
   o.tus('ok');
   assert.equal(v.style.transform, '');
   o.bitir();
