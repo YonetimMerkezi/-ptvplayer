@@ -5,6 +5,7 @@ import { el, esc, px, sure, toast } from '../ui.js';
 import * as K from '../log.js';
 import { createArkaPlan } from '../vitrin.js';
 import { fragmanOynat } from '../fragman.js';
+import { heroName } from '../../../www/js/hero.js';
 
 const bolumOge = (item, e) => ({
   id: e.id,
@@ -24,9 +25,9 @@ export function detailScreen({ item }) {
   const dizi = item.kind === 'series';
   kok.innerHTML =
     '<div class="dt-bg"></div><div class="dt-sh"></div>' +
-    ustCubuk(esc(item.name)) +
+    ustCubuk(esc(heroName(item.name, item.year).title)) +
     '<div class="dt"><div class="dt-poster">' + (item.logo ? '<img src="' + esc(item.logo) + '" alt="">' : '') + '</div>' +
-    '<div class="dt-info"><div class="dt-meta" id="meta"></div><div class="dt-plot" id="plot">Yükleniyor…</div>' +
+    '<div class="dt-info"><div class="dt-meta" id="meta"></div><div class="dt-plot" id="plot">Yükleniyor…</div><div class="dt-people" id="people"></div>' +
     (dizi ? '<div class="dt-lists"><div class="dt-seasons"></div><div class="dt-eps"></div></div>' : '<div class="dt-btns" id="btns"></div>') +
     '</div></div><div class="hint" id="hint"></div>';
   const hint = kok.querySelector('#hint');
@@ -41,12 +42,17 @@ export function detailScreen({ item }) {
 
   const metaYaz = (i) => {
     const p = [];
-    if (i.year) p.push(esc(String(i.year).slice(0, 10)));
+    if (i.year) p.push(esc(String(i.year).slice(0, 4)));
     if (i.genre) p.push(esc(i.genre));
     if (i.rating) p.push('★ ' + esc(i.rating));
-    if (i.durationSec) p.push(sure(i.durationSec * 1000));
+    if (i.durationSec) p.push(Math.round(i.durationSec / 60) + ' dk');
     meta.innerHTML = p.join(' · ');
     plot.textContent = i.plot || 'Açıklama yok.';
+    const kes = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+    const kisi = [];
+    if (i.cast) kisi.push('<div><b>Oyuncular</b>' + esc(kes(String(i.cast), 130)) + '</div>');
+    if (i.director) kisi.push('<div><b>Yönetmen</b>' + esc(kes(String(i.director), 60)) + '</div>');
+    kok.querySelector('#people').innerHTML = kisi.join('');
     const g = [i.backdrop, item.backdrop].filter(Boolean);
     if (g.length) arka.goster(g);
   };

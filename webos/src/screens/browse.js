@@ -4,6 +4,7 @@ import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast } from '../ui.js';
 import * as K from '../log.js';
 import { createVitrin } from '../vitrin.js';
+import { heroName } from '../../../www/js/hero.js';
 import { fragmanOynat } from '../fragman.js';
 
 const BASLIK = { live: 'Canlı TV', guide: 'TV Rehberi', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
@@ -109,7 +110,7 @@ export function browseScreen({ kind }) {
     }
     return '<span class="nm">' + esc(it.name) + '</span>' + yildiz(sid, it);
   };
-  const hucreRender = (it) => '<div class="poster">' + logoHtml(it.logo) + '<b>' + esc(it.name.charAt(0)) + '</b></div><div class="ct">' + esc(it.name) + '</div>' + yildiz(sid, it);
+  const hucreRender = (it) => '<div class="poster">' + logoHtml(it.logo) + '<b>' + esc(it.name.charAt(0)) + '</b></div><div class="ct">' + esc(heroName(it.name, it.year).title) + '</div>' + yildiz(sid, it);
   const sonRender = (r) => {
     const it = r.item;
     const yuzde = r.dur > 0 ? Math.min(100, Math.round((r.pos / r.dur) * 100)) : 0;

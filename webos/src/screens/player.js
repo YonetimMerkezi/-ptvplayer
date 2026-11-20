@@ -58,6 +58,7 @@ export function playerScreen({ list, index, fresh }) {
   let onceki = -1; // önceki kanalın sırası ("önceki kanal" eylemi)
   let odak = 'video'; // 'video' (yayın), 'ust' (Geri düğmesi), 'alt' (düğme çubuğu), 'liste' (kanal listesi)
   let altIdx = 0;
+  let simdiProg = null; // canlı yayında şu an süren program (ilerleme çubuğu için)
   let kanalListe = null; // VList (ilk açılışta kurulur)
   let uykuDk = 0;
   let uykuT = 0;
@@ -147,15 +148,20 @@ export function playerScreen({ list, index, fresh }) {
     while (n && n !== kok && !(n.getAttribute && n.getAttribute('data-a'))) n = n.parentNode;
     if (n && n !== kok) dugmeCalistir(n.getAttribute('data-a'));
   });
+  // Renkli tuşlar: renkli nokta + kısa eylem adı (uzun adlar yalnız Ayarlar'da)
+  const KISA = { fav: 'Favori', aspect: 'Oran', fmt: 'Biçim', list: 'Kanallar', sleep: 'Uyku', last: 'Önceki', info: 'Bilgi' };
   const renkliIpucu = () => {
     const at = atamalar(ctx.store, 'oyn');
-    const r = [['red', 'Kırmızı'], ['green', 'Yeşil'], ['yellow', 'Sarı'], ['blue', 'Mavi']];
-    return r.filter((x) => at[x[0]] !== 'none').map((x) => x[1] + ' ' + eylemAdi('oyn', at[x[0]]).toLowerCase()).join(' · ');
+    const r = [['red', 'r'], ['green', 'g'], ['yellow', 'y'], ['blue', 'b']];
+    return r
+      .filter((x) => at[x[0]] !== 'none')
+      .map((x) => '<span class="p-k"><i class="k-' + x[1] + '"></i>' + esc(KISA[at[x[0]]] || eylemAdi('oyn', at[x[0]])) + '</span>')
+      .join('');
   };
   const ipucu = () => {
     hintEl.innerHTML = canli()
-      ? '▲ Geri düğmesi · ▼ düğmeler · P+ / P−: kanal · 0-9 numara · ' + renkliIpucu()
-      : '◀▶ 10 sn · OK: duraklat · ▲ Geri düğmesi · ▼ düğmeler' + (list.length > 1 ? ' · P+ / P−: bölüm' : '');
+      ? '<span class="p-k">▲ Geri</span><span class="p-k">▼ Menü</span><span class="p-k">P+ P− Kanal</span><span class="p-k">0–9 Numara</span>' + renkliIpucu()
+      : '<span class="p-k">◀▶ 10 sn</span><span class="p-k">OK Duraklat</span><span class="p-k">▲ Geri</span><span class="p-k">▼ Menü</span>' + (list.length > 1 ? '<span class="p-k">P+ P− Bölüm</span>' : '');
     barCiz();
   };
 
@@ -166,6 +172,11 @@ export function playerScreen({ list, index, fresh }) {
       barEl.style.display = '';
       barI.style.width = Math.min(100, (t / d) * 100) + '%';
       timeEl.textContent = sure(t * 1000) + ' / ' + sure(d * 1000);
+    } else if (canli() && simdiProg && Date.now() < simdiProg.e) {
+      const n = Date.now();
+      barEl.style.display = '';
+      barI.style.width = Math.max(0, Math.min(100, ((n - simdiProg.s) / (simdiProg.e - simdiProg.s)) * 100)) + '%';
+      timeEl.textContent = 'Bitmesine ' + Math.max(1, Math.round((simdiProg.e - n) / 60000)) + ' dk';
     } else {
       barEl.style.display = 'none';
       timeEl.textContent = canli() ? '' : sure(t * 1000);
@@ -184,6 +195,7 @@ export function playerScreen({ list, index, fresh }) {
 
   function epgYukle() {
     epgEl.innerHTML = '';
+    simdiProg = null;
     clearTimeout(epgT);
     if (!canli() || !provider() || !provider().hasEpg) return;
     const hedef = it;
@@ -198,6 +210,8 @@ export function playerScreen({ list, index, fresh }) {
         if (simdi) h += '<div><b>' + saat(simdi.s) + '–' + saat(simdi.e) + '</b> ' + esc(simdi.t) + '</div>';
         if (sonra) h += '<div class="dim"><b>' + saat(sonra.s) + '</b> ' + esc(sonra.t) + '</div>';
         epgEl.innerHTML = h;
+        simdiProg = simdi || null;
+        zamanGuncelle();
       } catch (e) {
         /* program bilgisi yok */
       }
@@ -226,7 +240,7 @@ export function playerScreen({ list, index, fresh }) {
     msg.className = 'p-msg';
     spin.className = 'p-spin on';
     durdurKaynak();
-    titleEl.textContent = (canli() && it.num ? it.num + '  ' : '') + it.name;
+    titleEl.innerHTML = (canli() && it.num ? '<span class="p-no">' + esc(it.num) + '</span>' : '') + (canli() && it.logo ? '<img class="p-logo" src="' + esc(it.logo) + '" alt="">' : '') + '<span class="p-nm">' + esc(it.name) + '</span>';
     fmtEl.textContent = canli() && provider() && provider().type === 'xtream' ? (fmt() === 'ts' ? 'TS' : 'HLS') : '';
     ipucu();
     zamanGuncelle();

@@ -69,7 +69,12 @@ function kur(ayar) {
   push(scr);
   const q = (sel) => scr.el.querySelector(sel);
   temizle.push(() => scr.destroy());
-  return { scr, q, tus: (a) => scr.onKey(a), baslik: () => q('.p-title').textContent, cubuk: () => q('.p-acts').innerHTML, bitir: () => scr.destroy() };
+  return { scr, q, tus: (a) => scr.onKey(a), baslik: () => {
+      const h = q('.p-title').innerHTML;
+      const n = /class="p-no">([^<]*)</.exec(h);
+      const a = /class="p-nm">([^<]*)</.exec(h);
+      return (n ? n[1] + '  ' : '') + (a ? a[1] : '');
+    }, cubuk: () => q('.p-acts').innerHTML, bitir: () => scr.destroy() };
 }
 
 test('oynatıcı: ▲ üstteki Geri düğmesine geçer, OK oynatıcıdan çıkar', () => {
