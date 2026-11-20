@@ -3,10 +3,13 @@ import { ctx, provider, open, ustCubuk, ikon } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast } from '../ui.js';
 import * as K from '../log.js';
+import { createVitrin } from '../vitrin.js';
+import { fragmanOynat } from '../fragman.js';
 
 const BASLIK = { live: 'Canlı TV', guide: 'TV Rehberi', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
 const TUR_AD = { live: 'Canlı', movie: 'Filmler', series: 'Diziler' };
 const SUTUN = 5;
+const SUTUN_VITRIN = 7; // vitrinli ekranda afişler küçülür, altta ikinci satırın başı görünür kalır
 
 const logoHtml = (u) => (u ? '<img src="' + esc(u) + '" alt="">' : '');
 const yildiz = (sid, it) => (ctx.store.isFav(sid, it.id) ? '<i class="star">' + ikon.yildiz + '</i>' : '');
@@ -18,11 +21,12 @@ export function browseScreen({ kind }) {
   const gercekTur = kind === 'favs' || kind === 'recents' ? '' : kind === 'guide' ? 'live' : kind;
   const canliTur = kind === 'live' || kind === 'guide'; // sağda şimdi/sonra paneli olan türler
   const solVar = kind !== 'recents';
+  const vitrinli = kind === 'movie' || kind === 'series';
   kok.innerHTML =
     ustCubuk(BASLIK[kind], src ? esc(src.name) : '') +
     '<div class="br">' +
     (solVar ? '<div class="cats"></div>' : '') +
-    '<div class="content' + (solVar ? '' : ' wide') + '"></div>' +
+    (vitrinli ? '<div class="rt"><div class="vit"></div><div class="content"></div></div>' : '<div class="content' + (solVar ? '' : ' wide') + '"></div>') +
     (canliTur ? '<div class="info"></div>' : '') +
     '</div>' +
     '<div class="hint" id="hint"></div>';
@@ -31,6 +35,7 @@ export function browseScreen({ kind }) {
   let contEl = kok.querySelector('.content');
   const infoEl = kok.querySelector('.info');
   const hint = kok.querySelector('#hint');
+  const vitrin = vitrinli ? createVitrin(kok.querySelector('.vit'), { saglayici: provider }) : null;
   let bolge = solVar ? 'cats' : 'list';
   let cats = null; // VList
   let list = null; // VList
@@ -50,7 +55,7 @@ export function browseScreen({ kind }) {
   const ipucu = () => {
     const o = canliTur ? 'OK: izle' : kind === 'recents' ? 'OK: devam et' : 'OK: aç';
     const f = kind === 'recents' ? 'Sarı: geçmişi temizle' : 'Sarı / OK basılı tut: favori';
-    hint.innerHTML = '▲▼◀▶ gezin · ' + o + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + ' · Geri';
+    hint.innerHTML = '▲▼◀▶ gezin · ' + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + ' · Geri';
   };
 
   // --- sol: kategoriler
@@ -116,9 +121,10 @@ export function browseScreen({ kind }) {
     const yeni = el('div', 'content' + (solVar ? '' : ' wide') + (izgara ? ' grid' : ''));
     contEl.parentNode.replaceChild(yeni, contEl);
     contEl = yeni;
-    const rowH = izgara ? Math.round((contEl.clientWidth / SUTUN) * 1.5 + px() * 3.2) : Math.round(px() * (kind === 'guide' ? 6.2 : 4.2));
+    const sutun = vitrinli ? SUTUN_VITRIN : SUTUN;
+    const rowH = izgara ? Math.round((contEl.clientWidth / sutun) * 1.5 + px() * 3.2) : Math.round(px() * (kind === 'guide' ? 6.2 : 4.2));
     list = new VList(contEl, {
-      cols: izgara ? SUTUN : 1,
+      cols: izgara ? sutun : 1,
       rowH,
       render: kind === 'recents' ? sonRender : izgara ? hucreRender : satirRender,
       empty: 'Burada gösterilecek bir şey yok',
@@ -127,6 +133,7 @@ export function browseScreen({ kind }) {
           epgIste(it);
           rehberOnYukle();
         }
+        if (vitrin && it && (it.kind === 'movie' || it.kind === 'series')) vitrin.odak(it);
       },
       onActivate: (it, i) => ac(it, i),
     });
@@ -151,6 +158,7 @@ export function browseScreen({ kind }) {
     secilenKat = c;
     const n = ++yukSayac;
     const izgara = (kind === 'favs' ? c.id : gercekTur) !== 'live';
+    if (vitrin) vitrin.temizle();
     if (!list || (list.o.cols > 1) !== izgara) listeKur(izgara);
     if (kind === 'favs') {
       list.setItems(ctx.store.favs(sid).filter((x) => x.kind === c.id));
@@ -162,6 +170,7 @@ export function browseScreen({ kind }) {
       const l = await provider().items(gercekTur, c.id);
       if (n !== yukSayac) return;
       list.setItems(l);
+      if (vitrin && !l.length) vitrin.temizle();
     } catch (e) {
       if (n !== yukSayac) return;
       K.hata(e);
@@ -328,6 +337,11 @@ export function browseScreen({ kind }) {
         } else favDegis();
         return true;
       }
+      if (a === 'red' && vitrin) {
+        const it = list && list.cur;
+        if (it && (it.kind === 'movie' || it.kind === 'series')) fragmanOynat(it, vitrin.bilgi(it), { net: ctx.net, bildir: (t) => toast(t, 3500) });
+        return true;
+      }
       if (a === 'blue' && kind !== 'recents') {
         open('search');
         return true;
@@ -360,12 +374,14 @@ export function browseScreen({ kind }) {
       clearTimeout(katT);
       clearTimeout(epgT);
       epgKuyruk = [];
+      if (vitrin) vitrin.temizle(); // geri dönüşte liste yeniden odak verip vitrini çizer
     },
     destroy() {
       kapali = true;
       clearTimeout(katT);
       clearTimeout(epgT);
       epgKuyruk = [];
+      if (vitrin) vitrin.temizle();
     },
   };
 }

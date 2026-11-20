@@ -3,6 +3,8 @@ import { ctx, provider, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, sure, toast } from '../ui.js';
 import * as K from '../log.js';
+import { createArkaPlan } from '../vitrin.js';
+import { fragmanOynat } from '../fragman.js';
 
 const bolumOge = (item, e) => ({
   id: e.id,
@@ -21,12 +23,14 @@ export function detailScreen({ item }) {
   const sid = src ? src.id : '';
   const dizi = item.kind === 'series';
   kok.innerHTML =
+    '<div class="dt-bg"></div><div class="dt-sh"></div>' +
     ustCubuk(esc(item.name)) +
     '<div class="dt"><div class="dt-poster">' + (item.logo ? '<img src="' + esc(item.logo) + '" alt="">' : '') + '</div>' +
     '<div class="dt-info"><div class="dt-meta" id="meta"></div><div class="dt-plot" id="plot">Yükleniyor…</div>' +
     (dizi ? '<div class="dt-lists"><div class="dt-seasons"></div><div class="dt-eps"></div></div>' : '<div class="dt-btns" id="btns"></div>') +
     '</div></div><div class="hint" id="hint"></div>';
   const hint = kok.querySelector('#hint');
+  const arka = createArkaPlan(kok.querySelector('.dt-bg'));
   const plot = kok.querySelector('#plot');
   const meta = kok.querySelector('#meta');
   let seasons = null;
@@ -43,7 +47,10 @@ export function detailScreen({ item }) {
     if (i.durationSec) p.push(sure(i.durationSec * 1000));
     meta.innerHTML = p.join(' · ');
     plot.textContent = i.plot || 'Açıklama yok.';
+    const g = [i.backdrop, item.backdrop].filter(Boolean);
+    if (g.length) arka.goster(g);
   };
+  const fragman = () => fragmanOynat(item, info, { net: ctx.net, bildir: (t) => toast(t, 3500) });
 
   // --- film düğmeleri
   const btnler = () => {
@@ -52,6 +59,7 @@ export function detailScreen({ item }) {
     const l = [];
     if (devam) l.push({ id: 'resume', ad: 'Devam et (' + sure(kayit.pos) + ')' });
     l.push({ id: 'play', ad: devam ? 'Baştan oynat' : 'Oynat' });
+    l.push({ id: 'trailer', ad: '▶ Fragman' });
     l.push({ id: 'fav', ad: ctx.store.isFav(sid, item.id) ? 'Favorilerden çıkar' : 'Favorilere ekle' });
     return l;
   };
@@ -68,6 +76,8 @@ export function detailScreen({ item }) {
       const e = ctx.store.toggleFav(sid, item);
       toast(e ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı');
       btnCiz();
+    } else if (b.id === 'trailer') {
+      fragman();
     } else {
       open('player', { list: [item], index: 0, fresh: b.id === 'play' });
     }
@@ -138,7 +148,7 @@ export function detailScreen({ item }) {
     el: kok,
     name: 'detail',
     onShow() {
-      hint.innerHTML = dizi ? '▲▼◀▶ gezin · OK: oynat · Sarı: favori · Geri' : '◀▶ düğme seç · OK: seç · Geri';
+      hint.innerHTML = dizi ? '▲▼◀▶ gezin · OK: oynat · Kırmızı: fragman · Sarı: favori · Geri' : '◀▶ düğme seç · OK: seç · Kırmızı: fragman · Sarı: favori · Geri';
       if (!dizi) btnCiz();
       else if (seasons) {
         seasons.setItems(seasons.items, true);
@@ -147,6 +157,10 @@ export function detailScreen({ item }) {
       }
     },
     onKey(a) {
+      if (a === 'red') {
+        fragman();
+        return true;
+      }
       if (a === 'yellow') {
         const e = ctx.store.toggleFav(sid, item);
         toast(e ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı');
