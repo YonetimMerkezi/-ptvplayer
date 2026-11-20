@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 171,
+    title: 'Vizyondaki filmler: afişsiz kayıtlar düzeltildi',
+    items: [
+      'Vizyondaki filmler satırının başında afişi olmayan birkaç eski film görünüyordu (sinema sitesinin arama önerileri listeye karışıyordu); artık yalnız gerçek vizyon kartları alınır',
+      'Afişi olmayan film kartında boş görsel yerine baş harfler gösterilir',
+    ],
+  },
+  {
     id: 170,
     title: 'Ana ekranda son eklenen diziler',
     items: [

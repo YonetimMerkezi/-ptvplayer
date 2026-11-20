@@ -25,12 +25,26 @@ test('parseBeyazperde: ad, film kimliği, afiş (alt eşleşmesi), tarih; Seansl
   assert.equal(parseBeyazperde(null).length, 0);
 });
 
-test('parseBeyazperde: afiş tembel yüklemede data-src ile gelir; alt yoksa başlıktan önceki en yakın görsel alınır', () => {
-  const h = '<div><img class="lazy" src="data:image/gif;base64,AAAA" data-src="https://tr.web.img3.acsta.net/c_310_420/img/aa/bb/x.jpg"><h2><a href="https://www.beyazperde.com/filmler/film-5/">Şapkalı Kedi</a></h2><span>20 Kasım 2026</span></div>';
-  const [f] = parseBeyazperde(h);
-  assert.equal(f.title, 'Şapkalı Kedi');
-  assert.equal(f.poster, 'https://tr.web.img3.acsta.net/c_310_420/img/aa/bb/x.jpg');
-  assert.equal(f.date, '2026-11-20');
+test('parseBeyazperde: afiş tembel yüklemede data-src ile gelir; başka bir tembel öznitelikte de etiketteki görsel adresi bulunur', () => {
+  const h = '<div><img class="lazy" alt=" Şapkalı Kedi posteri" src="data:image/gif;base64,AAAA" data-src="https://tr.web.img3.acsta.net/c_310_420/img/aa/bb/x.jpg"><h2><a href="https://www.beyazperde.com/filmler/film-5/">Şapkalı Kedi</a></h2><span>20 Kasım 2026</span></div>'
+    + '<div><img class="lazy" alt=" Çirko posteri" src="data:image/gif;base64,AAAA" data-lazysrc="//tr.web.img2.acsta.net/c_310_420/img/cc/dd/y.jpg?v=2"><h2><a href="/filmler/film-6/">Çirko</a></h2></div>'
+    + '<div><img alt=" Afişsiz Film posteri" src="data:image/gif;base64,AAAA"><h2><a href="/filmler/film-7/">Afişsiz Film</a></h2></div>';
+  const r = parseBeyazperde(h);
+  assert.equal(r[0].title, 'Şapkalı Kedi');
+  assert.equal(r[0].poster, 'https://tr.web.img3.acsta.net/c_310_420/img/aa/bb/x.jpg');
+  assert.equal(r[0].date, '2026-11-20');
+  assert.equal(r[1].poster, 'https://tr.web.img2.acsta.net/c_310_420/img/cc/dd/y.jpg?v=2');
+  assert.equal(r[2].title, 'Afişsiz Film', 'afiş adresi bulunamasa da kart film sayılır');
+  assert.equal(r[2].poster, '');
+});
+
+test('parseBeyazperde: arama önerileri ve kenar çubuğu bağlantıları (afişsiz) film sayılmaz; öneride geçen film asıl kartından alınır', () => {
+  const header = '<header><form><input placeholder="Ex: Dijital Esaret, Resmi Sırlar, Indiana Jones 5"><ul class="suggest"><li><a href="/filmler/film-111/">Dijital Esaret</a></li><li><a href="https://www.beyazperde.com/filmler/film-222/">Resmi Sırlar</a></li><li><a href="/filmler/film-333/">Indiana Jones 5</a></li><li><a href="/filmler/film-1000047397/">Pırıl 3: Kayıp Anahtarın Gizemi</a></li></ul></form></header>';
+  const aside = '<aside><a href="/filmler/film-999/">Kenar Film</a></aside>';
+  const r = parseBeyazperde(header + BP1 + aside);
+  assert.deepEqual(r.map((x) => x.title), ['Pırıl 3: Kayıp Anahtarın Gizemi', 'Av. Mahsun: Ben Sana İnanıyorum', 'Çakallarla Dans 8: Şututgart Çıkarması']);
+  assert.equal(r[0].poster, 'https://tr.web.img3.acsta.net/c_310_420/img/f6/3f/aa.jpg');
+  assert.equal(r[0].date, '2026-11-13', 'tarih önerinin değil kartın satırından');
 });
 
 test('lastPage: sayfa bağlantılarından en büyük numara (&amp; biçimi dahil), yoksa 1', () => {
@@ -147,6 +161,13 @@ test('loadVizyon: az film (bozuk sayfa) → eski önbellek (stale); önbellek yo
   assert.equal(fb.films[0].imdbId, 'tt1');
   assert.equal(fb.sources.length, 3);
   await assert.rejects(loadVizyon({ net: down, cache: null, now: 1 }), (e) => /alınamadı/.test(e.message) && e.sources.length === 3);
+});
+
+test('arayüz: afişi olmayan filmde boş src\'li görsel üretilmez', () => {
+  const row = releasesRowHtml([{ id: 'v:a', imdbId: '', type: 'movie', name: 'Afişsiz Film', year: 0, poster: '' }, { id: 'v:b', imdbId: '', type: 'movie', name: 'Afişli', year: 0, poster: 'https://p/b.jpg' }], () => false);
+  assert.doesNotMatch(row, /<img src=""/);
+  assert.equal((row.match(/<img /g) || []).length, 1);
+  assert.match(row, />AF</, 'baş harfler kalır');
 });
 
 test('arayüz: yerel filmin kimliği v:… ile kartlanır; kaynak özeti ve yedek notları sayfada görünür', () => {

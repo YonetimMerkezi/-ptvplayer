@@ -15,6 +15,7 @@ const HEADERS = { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537
 const MONTHS = { ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6, temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12 };
 
 // ---- HTML yardımcıları (kaynak sayfaların işaretlemesi değişse de çalışsın diye yalnız sıra ve bağlantı/görsel desenlerine dayanır) ----
+const IMG_URL = /(?:https?:)?\/\/[^\s"'<>()]+?\.(?:jpe?g|png|webp)(?:\?[^\s"'<>()]*)?/i;
 const attr = (tag, name) => {
   const m = new RegExp('(?<![\\w-])' + name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\')', 'i').exec(tag);
   return m ? decodeEntities(m[1] !== undefined ? m[1] : m[2]).trim() : '';
@@ -26,7 +27,9 @@ const imgSrc = (tag) => {
   }
   const ss = attr(tag, 'srcset') || attr(tag, 'data-srcset');
   const first = ss.split(',')[0].trim().split(/\s+/)[0];
-  return first && !/^data:/i.test(first) ? first : '';
+  if (first && !/^data:/i.test(first)) return first;
+  const any = IMG_URL.exec(String(tag).replace(/^<img\b/i, '').replace(/(?<![\w-])alt\s*=\s*(?:"[^"]*"|'[^']*')/i, '')); // tembel yükleme başka bir öznitelikteyse (alt metni hariç) etikette geçen görsel adresi
+  return any ? decodeEntities(any[0]) : '';
 };
 const textOf = (html) => decodeEntities(String(html || '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 const absUrl = (u, origin) => {
@@ -49,12 +52,14 @@ function dateOf(segment) {
 // ---- Beyazperde ----
 // Kart: görsel (alt = "<ad> posteri"), başlık bağlantısı (/filmler/film-<kimlik>/), tarih satırı ("13 Kasım 2026 | 1s 21dk | Animasyon").
 // "Seanslar!" bağlantısı (/filmler/film-<kimlik>/seanslar/) ve oyuncu bağlantıları başlık sayılmaz.
+// Sayfa başındaki arama önerileri de film sayfasına bağlantıdır ("Dijital Esaret", "Indiana Jones 5"…) ama kart değildir: kartın başlığından hemen önce "… posteri" görseli yoksa film sayılmaz.
 export function parseBeyazperde(html) {
   const s = String(html || '');
   const imgs = [];
   for (const m of s.matchAll(/<img\b[^>]*>/gi)) {
-    const src = imgSrc(m[0]);
-    if (/acsta\.net/i.test(src)) imgs.push({ at: m.index, src, alt: cleanName(attr(m[0], 'alt')) });
+    const rawAlt = attr(m[0], 'alt');
+    if (!/posteri\s*$/i.test(rawAlt)) continue; // yalnız film kartı afişleri
+    imgs.push({ at: m.index, src: absUrl(imgSrc(m[0]), 'https://www.beyazperde.com'), alt: cleanName(rawAlt) });
   }
   const links = [];
   for (const m of s.matchAll(/<a\b[^>]*?href\s*=\s*["']([^"']*\/filmler\/film-(\d+)\/?)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
@@ -67,14 +72,15 @@ export function parseBeyazperde(html) {
   let prev = 0;
   links.forEach((l, i) => {
     if (seen.has(l.id)) return;
-    seen.add(l.id);
     const key = wordKey(l.title);
-    const byAlt = imgs.find((x) => x.alt && wordKey(x.alt) === key);
-    const before = imgs.filter((x) => x.at >= prev && x.at < l.at).pop(); // yedek: bu başlıktan önceki en yakın görsel
+    const win = imgs.filter((x) => x.at >= prev && x.at < l.at); // önceki kartın başlığından bu başlığa kadar olan afişler
+    const card = win.find((x) => wordKey(x.alt) === key) || win[win.length - 1];
+    if (!card) return; // afişi yok: üst menü / arama önerisi / kenar çubuğu bağlantısı
+    seen.add(l.id);
     const next = links.slice(i + 1).find((x) => !seen.has(x.id));
     const seg = s.slice(l.end, Math.min(next ? next.at : s.length, l.end + 1500));
     const d = dateOf(textOf(seg));
-    out.push({ title: l.title, year: d.year, date: d.date, poster: (byAlt || before || { src: '' }).src });
+    out.push({ title: l.title, year: d.year, date: d.date, poster: card.src });
     prev = l.end;
   });
   return out;
@@ -196,7 +202,7 @@ export const SOURCES = [
 // Dönüş: { films, at, stale, sources: [{ id, name, count, error }], fallback }
 // 6 saat önbellekten; hiçbir kaynak film vermezse eski önbellek (stale), o da yoksa fallback() (Cinemeta "yeni çıkanlar"), o da yoksa hata.
 export async function loadVizyon({ net, cache = null, now = Date.now(), fallback = null, sources = SOURCES, timeoutMs = 25000 } = {}) {
-  const key = 'vizyon:v1';
+  const key = 'vizyon:v2'; // v2: arama önerileri film sayılmıyor (v1 önbelleği "Dijital Esaret" gibi afişsiz kayıtlar içerir)
   const hit = cache ? await cache.get(key).catch(() => null) : null;
   const ok = hit && Array.isArray(hit.films) && hit.films.length;
   if (ok && now - Number(hit.at || 0) < VIZYON_TTL) return { films: hit.films, at: hit.at, stale: false, sources: hit.sources || [], fallback: false };
