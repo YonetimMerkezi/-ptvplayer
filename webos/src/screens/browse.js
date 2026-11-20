@@ -49,6 +49,7 @@ export function browseScreen({ kind }) {
   let secilenKat = null;
   let yukSayac = 0;
   let katT = 0;
+  let sessiz = false; // geri dönüşte kategori listesi yenilenirken odak olayı içeriği yeniden yüklemesin (liste başa atlıyordu)
   let epgT = 0;
   let epgNo = 0;
   let kapali = false;
@@ -72,6 +73,7 @@ export function browseScreen({ kind }) {
       render: katRender,
       empty: 'Kategori yok',
       onFocus: (c) => {
+        if (sessiz) return;
         clearTimeout(katT);
         katT = setTimeout(() => katYukle(c), 260);
       },
@@ -160,7 +162,7 @@ export function browseScreen({ kind }) {
     }
   };
 
-  async function katYukle(c) {
+  async function katYukle(c, koru) {
     if (!c) return;
     secilenKat = c;
     if (vitrinli) {
@@ -172,7 +174,7 @@ export function browseScreen({ kind }) {
     if (vitrin) vitrin.temizle();
     if (!list || (list.o.cols > 1) !== izgara) listeKur(izgara);
     if (kind === 'favs') {
-      list.setItems(ctx.store.favs(sid).filter((x) => x.kind === c.id));
+      list.setItems(ctx.store.favs(sid).filter((x) => x.kind === c.id), !!koru);
       return;
     }
     list.setMessage('Yükleniyor…');
@@ -343,9 +345,16 @@ export function browseScreen({ kind }) {
       else {
         // geri dönüşte (display:none sonrası) boyutları yeniden hesapla; favori/son izlenen değişmiş olabilir
         if (kind === 'recents' && list) list.setItems(ctx.store.recents(sid), true);
-        else if (kind === 'favs' && secilenKat) katYukle(secilenKat);
+        else if (kind === 'favs' && secilenKat) katYukle(secilenKat, true);
         else if (list) list.setItems(list.items, true);
-        if (cats) cats.setItems(cats.items, true);
+        if (cats) {
+          sessiz = true;
+          try {
+            cats.setItems(cats.items, true);
+          } finally {
+            sessiz = false;
+          }
+        }
         odak(bolge);
         rehberOnYukle();
       }

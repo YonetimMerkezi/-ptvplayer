@@ -45,8 +45,21 @@ test('tema: varsayılan temada CSS değişmez; diğer temalarda renkler tek geç
   assert.ok(!/#2dd4bf/i.test(c), 'eski vurgu kalmadı');
   assert.ok(c.includes(mor.accent) && c.includes(mor.bg) && c.includes(mor.ink));
   assert.ok(!/#0a0e17/i.test(c), 'eski zemin kalmadı');
+  // Odak parıltısı da paletin vurgu rengine döner (rgb'ye çevrilmiş mor: 167, 139, 250)
+  assert.ok(!/rgba\(45, ?212, ?191/.test(c), 'eski vurgunun şeffaf hali kalmadı');
+  assert.ok(c.includes('rgba(167, 139, 250, .55)'), 'karo parıltısı palet vurgusunda');
   // Boyut ve düzen kuralları aynen korunur
-  assert.equal(c.replace(/#[0-9a-f]{6}\b/gi, '#'), css.replace(/#[0-9a-f]{6}\b/gi, '#'));
+  const yalin = (x) => x.replace(/#[0-9a-f]{6}\b/gi, '#').replace(/rgba\(45, ?212, ?191,/g, 'rgba(V,').replace(/rgba\(167, 139, 250,/g, 'rgba(V,');
+  assert.equal(yalin(c), yalin(css));
+});
+
+test('tema: odak çerçeveyle değil parıltıyla gösterilir (outline köşeleri izlemez)', () => {
+  assert.ok(!/outline: *\.?\d/.test(css), 'tv.css odak için outline kullanmaz');
+  for (const id of ['cards', 'solid', 'neon', 'sunset']) {
+    const c = cssUret(css, temaBul(id));
+    assert.ok(!/outline: *\.?\d/.test(c), id + ': çerçeve yok');
+    for (let i = 1; i <= 8; i++) assert.ok(new RegExp('\\.tile\\.c' + i + '\\.on \\{[^}]*box-shadow: [^}]*rgba\\(\\d+, \\d+, \\d+, 0\\.6\\)').test(c), id + ' c' + i + ' parıltı');
+  }
 });
 
 test('tema: çok renkli temalar karo renk kuralları, gradyan temalar zemin kuralı üretir', () => {

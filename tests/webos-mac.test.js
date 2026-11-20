@@ -43,7 +43,7 @@ const { FAV_KEY } = await import('../www/js/sports-fav.js');
 
 const gun0 = new Date(2026, 10, 20).getTime();
 const m = { id: 'e1', lg: 'tur.1', t: gun0 + 20 * 3600e3, state: 'pre', text: '', home: { name: 'Galatasaray', label: 'Galatasaray', score: null }, away: { name: 'Fenerbahçe', label: 'Fenerbahçe', score: null }, venue: 'RAMS Park' };
-const yayin = { tur: 'se', rows: [{ t: m.t + 600e3, teams: ['Galatasaray', 'Fenerbahçe'], channels: ['beIN Sports 1'] }] };
+const yayin = { tur: 'se', rows: [{ t: m.t + 600e3, title: 'Galatasaray - Fenerbahçe (Trendyol Süper Lig)', teams: ['Galatasaray', 'Fenerbahçe'], channels: ['beIN Sports 1'] }] };
 const bekle = () => new Promise((r) => setTimeout(r, 5));
 
 function kur(canli, y) {

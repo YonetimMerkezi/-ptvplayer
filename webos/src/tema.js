@@ -52,6 +52,11 @@ export const karistir = (a, b, t) => {
   return '#' + hex2(x[0] + (y[0] - x[0]) * t) + hex2(x[1] + (y[1] - x[1]) * t) + hex2(x[2] + (y[2] - x[2]) * t);
 };
 
+const rgbMetni = (h) => rgb(h).join(', ');
+const rgba = (h, a) => 'rgba(' + rgbMetni(h) + ', ' + a + ')';
+// Odaklanan kartın gölgesi: altta koyu gölge (yükselme) + kendi renginde parıltı. Çerçeve çizilmez (outline Chromium 38'de köşeleri izlemez).
+const PARILTI = (h) => 'box-shadow: 0 1.2rem 2.8rem rgba(0, 0, 0, .55), 0 0 2.8rem ' + rgba(h, 0.6) + ';';
+
 // tv.css'teki varsayılan renk → palet rolü
 const ESLEME = [
   ['#0a0e17', (t) => t.bg],
@@ -79,13 +84,15 @@ export function cssUret(css, t) {
       const k = m.toLowerCase();
       return Object.prototype.hasOwnProperty.call(harita, k) ? harita[k] : m;
     });
+    // Parıltılardaki şeffaf vurgu rengi de paletin vurgusuna döner
+    c = c.replace(/rgba\(45, ?212, ?191,/g, 'rgba(' + rgbMetni(t.accent) + ',');
   }
   if (t.zemin) c += '\nhtml, body { background: ' + t.zemin + '; }\n.screen { background: transparent; }\n.player { background: #000; }';
   if (t.multi && t.p) {
     for (let i = 1; i <= 8; i++) {
       const p = t.p[i];
-      if (t.dolu) c += '\n.tile.c' + i + ' { background: ' + p + '; color: ' + t.ink + '; }\n.tile.c' + i + '.on { background: ' + p + '; color: ' + t.ink + '; outline: .35rem solid #fff; }';
-      else c += '\n.tile.c' + i + ' { background: ' + karistir(t.surface, p, 0.22) + '; color: ' + p + '; }\n.tile.c' + i + '.on { background: ' + p + '; color: ' + t.ink + '; }';
+      if (t.dolu) c += '\n.tile.c' + i + ' { background: ' + p + '; color: ' + t.ink + '; }\n.tile.c' + i + '.on { background: ' + p + '; color: ' + t.ink + '; ' + PARILTI(p) + ' }';
+      else c += '\n.tile.c' + i + ' { background: ' + karistir(t.surface, p, 0.22) + '; color: ' + p + '; }\n.tile.c' + i + '.on { background: ' + p + '; color: ' + t.ink + '; ' + PARILTI(p) + ' }';
     }
   }
   return c;

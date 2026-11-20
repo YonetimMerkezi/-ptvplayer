@@ -2,7 +2,7 @@
 import { ctx, provider, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast, enYakin } from '../ui.js';
-import { createSporVeri } from '../spor-veri.js';
+import { createSporVeri, kanalHaritasi } from '../spor-veri.js';
 import { dayStart, dayStrip, dayLabel, sections, chipsFor, capSections, lgLine, hasLive } from '../../../www/js/sports.js';
 import { cleanFavs, toggleFav, isFavSide, hasFavMatch, FAV_KEY, FAV_CHIP } from '../../../www/js/sports-fav.js';
 import * as K from '../log.js';
@@ -21,6 +21,9 @@ export function sporScreen() {
   let chipler = [];
   let bolge = 'list'; // 'gun' | 'chip' | 'list': ▲▼ bölge değiştirir, ◀▶ şeritte gezer
   let maclar = [];
+  let yukleniyor = false; // gün listesi indirilirken true: şerit boş "Maç yok" yerine "Yükleniyor…" gösterir, OK yüklemeyi yeniden başlatmaz
+  let yayinV = null; // günün yayın akışı (hangi maç hangi kanalda)
+  let kanallar = {}; // maç kimliği → kanal adları
   let sayac = 0;
   let yenileT = 0;
   let gunT = 0;
@@ -56,14 +59,17 @@ export function sporScreen() {
   const chipCiz = () => {
     chipIc.innerHTML = chipler.length
       ? chipler.map((c, i) => '<span class="sp-d' + (i === chipNo ? (bolge === 'chip' ? ' on' : ' sel') : '') + '" data-c="' + i + '">' + esc(c.name) + ' <i>' + c.count + '</i></span>').join('')
-      : '<span class="sp-d dim">Maç yok</span>';
+      : '<span class="sp-d dim">' + (yukleniyor ? 'Yükleniyor…' : 'Maç yok') + '</span>';
     kaydir(chipKap, chipIc, chipNo);
   };
 
+  // Sağ sütun: üstte yayın kanalı (varsa), altta lig
+  const kanalYazi = (a) => a.slice(0, 2).join(' · ') + (a.length > 2 ? ' +' + (a.length - 2) : '');
   const satirRender = (m) => {
     const durum = m.state === 'in' ? '<span class="sp-c live">' + esc(m.text || 'Canlı') + '</span>' : m.state === 'post' || m.off ? '<span class="sp-c">' + esc(m.text || 'MS') + '</span>' : '<span class="sp-c">' + saat(m.t) + '</span>';
     const skor = m.home.score != null && m.away.score != null ? m.home.score + ' - ' + m.away.score : 'v';
-    return durum + '<span class="sp-h">' + takim(m.home) + '</span><span class="sp-s">' + skor + '</span><span class="sp-a">' + takim(m.away) + '</span><span class="rk sp-l">' + esc(lgLine(m)) + '</span>';
+    const kn = kanallar[m.id];
+    return durum + '<span class="sp-h">' + takim(m.home) + '</span><span class="sp-s">' + skor + '</span><span class="sp-a">' + takim(m.away) + '</span><span class="sp-r">' + (kn ? '<b class="sp-k">' + esc(kanalYazi(kn)) + '</b>' : '') + '<i>' + esc(lgLine(m)) + '</i></span>';
   };
 
   const list = new VList(kok.querySelector('.content'), {
@@ -106,25 +112,52 @@ export function sporScreen() {
     chipCiz();
   }
 
+  // Günün yayın akışı arka planda gelir: liste beklemez, gelince satırlara kanal yazılır
+  function yayinYukle(gun, n) {
+    veri.yayin(gun).then(
+      (y) => {
+        if (n !== sayac) return;
+        yayinV = y;
+        kanallar = kanalHaritasi(maclar, y);
+        satirlariKur(true);
+      },
+      (e) => K.uyar('Yayın akışı: ' + (e && e.message ? e.message : e)),
+    );
+  }
+
   async function yukle(zorla) {
     const n = ++sayac;
     const gun = gunler[gunNo];
+    yukleniyor = true;
     gunCiz();
     clearTimeout(yenileT);
     if (!zorla) {
       list.setMessage('Maçlar yükleniyor…');
+      maclar = [];
       chipler = [];
+      yayinV = null;
+      kanallar = {};
       chipCiz();
     }
     try {
-      const m = await veri.maclar(gun, zorla);
+      // ESPN yanıtı gelir gelmez liste gösterilir; ikinci kaynak (LiveScore/Mackolik) gelince birleşik liste tazelenir
+      const m = await veri.maclar(gun, zorla, (ilk) => {
+        if (n !== sayac || maclar.length) return;
+        maclar = ilk;
+        chipleriKur();
+        satirlariKur(false);
+      });
       if (n !== sayac) return;
+      yukleniyor = false;
       maclar = m;
+      kanallar = kanalHaritasi(maclar, yayinV);
       chipleriKur();
-      satirlariKur(zorla);
+      satirlariKur(zorla || !!list.items.length);
+      yayinYukle(gun, n);
       if (gunNo === 1 && hasLive(maclar)) yenileT = setTimeout(() => yukle(true), yenileMs); // canlı maç varsa skorlar dakikada bir tazelenir
     } catch (e) {
       if (n !== sayac) return;
+      yukleniyor = false;
       K.hata(e);
       maclar = [];
       chipler = [];
@@ -212,7 +245,7 @@ export function sporScreen() {
         }
         if (a === 'ok') {
           clearTimeout(gunT);
-          yukle(false);
+          if (!yukleniyor) yukle(false);
           return true;
         }
         return false;
@@ -233,7 +266,7 @@ export function sporScreen() {
         return false;
       }
       if (a === 'ok' && !maclar.length && !list.items.length) {
-        yukle(false);
+        if (!yukleniyor) yukle(false);
         return true;
       }
       if (a === 'up' && list.index === 0) {

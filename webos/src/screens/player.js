@@ -1,6 +1,6 @@
 // Oynatıcı: HTML5 <video> (webOS yerel HLS/TS/MP4 çözücüsü). Canlıda kanal değiştirme ve sayı tuşları,
 // film/bölümde ileri-geri sarma, kaldığı yerden devam ve bölüm sonunda sıradaki bölüm.
-import { ctx, provider, pop } from '../ctx.js';
+import { ctx, provider, pop, ikon } from '../ctx.js';
 import { rakam } from '../keys.js';
 import { VList } from '../vlist.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
@@ -29,7 +29,7 @@ export function playerScreen({ list, index, fresh }) {
   const sid = src ? src.id : '';
   kok.innerHTML =
     '<video id="vid"></video>' +
-    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">‹ Geri</div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
+    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">' + ikon.geriOk + '<span>Geri</span></div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
     '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-acts"></div><div class="p-hint"></div></div></div>' +
     '<div class="p-list"><div class="p-list-in"></div></div><div class="p-pick"></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
@@ -114,6 +114,9 @@ export function playerScreen({ list, index, fresh }) {
     if (o === 'video') goster();
     else goster(0);
   }
+  // Düğme simgeleri (Oynat/Duraklat durumuna göre değişir)
+  const IKONLAR = { list: 'liste', last: 'onceki', fav: 'yildiz', audio: 'ses', sub: 'altyazi', aspect: 'ekran', sync: 'senkron', info: 'bilgi', sleep: 'uyku', fmt: 'bicim', rw: 'geri10', ff: 'ileri10', next: 'sonraki' };
+  const dugmeIkon = (id) => (id === 'pp' ? (v.paused ? ikon.oynat : ikon.duraklat) : ikon[IKONLAR[id]] || '');
   // Düğme çubuğu: canlıda kanal işlemleri, filmde sarma
   const dugmeler = () =>
     canli()
@@ -122,7 +125,7 @@ export function playerScreen({ list, index, fresh }) {
   function barCiz() {
     const d = dugmeler();
     altIdx = Math.max(0, Math.min(d.length - 1, altIdx));
-    actsEl.innerHTML = d.map((x, i) => '<span class="p-b' + (odak === 'alt' && i === altIdx ? ' on' : '') + '" data-a="' + x[0] + '">' + x[1] + '</span>').join('');
+    actsEl.innerHTML = d.map((x, i) => '<span class="p-b' + (odak === 'alt' && i === altIdx ? ' on' : '') + '" data-a="' + x[0] + '"><span class="p-i">' + dugmeIkon(x[0]) + '</span><em>' + x[1] + '</em></span>').join('');
   }
   function listeAc() {
     if (list.length < 2) return toast('Başka kanal yok');

@@ -6,6 +6,7 @@ import { actionOfEvent } from './keys.js';
 import { saatleriYaz, toast, enYakin, boyutla } from './ui.js';
 import { temaUygula, VARSAYILAN_TEMA } from './tema.js';
 import * as K from './log.js';
+import { baslat as donukluguIzle } from './donukluk.js';
 import { homeScreen } from './screens/home.js';
 import { addSourceScreen } from './screens/addsource.js';
 import { browseScreen } from './screens/browse.js';
@@ -193,6 +194,7 @@ export function kaydet() {
 
 export function start() {
   K.yakala(window);
+  donukluguIzle(() => (top() ? top().name : ''));
   ctx.store = createStore(depoSec());
   ctx.net = createNet({ ayar: () => ctx.store.setting('netMode', 'auto') });
   ctx.root = document.getElementById('app');
