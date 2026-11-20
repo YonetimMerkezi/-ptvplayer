@@ -412,7 +412,7 @@ test('oyuncu ve vizyon ekranları: Türkçe adlar (Wikidata) gelince eşleşme y
   assert.match(actor, /loadPersonPhotos\(\{ net, cache: store\.cache, names: \[name\] \}\)/, 'oyuncu sayfası: karttan fotoğraf gelmediyse kişinin kendi fotoğrafı aranır');
   const rel = app.slice(app.indexOf('function openNewReleases'), app.indexOf('function translatePlot'));
   assert.match(rel, /enrichTrNames\(films, \(\) => \{ if \(body\.isConnected\) paint\(\); \}\)/);
-  assert.match(app, /if \(newHome\) enrichTrNames\(newHome\.films, fillHomeNew\)/);
+  assert.match(app, /if \(newHome\) \{\n\s+enrichTrNames\(newHome\.films, fillHomeNew\);\n\s+fillVizyonPosters\(fillHomeNew\);/);
   assert.match(app, /import \{ loadPersonPhotos, nameKey \} from '\.\/people-photos\.js'/);
   assert.match(app, /function paintPhotos\(pp, people, imdbId\)[\s\S]*loadPersonPhotos\(\{ net, cache: store\.cache, names: people\.map\(\(p\) => p\.name\), imdbId: imdbId \|\| '' \}\)/, 'kadro kartları: fotoğraflar Wikidata\'dan');
   assert.match(app, /paintPhotos\(pp, people, detail && detail\.imdbId\)/);
@@ -441,4 +441,13 @@ test('oyuncu fotoğrafı: kartta ve oyuncu sayfası başlığında yalnız https
   const app = kaynak('www/js/app.js');
   assert.match(app, /const personOf = \(b\) => \(\{ name: b\.dataset\.person, role: b\.dataset\.role \|\| '', photo: b\.dataset\.photo \|\| '' \}\)/);
   assert.match(app, /function openActor\(name, role = '', photo = ''\)/);
+});
+
+test('bağlantı: vizyondaki filmler — tüm kart tıklamaları f.id ile eşleşir (IMDb kimliği olmayan yerel film açılır); eksik afiş bilgi ekranının kaynağından tamamlanır', () => {
+  const app = kaynak('www/js/app.js');
+  assert.doesNotMatch(app, /f\.imdbId === (c|nc)\.dataset\.(film|nid)/, 'imdbId boş olan yerel filmin kartı hiçbir yerde eşleşmez');
+  assert.equal((app.match(/\(f\.id \|\| f\.imdbId\) === (c|nc)\.dataset\.(film|nid)/g) || []).length >= 3, true, 'ana sayfa satırı, Vizyondaki filmler sayfası, oyuncu sayfası');
+  assert.match(app, /fillVizyonPosters\(fillHomeNew\)/);
+  assert.match(app, /fillVizyonPosters\(\(\) => \{ if \(body\.isConnected\) paint\(\); \}\)/);
+  assert.match(app, /resolve: \(f\) => resolveTitleOrigin\(net, f\.name, f\.year, store\)/);
 });

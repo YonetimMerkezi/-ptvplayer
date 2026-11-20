@@ -77,7 +77,7 @@ import { loadSeriesMetadata } from './media-scan.js';
 import { translateToTr } from './translate.js';
 import { createFilmResolver } from './film-lookup.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
-import { loadVizyon, sourcesNote } from './vizyon.js';
+import { loadVizyon, sourcesNote, fillPosters } from './vizyon.js';
 import { loadDetail, peopleOf, searchPerson, loadNewReleases, buildTitleIndex, findInLibrary, hasExactTitle, trailerIds, trailerQuery, trailerTitle } from './cinemeta.js';
 import { loadTrNames } from './tr-names.js';
 import { loadPersonPhotos, nameKey } from './people-photos.js';
@@ -2418,6 +2418,18 @@ function openActor(name, role = '', photo = '') {
 let newHome = null;
 let newBusy = false;
 const loadVizyonList = () => loadVizyon({ net, cache: store.cache, fallback: () => loadNewReleases({ net, cache: store.cache }) });
+// Sinema sitesinden afişi gelmeyen filmin afişi, bilgi ekranının kullandığı kaynaktan (Türkçe ad + yıldan bulunan IMDb kaydı) tamamlanır; gelince ekran yeniden çizilir
+let posterJob = null;
+function fillVizyonPosters(repaint) {
+  if (!newHome || !Array.isArray(newHome.films) || !newHome.films.some((f) => f.local && !f.poster)) return;
+  if (!posterJob) {
+    posterJob = fillPosters(newHome.films, {
+      resolve: (f) => resolveTitleOrigin(net, f.name, f.year, store),
+      posterOf: (id, f) => loadDetail({ net, cache: store.cache, imdbId: id, type: f.type }).then((d) => d && d.poster),
+    }).finally(() => { posterJob = null; });
+  }
+  posterJob.then((n) => { if (n) repaint(); }, () => {});
+}
 function fillHomeNew() {
   const el = $('#home-new');
   if (el) el.innerHTML = kidActive() || !newHome ? '' : releasesRowHtml(newHome.films, (f) => !!inLibrary(f));
@@ -2429,7 +2441,10 @@ function ensureHomeNew() {
   loadVizyonList().then((r) => { newHome = r; }, () => {}).finally(() => {
     newBusy = false;
     fillHomeNew();
-    if (newHome) enrichTrNames(newHome.films, fillHomeNew);
+    if (newHome) {
+      enrichTrNames(newHome.films, fillHomeNew);
+      fillVizyonPosters(fillHomeNew);
+    }
   });
 }
 function openNewReleases() {
@@ -2456,10 +2471,11 @@ function openNewReleases() {
       paint();
       body.addEventListener('click', (e) => {
         const c = e.target.closest('[data-film]');
-        const film = c && films.find((f) => f.imdbId === c.dataset.film);
+        const film = c && films.find((f) => (f.id || f.imdbId) === c.dataset.film);
         if (film) openTitleInfo(film);
       });
       enrichTrNames(films, () => { if (body.isConnected) paint(); });
+      fillVizyonPosters(() => { if (body.isConnected) paint(); });
     },
   });
 }

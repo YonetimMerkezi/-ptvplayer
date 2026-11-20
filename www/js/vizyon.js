@@ -233,3 +233,30 @@ export async function loadVizyon({ net, cache = null, now = Date.now(), fallback
 export function sourcesNote(sources) {
   return (Array.isArray(sources) ? sources : []).map((s) => (s.error ? `${s.name} alınamadı (${s.error})` : `${s.name} ${s.count}`)).join(' · ');
 }
+
+// Sinema sitesinden afişi gelmeyen filmlerin afişini, bilgi ekranının kullandığı kaynaktan (IMDb kaydı) tamamlar.
+// resolve(film) → { imdbId } | null; posterOf(imdbId, film) → https adresi | ''. Filmi yerinde günceller; eklenen afiş sayısını döner.
+export async function fillPosters(films, { resolve, posterOf, max = 24, concurrency = 3 } = {}) {
+  const need = (Array.isArray(films) ? films : []).filter((f) => f && f.local && !f.poster).slice(0, max);
+  let added = 0;
+  let next = 0;
+  const work = async () => {
+    while (next < need.length) {
+      const f = need[next++];
+      try {
+        const o = f.imdbId ? { imdbId: f.imdbId } : await resolve(f);
+        if (!o || !o.imdbId) continue;
+        if (!f.imdbId) f.imdbId = o.imdbId;
+        const url = await posterOf(f.imdbId, f);
+        if (/^https:\/\//.test(String(url || ''))) {
+          f.poster = url;
+          added++;
+        }
+      } catch {
+        /* bu filmin afişi bulunamadı: baş harfler kalır */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, need.length) }, work));
+  return added;
+}

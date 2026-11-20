@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBeyazperde, parseParibu, parseBiletinial, lastPage, filmKey, sameFilm, mergeLists, loadVizyon, sourcesNote, VIZYON_TTL, BEYAZPERDE_URL, PARIBU_URL, BILETINIAL_URL } from '../www/js/vizyon.js';
+import { fillPosters, parseBeyazperde, parseParibu, parseBiletinial, lastPage, filmKey, sameFilm, mergeLists, loadVizyon, sourcesNote, VIZYON_TTL, BEYAZPERDE_URL, PARIBU_URL, BILETINIAL_URL } from '../www/js/vizyon.js';
 import { releasesRowHtml, releasesPageHtml } from '../www/js/title-ui.js';
 
 // Sayfa parçaları gerçek sayfalardan (19/11/2026) görülen yapıya göre: Beyazperde = görsel (alt "<ad> posteri") + başlık bağlantısı + tarih satırı + "Seanslar!" bağlantısı.
@@ -180,4 +180,54 @@ test('arayüz: yerel filmin kimliği v:… ile kartlanır; kaynak özeti ve yede
   assert.match(page, /ac-src">Güncel liste alınamadı/);
   assert.match(page, /ac-src">Beyazperde 2 · Paribu Cineverse alınamadı \(HTTP 403\)/);
   assert.match(releasesPageHtml([{ imdbId: 'tt1', type: 'movie', name: 'A', year: 2026, poster: '', inLib: false }], { fallback: true }), /genel yeni çıkanlar listesi/);
+});
+
+test('fillPosters: afişi olmayan yerel filmin afişi IMDb kaydından tamamlanır; afişli, Cinemeta ve bulunamayan filmler değişmez', async () => {
+  const films = [
+    { id: 'v:a', imdbId: '', local: true, name: 'A', poster: '' },
+    { id: 'v:b', imdbId: '', local: true, name: 'B', poster: 'https://p/b.jpg' },
+    { id: 'v:c', imdbId: '', local: true, name: 'C', poster: '' },
+    { imdbId: 'tt9', local: false, name: 'D', poster: '' },
+    { id: 'v:e', imdbId: 'tt5', local: true, name: 'E', poster: '' },
+    { id: 'v:f', imdbId: '', local: true, name: 'F', poster: '' },
+  ];
+  const asked = [];
+  const n = await fillPosters(films, {
+    resolve: async (f) => (asked.push(f.name), f.name === 'A' ? { imdbId: 'tt1' } : f.name === 'F' ? { imdbId: 'tt6' } : null),
+    posterOf: async (id) => (id === 'tt1' ? 'https://m/tt1.jpg' : id === 'tt5' ? 'http://insecure/tt5.jpg' : ''),
+  });
+  assert.equal(n, 1);
+  assert.equal(films[0].poster, 'https://m/tt1.jpg');
+  assert.equal(films[0].imdbId, 'tt1', 'bulunan IMDb kimliği de kaydedilir');
+  assert.equal(films[1].poster, 'https://p/b.jpg');
+  assert.equal(films[2].poster, '');
+  assert.equal(films[3].poster, '', 'yerel olmayan kayda dokunulmaz');
+  assert.equal(films[4].poster, '', 'https olmayan afiş alınmaz');
+  assert.equal(films[5].imdbId, 'tt6');
+  assert.deepEqual(asked.sort(), ['A', 'C', 'F'], 'kimliği zaten olan (E) yeniden çözülmez, afişli film (B) sorulmaz');
+});
+
+test('fillPosters: hata yutulur, en çok max film, eşzamanlılık sınırı', async () => {
+  const films = Array.from({ length: 10 }, (_, i) => ({ id: `v:${i}`, imdbId: '', local: true, name: `F${i}`, poster: '' }));
+  let live = 0;
+  let peak = 0;
+  const n = await fillPosters(films, {
+    max: 6,
+    concurrency: 2,
+    resolve: async (f) => {
+      live++;
+      peak = Math.max(peak, live);
+      await new Promise((r) => setTimeout(r, 2));
+      live--;
+      if (f.name === 'F1') throw new Error('ağ');
+      return { imdbId: 'tt' + f.name.slice(1) };
+    },
+    posterOf: async (id) => `https://m/${id}.jpg`,
+  });
+  assert.equal(n, 5, 'F1 hata verdi, diğer 5 tamamlandı');
+  assert.equal(films.filter((f) => f.poster).length, 5);
+  assert.ok(films.slice(6).every((f) => !f.poster && !f.imdbId), 'max aşılmaz');
+  assert.ok(peak <= 2);
+  assert.equal(await fillPosters(null, {}), 0);
+  assert.equal(await fillPosters([], {}), 0);
 });

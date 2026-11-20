@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 172,
+    title: 'Vizyondaki filmler: afiş tamamlama ve kart düzeltmesi',
+    items: [
+      'Sinema sitesinden afişi gelmeyen filmin afişi, bilgi ekranının kullandığı kaynaktan (IMDb) tamamlanır; kartta da görünür',
+      '“Vizyondaki filmler” sayfasında karta dokununca film bilgisi açılmıyordu; düzeltildi',
+    ],
+  },
+  {
     id: 171,
     title: 'Vizyondaki filmler: afişsiz kayıtlar düzeltildi',
     items: [
