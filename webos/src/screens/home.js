@@ -8,6 +8,7 @@ const KAROLAR = [
   { id: 'guide', ad: 'TV Rehberi', ic: ikon.rehber, ekran: ['browse', { kind: 'guide' }] },
   { id: 'movie', ad: 'Filmler', ic: ikon.film, ekran: ['browse', { kind: 'movie' }] },
   { id: 'series', ad: 'Diziler', ic: ikon.dizi, ekran: ['browse', { kind: 'series' }] },
+  { id: 'spor', ad: 'Spor', ic: ikon.spor, ekran: ['spor'] },
   { id: 'favs', ad: 'Favoriler', ic: ikon.yildiz, ekran: ['browse', { kind: 'favs' }] },
   { id: 'recents', ad: 'Son izlenenler', ic: ikon.gecmis, ekran: ['browse', { kind: 'recents' }] },
   { id: 'search', ad: 'Ara', ic: ikon.ara, ekran: ['search'] },

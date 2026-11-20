@@ -23,6 +23,7 @@ export const ANA = [
   ['none', 'Yok'],
   ['search', 'Ara'],
   ['guide', 'TV Rehberi'],
+  ['spor', 'Spor'],
   ['live', 'Canlı TV'],
   ['movie', 'Filmler'],
   ['series', 'Diziler'],

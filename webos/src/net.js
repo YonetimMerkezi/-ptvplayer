@@ -96,5 +96,6 @@ export function createNet({ ayar, taşıyıcı } = {}) {
       throw new AgHatasi('Sunucu geçerli bir yanıt vermedi', 0);
     }
   }
-  return { get, json, ogrenilen };
+  // text: get ile aynıdır (Android'deki ortak modüller net.text bekler)
+  return { get, text: get, json, ogrenilen };
 }

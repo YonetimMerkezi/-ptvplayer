@@ -84,6 +84,22 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .kd.d-yellow { background: #facc15; }
 .kd.d-blue { background: #3b82f6; }
 
+/* Spor */
+.k-spor .br { top: 11.2rem; }
+.sp-days { position: absolute; top: 6.4rem; left: 4rem; right: 4rem; height: 4rem; white-space: nowrap; overflow: hidden; }
+.sp-d { display: inline-block; margin-right: 1rem; padding: .4rem 1.4rem; font-size: 1.7rem; border-radius: .8rem; background: #151b2b; color: #c9d2e6; }
+.sp-d.on { background: #2dd4bf; color: #04141a; font-weight: 600; }
+.k-spor .cats { width: 24rem; }
+.k-spor .info { width: 34rem; }
+.sp-c { width: 7.4rem; color: #9aa6bf; font-size: 1.7rem; }
+.sp-c.live { color: #ff6b6b; font-weight: 600; }
+.sp-h { -webkit-flex: 1; flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.sp-s { width: 7.4rem; text-align: center; font-weight: 700; }
+.sp-a { -webkit-flex: 1; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.vl-it .sp-l { max-width: 20rem; overflow: hidden; text-overflow: ellipsis; font-size: 1.4rem; }
+.vl-it.on .sp-c { color: #0b3a40; }
+.vl-it.on .sp-c.live { color: #7f1010; }
+
 /* TV rehberi */
 .k-guide .cats { width: 22rem; }
 .k-guide .info { width: 34rem; }

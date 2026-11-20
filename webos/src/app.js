@@ -16,6 +16,7 @@ import { playerScreen } from './screens/player.js';
 import { transferScreen } from './screens/transfer.js';
 import { temaScreen } from './screens/tema.js';
 import { kumandaScreen } from './screens/kumanda.js';
+import { sporScreen } from './screens/spor.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -166,6 +167,7 @@ export function kaydet() {
     transfer: transferScreen,
     tema: temaScreen,
     kumanda: kumandaScreen,
+    spor: sporScreen,
     browse: browseScreen,
     detail: detailScreen,
     search: searchScreen,

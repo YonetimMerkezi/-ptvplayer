@@ -12,11 +12,16 @@ on:
       - 'www/js/util.js'
       - 'www/js/qr.js'
       - 'www/js/qrcode-lib.js'
+      - 'www/js/sports*.js'
+      - 'www/js/i18n*.js'
+      - 'www/js/plan.js'
+      - 'www/js/remote.js'
       - 'tests/webos.test.js'
       - 'tests/webos-transfer.test.js'
       - 'tests/webos-keys.test.js'
       - 'tests/webos-tema.test.js'
       - 'tests/webos-player.test.js'
+      - 'tests/webos-spor.test.js'
       - '.github/workflows/webos.yml'
   pull_request:
     paths:
@@ -26,11 +31,16 @@ on:
       - 'www/js/util.js'
       - 'www/js/qr.js'
       - 'www/js/qrcode-lib.js'
+      - 'www/js/sports*.js'
+      - 'www/js/i18n*.js'
+      - 'www/js/plan.js'
+      - 'www/js/remote.js'
       - 'tests/webos.test.js'
       - 'tests/webos-transfer.test.js'
       - 'tests/webos-keys.test.js'
       - 'tests/webos-tema.test.js'
       - 'tests/webos-player.test.js'
+      - 'tests/webos-spor.test.js'
       - '.github/workflows/webos.yml'
   workflow_dispatch:
 
@@ -54,7 +64,7 @@ jobs:
           cache-dependency-path: webos/package-lock.json
 
       - name: Birim testleri (webOS)
-        run: node --test tests/webos.test.js tests/webos-transfer.test.js tests/webos-keys.test.js tests/webos-tema.test.js tests/webos-player.test.js
+        run: node --test tests/webos.test.js tests/webos-transfer.test.js tests/webos-keys.test.js tests/webos-tema.test.js tests/webos-player.test.js tests/webos-spor.test.js
 
       - name: Bağımlılıklar
         working-directory: webos
