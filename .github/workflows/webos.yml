@@ -10,7 +10,10 @@ on:
       - 'www/js/xtream.js'
       - 'www/js/m3u.js'
       - 'www/js/util.js'
+      - 'www/js/qr.js'
+      - 'www/js/qrcode-lib.js'
       - 'tests/webos.test.js'
+      - 'tests/webos-transfer.test.js'
       - '.github/workflows/webos.yml'
   pull_request:
     paths:
@@ -18,7 +21,10 @@ on:
       - 'www/js/xtream.js'
       - 'www/js/m3u.js'
       - 'www/js/util.js'
+      - 'www/js/qr.js'
+      - 'www/js/qrcode-lib.js'
       - 'tests/webos.test.js'
+      - 'tests/webos-transfer.test.js'
       - '.github/workflows/webos.yml'
   workflow_dispatch:
 
@@ -42,7 +48,7 @@ jobs:
           cache-dependency-path: webos/package-lock.json
 
       - name: Birim testleri (webOS)
-        run: node --test tests/webos.test.js
+        run: node --test tests/webos.test.js tests/webos-transfer.test.js
 
       - name: Bağımlılıklar
         working-directory: webos

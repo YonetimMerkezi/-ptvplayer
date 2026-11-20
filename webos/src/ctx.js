@@ -28,6 +28,18 @@ export function sifirlaSaglayici() {
   ctx._provId = '';
 }
 
+// Kaynağı doğrular (giriş yapılabiliyor mu) ve ekler; olmazsa hata fırlatır.
+// Elle ekleme ve telefondan aktarma aynı yolu kullanır.
+export async function kaynakEkle(src) {
+  const p = createProvider(src, ctx.net);
+  const r = await p.auth();
+  if (!r.ok) throw new Error(r.reason || 'Doğrulanamadı');
+  const kaydedilen = ctx.store.addSource(src);
+  sifirlaSaglayici();
+  K.bilgi('Kaynak eklendi: ' + kaydedilen.name);
+  return kaydedilen;
+}
+
 const ust = () => ctx.stack[ctx.stack.length - 1];
 
 export function push(ekran) {

@@ -12,6 +12,7 @@ import { detailScreen } from './screens/detail.js';
 import { searchScreen } from './screens/search.js';
 import { settingsScreen, sourcesScreen, logScreen, aboutScreen } from './screens/settings.js';
 import { playerScreen } from './screens/player.js';
+import { transferScreen } from './screens/transfer.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -101,6 +102,7 @@ export function kaydet() {
   ctx.reg = {
     home: homeScreen,
     addsource: addSourceScreen,
+    transfer: transferScreen,
     browse: browseScreen,
     detail: detailScreen,
     search: searchScreen,

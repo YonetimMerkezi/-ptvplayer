@@ -1,8 +1,7 @@
 // Kaynak ekleme: Xtream (sunucu, kullanıcı, şifre) ya da M3U bağlantısı. Yazı girişi TV'nin ekran klavyesiyle yapılır.
-import { ctx, resetTo, pop, ustCubuk, sifirlaSaglayici } from '../ctx.js';
-import { createProvider } from '../data.js';
+import { resetTo, open, pop, ustCubuk, kaynakEkle } from '../ctx.js';
 import { el, esc, toast } from '../ui.js';
-import { parseXtreamLink, normalizeServer } from '../../../www/js/xtream.js';
+import { kaynakHazirla } from '../kaynak.js';
 import * as K from '../log.js';
 
 export function addSourceScreen(arg) {
@@ -13,7 +12,7 @@ export function addSourceScreen(arg) {
   kok.innerHTML =
     ustCubuk('Kaynak ekle') +
     '<div class="form-in">' +
-    '<div class="seg"><div class="f-btn on" data-f="tx">Xtream</div><div class="f-btn" data-f="tm">M3U bağlantısı</div></div>' +
+    '<div class="seg"><div class="f-btn on" data-f="tx">Xtream</div><div class="f-btn" data-f="tm">M3U bağlantısı</div><div class="f-btn" data-f="phone">Telefondan aktar</div></div>' +
     alan('ad', 'Ad (isteğe bağlı)', 'Evim') +
     '<div class="grp gx">' + alan('server', 'Sunucu adresi', 'http://sunucu:port') + alan('user', 'Kullanıcı adı', '') + alan('pass', 'Şifre', '') + '</div>' +
     '<div class="grp gm" style="display:none">' + alan('url', 'M3U bağlantısı', 'http://…/liste.m3u') + '</div>' +
@@ -66,36 +65,12 @@ export function addSourceScreen(arg) {
   let mesgul = false;
   async function baglan() {
     if (mesgul) return;
-    let src;
-    const ad = $('#f-ad').value.trim();
-    if (tip === 'xtream') {
-      let server = $('#f-server').value.trim();
-      let user = $('#f-user').value.trim();
-      let pass = $('#f-pass').value.trim();
-      const link = parseXtreamLink(server);
-      if (link) {
-        server = link.server;
-        user = user || link.user;
-        pass = pass || link.pass;
-      }
-      server = normalizeServer(server);
-      if (!server || !user || !pass) return msg('Sunucu, kullanıcı adı ve şifre gerekli.', true);
-      src = { type: 'xtream', name: ad || 'Xtream', server, user, pass };
-    } else {
-      const url = $('#f-url').value.trim();
-      if (!/^https?:\/\//i.test(url)) return msg('Bağlantı http:// veya https:// ile başlamalı.', true);
-      const link = parseXtreamLink(url); // get.php?username=..&password=.. biçimi Xtream olarak eklenir
-      src = link ? { type: 'xtream', name: ad || 'Xtream', server: link.server, user: link.user, pass: link.pass } : { type: 'm3u', name: ad || 'Liste', url };
-    }
+    const h = kaynakHazirla({ tip, ad: $('#f-ad').value, server: $('#f-server').value, user: $('#f-user').value, pass: $('#f-pass').value, url: $('#f-url').value });
+    if (h.hata) return msg(h.hata, true);
     mesgul = true;
     msg('Bağlanılıyor…');
     try {
-      const p = createProvider(src, ctx.net);
-      const r = await p.auth();
-      if (!r.ok) throw new Error(r.reason || 'Doğrulanamadı');
-      const kaydedilen = ctx.store.addSource(src);
-      sifirlaSaglayici();
-      K.bilgi('Kaynak eklendi: ' + kaydedilen.name);
+      await kaynakEkle(h.src);
       toast('Kaynak eklendi');
       resetTo('home');
     } catch (e) {
@@ -110,6 +85,7 @@ export function addSourceScreen(arg) {
     const f = e.getAttribute('data-f');
     if (f === 'tx') return tipDegis('xtream');
     if (f === 'tm') return tipDegis('m3u');
+    if (f === 'phone') return open('transfer');
     if (f === 'go') return baglan();
     if (f === 'cancel') return pop();
     const inp = e.querySelector('input');
@@ -136,8 +112,16 @@ export function addSourceScreen(arg) {
       else if (a === 'up') sec = Math.max(0, sec - 1);
       else if (a === 'left' || a === 'right') {
         const f = l[sec] && l[sec].getAttribute('data-f');
-        if (f === 'tx' || f === 'tm') tipDegis(a === 'left' ? 'xtream' : 'm3u');
-        else if (f === 'go' || f === 'cancel') {
+        if (f === 'tx' || f === 'tm' || f === 'phone') {
+          // üstteki üç düğme arasında gezinir; Xtream / M3U'ya gelince tür de değişir
+          const j = sec + (a === 'right' ? 1 : -1);
+          const g = l[j] && l[j].getAttribute('data-f');
+          if (g === 'tx' || g === 'tm' || g === 'phone') {
+            sec = j;
+            if (g === 'tx') tipDegis('xtream');
+            else if (g === 'tm') tipDegis('m3u');
+          }
+        } else if (f === 'go' || f === 'cancel') {
           const j = l.indexOf(l[sec]) + (a === 'right' ? 1 : -1);
           if (l[j] && /^(go|cancel)$/.test(l[j].getAttribute('data-f'))) sec = j;
         }

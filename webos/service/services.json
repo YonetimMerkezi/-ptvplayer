@@ -6,8 +6,30 @@
       "name": "com.koruk.iptv.webos.service",
       "description": "HTTP GET (yönlendirme, gzip) ve parça parça okuma",
       "commands": [
-        { "name": "fetch", "description": "Adresi indirir; ilk parçayı ve kimliği döndürür" },
-        { "name": "read", "description": "İndirilmiş yanıttan sıradaki parçayı verir" }
+        {
+          "name": "fetch",
+          "description": "Adresi indirir; ilk parçayı ve kimliği döndürür"
+        },
+        {
+          "name": "read",
+          "description": "İndirilmiş yanıttan sıradaki parçayı verir"
+        },
+        {
+          "name": "aliciBaslat",
+          "description": "Telefondan kaynak aktarma alıcısını başlatır; port ve 4 haneli kodu döndürür"
+        },
+        {
+          "name": "aliciSor",
+          "description": "Telefondan gelen kaynakları verir (ekran açıkken sürekli sorulur)"
+        },
+        {
+          "name": "aliciSonuc",
+          "description": "Bir kaynağın eklenme sonucunu telefondaki bekleyen isteğe iletir"
+        },
+        {
+          "name": "aliciDurdur",
+          "description": "Alıcıyı durdurur"
+        }
       ]
     }
   ]

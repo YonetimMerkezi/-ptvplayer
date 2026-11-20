@@ -68,6 +68,16 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .bar { height: .5rem; background: #1f2a40; border-radius: .3rem; margin-top: .8rem; overflow: hidden; }
 .bar i { display: block; height: 100%; background: #2dd4bf; }
 
+/* Telefondan aktar */
+.tr-in { position: absolute; top: 7rem; left: 4rem; right: 4rem; }
+.tr-qr { float: left; width: 30rem; height: 30rem; padding: .6rem; background: #fff; border-radius: 1rem; box-sizing: border-box; }
+.tr-qr svg { display: block; width: 100%; height: 100%; }
+.tr-tx { margin-left: 34rem; }
+.tr-ad { margin: 0; padding-left: 2.4rem; font-size: 1.8rem; line-height: 1.55; color: #c9d2e6; }
+.tr-url { margin-top: 1.6rem; font-size: 3.4rem; font-weight: 700; color: #2dd4bf; letter-spacing: .05rem; }
+.tr-pin { margin-top: .6rem; font-size: 2.2rem; color: #9aa6bf; }
+.tr-pin b { font-size: 3.6rem; letter-spacing: .5rem; color: #fff; margin-left: .6rem; }
+
 /* Formlar */
 .form-in { position: absolute; top: 6.2rem; left: 4rem; width: 70rem; }
 .seg { margin-bottom: 1.4rem; }

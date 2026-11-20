@@ -31,6 +31,8 @@ Telefondan: Android'de Termux ile aynı komutlar çalışmalıdır (denenmedi); 
 
 Uygulama kaynak ister: **Xtream** (sunucu, kullanıcı adı, şifre) ya da **M3U bağlantısı**. Yazı alanında OK'a basınca televizyonun ekran klavyesi açılır. Adres olarak `get.php?username=…&password=…` bağlantısını yapıştırırsan alanlar kendiliğinden ayrıştırılır.
 
+**Telefondan aktarma:** Kaynak ekle ekranındaki **Telefondan aktar** düğmesi TV'de bir QR kod ve 4 haneli kod gösterir. Telefon ve TV aynı modemdeyken telefonun kamerasıyla QR kodu okut (ya da tarayıcıya ekrandaki adresi yaz), açılan sayfaya liste bağlantını ya da Xtream bilgilerini yapıştırıp gönder; TV bağlanıp kaynağı ekler ve sonucu telefonda da gösterir. Dışarıda bir sunucu kullanılmaz; alıcı yalnızca bu ekran açıkken çalışır, ekrandan çıkınca ya da 10 dakika sonra kapanır. Telefon sayfayı açamıyorsa: ikisinin de aynı Wi-Fi/modemde olduğunu ve modemde “istemci yalıtımı (AP isolation)” seçeneğinin kapalı olduğunu kontrol et.
+
 Kumanda: oklar gezinir, **OK** seçer, **Geri** döner. Listelerde **Sarı** tuş (ya da OK'a basılı tutmak) favoriye ekler; **Mavi** arama açar. Canlı yayında **▲▼ / CH** kanal değiştirir, sayı tuşları kanal numarasına gider, **Sarı** yayın biçimini (HLS / TS) değiştirir. Filmde **◀▶** 10 sn sarar (hızlı basınca adım büyür).
 
 ## 4. Liste yüklenmiyorsa
