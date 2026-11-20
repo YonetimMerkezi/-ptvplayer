@@ -3,6 +3,7 @@
 import { ctx, provider, pop } from '../ctx.js';
 import { rakam } from '../keys.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
+import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
 
 const HATA = {
@@ -50,10 +51,21 @@ export function playerScreen({ list, index, fresh }) {
   let sonSarma = 0;
   let sarmaAdim = 10;
   let hata = false;
+  let onceki = -1; // önceki kanalın sırası ("önceki kanal" eylemi)
+  let uykuDk = 0;
+  let uykuT = 0;
+  let uykuUyariT = 0;
+  const ORAN = [['contain', 'Sığdır'], ['cover', 'Doldur (kırp)'], ['fill', 'Uzat']];
+  const UYKU = [0, 15, 30, 45, 60, 90];
 
   const canli = () => it.kind === 'live';
   const fmt = () => ctx.store.setting('liveFmt', 'm3u8');
 
+  const oranUygula = () => {
+    const o = ctx.store.setting('aspect', 'contain');
+    v.style.objectFit = o;
+  };
+  oranUygula();
   const hostOf = (u) => (/^[a-z]+:\/\/([^/?#]+)/i.exec(String(u)) || [])[1] || '?';
 
   function goster(ms) {
@@ -65,9 +77,14 @@ export function playerScreen({ list, index, fresh }) {
     if (hata) return;
     ov.className = 'p-ov';
   }
+  const renkliIpucu = () => {
+    const at = atamalar(ctx.store, 'oyn');
+    const r = [['red', 'Kırmızı'], ['green', 'Yeşil'], ['yellow', 'Sarı'], ['blue', 'Mavi']];
+    return r.filter((x) => at[x[0]] !== 'none').map((x) => x[1] + ' ' + eylemAdi('oyn', at[x[0]]).toLowerCase()).join(' · ');
+  };
   const ipucu = () => {
     hintEl.innerHTML = canli()
-      ? '▲▼ kanal · 0-9 numara · Kırmızı: favori · Sarı: biçim · Geri: çık'
+      ? '▲▼ kanal · 0-9 numara · renkli tuşlar: ' + renkliIpucu() + ' · Geri: çık'
       : '◀▶ 10 sn · OK: duraklat · ' + (list.length > 1 ? 'CH: bölüm · ' : '') + 'Geri: çık';
   };
 
@@ -223,7 +240,7 @@ export function playerScreen({ list, index, fresh }) {
   });
   v.addEventListener('ended', () => {
     if (canli()) return;
-    if (it.kind === 'episode' && idx < list.length - 1) {
+    if (it.kind === 'episode' && idx < list.length - 1 && ctx.store.setting('autoNext', true)) {
       kaydetBitti();
       idx++;
       toast('Sıradaki bölüm');
@@ -258,6 +275,7 @@ export function playerScreen({ list, index, fresh }) {
   }
   function kanal(d) {
     if (list.length < 2) return;
+    onceki = idx;
     idx = (idx + d + list.length) % list.length;
     numBuf = '';
     numEl.className = 'p-num';
@@ -271,8 +289,53 @@ export function playerScreen({ list, index, fresh }) {
     for (let i = 0; i < list.length; i++) if (Number(list[i].num) === n) h = i;
     if (h < 0 && n >= 1 && n <= list.length) h = n - 1; // numarasız listelerde sıra no
     if (h < 0) return toast('Kanal ' + n + ' yok');
+    onceki = idx;
     idx = h;
     baslat();
+  }
+
+  // Renkli tuşlara atanabilen eylemler (Ayarlar › Kumanda tuşları)
+  function oyunEylem(e) {
+    if (e === 'fav') {
+      if (!sid || (it.kind !== 'live' && it.kind !== 'movie')) return toast('Bu öğe favoriye eklenemez');
+      const f = ctx.store.toggleFav(sid, it);
+      toast(f ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı');
+    } else if (e === 'aspect') {
+      const i = ORAN.map((x) => x[0]).indexOf(ctx.store.setting('aspect', 'contain'));
+      const y = ORAN[(i + 1) % ORAN.length];
+      ctx.store.setSetting('aspect', y[0]);
+      oranUygula();
+      toast('Görüntü oranı: ' + y[1]);
+    } else if (e === 'fmt') {
+      if (!canli() || !provider() || provider().type !== 'xtream') return toast('Biçim yalnız Xtream canlı yayında değişir');
+      ctx.store.setSetting('liveFmt', fmt() === 'ts' ? 'm3u8' : 'ts');
+      toast('Canlı yayın biçimi: ' + (fmt() === 'ts' ? 'MPEG-TS' : 'HLS'));
+      baslat();
+    } else if (e === 'sleep') {
+      uykuDk = UYKU[(UYKU.indexOf(uykuDk) + 1) % UYKU.length];
+      clearTimeout(uykuT);
+      clearTimeout(uykuUyariT);
+      if (uykuDk) {
+        uykuUyariT = setTimeout(() => toast('Uyku zamanlayıcısı: 30 sn sonra kapanacak', 5000), Math.max(0, uykuDk * 60000 - 30000));
+        uykuT = setTimeout(() => {
+          if (kapali) return;
+          kaydet();
+          pop();
+          toast('Uyku zamanlayıcısı: oynatma kapandı');
+        }, uykuDk * 60000);
+        toast('Uyku zamanlayıcısı: ' + uykuDk + ' dakika');
+      } else toast('Uyku zamanlayıcısı kapalı');
+    } else if (e === 'last') {
+      if (!canli() || onceki < 0 || onceki >= list.length || list.length < 2) return toast('Önceki kanal yok');
+      const t = idx;
+      idx = onceki;
+      onceki = t;
+      baslat();
+    } else if (e === 'info') {
+      if (ov.className.indexOf('on') >= 0 && !hata) gizle();
+      else goster();
+    }
+    goster();
   }
 
   return {
@@ -339,15 +402,10 @@ export function playerScreen({ list, index, fresh }) {
         else goster();
         return true;
       }
-      if (a === 'red' && canli() && sid) {
-        const e = ctx.store.toggleFav(sid, it);
-        toast(e ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı');
-        return true;
-      }
-      if (a === 'yellow' && canli()) {
-        ctx.store.setSetting('liveFmt', fmt() === 'ts' ? 'm3u8' : 'ts');
-        toast('Canlı yayın biçimi: ' + (fmt() === 'ts' ? 'MPEG-TS' : 'HLS'));
-        baslat();
+      if (a === 'red' || a === 'green' || a === 'yellow' || a === 'blue') {
+        const e = eylemi(ctx.store, 'oyn', a);
+        if (!e) return false;
+        oyunEylem(e);
         return true;
       }
       return false;
@@ -360,6 +418,8 @@ export function playerScreen({ list, index, fresh }) {
       clearTimeout(beklT);
       clearTimeout(epgT);
       clearTimeout(numT);
+      clearTimeout(uykuT);
+      clearTimeout(uykuUyariT);
       durdurKaynak();
     },
   };

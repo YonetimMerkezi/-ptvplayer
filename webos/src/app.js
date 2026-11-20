@@ -3,7 +3,8 @@ import { ctx, open, pop, top, cikis, geri, geriOdakla } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
 import { actionOf } from './keys.js';
-import { saatleriYaz, toast, enYakin } from './ui.js';
+import { saatleriYaz, toast, enYakin, boyutla } from './ui.js';
+import { temaUygula, VARSAYILAN_TEMA } from './tema.js';
 import * as K from './log.js';
 import { homeScreen } from './screens/home.js';
 import { addSourceScreen } from './screens/addsource.js';
@@ -13,6 +14,8 @@ import { searchScreen } from './screens/search.js';
 import { settingsScreen, sourcesScreen, logScreen, aboutScreen } from './screens/settings.js';
 import { playerScreen } from './screens/player.js';
 import { transferScreen } from './screens/transfer.js';
+import { temaScreen } from './screens/tema.js';
+import { kumandaScreen } from './screens/kumanda.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -28,11 +31,7 @@ function depoSec() {
   }
 }
 
-// 1rem = ekran yüksekliğinin 1/54'ü → 1080p'de 20px; tüm ölçüler rem ile yazıldığı için her çözünürlükte aynı görünür.
-function boyutla() {
-  const h = window.innerHeight || 720;
-  document.documentElement.style.fontSize = h / 54 + 'px';
-}
+const yaziOlcegi = () => Number(ctx.store.setting('fontScale', '1')) || 1;
 
 export function tuslariBagla(doc) {
   let okAsagida = false;
@@ -165,6 +164,8 @@ export function kaydet() {
     home: homeScreen,
     addsource: addSourceScreen,
     transfer: transferScreen,
+    tema: temaScreen,
+    kumanda: kumandaScreen,
     browse: browseScreen,
     detail: detailScreen,
     search: searchScreen,
@@ -182,13 +183,21 @@ export function start() {
   ctx.net = createNet({ ayar: () => ctx.store.setting('netMode', 'auto') });
   ctx.root = document.getElementById('app');
   kaydet();
-  boyutla();
-  window.addEventListener('resize', boyutla);
+  boyutla(yaziOlcegi());
+  window.addEventListener('resize', () => boyutla(yaziOlcegi()));
+  const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
+  if (tema !== VARSAYILAN_TEMA) temaUygula(tema).catch((e) => K.hata(e));
   tuslariBagla(document);
   setInterval(saatleriYaz, 15000);
   K.bilgi('Açıldı: ' + window.innerWidth + '×' + window.innerHeight);
-  if (ctx.store.active()) open('home');
-  else open('addsource', { first: true });
+  if (ctx.store.active()) {
+    open('home');
+    // Açılışta son kanal: en son izlenen canlı kanal doğrudan oynar (Geri ana sayfaya döner)
+    if (ctx.store.setting('autoplay', false)) {
+      const son = ctx.store.recents(ctx.store.active().id).filter((r) => r.item && r.item.kind === 'live')[0];
+      if (son) open('player', { list: [son.item], index: 0 });
+    }
+  } else open('addsource', { first: true });
   saatleriYaz();
   const b = document.getElementById('boot');
   if (b && b.parentNode) b.parentNode.removeChild(b);

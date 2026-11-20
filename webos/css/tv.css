@@ -71,6 +71,19 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .bar { height: .5rem; background: #1f2a40; border-radius: .3rem; margin-top: .8rem; overflow: hidden; }
 .bar i { display: block; height: 100%; background: #2dd4bf; }
 
+/* Tema merkezi, kumanda tuşları */
+.sw { display: inline-block; width: 2.4rem; height: 2.4rem; border-radius: 50%; margin-right: 1.4rem; -webkit-flex-shrink: 0; flex-shrink: 0; }
+.tm-pv { margin-top: 1.4rem; width: 44rem; padding: 2rem; border: .2rem solid; border-radius: 1.2rem; }
+.tm-t { font-size: 2.2rem; font-weight: 600; margin-bottom: 1.4rem; }
+.tm-ks { margin-bottom: 1.4rem; }
+.tm-k { display: inline-block; width: 12.4rem; height: 6.4rem; margin-right: 1.2rem; padding-top: 2rem; border-radius: 1rem; text-align: center; font-size: 1.7rem; font-weight: 600; }
+.tm-s { margin-top: .8rem; padding: .9rem 1.4rem; border-radius: .7rem; font-size: 1.7rem; color: #e8ecf4; }
+.kd { display: inline-block; width: 1.5rem; height: 1.5rem; margin-right: 1.2rem; border-radius: 50%; background: #888; }
+.kd.d-red { background: #ef4444; }
+.kd.d-green { background: #22c55e; }
+.kd.d-yellow { background: #facc15; }
+.kd.d-blue { background: #3b82f6; }
+
 /* TV rehberi */
 .k-guide .cats { width: 22rem; }
 .k-guide .info { width: 34rem; }

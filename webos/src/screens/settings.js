@@ -4,11 +4,15 @@ import { VList } from '../vlist.js';
 import { createProvider } from '../data.js';
 import { varlik } from '../luna.js';
 import { SURUM } from '../version.js';
-import { el, esc, px, toast } from '../ui.js';
+import { el, esc, px, toast, boyutla } from '../ui.js';
+import { temaBul, VARSAYILAN_TEMA } from '../tema.js';
 import * as K from '../log.js';
 
 const FORMAT = [['m3u8', 'HLS (m3u8)'], ['ts', 'MPEG-TS (ts)']];
 const AG = [['auto', 'Otomatik'], ['direct', 'Doğrudan'], ['service', 'TV servisi']];
+const YAZI = [['0.9', 'Küçük'], ['1', 'Normal'], ['1.15', 'Büyük'], ['1.3', 'Çok büyük']];
+export const ORAN = [['contain', 'Sığdır'], ['cover', 'Doldur (kırp)'], ['fill', 'Uzat']];
+const temaAdi = () => temaBul(ctx.store.setting('theme', VARSAYILAN_TEMA)).ad;
 const ad = (liste, v) => (liste.filter((x) => x[0] === v)[0] || liste[0])[1];
 const sonraki = (liste, v, yon) => {
   let i = 0;
@@ -31,6 +35,12 @@ export function settingsScreen() {
     return [
       { id: 'source', ad: 'Etkin kaynak', deger: () => (src ? src.name : '—'), yardim: 'OK: kaynakları yönet' },
       { id: 'add', ad: 'Kaynak ekle', deger: () => '', yardim: 'Xtream ya da M3U bağlantısı ekler' },
+      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Renk temaları: turkuaz, mavi, mor, gün batımı, neon …' },
+      { id: 'keys', ad: 'Kumanda tuşları', deger: () => '', yardim: 'Kırmızı / yeşil / sarı / mavi tuşlara oynatıcıda ve ana sayfada yapılacak eylemi atayın' },
+      { id: 'fontScale', ad: 'Yazı boyutu', deger: () => ad(YAZI, ctx.store.setting('fontScale', '1')), yardim: 'Tüm ekranlardaki yazı ve düğme boyutunu büyütür ya da küçültür' },
+      { id: 'aspect', ad: 'Görüntü oranı', deger: () => ad(ORAN, ctx.store.setting('aspect', 'contain')), yardim: 'Videonun ekrana yerleşimi: sığdır, doldur (kenarları kırp) ya da uzat. Oynatıcıda renkli tuşla da değişir' },
+      { id: 'autoNext', ad: 'Sıradaki bölüm', deger: () => (ctx.store.setting('autoNext', true) ? 'Açık' : 'Kapalı'), yardim: 'Bölüm bitince sıradaki bölüm kendiliğinden açılır' },
+      { id: 'autoplay', ad: 'Açılışta son kanal', deger: () => (ctx.store.setting('autoplay', false) ? 'Açık' : 'Kapalı'), yardim: 'Uygulama açılınca en son izlenen canlı kanalı doğrudan oynatır' },
       { id: 'liveFmt', ad: 'Canlı yayın biçimi', deger: () => ad(FORMAT, ctx.store.setting('liveFmt', 'm3u8')), yardim: 'Yayın açılmıyorsa diğer biçimi deneyin (yalnız Xtream)' },
       { id: 'netMode', ad: 'Ağ yolu', deger: () => ad(AG, ctx.store.setting('netMode', 'auto')), yardim: 'Otomatik: önce doğrudan, olmazsa TV servisi. Liste yüklenmiyorsa “TV servisi”ni deneyin' },
       { id: 'test', ad: 'Bağlantıyı sına', deger: () => '', yardim: 'Etkin kaynağa bağlanıp sonucu ve kullanılan yolu gösterir' },
@@ -71,6 +81,19 @@ export function settingsScreen() {
   function etkinles(r, yon) {
     if (r.id === 'source') open('sources');
     else if (r.id === 'add') open('addsource');
+    else if (r.id === 'theme') open('tema');
+    else if (r.id === 'keys') open('kumanda');
+    else if (r.id === 'fontScale') {
+      const yeni = sonraki(YAZI, ctx.store.setting('fontScale', '1'), yon);
+      ctx.store.setSetting('fontScale', yeni);
+      boyutla(Number(yeni));
+      // Satır yükseklikleri açılışta ölçüldüğünden ekranlar yeni boyutla yeniden kurulur
+      resetTo('home');
+      open('settings');
+      return;
+    } else if (r.id === 'aspect') ctx.store.setSetting('aspect', sonraki(ORAN, ctx.store.setting('aspect', 'contain'), yon));
+    else if (r.id === 'autoNext') ctx.store.setSetting('autoNext', !ctx.store.setting('autoNext', true));
+    else if (r.id === 'autoplay') ctx.store.setSetting('autoplay', !ctx.store.setting('autoplay', false));
     else if (r.id === 'liveFmt') ctx.store.setSetting('liveFmt', sonraki(FORMAT, ctx.store.setting('liveFmt', 'm3u8'), yon));
     else if (r.id === 'netMode') ctx.store.setSetting('netMode', sonraki(AG, ctx.store.setting('netMode', 'auto'), yon));
     else if (r.id === 'test') sina();
@@ -93,7 +116,7 @@ export function settingsScreen() {
     onKey(a) {
       if (a === 'left' || a === 'right') {
         const r = list.cur;
-        if (r && (r.id === 'liveFmt' || r.id === 'netMode')) etkinles(r, a === 'right' ? 1 : -1);
+        if (r && /^(liveFmt|netMode|fontScale|aspect|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
         return true;
       }
       return list.key(a);

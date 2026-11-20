@@ -18,6 +18,12 @@ export function enYakin(e, sel, kok) {
   return null;
 }
 
+// 1rem = ekran yüksekliğinin 1/54'ü (1080p'de 20px); tüm ölçüler rem ile yazıldığı için her çözünürlükte aynı görünür. olcek: yazı boyutu ayarı.
+export function boyutla(olcek) {
+  const h = window.innerHeight || 720;
+  document.documentElement.style.fontSize = (h / 54) * (olcek > 0 ? olcek : 1) + 'px';
+}
+
 export const px = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 20; // 1rem kaç piksel
 
 const iki = (n) => (n < 10 ? '0' : '') + n;

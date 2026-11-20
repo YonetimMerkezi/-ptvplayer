@@ -1,6 +1,7 @@
 // Ana sayfa: büyük karolar; kumanda okları ızgarada gezer.
 import { ctx, open, ikon, ustCubuk } from '../ctx.js';
 import { el, esc, enYakin } from '../ui.js';
+import { eylemi } from '../kumanda.js';
 
 const KAROLAR = [
   { id: 'live', ad: 'Canlı TV', ic: ikon.tv, ekran: ['browse', { kind: 'live' }] },
@@ -13,6 +14,7 @@ const KAROLAR = [
   { id: 'settings', ad: 'Ayarlar', ic: ikon.ayar, ekran: ['settings'] },
 ];
 const SUTUN = 5;
+const renkSinifi = (i) => 'c' + ((i % 8) + 1); // çok renkli temalarda karonun rengi
 
 export function homeScreen() {
   const kok = el('div', 'screen home');
@@ -20,12 +22,12 @@ export function homeScreen() {
   kok.innerHTML =
     ustCubuk('Iptv Player Pro', src ? esc(src.name) : '', true) +
     '<div class="tiles">' +
-    KAROLAR.map((k, i) => '<div class="tile" data-i="' + i + '"><i class="ic">' + k.ic + '</i><span>' + k.ad + '</span></div>').join('') +
+    KAROLAR.map((k, i) => '<div class="tile ' + renkSinifi(i) + '" data-i="' + i + '"><i class="ic">' + k.ic + '</i><span>' + k.ad + '</span></div>').join('') +
     '</div><div class="hint">Gezin: ▲▼◀▶ · Seç: OK · Çıkış: Geri ×2</div>';
   let sec = 0;
   const dugumler = kok.querySelectorAll('.tile');
   const isaretle = () => {
-    for (let i = 0; i < dugumler.length; i++) dugumler[i].className = 'tile' + (i === sec ? ' on' : '');
+    for (let i = 0; i < dugumler.length; i++) dugumler[i].className = 'tile ' + renkSinifi(i) + (i === sec ? ' on' : '');
   };
   const ac = (i) => {
     const k = KAROLAR[i];
@@ -51,6 +53,13 @@ export function homeScreen() {
       else if (a === 'up') i = sec - SUTUN;
       else if (a === 'ok') {
         ac(sec);
+        return true;
+      } else if (a === 'red' || a === 'green' || a === 'yellow' || a === 'blue') {
+        // Renkli tuşlar: Ayarlar › Kumanda tuşları'nda atanan ekranı açar
+        const e = eylemi(ctx.store, 'ana', a);
+        const k = KAROLAR.filter((x) => x.id === e)[0];
+        if (!k) return false;
+        open(k.ekran[0], k.ekran[1]);
         return true;
       } else return false;
       if (i >= 0 && i < KAROLAR.length) {
