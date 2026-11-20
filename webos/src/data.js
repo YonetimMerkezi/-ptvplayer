@@ -3,6 +3,8 @@
 import * as X from '../../www/js/xtream.js';
 import { M3UParser, groupSeries } from '../../www/js/m3u.js';
 import { fold } from '../../www/js/util.js';
+import { esle as isciEsle, isciKullanilir } from './isci-ist.js';
+import { AgHatasi } from './net.js';
 
 const KIND_AKSIYON = {
   live: ['get_live_categories', 'get_live_streams', X.mapLive],
@@ -17,6 +19,26 @@ export function createXtream(src, net) {
   const cfg = { server: src.server, user: src.user, pass: src.pass };
   const cache = {};
   const J = (action, params) => net.json(X.apiUrl(cfg, action, params), { timeoutMs: 60000 });
+  // Büyük liste yanıtı: önce ham metin alınır, ayrıştırma ve eşleme arka plan işçisinde yapılır (kumanda tuşları takılmasın).
+  // grup: aynı gruptaki yeni istek (kullanıcı başka kategoriye geçti) öncekini keser.
+  const liste = async (kind, params, cats, grup) => {
+    const [, aksiyon, map] = KIND_AKSIYON[kind];
+    const metin = await net.get(X.apiUrl(cfg, aksiyon, params), { timeoutMs: 60000, grup });
+    if (isciKullanilir(metin)) {
+      try {
+        return await isciEsle(metin, kind, cats);
+      } catch (e) {
+        /* işçi çalışmadı: ana iş parçacığında ayrıştır */
+      }
+    }
+    let json;
+    try {
+      json = JSON.parse(metin);
+    } catch (e) {
+      throw new AgHatasi('Sunucu geçerli bir yanıt vermedi', 0);
+    }
+    return map(gecerli(json), cats);
+  };
   const rawCats = (kind) => bir(cache, 'rc:' + kind, async () => gecerli(await J(KIND_AKSIYON[kind][0])));
   const epgOnbellek = {}; // kanal:adet → { at, p }; 2 dakika taze sayılır
   return {
@@ -26,17 +48,8 @@ export function createXtream(src, net) {
       return (await rawCats(kind)).map((c) => ({ id: String(c.category_id), name: String(c.category_name || '').trim() || 'Diğer' }));
     },
     items: (kind, catId) =>
-      bir(cache, 'it:' + kind + ':' + catId, async () => {
-        const [, aksiyon, map] = KIND_AKSIYON[kind];
-        const cats = await rawCats(kind);
-        return map(gecerli(await J(aksiyon, { category_id: catId })), cats);
-      }),
-    all: (kind) =>
-      bir(cache, 'all:' + kind, async () => {
-        const [, aksiyon, map] = KIND_AKSIYON[kind];
-        const cats = await rawCats(kind);
-        return map(gecerli(await J(aksiyon)), cats);
-      }),
+      bir(cache, 'it:' + kind + ':' + catId, async () => liste(kind, { category_id: catId }, await rawCats(kind), 'kat')),
+    all: (kind) => bir(cache, 'all:' + kind, async () => liste(kind, undefined, await rawCats(kind))),
     seriesInfo: (item) => bir(cache, 'si:' + item.seriesId, async () => X.mapSeriesInfo(await J('get_series_info', { series_id: item.seriesId }))),
     vodInfo: (item) => bir(cache, 'vi:' + item.streamId, async () => X.mapVodInfo(await J('get_vod_info', { vod_id: item.streamId }))),
     // Kanalın şimdiki ve sonraki programları (adet: kaç program; varsayılan 3)

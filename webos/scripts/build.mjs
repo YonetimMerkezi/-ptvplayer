@@ -16,33 +16,39 @@ const yapi = process.env.WEBOS_BUILD || new Date().toISOString().slice(0, 16).re
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'app', 'js'), { recursive: true });
 
-// 1) Paketle (modern söz dizimi korunur)
-const paket = await build({
-  entryPoints: [join(kok, 'src', 'main.js')],
-  bundle: true,
-  write: false,
-  format: 'iife',
-  target: 'es2020',
-  legalComments: 'none',
-  define: { __VERSION__: JSON.stringify(surum), __BUILD__: JSON.stringify(yapi) },
-  logLevel: 'warning',
-});
-const kaynak = paket.outputFiles[0].text;
+// 1-3) Her giriş (uygulama ve arka plan işçisi) için: paketle → ES5'e çevir → küçült
+async function derle(girdi, cikti) {
+  // 1) Paketle (modern söz dizimi korunur)
+  const paket = await build({
+    entryPoints: [join(kok, 'src', girdi)],
+    bundle: true,
+    write: false,
+    format: 'iife',
+    target: 'es2020',
+    legalComments: 'none',
+    define: { __VERSION__: JSON.stringify(surum), __BUILD__: JSON.stringify(yapi) },
+    logLevel: 'warning',
+  });
+  const kaynak = paket.outputFiles[0].text;
 
-// 2) ES5'e çevir (Chromium 38: let/const, ok işlevi, sınıf, şablon dizgisi, async yok)
-const es5 = await transformAsync(kaynak, {
-  babelrc: false,
-  configFile: false,
-  compact: false,
-  comments: false,
-  sourceType: 'script',
-  presets: [['@babel/preset-env', { targets: { chrome: '38' }, modules: false, loose: false, bugfixes: false }]],
-});
+  // 2) ES5'e çevir (Chromium 38: let/const, ok işlevi, sınıf, şablon dizgisi, async yok)
+  const es5 = await transformAsync(kaynak, {
+    babelrc: false,
+    configFile: false,
+    compact: false,
+    comments: false,
+    sourceType: 'script',
+    presets: [['@babel/preset-env', { targets: { chrome: '38' }, modules: false, loose: false, bugfixes: false }]],
+  });
 
-// 3) Küçült (ES5 kalır)
-const kucuk = await minify(es5.code, { ecma: 5, compress: { passes: 1 }, mangle: true, format: { ascii_only: true } });
-if (!kucuk.code) throw new Error('Terser çıktı üretmedi');
-writeFileSync(join(dist, 'app', 'js', 'app.js'), kucuk.code);
+  // 3) Küçült (ES5 kalır)
+  const kucuk = await minify(es5.code, { ecma: 5, compress: { passes: 1 }, mangle: true, format: { ascii_only: true } });
+  if (!kucuk.code) throw new Error('Terser çıktı üretmedi: ' + girdi);
+  writeFileSync(join(dist, 'app', 'js', cikti), kucuk.code);
+  return kucuk.code;
+}
+const uygulama = await derle('main.js', 'app.js');
+const isci = await derle('isci.js', 'isci.js'); // Xtream büyük yanıtlarını ayrıştıran arka plan işçisi
 
 // 4) Sabit dosyalar
 const html = readFileSync(join(kok, 'index.html'), 'utf8').replace(/__VERSION__/g, surum);
@@ -57,4 +63,4 @@ const sp = JSON.parse(readFileSync(join(dist, 'service', 'package.json'), 'utf8'
 sp.version = surum;
 writeFileSync(join(dist, 'service', 'package.json'), JSON.stringify(sp, null, 2));
 
-console.log(`webOS ${surum} derlendi: app.js ${(kucuk.code.length / 1024).toFixed(0)} KB`);
+console.log(`webOS ${surum} derlendi: app.js ${(uygulama.length / 1024).toFixed(0)} KB, isci.js ${(isci.length / 1024).toFixed(0)} KB`);

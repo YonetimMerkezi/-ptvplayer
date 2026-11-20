@@ -13,7 +13,7 @@ const bildir = (m) => {
 };
 
 // JS: ES5 ayrıştırıcıdan geçmeli (servis Node 0.12 için aynı kural)
-for (const f of [join(dist, 'app', 'js', 'app.js'), ...readdirSync(join(dist, 'service')).filter((x) => x.endsWith('.js')).map((x) => join(dist, 'service', x))]) {
+for (const f of [join(dist, 'app', 'js', 'app.js'), join(dist, 'app', 'js', 'isci.js'), ...readdirSync(join(dist, 'service')).filter((x) => x.endsWith('.js')).map((x) => join(dist, 'service', x))]) {
   try {
     parse(readFileSync(f, 'utf8'), { ecmaVersion: 5, sourceType: 'script' });
     console.log('✓ ES5: ' + f.slice(kok.length + 1));

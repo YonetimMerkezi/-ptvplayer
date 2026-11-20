@@ -150,6 +150,8 @@ test('data/xtream: kategori, öğe, adres üretimi ve bellek önbelleği', async
       if (url.includes('action=get_vod_categories')) return [{ category_id: '1', category_name: 'Dram' }];
       return { user_info: { auth: 1, status: 'Active' } };
     },
+    // liste yanıtları ham metin olarak alınır (ayrıştırma işçide/ana parçada yapılır); gerçek net ikisini de sağlar
+    get: async (url) => JSON.stringify(await net.json(url)),
   };
   const p = createProvider(CFG, net);
   assert.equal(p.type, 'xtream');
