@@ -35,6 +35,8 @@ Uygulama kaynak ister: **Xtream** (sunucu, kullanıcı adı, şifre) ya da **M3U
 
 Kumanda: oklar gezinir, **OK** seçer, **Geri** döner. Listelerde **Sarı** tuş (ya da OK'a basılı tutmak) favoriye ekler; **Mavi** arama açar. Canlı yayında **▲▼ / CH** kanal değiştirir, sayı tuşları kanal numarasına gider, **Sarı** yayın biçimini (HLS / TS) değiştirir. Filmde **◀▶** 10 sn sarar (hızlı basınca adım büyür).
 
+**Altyazı:** LG televizyonlar filmin içine gömülü altyazıyı uygulamaya vermez; listede altyazı görünmezse oynatıcıda **Altyazı › Altyazı ara…** ile film ya da bölüm için harici (Türkçe öncelikli) altyazı bulunur. Altyazı sesten kayıksa aynı menüdeki **Altyazıyı kaydır** ile ◀▶ 0,5 sn adımla düzeltilir. Altyazı kaynağı internet gerektirir; yapımın adı kaynaktaki adla birebir eşleşmezse (Türkçe ad, farklı yıl gibi) bulunamaz. **Fragman** TV'nin YouTube uygulamasında açılır.
+
 ## 4. Liste yüklenmiyorsa
 
 Paketlenmiş uygulamalar için tarayıcı kuralları (CORS) bazı sunucuları engelleyebilir. Bu durumda uygulama otomatik olarak **televizyonun içindeki servis** üzerinden bağlanır. Elle seçmek için: **Ayarlar › Ağ yolu › TV servisi**. **Bağlantıyı sına** hangi yolla bağlandığını gösterir.

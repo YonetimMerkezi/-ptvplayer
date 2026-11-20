@@ -6,6 +6,7 @@ import { VList } from '../vlist.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
 import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
+import { videoKimligi, imdbBul, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
   1: 'Oynatma iptal edildi',
@@ -31,7 +32,7 @@ export function playerScreen({ list, index, fresh }) {
     '<video id="vid"></video>' +
     '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">' + ikon.geriOk + '<span>Geri</span></div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
     '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-acts"></div><div class="p-hint"></div></div></div>' +
-    '<div class="p-list"><div class="p-list-in"></div></div><div class="p-pick"></div>' +
+    '<div class="p-sub"></div><div class="p-list"><div class="p-list-in"></div></div><div class="p-pick"></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
   kok.addEventListener('mousemove', () => {
     if (!kapali) goster();
@@ -263,6 +264,7 @@ export function playerScreen({ list, index, fresh }) {
 
   function baslat() {
     it = list[idx];
+    haricKaldir(); // önceki yapımın harici altyazısı yenisine taşınmaz
     hata = false;
     msg.className = 'p-msg';
     spin.className = 'p-spin on';
@@ -432,9 +434,10 @@ export function playerScreen({ list, index, fresh }) {
   let secimT = 0;
   function secimZamanla() {
     clearTimeout(secimT);
+    const sure = (secim && secim.sure) || 12000; // arama/indirme panellerinde ağı beklemek için daha uzun
     secimT = setTimeout(() => {
       if (secim) secimKapat();
-    }, 12000);
+    }, sure);
   }
   function secimAc(s) {
     s.idx = Math.max(0, Math.min(s.satirlar.length - 1, s.idx || 0));
@@ -478,19 +481,140 @@ export function playerScreen({ list, index, fresh }) {
     });
   }
 
+  // --- Harici altyazı: TV gömülü altyazıyı uygulamaya vermediğinde IMDb kimliğiyle aranır ve kendi katmanımızda gösterilir
+  const subEl = kok.querySelector('.p-sub');
+  let harici = null; // { cues, ad, kayma } — kayma ms; + = altyazı gecikir
+  let haricT = 0;
+  let aramaNo = 0;
+  let sonMetin = '';
+  const kaymaYaz = (k) => (k > 0 ? '+' : '') + (k / 1000).toFixed(1).replace('.', ',') + ' sn';
+  function haricCiz() {
+    if (!harici) return;
+    const m = aktifMetin(harici.cues, Math.round((v.currentTime || 0) * 1000) - harici.kayma);
+    if (m === sonMetin) return;
+    sonMetin = m;
+    subEl.textContent = m;
+    subEl.className = m ? 'p-sub on' : 'p-sub';
+  }
+  function haricKaldir() {
+    aramaNo++; // süren arama/indirme sonucu artık kullanılmaz
+    clearInterval(haricT);
+    harici = null;
+    sonMetin = '';
+    subEl.textContent = '';
+    subEl.className = 'p-sub';
+  }
+  function haricAc(cues, ad) {
+    clearInterval(haricT);
+    harici = { cues, ad, kayma: 0 };
+    sonMetin = '\u0000';
+    haricCiz();
+    haricT = setInterval(haricCiz, 250);
+    const t = v.textTracks; // gömülü altyazı da açıksa çift görünmesin
+    for (let i = 0; t && i < t.length; i++) if (t[i].mode === 'showing') t[i].mode = 'disabled';
+  }
+  const haricGecerli = (n) => !kapali && secim && secim.arama === n;
+  async function haricIndir(x, n) {
+    secimAc({ baslik: 'Altyazı', satirlar: [{ ad: x.ad + ' indiriliyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
+    try {
+      const metin = await ctx.net.get(x.url, { timeoutMs: 25000 });
+      if (!haricGecerli(n)) return;
+      const cues = altyaziAyristir(metin);
+      if (!cues.length) return bosPanel('Altyazı', 'Altyazı dosyası okunamadı', 'Dosya boş ya da desteklenmeyen biçimde. Başka bir seçenek deneyin.');
+      haricAc(cues, x.ad);
+      toast('Altyazı: ' + x.ad);
+      secimKapat();
+    } catch (e) {
+      if (!haricGecerli(n)) return;
+      K.uyar('Altyazı indirilemedi: ' + (e && e.message));
+      bosPanel('Altyazı indirilemedi', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip başka bir seçenek deneyin.');
+    }
+  }
+  async function haricAra(kimlik) {
+    const n = ++aramaNo;
+    secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Altyazı aranıyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
+    try {
+      let ek = [];
+      if (kimlik.tur === 'movie') {
+        try {
+          const vi = await provider().vodInfo(it);
+          if (vi && vi.originalName) ek = [vi.originalName]; // Türkçe adlı filmler özgün adla da aranır
+        } catch (e) {
+          /* özgün ad alınamadı: yalnız katalog adıyla aranır */
+        }
+      }
+      if (!haricGecerli(n)) return;
+      const imdb = await imdbBul(ctx.net, kimlik, ek);
+      if (!haricGecerli(n)) return;
+      if (!imdb) return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Ad kaynaktaki adla birebir eşleşmezse (Türkçe ad, farklı yıl gibi) altyazı aranamaz.');
+      const liste = await altyaziListesi(ctx.net, kimlik, imdb);
+      if (!haricGecerli(n)) return;
+      if (!liste.length) return bosPanel('Altyazı', 'Bu yapım için altyazı bulunamadı', 'Altyazı kaynağında bu film ya da bölüm için kayıt yok.');
+      secimAc({
+        baslik: 'Altyazı seç',
+        satirlar: liste.map((x) => ({ ad: x.ad })),
+        idx: 0,
+        arama: n,
+        calis(i) {
+          haricIndir(liste[i], n);
+        },
+      });
+    } catch (e) {
+      if (!haricGecerli(n)) return;
+      K.uyar('Altyazı aranamadı: ' + (e && e.message));
+      bosPanel('Altyazı aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
+    }
+  }
+  function haricKaydirAc() {
+    const yap = () => [{ ad: 'Altyazıyı geciktir', sag: kaymaYaz(harici.kayma) }, { ad: 'Sıfırla' }];
+    secimAc({
+      baslik: 'Altyazı senkronu',
+      satirlar: yap(),
+      idx: 0,
+      not: '◀▶ ile 0,5 sn adımla ayarlayın. Altyazı sesten sonra geliyorsa eksi, önce geliyorsa artı değer verin.',
+      yan(d) {
+        harici.kayma = Math.max(-30000, Math.min(30000, harici.kayma + d * 500));
+        this.satirlar = yap();
+        secimCiz();
+        haricCiz();
+      },
+      calis(i) {
+        if (i === 1) this.yan(-harici.kayma / 500);
+        else secimKapat();
+      },
+    });
+  }
+
   function altyaziAc() {
     const t = v.textTracks;
     const l = [];
     for (let i = 0; t && i < t.length; i++) if (t[i].kind === 'subtitles' || t[i].kind === 'captions' || !t[i].kind) l.push(t[i]);
-    if (!l.length) return bosPanel('Altyazı', 'Bu yayında altyazı bildirilmedi', 'Gömülü altyazı yoksa ya da TV altyazıyı uygulamaya vermiyorsa liste boş kalır.');
-    const yap = () => [{ ad: 'Kapalı', on: !l.some((x) => x.mode === 'showing') }].concat(l.map((x, i) => ({ ad: izAdi(x, i, 'Altyazı'), on: x.mode === 'showing' })));
+    const kimlik = videoKimligi(it);
+    if (!l.length && !kimlik && !harici) return bosPanel('Altyazı', 'Bu yayında altyazı bildirilmedi', 'Gömülü altyazı yoksa ya da TV altyazıyı uygulamaya vermiyorsa liste boş kalır.');
+    const yap = () => {
+      const r = [{ ad: 'Kapalı', on: !harici && !l.some((x) => x.mode === 'showing'), eyl: 'kapali' }];
+      for (let i = 0; i < l.length; i++) r.push({ ad: izAdi(l[i], i, 'Altyazı'), on: !harici && l[i].mode === 'showing', eyl: 'iz', iz: i });
+      if (harici) {
+        r.push({ ad: harici.ad + ' (harici)', on: true, eyl: 'harici' });
+        r.push({ ad: 'Altyazıyı kaydır', sag: kaymaYaz(harici.kayma), eyl: 'kaydir' });
+      }
+      if (kimlik) r.push({ ad: 'Altyazı ara…', eyl: 'ara' });
+      return r;
+    };
+    const not = !l.length && kimlik && !harici ? 'TV bu yayının gömülü altyazısını uygulamaya vermiyor. “Altyazı ara…” ile harici altyazı bulunabilir.' : '';
     secimAc({
       baslik: 'Altyazı',
       satirlar: yap(),
       idx: Math.max(0, yap().map((x) => x.on).indexOf(true)),
+      not,
       calis(i) {
-        for (let j = 0; j < l.length; j++) l[j].mode = j === i - 1 ? 'showing' : 'disabled';
-        toast(i ? 'Altyazı: ' + yap()[i].ad : 'Altyazı kapalı');
+        const x = this.satirlar[i];
+        if (x.eyl === 'ara') return haricAra(kimlik);
+        if (x.eyl === 'kaydir') return haricKaydirAc();
+        if (x.eyl === 'harici') return secimKapat();
+        haricKaldir();
+        for (let j = 0; j < l.length; j++) l[j].mode = x.eyl === 'iz' && j === x.iz ? 'showing' : 'disabled';
+        toast(x.eyl === 'iz' ? 'Altyazı: ' + x.ad : 'Altyazı kapalı');
         secimKapat();
       },
     });
@@ -773,6 +897,7 @@ export function playerScreen({ list, index, fresh }) {
       kapali = true;
       clearInterval(saveT);
       clearTimeout(secimT);
+      clearInterval(haricT);
       clearTimeout(ovT);
       clearTimeout(beklT);
       clearTimeout(epgT);

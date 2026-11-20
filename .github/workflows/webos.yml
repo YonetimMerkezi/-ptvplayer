@@ -25,6 +25,7 @@ on:
       - 'tests/webos-keys.test.js'
       - 'tests/webos-tema.test.js'
       - 'tests/webos-player.test.js'
+      - 'tests/webos-altyazi.test.js'
       - 'tests/webos-spor.test.js'
       - 'tests/webos-vitrin.test.js'
       - 'tests/webos-ana.test.js'
@@ -55,6 +56,7 @@ on:
       - 'tests/webos-keys.test.js'
       - 'tests/webos-tema.test.js'
       - 'tests/webos-player.test.js'
+      - 'tests/webos-altyazi.test.js'
       - 'tests/webos-spor.test.js'
       - 'tests/webos-vitrin.test.js'
       - 'tests/webos-ana.test.js'
@@ -86,7 +88,7 @@ jobs:
           cache-dependency-path: webos/package-lock.json
 
       - name: Birim testleri (webOS)
-        run: node --test tests/webos.test.js tests/webos-transfer.test.js tests/webos-keys.test.js tests/webos-tema.test.js tests/webos-player.test.js tests/webos-spor.test.js tests/webos-vitrin.test.js tests/webos-ana.test.js tests/webos-mac.test.js tests/webos-browse.test.js tests/webos-donukluk.test.js tests/webos-isci.test.js tests/webos-medya-servis.test.js
+        run: node --test tests/webos.test.js tests/webos-transfer.test.js tests/webos-keys.test.js tests/webos-tema.test.js tests/webos-player.test.js tests/webos-altyazi.test.js tests/webos-spor.test.js tests/webos-vitrin.test.js tests/webos-ana.test.js tests/webos-mac.test.js tests/webos-browse.test.js tests/webos-donukluk.test.js tests/webos-isci.test.js tests/webos-medya-servis.test.js
 
       - name: Bağımlılıklar
         working-directory: webos

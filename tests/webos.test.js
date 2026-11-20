@@ -350,12 +350,13 @@ test('paket: Geri tuşu uygulamaya ulaşsın diye geçmiş (History) API\'si kap
 
 test('oynatıcı: Ses/Altyazı/Ekran seçilince panel kapanır; ◀ ve zaman aşımı da kapatır', () => {
   const k = oku('src', 'screens', 'player.js');
-  for (const ad of ["toast('Ses: '", "toast(i ? 'Altyazı: '", "ctx.store.setSetting('aspect', ORAN[i][0]);"]) {
+  for (const ad of ["toast('Ses: '", "toast(x.eyl === 'iz' ? 'Altyazı: '", "ctx.store.setSetting('aspect', ORAN[i][0]);"]) {
     const i = k.indexOf(ad);
     assert.ok(i > 0, ad + ' bulunamadı');
     assert.match(k.slice(i, i + 160), /secimKapat\(\);/, ad + ' sonrası panel kapanmalı');
   }
   assert.match(k, /a === 'left' && !sc\.yan/, 'yan ayarı olmayan panelde ◀ kapatır');
-  assert.match(k, /setTimeout\(\(\) => \{\s*if \(secim\) secimKapat\(\);\s*\}, 12000\)/, 'panel 12 sn sonra kendiliğinden kapanır');
+  assert.match(k, /const sure = \(secim && secim\.sure\) \|\| 12000;/, 'panel varsayılan 12 sn sonra kapanır (arama/indirme panelleri daha uzun bekler)');
+  assert.match(k, /setTimeout\(\(\) => \{\s*if \(secim\) secimKapat\(\);\s*\}, sure\)/, 'zamanlayıcı kapatır');
   assert.match(k, /function secimKapat\(\) \{\s*clearTimeout\(secimT\);/, 'kapanınca zamanlayıcı temizlenir');
 });

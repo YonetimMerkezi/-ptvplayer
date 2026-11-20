@@ -5,7 +5,9 @@ import { findTrailerOnYoutube } from '../../www/js/yt-search.js';
 import { luna } from './luna.js';
 
 export const YOUTUBE_UYGULAMA = 'youtube.leanback.v4';
-export const izleUrl = (id) => 'https://www.youtube.com/tv?v=' + encodeURIComponent(id);
+// YouTube uygulaması contentTarget'ı "youtube.com/tv?" sorgusuna ekler: değer "v=KİMLİK" olmalı. Tam adres ya da yalın kimlik
+// verilirse uygulama açılır ama video yerine YouTube ana sayfası gelir (webosbrew/youtube-webos belgesindeki biçim).
+export const izleParam = (id) => 'v=' + encodeURIComponent(id);
 
 // Aynı yapım için aramayı tekrarlamamak için (oturum boyunca); bulunamayan ya da hata alan silinir
 const bulunan = {};
@@ -44,7 +46,7 @@ export async function fragmanKimlikleri(it, info, { net, ara = findTrailerOnYout
 }
 
 export async function youtubeAc(id, luna_ = luna) {
-  const r = await luna_('luna://com.webos.applicationManager/launch', { id: YOUTUBE_UYGULAMA, params: { contentTarget: izleUrl(id), contentId: id } }, 15000);
+  const r = await luna_('luna://com.webos.applicationManager/launch', { id: YOUTUBE_UYGULAMA, params: { contentTarget: izleParam(id) } }, 15000);
   if (!r || r.returnValue === false) throw new Error((r && (r.errorText || r.errorCode)) || 'YouTube uygulaması açılamadı');
   return true;
 }

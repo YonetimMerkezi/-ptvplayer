@@ -7,7 +7,7 @@ import { createArkaPlan } from '../vitrin.js';
 import { fragmanOynat } from '../fragman.js';
 import { heroName } from '../../../www/js/hero.js';
 
-const bolumOge = (item, e) => ({
+const bolumOge = (item, e, sezon) => ({
   id: e.id,
   kind: 'episode',
   episodeId: e.episodeId,
@@ -16,6 +16,8 @@ const bolumOge = (item, e) => ({
   name: item.name + ' · ' + (e.title || 'Bölüm ' + e.episodeNum),
   logo: e.logo || item.logo,
   seriesName: item.name,
+  season: Number(sezon || e.season) || 0, // altyazı araması sezon ve bölüm numarasıyla yapılır
+  episodeNum: e.episodeNum,
 });
 
 export function detailScreen({ item }) {
@@ -108,7 +110,7 @@ export function detailScreen({ item }) {
       render: bolumRender,
       onActivate: (e, i) => {
         const s = seasons.cur;
-        open('player', { list: s.episodes.map((x) => bolumOge(item, x)), index: i });
+        open('player', { list: s.episodes.map((x) => bolumOge(item, x, s.season)), index: i });
       },
     });
     seasons.setItems(info.seasons);

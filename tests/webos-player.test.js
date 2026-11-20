@@ -57,15 +57,15 @@ const { playerScreen } = await import('../webos/src/screens/player.js');
 
 const KANALLAR = [1, 2, 3].map((n) => ({ id: 'k' + n, kind: 'live', name: 'Kanal ' + n, num: n, streamId: 100 + n }));
 
-function kur(ayar) {
+function kur(ayar, liste, ag) {
   ctx.stack.length = 0;
   ctx.root = new F('root');
   ctx.store = createStore(bellekDepo());
   ctx.store.addSource({ type: 'xtream', name: 'T', server: 'http://srv:80', user: 'u', pass: 'p' });
-  ctx.net = { json: async () => ({ epg_listings: [] }), get: async () => '' };
+  ctx.net = ag || { json: async () => ({ epg_listings: [] }), get: async () => '' };
   for (const k in ayar || {}) ctx.store.setSetting(k, ayar[k]);
   push({ el: new F('alt'), name: 'alt', onKey: () => false });
-  const scr = playerScreen({ list: KANALLAR, index: 0 });
+  const scr = playerScreen({ list: liste || KANALLAR, index: 0 });
   push(scr);
   const q = (sel) => scr.el.querySelector(sel);
   temizle.push(() => scr.destroy());
@@ -289,5 +289,127 @@ test('oynatıcı: kumandanın Bilgi tuşu bilgi panelini açar ve kapatır', () 
   assert.match(o.q('.p-pick').innerHTML, /Kaynak/);
   o.tus('info');
   assert.equal(o.q('.p-pick').className, 'p-pick');
+  o.bitir();
+});
+
+// ---- Harici altyazı
+const SRT = '1\n00:00:10,000 --> 00:00:12,000\nMerhaba dünya\n\n2\n00:00:20,000 --> 00:00:22,000\nİkinci satır\n';
+const FILM = { id: 'f1', kind: 'movie', name: 'TR | Esaret (1994)', year: '1994', streamId: 7, ext: 'mp4' };
+function altyaziAgi(durum = {}) {
+  const istek = [];
+  return {
+    istek,
+    json: async (url) => {
+      istek.push(url);
+      if (url.indexOf('/catalog/series/top/search=') >= 0) return { metas: [{ id: 'tt0903747', name: 'Dizi', year: '2008–2013' }] };
+      if (url.indexOf('/subtitles/series/tt0903747:1:1.json') >= 0) return { subtitles: [{ id: '1', url: 'http://altyazi.test/d.srt', lang: 'tur' }] };
+      if (url.indexOf('/catalog/movie/top/search=') >= 0) return { metas: [{ id: 'tt0111161', name: 'Esaret', year: '1994' }, { id: 'tt9', name: 'Esaret', year: '2015' }] };
+      if (url.indexOf('/subtitles/movie/tt0111161.json') >= 0) {
+        if (durum.bos) return { subtitles: [] };
+        return { subtitles: [{ id: '1', url: 'http://altyazi.test/en.srt', lang: 'eng' }, { id: '2', url: 'http://altyazi.test/tr.srt', lang: 'tur' }] };
+      }
+      return { epg_listings: [] };
+    },
+    get: async (url) => {
+      istek.push(url);
+      return SRT;
+    },
+  };
+}
+const bekle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
+// Koşul gerçekleşene kadar (en çok 3 sn) bekler: ağ sahtesi zamanlayıcılardan geçtiği için süre sabit varsayılmaz
+async function bekleKadar(f, ad) {
+  for (let i = 0; i < 150 && !f(); i++) await bekle(20);
+  assert.ok(f(), ad + ' bekleniyordu');
+}
+
+test('altyazı: film için ara → Türkçe listenin başında → seç → metin zamanında görünür, kaydır ve kapat', async () => {
+  const ag = altyaziAgi();
+  const o = kur({}, [FILM], ag);
+  const v = o.q('#vid');
+  v.textTracks = [];
+  dugmeAc(o, 4); // Altyazı
+  assert.match(o.q('.p-pick').innerHTML, /Altyazı ara…/);
+  assert.match(o.q('.p-pick').innerHTML, /gömülü altyazısını uygulamaya vermiyor/);
+  o.tus('down'); // Kapalı → Altyazı ara…
+  o.tus('ok');
+  assert.match(o.q('.p-pick').innerHTML, /aranıyor/);
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  assert.ok(ag.istek.some((u) => /catalog\/movie\/top\/search=Esaret\.json/.test(u)), 'katalog adı temizlenip aranır');
+  assert.ok(ag.istek.some((u) => u.endsWith('/subtitles/movie/tt0111161.json')), 'yıl uyan IMDb kimliğiyle altyazı istenir');
+  const html = o.q('.p-pick').innerHTML;
+  assert.match(html, /Altyazı seç/);
+  assert.ok(html.indexOf('Türkçe') < html.indexOf('İngilizce'), 'Türkçe önce');
+  o.tus('ok'); // Türkçe
+  await bekleKadar(() => o.q('.p-pick').className === 'p-pick', 'panelin kapanması');
+  assert.equal(o.q('.p-pick').className, 'p-pick', 'seçilince panel kapanır');
+  assert.ok(ag.istek.includes('http://altyazi.test/tr.srt'));
+  v.currentTime = 11;
+  await bekle(300); // 250 ms'lik çizim döngüsü
+  assert.equal(o.q('.p-sub').textContent, 'Merhaba dünya');
+  assert.equal(o.q('.p-sub').className, 'p-sub on');
+  v.currentTime = 15;
+  await bekle(300);
+  assert.equal(o.q('.p-sub').textContent, '');
+  // Kaydır: altyazıyı 1 sn geciktir → 11 sn'de artık görünmez, 11,5 sn'de görünür? (kayma +1 sn: metin 11 sn'de başlar)
+  o.tus('ok'); // çubukta Altyazı düğmesi: panel yeniden açılır
+  const satirlar = o.q('.p-pick').innerHTML;
+  assert.match(satirlar, /Türkçe \(harici\)/);
+  assert.match(satirlar, /Altyazıyı kaydır/);
+  o.tus('down'); // seçili satır "Türkçe (harici)" → "Altyazıyı kaydır"
+  o.tus('ok');
+  assert.match(o.q('.p-pick').innerHTML, /Altyazı senkronu/);
+  o.tus('right');
+  o.tus('right'); // +1,0 sn
+  assert.match(o.q('.p-pick').innerHTML, /\+1,0 sn/);
+  v.currentTime = 10.5;
+  await bekle(300);
+  assert.equal(o.q('.p-sub').textContent, '', '10,5 sn − 1 sn = 9,5 sn: henüz yok');
+  v.currentTime = 11.5;
+  await bekle(300);
+  assert.equal(o.q('.p-sub').textContent, 'Merhaba dünya');
+  o.tus('back');
+  // Kapalı: katman temizlenir
+  o.tus('ok'); // panel yeniden açılır, seçili satır "Türkçe (harici)"
+  o.tus('up'); // Kapalı
+  o.tus('ok');
+  assert.equal(o.q('.p-sub').textContent, '');
+  assert.equal(o.q('.p-sub').className, 'p-sub');
+  o.bitir();
+});
+
+test('altyazı: kaynakta kayıt yoksa ve canlı yayında ne denenir', async () => {
+  const o = kur({}, [FILM], altyaziAgi({ bos: true }));
+  o.q('#vid').textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /altyazı bulunamadı/.test(o.q('.p-pick').innerHTML), 'boş sonuç iletisi');
+  o.bitir();
+  const c = kur();
+  c.q('#vid').textTracks = [];
+  dugmeAc(c, 4);
+  assert.doesNotMatch(c.q('.p-pick').innerHTML, /Altyazı ara/, 'canlı yayında altyazı aranmaz');
+  c.bitir();
+});
+
+test('altyazı: Yeni yapım başlayınca eski harici altyazı kalkar', async () => {
+  const bolumler = [1, 2].map((n) => ({ id: 'e' + n, kind: 'episode', name: 'Dizi · ' + n, seriesName: 'Dizi', season: 1, episodeNum: n, episodeId: n, ext: 'mp4' }));
+  const ag = altyaziAgi();
+  const o = kur({}, bolumler, ag);
+  o.q('#vid').textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  o.tus('ok');
+  await bekleKadar(() => o.q('.p-pick').className === 'p-pick', 'panelin kapanması');
+  assert.ok(ag.istek.some((u) => u.endsWith('/subtitles/series/tt0903747:1:1.json')), 'dizi: tt…:sezon:bölüm kimliği');
+  o.q('#vid').currentTime = 11;
+  await bekle(300);
+  assert.equal(o.q('.p-sub').textContent, 'Merhaba dünya');
+  o.tus('back');
+  o.scr.onKey('chdown'); // sonraki bölüm
+  assert.equal(o.q('.p-sub').textContent, '', 'bölüm değişince altyazı kalkar');
   o.bitir();
 });

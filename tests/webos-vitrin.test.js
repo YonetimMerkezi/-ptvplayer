@@ -14,7 +14,7 @@ globalThis.window = globalThis.window || {};
 globalThis.document = globalThis.document || { createElement: () => new F() };
 
 const { vitrinMetni, createArkaPlan, createVitrin } = await import('../webos/src/vitrin.js');
-const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleUrl, YOUTUBE_UYGULAMA } = await import('../webos/src/fragman.js');
+const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleParam, YOUTUBE_UYGULAMA } = await import('../webos/src/fragman.js');
 
 // Elle işletilen zamanlayıcı
 function saat() {
@@ -153,8 +153,9 @@ test('fragman: YouTube uygulaması doğru kimlik ve adresle açılır; hata ilet
   assert.equal(await youtubeAc('dQw4w9WgXcQ', luna), true);
   assert.equal(cagrilar[0].uri, 'luna://com.webos.applicationManager/launch');
   assert.equal(cagrilar[0].par.id, YOUTUBE_UYGULAMA);
-  assert.equal(cagrilar[0].par.params.contentTarget, izleUrl('dQw4w9WgXcQ'));
-  assert.equal(cagrilar[0].par.params.contentId, 'dQw4w9WgXcQ');
+  assert.equal(cagrilar[0].par.params.contentTarget, 'v=dQw4w9WgXcQ', 'YouTube uygulaması "v=KİMLİK" bekler; tam adres ana sayfayı açar');
+  assert.equal(cagrilar[0].par.params.contentTarget, izleParam('dQw4w9WgXcQ'));
+  assert.ok(!('contentId' in cagrilar[0].par.params), 'yalın kimlik gönderilmez');
   await assert.rejects(() => youtubeAc('x', async () => ({ returnValue: false, errorText: 'app yok' })), /app yok/);
 });
 
