@@ -2,6 +2,7 @@
 import { ctx, open, resetTo, ustCubuk, sifirlaSaglayici } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { createProvider } from '../data.js';
+import { ORAN } from './player.js';
 import { varlik } from '../luna.js';
 import { SURUM } from '../version.js';
 import { el, esc, px, toast, boyutla } from '../ui.js';
@@ -11,7 +12,6 @@ import * as K from '../log.js';
 const FORMAT = [['m3u8', 'HLS (m3u8)'], ['ts', 'MPEG-TS (ts)']];
 const AG = [['auto', 'Otomatik'], ['direct', 'Doğrudan'], ['service', 'TV servisi']];
 const YAZI = [['0.9', 'Küçük'], ['1', 'Normal'], ['1.15', 'Büyük'], ['1.3', 'Çok büyük']];
-export const ORAN = [['contain', 'Sığdır'], ['cover', 'Doldur (kırp)'], ['fill', 'Uzat']];
 const temaAdi = () => temaBul(ctx.store.setting('theme', VARSAYILAN_TEMA)).ad;
 const ad = (liste, v) => (liste.filter((x) => x[0] === v)[0] || liste[0])[1];
 const sonraki = (liste, v, yon) => {
@@ -46,6 +46,7 @@ export function settingsScreen() {
       { id: 'netMode', ad: 'Ağ yolu', deger: () => ad(AG, ctx.store.setting('netMode', 'auto')), yardim: 'Otomatik: önce doğrudan, olmazsa TV servisi. Liste yüklenmiyorsa “TV servisi”ni deneyin' },
       { id: 'test', ad: 'Bağlantıyı sına', deger: () => '', yardim: 'Etkin kaynağa bağlanıp sonucu ve kullanılan yolu gösterir' },
       { id: 'recents', ad: 'Geçmişi temizle', deger: () => '', yardim: 'Son izlenenleri ve kaldığı yer bilgisini siler' },
+      { id: 'keytest', ad: 'Tuş testi', deger: () => '', yardim: 'Kumandada basılan tuşların TV’den hangi kodla geldiğini gösterir. Geri tuşu çalışmazsa buradan bakın' },
       { id: 'log', ad: 'Hata kaydı', deger: () => String(K.kayitlar().length) + ' satır', yardim: 'Sorun bildirirken bu ekranı gösterin' },
       { id: 'about', ad: 'Hakkında', deger: () => 'Sürüm ' + SURUM, yardim: '' },
     ];
@@ -104,6 +105,7 @@ export function settingsScreen() {
       if (src) ctx.store.clearRecents(src.id);
       toast('Geçmiş temizlendi');
     } else if (r.id === 'log') open('log');
+    else if (r.id === 'keytest') open('tustesti');
     else if (r.id === 'about') open('about');
     list.redraw(list.index);
   }

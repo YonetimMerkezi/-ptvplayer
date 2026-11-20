@@ -12,12 +12,15 @@ export const RENKLER = [
 export const OYNATICI = [
   ['none', 'Yok'],
   ['fav', 'Favoriye ekle / çıkar'],
-  ['aspect', 'Görüntü oranı'],
+  ['aspect', 'Ekran boyutu (değiştir)'],
+  ['audio', 'Ses seçimi'],
+  ['sub', 'Altyazı seçimi'],
+  ['sync', 'Ses senkronu'],
   ['fmt', 'Canlı yayın biçimi (HLS / TS)'],
   ['list', 'Kanal listesi'],
   ['sleep', 'Uyku zamanlayıcısı'],
   ['last', 'Önceki kanal'],
-  ['info', 'Program bilgisi'],
+  ['info', 'Bilgi paneli'],
 ];
 export const ANA = [
   ['none', 'Yok'],

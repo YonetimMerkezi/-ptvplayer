@@ -1,8 +1,8 @@
-// Spor: günün maçları (ESPN + LiveScore/Mackolik), lig süzgeci, canlı skor, takım takibi ve maçın yayınlandığı kanalı açma.
+// Spor: günün maçları (ESPN + LiveScore/Mackolik), üstte gün ve lig şeritleri, canlı skor. Bir maça OK basınca maç sayfası (yayın kanalı, takip) açılır.
 import { ctx, provider, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast, enYakin } from '../ui.js';
-import { createSporVeri, kanalAdlari, kullaniciKanallari } from '../spor-veri.js';
+import { createSporVeri } from '../spor-veri.js';
 import { dayStart, dayStrip, dayLabel, sections, chipsFor, capSections, lgLine, hasLive } from '../../../www/js/sports.js';
 import { cleanFavs, toggleFav, isFavSide, hasFavMatch, FAV_KEY, FAV_CHIP } from '../../../www/js/sports-fav.js';
 import * as K from '../log.js';
@@ -11,33 +11,53 @@ let veri = null; // ekran kapanıp açılınca önbellek korunur
 const yenileMs = 60000;
 
 export function sporScreen() {
-  const kok = el('div', 'screen browse k-spor');
+  const kok = el('div', 'screen k-spor');
   const src = ctx.store.active();
   if (!veri) veri = createSporVeri(ctx.net);
   const gunler = dayStrip(Date.now(), 1, 7);
   let gunNo = 1; // bugün
   let chip = '';
-  let bolge = 'list'; // 'chips' | 'list'
+  let chipNo = 0;
+  let chipler = [];
+  let bolge = 'list'; // 'gun' | 'chip' | 'list': ▲▼ bölge değiştirir, ◀▶ şeritte gezer
   let maclar = [];
   let sayac = 0;
   let yenileT = 0;
-  let bilgiT = 0;
-  let bilgiNo = 0;
-  let canliKanallar = null; // kullanıcının canlı kanalları (ilk ihtiyaçta yüklenir)
+  let gunT = 0;
 
   kok.innerHTML =
     ustCubuk('Spor', src ? esc(src.name) : '') +
-    '<div class="sp-days"></div>' +
-    '<div class="br"><div class="cats"></div><div class="content"></div><div class="info"></div></div>' +
-    '<div class="hint">▲▼◀▶ gezin · OK: kanalı aç · Kırmızı/Yeşil: gün · Sarı: ev sahibini takip et · Mavi: deplasmanı takip et · Geri</div>';
-  const gunEl = kok.querySelector('.sp-days');
-  const infoEl = kok.querySelector('.info');
+    '<div class="sp-days"><div class="sp-in" id="sp-d"></div></div>' +
+    '<div class="sp-chips"><div class="sp-in" id="sp-c"></div></div>' +
+    '<div class="sp-body"><div class="content"></div></div>' +
+    '<div class="hint">▲▼◀▶ gezin · OK: maç sayfası · Kırmızı/Yeşil: gün · Sarı: ev sahibini takip et · Mavi: deplasmanı takip et · Geri</div>';
+  const gunKap = kok.querySelector('.sp-days');
+  const gunIc = kok.querySelector('#sp-d');
+  const chipKap = kok.querySelector('.sp-chips');
+  const chipIc = kok.querySelector('#sp-c');
 
   const favler = () => cleanFavs(ctx.store.setting(FAV_KEY, []));
   const takim = (s) => esc(s.label || s.name) + (isFavSide(favler(), s) ? ' ★' : '');
 
+  // Seçili öğe görünür kalacak şekilde şeridi yatay kaydırır
+  const kaydir = (kap, ic, i) => {
+    const d = ic.children && ic.children[i];
+    if (!d || d.offsetLeft === undefined) return;
+    const gor = kap.clientWidth || 0;
+    const topl = ic.scrollWidth || 0;
+    const x = Math.max(0, Math.min(d.offsetLeft - Math.round(gor * 0.3), Math.max(0, topl - gor)));
+    ic.style.webkitTransform = ic.style.transform = 'translateX(' + -Math.round(x) + 'px)';
+  };
+  const sinif = (i, secili) => 'sp-d' + (i === secili ? (bolge === 'gun' || bolge === 'chip' ? ' on' : ' sel') : '');
   const gunCiz = () => {
-    gunEl.innerHTML = gunler.map((g, i) => '<span class="sp-d' + (i === gunNo ? ' on' : '') + '" data-d="' + i + '">' + esc(dayLabel(g)) + '</span>').join('');
+    gunIc.innerHTML = gunler.map((g, i) => '<span class="sp-d' + (i === gunNo ? (bolge === 'gun' ? ' on' : ' sel') : '') + '" data-d="' + i + '">' + esc(dayLabel(g)) + '</span>').join('');
+    kaydir(gunKap, gunIc, gunNo);
+  };
+  const chipCiz = () => {
+    chipIc.innerHTML = chipler.length
+      ? chipler.map((c, i) => '<span class="sp-d' + (i === chipNo ? (bolge === 'chip' ? ' on' : ' sel') : '') + '" data-c="' + i + '">' + esc(c.name) + ' <i>' + c.count + '</i></span>').join('')
+      : '<span class="sp-d dim">Maç yok</span>';
+    kaydir(chipKap, chipIc, chipNo);
   };
 
   const satirRender = (m) => {
@@ -46,42 +66,27 @@ export function sporScreen() {
     return durum + '<span class="sp-h">' + takim(m.home) + '</span><span class="sp-s">' + skor + '</span><span class="sp-a">' + takim(m.away) + '</span><span class="rk sp-l">' + esc(lgLine(m)) + '</span>';
   };
 
-  const chipRender = (c) => '<span class="cn">' + esc(c.name) + '</span><span class="cc">' + c.count + '</span>';
-  const cats = new VList(kok.querySelector('.cats'), {
-    rowH: Math.round(px() * 3.1),
-    render: chipRender,
-    empty: 'Maç yok',
-    onFocus: (c) => {
-      if (c.id !== chip) {
-        chip = c.id;
-        satirlariKur();
-      }
-    },
-    onActivate: () => odak('list'),
-  });
   const list = new VList(kok.querySelector('.content'), {
     rowH: Math.round(px() * 4.2),
     render: satirRender,
     empty: 'Bu gün için maç bulunamadı',
-    onFocus: (m) => bilgiIste(m),
-    onActivate: (m) => kanalAc(m),
+    onActivate: (m) => macAc(m),
   });
-  cats.setActive(false);
   list.setActive(true);
 
   function odak(b) {
     bolge = b;
-    cats.setActive(b === 'chips');
     list.setActive(b === 'list');
+    gunCiz();
+    chipCiz();
   }
 
-  function satirlariKur() {
+  function satirlariKur(koru) {
     const secili = chip === FAV_CHIP ? maclar.filter((m) => hasFavMatch(favler(), m)) : maclar;
     const secs = capSections(sections(secili, chip === FAV_CHIP ? '' : chip), 500).secs;
     const satirlar = [];
     for (let i = 0; i < secs.length; i++) for (let j = 0; j < secs[i].matches.length; j++) satirlar.push(secs[i].matches[j]);
-    list.setItems(satirlar);
-    if (!satirlar.length) infoEl.innerHTML = '';
+    list.setItems(satirlar, !!koru);
   }
 
   function chipleriKur() {
@@ -91,10 +96,14 @@ export function sporScreen() {
     const l = [{ id: '', name: 'Tümü', count: all }];
     if (f.length) l.push({ id: FAV_CHIP, name: 'Takip ettiklerim', count: fav });
     for (let i = 0; i < chips.length; i++) l.push(chips[i]);
-    cats.setItems(l);
+    chipler = l;
     const k = l.map((c) => c.id).indexOf(chip);
-    if (k > 0) cats.setIndex(k);
-    else chip = '';
+    if (k >= 0) chipNo = k;
+    else {
+      chip = '';
+      chipNo = 0;
+    }
+    chipCiz();
   }
 
   async function yukle(zorla) {
@@ -104,157 +113,144 @@ export function sporScreen() {
     clearTimeout(yenileT);
     if (!zorla) {
       list.setMessage('Maçlar yükleniyor…');
-      cats.setItems([]);
+      chipler = [];
+      chipCiz();
     }
     try {
       const m = await veri.maclar(gun, zorla);
       if (n !== sayac) return;
       maclar = m;
       chipleriKur();
-      satirlariKur();
+      satirlariKur(zorla);
       if (gunNo === 1 && hasLive(maclar)) yenileT = setTimeout(() => yukle(true), yenileMs); // canlı maç varsa skorlar dakikada bir tazelenir
     } catch (e) {
       if (n !== sayac) return;
       K.hata(e);
       maclar = [];
-      cats.setItems([]);
+      chipler = [];
+      chipCiz();
       list.setMessage('Maç bilgisi alınamadı: ' + (e && e.message ? e.message : e) + '. OK ile yeniden dene');
     }
   }
 
+  // Gün şeridinde gezerken her tuşta ağ isteği atılmasın: seçim durunca yüklenir
   function gunDegis(d) {
     const y = Math.max(0, Math.min(gunler.length - 1, gunNo + d));
     if (y === gunNo) return;
     gunNo = y;
-    yukle(false);
+    gunCiz();
+    clearTimeout(gunT);
+    gunT = setTimeout(() => yukle(false), 320);
+  }
+  function chipDegis(d) {
+    const y = Math.max(0, Math.min(chipler.length - 1, chipNo + d));
+    if (y === chipNo || !chipler.length) return;
+    chipNo = y;
+    chip = chipler[y].id;
+    chipCiz();
+    satirlariKur(false);
   }
 
-  // --- sağ panel: maç ayrıntısı ve yayın kanalı
-  function bilgiYaz(m, kanallar, durum) {
-    const f = favler();
-    let h = '<div class="i-t">' + esc(m.home.label || m.home.name) + ' – ' + esc(m.away.label || m.away.name) + '</div>';
-    h += '<div class="i-n">' + (m.state === 'in' ? '<b>' + esc(m.text || 'Canlı') + '</b>' : saat(m.t)) + ' · ' + esc(lgLine(m)) + '</div>';
-    if (m.venue) h += '<div class="i-s">' + esc(m.venue) + '</div>';
-    if (kanallar && kanallar.adlar.length) h += '<div class="i-s"><b>Yayın</b>' + esc(kanallar.adlar.join(', ')) + '</div>';
-    else if (durum) h += '<div class="i-s dim">' + esc(durum) + '</div>';
-    if (kanallar && kanallar.hits.length) h += '<div class="i-s"><b>OK</b>' + esc(kanallar.hits[0].name) + (kanallar.hits.length > 1 ? ' (+' + (kanallar.hits.length - 1) + ')' : '') + ' kanalını açar</div>';
-    h += '<div class="i-s"><b>Sarı</b>' + esc(m.home.label || m.home.name) + (isFavSide(f, m.home) ? ' ★ takipte' : '') + '</div>';
-    h += '<div class="i-s"><b>Mavi</b>' + esc(m.away.label || m.away.name) + (isFavSide(f, m.away) ? ' ★ takipte' : '') + '</div>';
-    infoEl.innerHTML = h;
-  }
-
-  async function kanallariBul(m) {
-    const y = await veri.yayin(gunler[gunNo]);
-    const adlar = kanalAdlari(m, y);
-    if (!adlar.length) return { adlar: [], hits: [], durum: y ? 'Bu maç için yayın kanalı bulunamadı' : 'Yayın bilgisi alınamadı' };
-    const p = provider();
-    if (!p) return { adlar, hits: [] };
-    if (!canliKanallar) canliKanallar = await p.all('live');
-    return { adlar, hits: kullaniciKanallari(canliKanallar, adlar) };
-  }
-
-  function bilgiIste(m) {
-    clearTimeout(bilgiT);
-    const n = ++bilgiNo;
-    if (!m) return;
-    bilgiYaz(m, null, 'Yayın kanalı aranıyor…');
-    bilgiT = setTimeout(async () => {
-      try {
-        const k = await kanallariBul(m);
-        if (n !== bilgiNo) return;
-        m._k = k;
-        bilgiYaz(m, k, k.durum);
-      } catch (e) {
-        if (n !== bilgiNo) return;
-        bilgiYaz(m, null, 'Kanal listesi alınamadı');
-      }
-    }, 450);
-  }
-
-  async function kanalAc(m) {
-    if (!m) return;
-    let k = m._k;
-    if (!k) {
-      toast('Yayın kanalı aranıyor…');
-      try {
-        k = await kanallariBul(m);
-      } catch (e) {
-        return toast('Kanal listesi alınamadı');
-      }
-    }
-    if (!k.hits.length) return toast(k.adlar.length ? 'Yayınlayan kanal listenizde bulunamadı: ' + k.adlar.join(', ') : 'Bu maçın yayın kanalı bulunamadı', 3500);
-    open('player', { list: k.hits, index: 0 });
+  function macAc(m) {
+    if (m) open('mac', { m, gun: gunler[gunNo], veri });
   }
 
   function takipDegis(taraf) {
-    const m = list.cur;
-    if (!m) return;
+    const m = bolge === 'list' ? list.cur : null;
+    if (!m) return toast('Takip için listeden bir maç seçin');
     const s = taraf === 'home' ? m.home : m.away;
     const r = toggleFav(favler(), s);
     if (r.full) return toast('En çok 30 takım takip edilebilir');
     ctx.store.setSetting(FAV_KEY, r.favs);
     toast((s.label || s.name) + (r.on ? ' takip ediliyor' : ' takipten çıkarıldı'));
     chipleriKur();
-    satirlariKur();
+    satirlariKur(true);
   }
 
-  gunEl.addEventListener('click', (e) => {
-    const n = enYakin(e.target, '.sp-d', gunEl);
+  gunIc.addEventListener('click', (e) => {
+    const n = enYakin(e.target, '[data-d]', gunIc);
     if (!n) return;
     gunNo = Number(n.getAttribute('data-d'));
+    odak('gun');
     yukle(false);
+  });
+  chipIc.addEventListener('click', (e) => {
+    const n = enYakin(e.target, '[data-c]', chipIc);
+    if (!n) return;
+    chipNo = Number(n.getAttribute('data-c'));
+    chip = chipler[chipNo] ? chipler[chipNo].id : '';
+    odak('chip');
+    satirlariKur(false);
   });
 
   return {
     el: kok,
     name: 'spor',
     onShow() {
+      gunCiz();
+      chipCiz();
       yukle(!!maclar.length);
     },
     onKey(a) {
-      if (a === 'red') {
-        gunDegis(-1);
+      if (a === 'red' || a === 'green') {
+        gunDegis(a === 'red' ? -1 : 1);
         return true;
       }
-      if (a === 'green') {
-        gunDegis(1);
+      if (a === 'yellow' || a === 'blue') {
+        takipDegis(a === 'yellow' ? 'home' : 'away');
         return true;
       }
-      if (a === 'yellow') {
-        takipDegis('home');
-        return true;
+      // Hiçbir bölge odağı tutmaz: yüklenirken de ▲▼◀▶ ile şeritlere ve listeye geçilir, ▲ en üstte Geri düğmesine çıkar
+      if (bolge === 'gun') {
+        if (a === 'left' || a === 'right') {
+          gunDegis(a === 'right' ? 1 : -1);
+          return true;
+        }
+        if (a === 'down') {
+          odak(chipler.length ? 'chip' : 'list');
+          return true;
+        }
+        if (a === 'ok') {
+          clearTimeout(gunT);
+          yukle(false);
+          return true;
+        }
+        return false;
       }
-      if (a === 'blue') {
-        takipDegis('away');
-        return true;
+      if (bolge === 'chip') {
+        if (a === 'left' || a === 'right') {
+          chipDegis(a === 'right' ? 1 : -1);
+          return true;
+        }
+        if (a === 'down' || a === 'ok') {
+          odak('list');
+          return true;
+        }
+        if (a === 'up') {
+          odak('gun');
+          return true;
+        }
+        return false;
       }
       if (a === 'ok' && !maclar.length && !list.items.length) {
         yukle(false);
         return true;
       }
-      if (bolge === 'chips') {
-        if (a === 'right' || a === 'ok') {
-          if (list.items.length) odak('list');
-          return true;
-        }
-        return cats.key(a);
-      }
-      if (list.key(a)) return true;
-      if (a === 'left') {
-        odak('chips');
+      if (a === 'up' && list.index === 0) {
+        odak(chipler.length ? 'chip' : 'gun');
         return true;
       }
-      return false;
+      if (list.key(a)) return true;
+      return a === 'left' || a === 'right';
     },
     onHide() {
       clearTimeout(yenileT);
-      clearTimeout(bilgiT);
+      clearTimeout(gunT);
     },
     destroy() {
       sayac++;
-      bilgiNo++;
       clearTimeout(yenileT);
-      clearTimeout(bilgiT);
+      clearTimeout(gunT);
     },
   };
 }

@@ -14,6 +14,15 @@ const HATA = {
   4: 'Biçim desteklenmiyor ya da adres geçersiz',
 };
 
+// Ekran boyutu seçenekleri: [ayar, ad, object-fit, ek dönüşüm] (Ayarlar ekranı da kullanır)
+export const ORAN = [
+  ['contain', 'Sığdır (özgün oran)', 'contain', ''],
+  ['cover', 'Doldur (kenarları kırp)', 'cover', ''],
+  ['fill', 'Uzat (tam ekran)', 'fill', ''],
+  ['z110', 'Yakınlaştır %10', 'contain', 'scale(1.1)'],
+  ['z125', 'Yakınlaştır %25', 'contain', 'scale(1.25)'],
+];
+
 export function playerScreen({ list, index, fresh }) {
   const kok = el('div', 'screen player');
   const src = ctx.store.active();
@@ -22,7 +31,7 @@ export function playerScreen({ list, index, fresh }) {
     '<video id="vid"></video>' +
     '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">‹ Geri</div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
     '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-acts"></div><div class="p-hint"></div></div></div>' +
-    '<div class="p-list"><div class="p-list-in"></div></div>' +
+    '<div class="p-list"><div class="p-list-in"></div></div><div class="p-pick"></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
   kok.addEventListener('mousemove', () => {
     if (!kapali) goster();
@@ -38,6 +47,7 @@ export function playerScreen({ list, index, fresh }) {
   const hintEl = kok.querySelector('.p-hint');
   const actsEl = kok.querySelector('.p-acts');
   const listEl = kok.querySelector('.p-list');
+  const pickEl = kok.querySelector('.p-pick');
   const spin = kok.querySelector('.p-spin');
   const msg = kok.querySelector('.p-msg');
   const numEl = kok.querySelector('.p-num');
@@ -61,17 +71,26 @@ export function playerScreen({ list, index, fresh }) {
   let simdiProg = null; // canlı yayında şu an süren program (ilerleme çubuğu için)
   let kanalListe = null; // VList (ilk açılışta kurulur)
   let uykuDk = 0;
+  let secim = null; // açık seçim paneli: { baslik, satirlar:[{ad,sag,on}], idx, calis(i), yan(d), not, bilgi }
+  let kaynakUrl = '';
+  let gecikmeMs = 0; // sesi geciktirme (ms); Web Audio ile, yalnız kullanıcı isteyince kurulur
+  let sesGrafigi = null;
   let uykuT = 0;
   let uykuUyariT = 0;
-  const ORAN = [['contain', 'Sığdır'], ['cover', 'Doldur (kırp)'], ['fill', 'Uzat']];
   const UYKU = [0, 15, 30, 45, 60, 90];
 
   const canli = () => it.kind === 'live';
   const fmt = () => ctx.store.setting('liveFmt', 'm3u8');
 
+  const oranBul = () => {
+    const k = ctx.store.setting('aspect', 'contain');
+    return ORAN.filter((x) => x[0] === k)[0] || ORAN[0];
+  };
   const oranUygula = () => {
-    const o = ctx.store.setting('aspect', 'contain');
-    v.style.objectFit = o;
+    const o = oranBul();
+    v.style.objectFit = o[2];
+    v.style.webkitTransform = o[3];
+    v.style.transform = o[3];
   };
   oranUygula();
   const hostOf = (u) => (/^[a-z]+:\/\/([^/?#]+)/i.exec(String(u)) || [])[1] || '?';
@@ -98,8 +117,8 @@ export function playerScreen({ list, index, fresh }) {
   // Düğme çubuğu: canlıda kanal işlemleri, filmde sarma
   const dugmeler = () =>
     canli()
-      ? [['list', 'Kanallar'], ['last', 'Önceki kanal'], ['fav', 'Favori'], ['aspect', 'Oran'], ['sleep', 'Uyku'], ['fmt', 'Biçim']]
-      : [['rw', '−10 sn'], ['pp', v.paused ? 'Oynat' : 'Duraklat'], ['ff', '+10 sn'], ['aspect', 'Oran'], ['sleep', 'Uyku']].concat(it.kind === 'episode' && list.length > 1 ? [['next', 'Sonraki bölüm']] : []);
+      ? [['list', 'Kanallar'], ['last', 'Önceki'], ['fav', 'Favori'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku'], ['fmt', 'Biçim']]
+      : [['rw', '−10 sn'], ['pp', v.paused ? 'Oynat' : 'Duraklat'], ['ff', '+10 sn'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku']].concat(it.kind === 'episode' && list.length > 1 ? [['next', 'Sonraki bölüm']] : []);
   function barCiz() {
     const d = dugmeler();
     altIdx = Math.max(0, Math.min(d.length - 1, altIdx));
@@ -139,6 +158,11 @@ export function playerScreen({ list, index, fresh }) {
       return;
     }
     if (id === 'next') return kanal(1);
+    if (id === 'audio') return sesAc();
+    if (id === 'sub') return altyaziAc();
+    if (id === 'aspect') return ekranAc();
+    if (id === 'sync') return senkronAc();
+    if (id === 'info') return bilgiAc();
     oyunEylem(id);
     barCiz();
   }
@@ -149,7 +173,7 @@ export function playerScreen({ list, index, fresh }) {
     if (n && n !== kok) dugmeCalistir(n.getAttribute('data-a'));
   });
   // Renkli tuşlar: renkli nokta + kısa eylem adı (uzun adlar yalnız Ayarlar'da)
-  const KISA = { fav: 'Favori', aspect: 'Oran', fmt: 'Biçim', list: 'Kanallar', sleep: 'Uyku', last: 'Önceki', info: 'Bilgi' };
+  const KISA = { fav: 'Favori', aspect: 'Ekran', fmt: 'Biçim', list: 'Kanallar', sleep: 'Uyku', last: 'Önceki', info: 'Bilgi', audio: 'Ses', sub: 'Altyazı', sync: 'Senkron' };
   const renkliIpucu = () => {
     const at = atamalar(ctx.store, 'oyn');
     const r = [['red', 'r'], ['green', 'g'], ['yellow', 'y'], ['blue', 'b']];
@@ -247,6 +271,7 @@ export function playerScreen({ list, index, fresh }) {
     epgYukle();
     const p = provider();
     const url = p ? p.urlFor(it, fmt()) : '';
+    kaynakUrl = url;
     if (!url) {
       return hataGoster('Oynatma adresi bulunamadı');
     }
@@ -381,6 +406,165 @@ export function playerScreen({ list, index, fresh }) {
     baslat();
   }
 
+  // --- seçim paneli (Ses, Altyazı, Ekran, Senkron, Bilgi)
+  const DIL = { tur: 'Türkçe', tr: 'Türkçe', eng: 'İngilizce', en: 'İngilizce', ger: 'Almanca', deu: 'Almanca', de: 'Almanca', fre: 'Fransızca', fra: 'Fransızca', fr: 'Fransızca', spa: 'İspanyolca', es: 'İspanyolca', ita: 'İtalyanca', it: 'İtalyanca', rus: 'Rusça', ru: 'Rusça', ara: 'Arapça', ar: 'Arapça', per: 'Farsça', fas: 'Farsça', fa: 'Farsça', und: 'Belirsiz' };
+  const izAdi = (t, i, on) => {
+    const etiket = String(t.label || '').replace(/\s+/g, ' ').trim();
+    const dil = DIL[String(t.language || '').toLowerCase().slice(0, 3)] || DIL[String(t.language || '').toLowerCase()] || '';
+    if (etiket && dil && etiket.toLowerCase().indexOf(dil.toLowerCase().slice(0, 4)) < 0) return etiket + ' (' + dil + ')';
+    return etiket || dil || on + ' ' + (i + 1);
+  };
+  function secimCiz() {
+    const s = secim;
+    if (!s) return;
+    let h = '<div class="pk-t">' + esc(s.baslik) + '</div>';
+    h += s.satirlar
+      .map((x, i) => '<div class="pk-r' + (!s.bilgi && i === s.idx ? ' on' : '') + '" data-p="' + i + '">' + (x.sag ? '<b>' + esc(x.sag) + '</b>' : '') + '<span class="pk-m">' + (x.on ? '●' : '') + '</span>' + esc(x.ad) + '</div>')
+      .join('');
+    if (s.not) h += '<div class="pk-n">' + esc(s.not) + '</div>';
+    pickEl.innerHTML = h;
+    pickEl.className = 'p-pick on';
+  }
+  function secimAc(s) {
+    s.idx = Math.max(0, Math.min(s.satirlar.length - 1, s.idx || 0));
+    secim = s;
+    odakAyarla('sec');
+    secimCiz();
+  }
+  function secimKapat() {
+    secim = null;
+    pickEl.className = 'p-pick';
+    odakAyarla('alt');
+  }
+  pickEl.addEventListener('click', (e) => {
+    let n = e.target;
+    while (n && n !== pickEl && !(n.getAttribute && n.getAttribute('data-p') !== null)) n = n.parentNode;
+    if (!n || n === pickEl || !secim) return;
+    secim.idx = Number(n.getAttribute('data-p'));
+    secim.calis(secim.idx);
+  });
+  const bosPanel = (baslik, ileti, not) => secimAc({ baslik, satirlar: [{ ad: ileti }], idx: 0, bilgi: true, not, calis: secimKapat });
+
+  function sesAc() {
+    const t = v.audioTracks;
+    if (!t || !t.length) return bosPanel('Ses', 'Bu yayında ses seçeneği bildirilmedi', 'TV tek bir ses yolu görüyor ya da seçenekleri uygulamaya vermiyor. Başka dil için kaynağın farklı ses sürümlerini deneyin.');
+    const yap = () => {
+      const l = [];
+      for (let i = 0; i < t.length; i++) l.push({ ad: izAdi(t[i], i, 'Ses'), on: !!t[i].enabled });
+      return l;
+    };
+    secimAc({
+      baslik: 'Ses',
+      satirlar: yap(),
+      idx: Math.max(0, yap().map((x) => x.on).indexOf(true)),
+      calis(i) {
+        for (let j = 0; j < t.length; j++) t[j].enabled = j === i;
+        this.satirlar = yap();
+        secimCiz();
+        toast('Ses: ' + this.satirlar[i].ad);
+      },
+    });
+  }
+
+  function altyaziAc() {
+    const t = v.textTracks;
+    const l = [];
+    for (let i = 0; t && i < t.length; i++) if (t[i].kind === 'subtitles' || t[i].kind === 'captions' || !t[i].kind) l.push(t[i]);
+    if (!l.length) return bosPanel('Altyazı', 'Bu yayında altyazı bildirilmedi', 'Gömülü altyazı yoksa ya da TV altyazıyı uygulamaya vermiyorsa liste boş kalır.');
+    const yap = () => [{ ad: 'Kapalı', on: !l.some((x) => x.mode === 'showing') }].concat(l.map((x, i) => ({ ad: izAdi(x, i, 'Altyazı'), on: x.mode === 'showing' })));
+    secimAc({
+      baslik: 'Altyazı',
+      satirlar: yap(),
+      idx: Math.max(0, yap().map((x) => x.on).indexOf(true)),
+      calis(i) {
+        for (let j = 0; j < l.length; j++) l[j].mode = j === i - 1 ? 'showing' : 'disabled';
+        this.satirlar = yap();
+        secimCiz();
+        toast(i ? 'Altyazı: ' + this.satirlar[i].ad : 'Altyazı kapalı');
+      },
+    });
+  }
+
+  function ekranAc() {
+    const yap = () => ORAN.map((x) => ({ ad: x[1], on: x[0] === oranBul()[0] }));
+    secimAc({
+      baslik: 'Ekran boyutu',
+      satirlar: yap(),
+      idx: ORAN.map((x) => x[0]).indexOf(oranBul()[0]),
+      calis(i) {
+        ctx.store.setSetting('aspect', ORAN[i][0]);
+        oranUygula();
+        this.satirlar = yap();
+        secimCiz();
+      },
+    });
+  }
+
+  // Ses gecikmesi: HTML5 video'da böyle bir ayar yok; ses Web Audio gecikme düğümünden geçirilir (yalnız sesi geciktirir).
+  // Kurulum kullanıcı ilk kez gecikme verdiğinde yapılır; TV desteklemezse özgün ses bozulmaz ya da çıkışta kalınca uyarı verilir.
+  function gecikmeUygula() {
+    if (!sesGrafigi) {
+      if (gecikmeMs === 0) return true;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) throw new Error('Web Audio yok');
+        const ac = new AC();
+        const kaynak = ac.createMediaElementSource(v);
+        const d = ac.createDelay ? ac.createDelay(3) : ac.createDelayNode(3);
+        kaynak.connect(d);
+        d.connect(ac.destination);
+        sesGrafigi = { ac, kaynak, d };
+      } catch (e) {
+        K.uyar('Ses gecikmesi kurulamadı: ' + (e && e.message));
+        gecikmeMs = 0;
+        toast('Bu TV ses gecikmesini desteklemiyor');
+        return false;
+      }
+    }
+    sesGrafigi.d.delayTime.value = gecikmeMs / 1000;
+    return true;
+  }
+  function senkronAc() {
+    const yap = () => [{ ad: 'Sesi geciktir', sag: gecikmeMs + ' ms' }, { ad: 'Sıfırla' }];
+    const s = {
+      baslik: 'Ses senkronu',
+      satirlar: yap(),
+      idx: 0,
+      not: '◀▶ ile 50 ms adımla ayarlayın. Ses görüntüden önce geliyorsa gecikme ekleyin (yalnız sesi geciktirebilir, ileri alamaz). Deneysel: ayar sonrası ses kesilirse Geri ile çıkıp yayını yeniden açın.',
+      yan(d) {
+        gecikmeMs = Math.max(0, Math.min(3000, gecikmeMs + d * 50));
+        if (!gecikmeUygula()) gecikmeMs = 0;
+        this.satirlar = yap();
+        secimCiz();
+      },
+      calis(i) {
+        if (i === 1) this.yan(-gecikmeMs / 50);
+        else secimKapat();
+      },
+    };
+    secimAc(s);
+  }
+
+  function bilgiAc() {
+    if (secim && secim.baslik === 'Bilgi') return secimKapat();
+    const r = [{ ad: 'Ad', sag: it.name }];
+    if (v.videoWidth) r.push({ ad: 'Çözünürlük', sag: v.videoWidth + '×' + v.videoHeight });
+    if (!canli() && isFinite(v.duration) && v.duration > 0) r.push({ ad: 'Süre', sag: sure(v.duration * 1000) });
+    try {
+      const b = v.buffered;
+      if (b && b.length) r.push({ ad: 'Önde tampon', sag: Math.max(0, Math.round(b.end(b.length - 1) - (v.currentTime || 0))) + ' sn' });
+    } catch (e) {
+      /* tampon bilgisi yok */
+    }
+    const bicim = (/\.(m3u8|ts|mp4|mkv|avi|mov|webm)(?:[?#]|$)/i.exec(kaynakUrl) || [])[1];
+    r.push({ ad: 'Kaynak', sag: hostOf(kaynakUrl) + (bicim ? ' · ' + bicim.toLowerCase() : '') });
+    r.push({ ad: 'Ses / Altyazı yolu', sag: (v.audioTracks ? v.audioTracks.length : 0) + ' / ' + (v.textTracks ? v.textTracks.length : 0) });
+    r.push({ ad: 'Ekran', sag: oranBul()[1] });
+    if (gecikmeMs) r.push({ ad: 'Ses gecikmesi', sag: gecikmeMs + ' ms' });
+    if (canli() && simdiProg) r.push({ ad: 'Program', sag: simdiProg.t });
+    secimAc({ baslik: 'Bilgi', satirlar: r, idx: 0, bilgi: true, calis: secimKapat });
+  }
+
   // Renkli tuşlara atanabilen eylemler (Ayarlar › Kumanda tuşları)
   function oyunEylem(e) {
     if (e === 'fav') {
@@ -421,9 +605,14 @@ export function playerScreen({ list, index, fresh }) {
     } else if (e === 'list') {
       listeAc();
       return;
+    } else if (e === 'audio') {
+      return sesAc();
+    } else if (e === 'sub') {
+      return altyaziAc();
+    } else if (e === 'sync') {
+      return senkronAc();
     } else if (e === 'info') {
-      if (ov.className.indexOf('on') >= 0 && !hata) gizle();
-      else goster();
+      return bilgiAc();
     }
     goster();
   }
@@ -436,6 +625,24 @@ export function playerScreen({ list, index, fresh }) {
     },
     onKey(a) {
       // Odak Geri düğmesinde / düğme çubuğunda / kanal listesinde iken yön tuşları oradadır
+      if (odak === 'sec') {
+        const sc = secim;
+        if (!sc || a === 'back' || a === 'stop' || a === 'info') {
+          if (sc) secimKapat();
+          else odakAyarla('alt');
+          return true;
+        }
+        if (a === 'up' || a === 'down' || a === 'chup' || a === 'chdown') {
+          if (!sc.bilgi) {
+            sc.idx = Math.max(0, Math.min(sc.satirlar.length - 1, sc.idx + (a === 'down' || a === 'chdown' ? 1 : -1)));
+            secimCiz();
+          }
+          return true;
+        }
+        if ((a === 'left' || a === 'right') && sc.yan) sc.yan(a === 'right' ? 1 : -1);
+        else if (a === 'ok') sc.calis(sc.idx);
+        return true;
+      }
       if (odak === 'liste') {
         if (a === 'back' || a === 'left') {
           odakAyarla('alt');
@@ -509,8 +716,7 @@ export function playerScreen({ list, index, fresh }) {
         return true;
       }
       if (a === 'info') {
-        if (ov.className.indexOf('on') >= 0 && !hata) gizle();
-        else goster();
+        bilgiAc();
         return true;
       }
       if (a === 'left' || a === 'rw') {
@@ -562,6 +768,13 @@ export function playerScreen({ list, index, fresh }) {
       clearTimeout(uykuT);
       clearTimeout(uykuUyariT);
       durdurKaynak();
+      if (sesGrafigi) {
+        try {
+          sesGrafigi.ac.close();
+        } catch (e) {
+          /* yoksay */
+        }
+      }
     },
   };
 }

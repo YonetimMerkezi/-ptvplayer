@@ -29,6 +29,26 @@
         {
           "name": "aliciDurdur",
           "description": "Alıcıyı durdurur"
+        },
+        {
+          "name": "medyaKokler",
+          "description": "Takılı USB/dahili bellekleri listeler"
+        },
+        {
+          "name": "medyaListele",
+          "description": "Bir klasörün medya dosyalarını ve alt klasörlerini listeler"
+        },
+        {
+          "name": "medyaBaslat",
+          "description": "Yerel medya sunucusunu başlatır (127.0.0.1, Range destekli); port ve jeton döndürür"
+        },
+        {
+          "name": "medyaSor",
+          "description": "Medya sunucusunu canlı tutar (uygulama sürekli sorar)"
+        },
+        {
+          "name": "medyaDurdur",
+          "description": "Medya sunucusunu durdurur"
         }
       ]
     }

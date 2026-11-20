@@ -27,6 +27,9 @@ on:
       - 'tests/webos-player.test.js'
       - 'tests/webos-spor.test.js'
       - 'tests/webos-vitrin.test.js'
+      - 'tests/webos-ana.test.js'
+      - 'tests/webos-mac.test.js'
+      - 'tests/webos-medya-servis.test.js'
       - '.github/workflows/webos.yml'
   pull_request:
     paths:
@@ -51,6 +54,9 @@ on:
       - 'tests/webos-player.test.js'
       - 'tests/webos-spor.test.js'
       - 'tests/webos-vitrin.test.js'
+      - 'tests/webos-ana.test.js'
+      - 'tests/webos-mac.test.js'
+      - 'tests/webos-medya-servis.test.js'
       - '.github/workflows/webos.yml'
   workflow_dispatch:
 
@@ -74,7 +80,7 @@ jobs:
           cache-dependency-path: webos/package-lock.json
 
       - name: Birim testleri (webOS)
-        run: node --test tests/webos.test.js tests/webos-transfer.test.js tests/webos-keys.test.js tests/webos-tema.test.js tests/webos-player.test.js tests/webos-spor.test.js tests/webos-vitrin.test.js
+        run: node --test tests/webos.test.js tests/webos-transfer.test.js tests/webos-keys.test.js tests/webos-tema.test.js tests/webos-player.test.js tests/webos-spor.test.js tests/webos-vitrin.test.js tests/webos-ana.test.js tests/webos-mac.test.js tests/webos-medya-servis.test.js
 
       - name: Bağımlılıklar
         working-directory: webos

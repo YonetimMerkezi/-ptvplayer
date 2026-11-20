@@ -273,7 +273,7 @@ test('paket: sürüm, kimlik ve servis adı birbiriyle tutarlı; gerekli dosyala
   assert.equal(sj.id, SERVIS.replace(/^luna:\/\//, '').replace(/\/$/, ''), 'uygulamanın çağırdığı servis adı services.json ile aynı');
   assert.equal(sj.id, sp.name);
   assert.ok(sj.id.startsWith(app.id + '.'), 'servis kimliği uygulama kimliğiyle başlamalı (webOS kuralı)');
-  assert.deepEqual(sj.services[0].commands.map((c) => c.name).sort(), ['aliciBaslat', 'aliciDurdur', 'aliciSonuc', 'aliciSor', 'fetch', 'read']);
+  assert.deepEqual(sj.services[0].commands.map((c) => c.name).sort(), ['aliciBaslat', 'aliciDurdur', 'aliciSonuc', 'aliciSor', 'fetch', 'medyaBaslat', 'medyaDurdur', 'medyaKokler', 'medyaListele', 'medyaSor', 'read']);
   for (const f of [app.icon, app.largeIcon, app.bgImage, app.splashBackground]) assert.ok(existsSync(w('assets', f)), f + ' eksik');
   assert.match(oku('src', 'version.js'), /__VERSION__/);
 });
@@ -325,4 +325,15 @@ test('data/xtream: shortEpg adet parametresi, kısa süreli önbellek ve hata so
   assert.equal(istekler.length, n, 'taze önbellek varken yeniden istenmez');
   await p.shortEpg(kanal, 3);
   assert.equal(istekler.length, n + 1, 'farklı adet ayrı istektir');
+});
+
+test('keys: TV keyCode göndermese de key / keyIdentifier adından Geri tanınır', async () => {
+  const { actionOfEvent } = await import('../webos/src/keys.js');
+  assert.equal(actionOfEvent({ keyCode: 461 }), 'back');
+  assert.equal(actionOfEvent({ keyCode: 0, key: 'GoBack' }), 'back');
+  assert.equal(actionOfEvent({ keyCode: 0, keyIdentifier: 'U+0008' }), 'back');
+  assert.equal(actionOfEvent({ keyCode: 0, key: 'BrowserBack' }), 'back');
+  assert.equal(actionOfEvent({ keyCode: 0, key: 'Unidentified' }), null);
+  assert.equal(actionOfEvent({ keyCode: 13 }), 'ok');
+  assert.equal(actionOfEvent(null), null);
 });

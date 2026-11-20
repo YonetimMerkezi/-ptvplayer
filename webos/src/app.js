@@ -2,7 +2,7 @@
 import { ctx, open, pop, top, cikis, geri, geriOdakla } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
-import { actionOf } from './keys.js';
+import { actionOfEvent } from './keys.js';
 import { saatleriYaz, toast, enYakin, boyutla } from './ui.js';
 import { temaUygula, VARSAYILAN_TEMA } from './tema.js';
 import * as K from './log.js';
@@ -10,6 +10,7 @@ import { homeScreen } from './screens/home.js';
 import { addSourceScreen } from './screens/addsource.js';
 import { browseScreen } from './screens/browse.js';
 import { detailScreen } from './screens/detail.js';
+import { vizyonDetayScreen } from './screens/vizyon-detay.js';
 import { searchScreen } from './screens/search.js';
 import { settingsScreen, sourcesScreen, logScreen, aboutScreen } from './screens/settings.js';
 import { playerScreen } from './screens/player.js';
@@ -17,6 +18,8 @@ import { transferScreen } from './screens/transfer.js';
 import { temaScreen } from './screens/tema.js';
 import { kumandaScreen } from './screens/kumanda.js';
 import { sporScreen } from './screens/spor.js';
+import { macScreen } from './screens/mac.js';
+import { tusTestiScreen } from './screens/tustesti.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -41,6 +44,7 @@ export function tuslariBagla(doc) {
   let geriBasildi = false; // Geri için keydown görüldü mü (bazı yazılımlarda yalnız keyup gelir)
   let sonKokGeri = 0;
   let izSayac = 0;
+  let sonGeriT = 0; // son Geri tuşu olayının zamanı (geçmiş adımıyla yinelenmesin)
 
   const aktifGiris = () => {
     const a = doc.activeElement;
@@ -128,12 +132,16 @@ export function tuslariBagla(doc) {
     gonder(t, a);
   };
 
+  // Yakalama aşamasında dinlenir: hiçbir öğe olayı durduramadan uygulamaya ulaşır
   doc.addEventListener('keydown', (e) => {
-    const a = actionOf(e.keyCode);
+    const a = actionOfEvent(e);
     iz('keydown', e, a);
-    if (a === 'back') geriBasildi = true;
+    if (a === 'back') {
+      geriBasildi = true;
+      sonGeriT = Date.now();
+    }
     isle(e, a);
-  });
+  }, true);
   // Magic Remote imleci / fare: Geri düğmesine tıklama
   doc.addEventListener('click', (e) => {
     if (!enYakin(e.target, '.top-back', doc.documentElement || null)) return;
@@ -141,11 +149,12 @@ export function tuslariBagla(doc) {
     gonder(top(), 'back');
   });
   doc.addEventListener('keyup', (e) => {
-    const a = actionOf(e.keyCode);
+    const a = actionOfEvent(e);
     if (a === 'back') {
       const gordu = geriBasildi;
       geriBasildi = false;
       if (!gordu) {
+        sonGeriT = Date.now();
         iz('keyup', e, a);
         isle(e, a);
       }
@@ -168,8 +177,11 @@ export function kaydet() {
     tema: temaScreen,
     kumanda: kumandaScreen,
     spor: sporScreen,
+    mac: macScreen,
+    tustesti: tusTestiScreen,
     browse: browseScreen,
     detail: detailScreen,
+    vizyon: vizyonDetayScreen,
     search: searchScreen,
     settings: settingsScreen,
     sources: sourcesScreen,

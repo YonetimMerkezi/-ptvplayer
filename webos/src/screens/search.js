@@ -8,7 +8,7 @@ import * as K from '../log.js';
 const TUR = { live: 'Canlı', movie: 'Film', series: 'Dizi' };
 const SIRA = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
 
-export function searchScreen() {
+export function searchScreen(p) {
   const kok = el('div', 'screen search');
   const src = ctx.store.active();
   kok.innerHTML =
@@ -22,6 +22,8 @@ export function searchScreen() {
   let bolge = 'input'; // input | list
   let sayac = 0;
   let list = null;
+  let otomatik = !!(p && p.q); // başka ekrandan hazır sorguyla açıldıysa ilk gösterimde aranır
+  if (otomatik) inp.value = String(p.q);
 
   const kur = () => {
     list = new VList(resEl, {
@@ -79,6 +81,10 @@ export function searchScreen() {
     name: 'search',
     onShow() {
       odak(bolge);
+      if (otomatik) {
+        otomatik = false;
+        calistir();
+      }
       if (list.items.length) list.setItems(list.items, true);
     },
     onKey(a) {

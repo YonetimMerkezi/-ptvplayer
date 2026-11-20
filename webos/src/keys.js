@@ -14,3 +14,13 @@ export function actionOf(code) {
 }
 
 export const rakam = (action) => (/^num\d$/.test(action || '') ? Number(action.slice(3)) : -1);
+
+// Tuş olayından eylem: önce keyCode; TV farklı bir kod gönderiyorsa key / keyIdentifier adlarına bakılır (Geri için)
+const GERI_ADLARI = ['goback', 'browserback', 'back', 'backspace', 'escape', 'xf86back', 'u+0008', 'u+001b'];
+export function actionOfEvent(e) {
+  const a = actionOf(e && e.keyCode);
+  if (a) return a;
+  if (!e) return null;
+  const ad = String(e.key || e.keyIdentifier || e.code || '').toLowerCase();
+  return ad && GERI_ADLARI.indexOf(ad) >= 0 ? 'back' : null;
+}

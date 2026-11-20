@@ -10,6 +10,14 @@
 //   aliciSor    {}                          → {returnValue, alinan[{id, tip, ad, url, server, user, pass}], kalanMs}
 //   aliciSonuc  {id, durum, mesaj}          → {returnValue}   (durum: 'tamam' | 'hata'; telefondaki bekleyen isteğe iletilir)
 //   aliciDurdur {}                          → {returnValue}
+//
+// Medya merkezi (USB bellek): dosyaları listeler ve yerel (127.0.0.1) bir HTTP sunucusuyla Range destekli sunar;
+// uygulama <video>/<audio>/<img> adresi olarak kullanır. Uygulama medyaSor ile sürekli sorar, sormayı keserse sunucu kapanır.
+//   medyaKokler {}                          → {returnValue, kokler[{ad, yol}]}
+//   medyaListele {yol}                      → {returnValue, yol, ogeler[{ad, dir, boyut, zaman}], kesildi}
+//   medyaBaslat {}                          → {returnValue, port, jeton}      (adres: http://127.0.0.1:port/jeton/<kodlanmış yol>)
+//   medyaSor {}                             → {returnValue, port, jeton}      (canlı tutar)
+//   medyaDurdur {}                          → {returnValue}
 'use strict';
 
 var http = require('http');
@@ -18,6 +26,8 @@ var zlib = require('zlib');
 var urlm = require('url');
 var os = require('os');
 var crypto = require('crypto');
+var fs = require('fs');
+var pathm = require('path');
 
 var SERVIS_ADI = 'com.koruk.iptv.webos.service';
 var MAX_BAYT = 48 * 1024 * 1024; // TV belleği sınırlı: daha büyük yanıt reddedilir
@@ -435,6 +445,247 @@ function aliciKontrol(simdi) {
   return false;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Medya merkezi
+// Güvenlik: yalnız USB/dahili bellek kökleri altındaki yollar; adres 127.0.0.1'e bağlıdır ve her oturumda yeni bir
+// jeton ister; sembolik bağlantılar listelenmez ve sunulmaz; sorgusuzluk 20 sn sürerse sunucu kapanır.
+// ---------------------------------------------------------------------------------------------------------------
+var MEDYA_SORU_MS = 20000;
+var MEDYA_MAX_OGE = 2000;
+var MEDYA_UZANTI = /\.(mp4|m4v|mkv|webm|avi|mov|wmv|flv|ts|m2ts|3gp|mpg|mpeg|mp3|m4a|aac|flac|ogg|opus|wav|wma|jpe?g|png|gif|webp|bmp|srt|vtt)$/i;
+var MEDYA_GIZLI = /^(system volume information|\$recycle\.bin|lost\+found)$/i;
+var MEDYA_MIME = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mkv: 'video/x-matroska', webm: 'video/webm', avi: 'video/x-msvideo', mov: 'video/quicktime',
+  wmv: 'video/x-ms-wmv', flv: 'video/x-flv', ts: 'video/mp2t', m2ts: 'video/mp2t', '3gp': 'video/3gpp', mpg: 'video/mpeg', mpeg: 'video/mpeg',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', wma: 'audio/x-ms-wma',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+  srt: 'text/plain; charset=utf-8', vtt: 'text/vtt; charset=utf-8'
+};
+var medyaKokleri = ['/tmp/usb', '/media/internal']; // izinli kökler (testte değiştirilir)
+var usbDizini = '/tmp/usb';
+var medya = null;
+
+// Yol izinli bir kökün altında mı? Dönen: düzgelenmiş yol ya da null ('..' ve çift eğik çizgi çözülür)
+function medyaYol(yol) {
+  if (typeof yol !== 'string' || !yol || yol.indexOf('\u0000') >= 0) return null;
+  var n = pathm.normalize(yol);
+  if (n.charAt(0) !== '/') return null;
+  if (n.length > 1) n = n.replace(/\/+$/, '');
+  for (var i = 0; i < medyaKokleri.length; i++) {
+    if (n === medyaKokleri[i] || n.indexOf(medyaKokleri[i] + '/') === 0) return n;
+  }
+  return null;
+}
+
+function medyaDizinMi(y) {
+  try {
+    return fs.statSync(y).isDirectory();
+  } catch (e) {
+    return false;
+  }
+}
+
+function medyaAltlar(y) {
+  try {
+    return fs
+      .readdirSync(y)
+      .filter(function (a) {
+        return a.charAt(0) !== '.' && medyaDizinMi(y + '/' + a);
+      })
+      .sort();
+  } catch (e) {
+    return [];
+  }
+}
+
+// Takılı bellekler: /tmp/usb/sda/sda1 gibi bölümler (bölüm klasörü yoksa aygıtın kendisi)
+function medyaKokler() {
+  var kokler = [];
+  var sira = 0;
+  medyaAltlar(usbDizini).forEach(function (d) {
+    var y1 = usbDizini + '/' + d;
+    var bolumler = medyaAltlar(y1).filter(function (a) {
+      return /^[a-z]+\d+$/i.test(a);
+    });
+    if (bolumler.length) {
+      bolumler.forEach(function (b) {
+        kokler.push({ ad: 'USB ' + ++sira + ' (' + b + ')', yol: y1 + '/' + b });
+      });
+    } else {
+      kokler.push({ ad: 'USB ' + ++sira + ' (' + d + ')', yol: y1 });
+    }
+  });
+  var dahili = '/media/internal';
+  if (medyaKokleri.indexOf(dahili) >= 0 && medyaAltlar(dahili).length) kokler.push({ ad: 'Dahili bellek', yol: dahili });
+  return { returnValue: true, kokler: kokler };
+}
+
+function medyaListele(p) {
+  var y = medyaYol(p && p.yol);
+  if (!y) return { returnValue: false, errorText: 'Geçersiz konum' };
+  var adlar;
+  try {
+    adlar = fs.readdirSync(y);
+  } catch (e) {
+    return { returnValue: false, errorText: 'Klasör okunamadı: ' + String((e && (e.code || e.message)) || e) };
+  }
+  var ogeler = [];
+  var kesildi = false;
+  for (var i = 0; i < adlar.length; i++) {
+    var ad = adlar[i];
+    if (ad.charAt(0) === '.' || MEDYA_GIZLI.test(ad)) continue;
+    var st;
+    try {
+      st = fs.lstatSync(y + '/' + ad);
+    } catch (e) {
+      continue;
+    }
+    if (st.isSymbolicLink()) continue;
+    var dir = st.isDirectory();
+    if (!dir && !(st.isFile() && MEDYA_UZANTI.test(ad))) continue;
+    if (ogeler.length >= MEDYA_MAX_OGE) {
+      kesildi = true;
+      break;
+    }
+    ogeler.push({ ad: ad, dir: dir, boyut: dir ? 0 : st.size, zaman: st.mtime ? st.mtime.getTime() : 0 });
+  }
+  return { returnValue: true, yol: y, ogeler: ogeler, kesildi: kesildi };
+}
+
+function medyaIstek(req, res) {
+  var yanit = function (kod, metin) {
+    try {
+      res.writeHead(kod, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': Buffer.byteLength(metin), Connection: 'close' });
+      res.end(metin);
+    } catch (e) {
+      /* istemci gitmiş */
+    }
+  };
+  if (!medya) return yanit(503, 'Medya sunucusu kapalı');
+  if (req.method !== 'GET' && req.method !== 'HEAD') return yanit(405, 'Yöntem desteklenmiyor');
+  var parca = String(req.url || '').split('?')[0].split('/'); // ['', jeton, kodlanmış yol]
+  if (parca.length !== 3 || parca[1] !== medya.jeton) return yanit(403, 'Yetkisiz');
+  var yol;
+  try {
+    yol = decodeURIComponent(parca[2]);
+  } catch (e) {
+    return yanit(400, 'Geçersiz yol');
+  }
+  var y = medyaYol(yol);
+  if (!y) return yanit(403, 'Konum izinli değil');
+  var st;
+  try {
+    st = fs.lstatSync(y);
+  } catch (e) {
+    return yanit(404, 'Dosya yok');
+  }
+  if (!st.isFile()) return yanit(404, 'Dosya değil');
+  var boyut = st.size;
+  var bas = 0;
+  var son = boyut - 1;
+  var kod = 200;
+  var a = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+  if (a && (a[1] || a[2])) {
+    if (a[1] === '') {
+      bas = Math.max(0, boyut - Number(a[2]));
+    } else {
+      bas = Number(a[1]);
+      if (a[2] !== '') son = Math.min(son, Number(a[2]));
+    }
+    if (bas > son || bas >= boyut) {
+      res.writeHead(416, { 'Content-Range': 'bytes */' + boyut, Connection: 'close' });
+      return res.end();
+    }
+    kod = 206;
+  }
+  var uz = (/\.([a-z0-9]+)$/i.exec(y) || [])[1];
+  var baslik = {
+    'Content-Type': MEDYA_MIME[String(uz || '').toLowerCase()] || 'application/octet-stream',
+    'Content-Length': boyut === 0 ? 0 : son - bas + 1,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-store'
+  };
+  if (kod === 206) baslik['Content-Range'] = 'bytes ' + bas + '-' + son + '/' + boyut;
+  res.writeHead(kod, baslik);
+  if (req.method === 'HEAD' || boyut === 0) return res.end();
+  var akis = fs.createReadStream(y, { start: bas, end: son });
+  akis.on('error', function () {
+    try {
+      res.destroy();
+    } catch (e) {
+      /* kapalı */
+    }
+  });
+  res.on('close', function () {
+    try {
+      akis.destroy();
+    } catch (e) {
+      /* kapalı */
+    }
+  });
+  akis.pipe(res);
+}
+
+function medyaBilgi() {
+  return { returnValue: true, port: medya.port, jeton: medya.jeton };
+}
+
+// cb(hata, bilgi). Zaten çalışıyorsa aynı port ve jeton döner.
+function medyaBaslat(p, cb) {
+  if (medya) {
+    medya.sonSoru = Date.now();
+    return cb(null, medyaBilgi());
+  }
+  var sunucu = http.createServer(medyaIstek);
+  var tamam = false;
+  sunucu.on('error', function (e) {
+    if (!tamam) cb(new Error('Medya sunucusu başlatılamadı: ' + String((e && e.message) || e)));
+  });
+  sunucu.listen(0, '127.0.0.1', function () {
+    tamam = true;
+    medya = {
+      sunucu: sunucu,
+      port: sunucu.address().port,
+      jeton: crypto.randomBytes(12).toString('hex'),
+      sonSoru: Date.now(),
+      zamanlayici: setInterval(function () {
+        medyaKontrol(Date.now());
+      }, 2000)
+    };
+    if (medya.zamanlayici.unref) medya.zamanlayici.unref();
+    cb(null, medyaBilgi());
+  });
+}
+
+function medyaSor() {
+  if (!medya) return { returnValue: false, errorText: 'Medya sunucusu kapalı' };
+  medya.sonSoru = Date.now();
+  return medyaBilgi();
+}
+
+function medyaDurdur() {
+  if (!medya) return { returnValue: true };
+  var m = medya;
+  medya = null;
+  clearInterval(m.zamanlayici);
+  try {
+    m.sunucu.close();
+  } catch (e) {
+    /* zaten kapalı */
+  }
+  if (kapaninca) kapaninca();
+  return { returnValue: true };
+}
+
+function medyaKontrol(simdi) {
+  if (!medya) return false;
+  if (simdi - medya.sonSoru > MEDYA_SORU_MS) {
+    medyaDurdur();
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   getir: getir,
   oku: oku,
@@ -442,6 +693,20 @@ module.exports = {
   aliciSor: aliciSor,
   aliciSonuc: aliciSonuc,
   aliciDurdur: aliciDurdur,
+  medyaKokler: medyaKokler,
+  medyaListele: medyaListele,
+  medyaBaslat: medyaBaslat,
+  medyaSor: medyaSor,
+  medyaDurdur: medyaDurdur,
+  _medyaKontrol: medyaKontrol,
+  _medyaYol: medyaYol,
+  _medyaAyarla: function (kokler, usb) {
+    medyaKokleri = kokler;
+    usbDizini = usb;
+  },
+  _medya: function () {
+    return medya;
+  },
   _aliciKontrol: aliciKontrol,
   _alici: function () {
     return alici;
@@ -464,7 +729,7 @@ if (Service) {
   var etkinlik = null;
   var canliTut = function () {
     try {
-      var bos = Object.keys(depo).length === 0 && !alici;
+      var bos = Object.keys(depo).length === 0 && !alici && !medya;
       if (!bos && !etkinlik && servis.activityManager) {
         servis.activityManager.create('iptv-canli', function (a) {
           etkinlik = a;
@@ -493,6 +758,26 @@ if (Service) {
   });
   servis.register('aliciDurdur', function (m) {
     m.respond(aliciDurdur());
+  });
+  servis.register('medyaKokler', function (m) {
+    m.respond(medyaKokler());
+  });
+  servis.register('medyaListele', function (m) {
+    m.respond(medyaListele(m.payload || {}));
+    canliTut();
+  });
+  servis.register('medyaBaslat', function (m) {
+    medyaBaslat(m.payload || {}, function (e, r) {
+      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
+      canliTut();
+    });
+  });
+  servis.register('medyaSor', function (m) {
+    m.respond(medyaSor());
+    canliTut();
+  });
+  servis.register('medyaDurdur', function (m) {
+    m.respond(medyaDurdur());
   });
   servis.register('fetch', function (m) {
     getir(m.payload || {}, function (e, r) {

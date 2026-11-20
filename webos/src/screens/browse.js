@@ -10,7 +10,7 @@ import { fragmanOynat } from '../fragman.js';
 const BASLIK = { live: 'Canlı TV', guide: 'TV Rehberi', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
 const TUR_AD = { live: 'Canlı', movie: 'Filmler', series: 'Diziler' };
 const SUTUN = 5;
-const SUTUN_VITRIN = 7; // vitrinli ekranda afişler küçülür, altta ikinci satırın başı görünür kalır
+const SUTUN_VITRIN = 8; // kategoriler gizli olduğundan afişler tüm genişliğe dizilir; altta ikinci satırın başı görünür kalır
 
 const logoHtml = (u) => (u ? '<img src="' + esc(u) + '" alt="">' : '');
 const yildiz = (sid, it) => (ctx.store.isFav(sid, it.id) ? '<i class="star">' + ikon.yildiz + '</i>' : '');
@@ -26,18 +26,23 @@ export function browseScreen({ kind }) {
   kok.innerHTML =
     ustCubuk(BASLIK[kind], src ? esc(src.name) : '') +
     '<div class="br">' +
-    (solVar ? '<div class="cats"></div>' : '') +
+    (solVar ? '<div class="cats' + (vitrinli ? ' gizli' : '') + '"></div>' : '') +
     (vitrinli ? '<div class="rt"><div class="vit"></div><div class="content"></div></div>' : '<div class="content' + (solVar ? '' : ' wide') + '"></div>') +
     (canliTur ? '<div class="info"></div>' : '') +
     '</div>' +
     '<div class="hint" id="hint"></div>';
 
   const catsEl = kok.querySelector('.cats');
+  const baslikEl = kok.querySelector('.top h1');
+  const katAnahtar = 'kat:' + kind + ':' + sid; // Filmler/Diziler'de son açılan kategori hatırlanır
+  const baslikYaz = (kat) => {
+    if (baslikEl) baslikEl.textContent = BASLIK[kind] + (kat ? ' · ' + kat : '');
+  };
   let contEl = kok.querySelector('.content');
   const infoEl = kok.querySelector('.info');
   const hint = kok.querySelector('#hint');
   const vitrin = vitrinli ? createVitrin(kok.querySelector('.vit'), { saglayici: provider }) : null;
-  let bolge = solVar ? 'cats' : 'list';
+  let bolge = solVar && !vitrinli ? 'cats' : 'list'; // Filmler/Diziler'de kategoriler gizli başlar, odak afişlerde
   let cats = null; // VList
   let list = null; // VList
   let yuklendi = false;
@@ -56,7 +61,7 @@ export function browseScreen({ kind }) {
   const ipucu = () => {
     const o = canliTur ? 'OK: izle' : kind === 'recents' ? 'OK: devam et' : 'OK: aç';
     const f = kind === 'recents' ? 'Sarı: geçmişi temizle' : 'Sarı / OK basılı tut: favori';
-    hint.innerHTML = '▲▼◀▶ gezin · ' + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + ' · Geri';
+    hint.innerHTML = (vitrinli ? '▲▼◀▶ gezin · ◀ soldaki sütunda: kategoriler · ' : '▲▼◀▶ gezin · ') + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + ' · Geri';
   };
 
   // --- sol: kategoriler
@@ -73,7 +78,7 @@ export function browseScreen({ kind }) {
       onActivate: () => odak('list'),
     });
     cats.setItems(liste);
-    cats.setActive(true);
+    cats.setActive(bolge === 'cats');
   };
 
   // --- sağ: içerik
@@ -138,6 +143,7 @@ export function browseScreen({ kind }) {
       },
       onActivate: (it, i) => ac(it, i),
     });
+    list.setActive(bolge === 'list');
   };
 
   const ac = (it, i) => {
@@ -157,6 +163,10 @@ export function browseScreen({ kind }) {
   async function katYukle(c) {
     if (!c) return;
     secilenKat = c;
+    if (vitrinli) {
+      baslikYaz(c.name);
+      if (ctx.store.setting(katAnahtar, '') !== String(c.id)) ctx.store.setSetting(katAnahtar, String(c.id));
+    }
     const n = ++yukSayac;
     const izgara = (kind === 'favs' ? c.id : gercekTur) !== 'live';
     if (vitrin) vitrin.temizle();
@@ -278,6 +288,13 @@ export function browseScreen({ kind }) {
     bolge = b;
     if (cats) cats.setActive(b === 'cats');
     if (list) list.setActive(b === 'list');
+    if (vitrinli && catsEl) catsEl.className = 'cats' + (b === 'cats' ? '' : ' gizli'); // kategori sütunu yalnız istenince açılır
+  }
+
+  // Kategoriler yüklenirken/yüklenemezken ileti: Filmler/Diziler'de kategori sütunu gizli olduğundan içerik alanında gösterilir
+  function kategoriMesaji(html) {
+    const hedef = vitrinli ? contEl : catsEl;
+    hedef.innerHTML = '<div class="vl-msg" style="display:block">' + html + '</div>';
   }
 
   async function ilkYukle() {
@@ -299,15 +316,20 @@ export function browseScreen({ kind }) {
       if (ilk > 0) cats.setIndex(ilk);
       return;
     }
-    catsEl.innerHTML = '<div class="vl-msg" style="display:block">Yükleniyor…</div>';
+    kategoriMesaji('Yükleniyor…');
     try {
       const liste = await provider().categories(gercekTur);
-      catsEl.innerHTML = '';
+      (vitrinli ? contEl : catsEl).innerHTML = '';
       katKur(liste);
+      if (vitrinli) {
+        const son = String(ctx.store.setting(katAnahtar, ''));
+        const i = liste.findIndex((x) => String(x.id) === son);
+        if (i > 0) cats.setIndex(i);
+      }
     } catch (e) {
       K.hata(e);
       yuklendi = false;
-      catsEl.innerHTML = '<div class="vl-msg" style="display:block">Yüklenemedi: ' + esc(e && e.message ? e.message : e) + '<br>OK ile yeniden dene</div>';
+      kategoriMesaji('Yüklenemedi: ' + esc(e && e.message ? e.message : e) + '<br>OK ile yeniden dene');
     }
   }
 
@@ -352,8 +374,13 @@ export function browseScreen({ kind }) {
         return true;
       }
       if (bolge === 'cats') {
+        if (a === 'back' && vitrinli) {
+          odak('list'); // açık kategori sütunu Geri ile kapanır
+          return true;
+        }
         if (a === 'right' || a === 'ok') {
-          if (list && list.items.length) odak('list');
+          if (vitrinli) odak('list');
+          else if (list && list.items.length) odak('list');
           else if (list && list.retry) list.retry();
           return true;
         }
@@ -365,7 +392,7 @@ export function browseScreen({ kind }) {
         return true;
       }
       if (list && list.key(a)) return true;
-      if (a === 'left' && cats && (list.o.cols === 1 || list.index % list.o.cols === 0)) {
+      if (a === 'left' && cats && (!list || list.o.cols === 1 || list.index % list.o.cols === 0)) {
         odak('cats');
         return true;
       }
