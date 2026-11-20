@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 globalThis.window = globalThis.window || { setTimeout, clearTimeout };
 globalThis.document = globalThis.document || { getElementById: () => null, querySelectorAll: () => [], createElement: () => ({ style: {}, appendChild() {}, setAttribute() {} }), body: { appendChild() {} } };
 const { tuslariBagla } = await import('../webos/src/app.js');
-const { ctx, push, top } = await import('../webos/src/ctx.js');
+const { ctx, push, top, geri } = await import('../webos/src/ctx.js');
 const K = await import('../webos/src/log.js');
 
 function sahte() {
@@ -127,4 +127,76 @@ test('keys: Geri ve tanınmayan tuşlar Hata kaydına yazılır', () => {
   const l = K.kayitlar().join('\n');
   assert.match(l, /Tuş keydown 999 \(tanımsız\)/);
   assert.match(l, /Tuş keydown 461 → back/);
+});
+
+// Üst çubukta "‹ Geri" düğmesi olan sahte ekran
+function ekranGeriliDugme(ad, onKey) {
+  const dugme = { className: 'top-back' };
+  const e = ekran(ad, onKey);
+  e.el.querySelector = (sel) => (sel === '.top-back' ? dugme : null);
+  e.dugme = dugme;
+  return e;
+}
+
+test('keys: ekranın üst kenarında ▲ odağı Geri düğmesine çıkarır, ▼ içeriğe indirir, OK geri döner', () => {
+  sifirla();
+  geri.odak = false;
+  const t = sahte();
+  tuslariBagla(t.doc);
+  push(ekran('home', () => false));
+  const b = ekranGeriliDugme('liste', (a) => a === 'down');
+  push(b);
+  t.down(38); // ▲: ekran işlemez → düğmeye çıkılır
+  assert.equal(geri.odak, true);
+  assert.equal(b.dugme.className, 'top-back on');
+  t.down(37); // ◀: yerinde kalır
+  assert.equal(geri.odak, true);
+  t.down(40); // ▼: içeriğe iner
+  assert.equal(geri.odak, false);
+  assert.equal(b.dugme.className, 'top-back');
+  assert.equal(top().name, 'liste');
+  t.down(38);
+  t.down(13); // OK: bir önceki ekrana döner
+  assert.equal(top().name, 'home');
+  assert.equal(geri.odak, false);
+});
+
+test('keys: Geri düğmesi odaktayken Geri tuşu da geri döner; düğmesiz ekranda ▲ bir şey yapmaz', () => {
+  sifirla();
+  geri.odak = false;
+  const t = sahte();
+  tuslariBagla(t.doc);
+  push(ekran('home', () => false));
+  push(ekranGeriliDugme('b', () => false));
+  t.down(38);
+  t.down(461);
+  assert.equal(top().name, 'home');
+  t.down(38); // kök ekran, düğme yok
+  assert.equal(geri.odak, false);
+  assert.equal(top().name, 'home');
+});
+
+test('keys: ekran ▲ tuşunu işlerse (listede yukarı gezinme) odak düğmeye çıkmaz', () => {
+  sifirla();
+  geri.odak = false;
+  const t = sahte();
+  tuslariBagla(t.doc);
+  push(ekran('home', () => false));
+  const b = ekranGeriliDugme('liste', (a) => a === 'up');
+  push(b);
+  t.down(38);
+  assert.equal(geri.odak, false);
+  assert.equal(b.dugme.className, 'top-back');
+});
+
+test('keys: oynatıcıda ▲ Geri düğmesine çıkmaz (kanal/ses işlevleri ekrana aittir)', () => {
+  sifirla();
+  geri.odak = false;
+  const t = sahte();
+  tuslariBagla(t.doc);
+  push(ekran('home', () => false));
+  const p = ekranGeriliDugme('player', () => false);
+  push(p);
+  t.down(38);
+  assert.equal(geri.odak, false);
 });

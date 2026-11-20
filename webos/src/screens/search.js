@@ -1,5 +1,5 @@
 // Arama: yazı alanı TV'nin ekran klavyesini açar; Enter ile katalogda aranır.
-import { ctx, provider, open, ustCubuk } from '../ctx.js';
+import { ctx, provider, open, ustCubuk, geriOdakla } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { ara } from '../data.js';
 import { el, esc, px, toast } from '../ui.js';
@@ -91,7 +91,7 @@ export function searchScreen() {
           odak('list');
           return true;
         }
-        return a === 'up' || a === 'left' || a === 'right';
+        return a === 'left' || a === 'right'; // ▲ ayrılır: Geri düğmesine çıkılır
       }
       if (a === 'up' && list.index === 0) {
         odak('input');
@@ -107,6 +107,11 @@ export function searchScreen() {
       }
       if (a === 'back' || a === 'down') {
         giris.blur();
+        return true;
+      }
+      if (a === 'up') {
+        giris.blur();
+        geriOdakla(true);
         return true;
       }
       return false;

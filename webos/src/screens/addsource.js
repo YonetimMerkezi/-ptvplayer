@@ -1,5 +1,5 @@
 // Kaynak ekleme: Xtream (sunucu, kullanıcı, şifre) ya da M3U bağlantısı. Yazı girişi TV'nin ekran klavyesiyle yapılır.
-import { resetTo, open, pop, ustCubuk, kaynakEkle } from '../ctx.js';
+import { resetTo, open, pop, ustCubuk, kaynakEkle, geriOdakla } from '../ctx.js';
 import { el, esc, toast } from '../ui.js';
 import { kaynakHazirla } from '../kaynak.js';
 import * as K from '../log.js';
@@ -109,7 +109,10 @@ export function addSourceScreen(arg) {
     onKey(a) {
       const l = odaklar();
       if (a === 'down') sec = Math.min(l.length - 1, sec + 1);
-      else if (a === 'up') sec = Math.max(0, sec - 1);
+      else if (a === 'up') {
+        if (sec === 0) return false; // en üstte ▲: Geri düğmesine çıkılır
+        sec = Math.max(0, sec - 1);
+      }
       else if (a === 'left' || a === 'right') {
         const f = l[sec] && l[sec].getAttribute('data-f');
         if (f === 'tx' || f === 'tm' || f === 'phone') {
@@ -137,7 +140,7 @@ export function addSourceScreen(arg) {
       if (a === 'ok' || a === 'down' || a === 'up' || a === 'back') {
         inp.blur();
         if (a === 'down' || a === 'ok') this.onKey('down');
-        if (a === 'up') this.onKey('up');
+        if (a === 'up' && !this.onKey('up')) geriOdakla(true);
         return true;
       }
       return false;

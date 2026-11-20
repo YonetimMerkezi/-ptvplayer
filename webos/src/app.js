@@ -1,9 +1,9 @@
 // Açılış, ekran kaydı, tuş dağıtıcı (uzaktan kumanda) ve saat.
-import { ctx, open, pop, top, cikis } from './ctx.js';
+import { ctx, open, pop, top, cikis, geri, geriOdakla } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
 import { actionOf } from './keys.js';
-import { saatleriYaz, toast } from './ui.js';
+import { saatleriYaz, toast, enYakin } from './ui.js';
 import * as K from './log.js';
 import { homeScreen } from './screens/home.js';
 import { addSourceScreen } from './screens/addsource.js';
@@ -64,17 +64,35 @@ export function tuslariBagla(doc) {
     sonKokGeri = s;
     toast('Çıkmak için Geri tuşuna tekrar basın');
   };
+  const geriGit = () => {
+    if (!pop()) kokGeri();
+  };
   const gonder = (t, a) => {
     if (!t) return;
+    if (geri.odak) {
+      // Odak üst çubuktaki Geri düğmesinde: OK/Geri geri döner, ▼ içeriğe iner, yön tuşları yerinde kalır
+      if (a === 'ok' || a === 'back') {
+        geriOdakla(false);
+        geriGit();
+        return;
+      }
+      if (a === 'down') {
+        geriOdakla(false);
+        return;
+      }
+      if (a === 'up' || a === 'left' || a === 'right') return;
+      geriOdakla(false);
+    }
     let tuketildi = false;
     try {
       tuketildi = t.onKey ? !!t.onKey(a) : false;
     } catch (e) {
       K.hata(e);
     }
-    if (!tuketildi && a === 'back') {
-      if (!pop()) kokGeri();
-    }
+    if (tuketildi) return;
+    // Ekranın üst kenarında ▲: odak Geri düğmesine çıkar
+    if (a === 'up' && t.name !== 'player' && geriOdakla(true)) return;
+    if (a === 'back') geriGit();
   };
   // keydown gövdesi; Geri keyup ile gelirse aynı yoldan geçirilir
   const isle = (e, a) => {
@@ -115,6 +133,12 @@ export function tuslariBagla(doc) {
     iz('keydown', e, a);
     if (a === 'back') geriBasildi = true;
     isle(e, a);
+  });
+  // Magic Remote imleci / fare: Geri düğmesine tıklama
+  doc.addEventListener('click', (e) => {
+    if (!enYakin(e.target, '.top-back', doc.documentElement || null)) return;
+    geriOdakla(false);
+    gonder(top(), 'back');
   });
   doc.addEventListener('keyup', (e) => {
     const a = actionOf(e.keyCode);

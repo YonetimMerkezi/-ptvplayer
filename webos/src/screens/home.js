@@ -4,6 +4,7 @@ import { el, esc, enYakin } from '../ui.js';
 
 const KAROLAR = [
   { id: 'live', ad: 'Canlı TV', ic: ikon.tv, ekran: ['browse', { kind: 'live' }] },
+  { id: 'guide', ad: 'TV Rehberi', ic: ikon.rehber, ekran: ['browse', { kind: 'guide' }] },
   { id: 'movie', ad: 'Filmler', ic: ikon.film, ekran: ['browse', { kind: 'movie' }] },
   { id: 'series', ad: 'Diziler', ic: ikon.dizi, ekran: ['browse', { kind: 'series' }] },
   { id: 'favs', ad: 'Favoriler', ic: ikon.yildiz, ekran: ['browse', { kind: 'favs' }] },
@@ -11,13 +12,13 @@ const KAROLAR = [
   { id: 'search', ad: 'Ara', ic: ikon.ara, ekran: ['search'] },
   { id: 'settings', ad: 'Ayarlar', ic: ikon.ayar, ekran: ['settings'] },
 ];
-const SUTUN = 4;
+const SUTUN = 5;
 
 export function homeScreen() {
   const kok = el('div', 'screen home');
   const src = ctx.store.active();
   kok.innerHTML =
-    ustCubuk('Iptv Player Pro', src ? esc(src.name) : '') +
+    ustCubuk('Iptv Player Pro', src ? esc(src.name) : '', true) +
     '<div class="tiles">' +
     KAROLAR.map((k, i) => '<div class="tile" data-i="' + i + '"><i class="ic">' + k.ic + '</i><span>' + k.ad + '</span></div>').join('') +
     '</div><div class="hint">Gezin: ▲▼◀▶ · Seç: OK · Çıkış: Geri ×2</div>';

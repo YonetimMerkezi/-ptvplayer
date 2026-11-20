@@ -18,6 +18,7 @@ export function createXtream(src, net) {
   const cache = {};
   const J = (action, params) => net.json(X.apiUrl(cfg, action, params), { timeoutMs: 60000 });
   const rawCats = (kind) => bir(cache, 'rc:' + kind, async () => gecerli(await J(KIND_AKSIYON[kind][0])));
+  const epgOnbellek = {}; // kanal:adet → { at, p }; 2 dakika taze sayılır
   return {
     type: 'xtream',
     auth: async () => X.checkAuth(await J(null)),
@@ -38,7 +39,19 @@ export function createXtream(src, net) {
       }),
     seriesInfo: (item) => bir(cache, 'si:' + item.seriesId, async () => X.mapSeriesInfo(await J('get_series_info', { series_id: item.seriesId }))),
     vodInfo: (item) => bir(cache, 'vi:' + item.streamId, async () => X.mapVodInfo(await J('get_vod_info', { vod_id: item.streamId }))),
-    shortEpg: (item) => bir(cache, 'ep:' + item.streamId + ':' + Math.floor(Date.now() / 120000), async () => X.mapShortEpg(await J('get_short_epg', { stream_id: item.streamId, limit: 3 }))),
+    // Kanalın şimdiki ve sonraki programları (adet: kaç program; varsayılan 3)
+    shortEpg(item, adet) {
+      const n = adet || 3;
+      const k = item.streamId + ':' + n;
+      const e = epgOnbellek[k];
+      if (e && Date.now() - e.at < 120000) return e.p;
+      const p = J('get_short_epg', { stream_id: item.streamId, limit: n }).then(X.mapShortEpg);
+      epgOnbellek[k] = { at: Date.now(), p };
+      p.catch(() => {
+        if (epgOnbellek[k] && epgOnbellek[k].p === p) delete epgOnbellek[k];
+      });
+      return p;
+    },
     urlFor(item, fmt) {
       if (item.kind === 'live') return X.liveUrl(cfg, item.streamId, fmt === 'ts' ? 'ts' : 'm3u8');
       if (item.kind === 'movie') return X.movieUrl(cfg, item.streamId, item.ext || 'mp4');

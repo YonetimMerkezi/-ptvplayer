@@ -154,7 +154,8 @@ export function detailScreen({ item }) {
         return true;
       }
       if (!dizi) {
-        if (a === 'left' || a === 'up') btnIdx = Math.max(0, btnIdx - 1);
+        if (a === 'up') return false; // ▲: Geri düğmesine çıkılır
+        if (a === 'left') btnIdx = Math.max(0, btnIdx - 1);
         else if (a === 'right' || a === 'down') btnIdx = Math.min(bl.length - 1, btnIdx + 1);
         else if (a === 'ok') {
           if (bl[btnIdx]) btnAc(bl[btnIdx]);

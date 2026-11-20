@@ -4,7 +4,7 @@ import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast } from '../ui.js';
 import * as K from '../log.js';
 
-const BASLIK = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
+const BASLIK = { live: 'Canlı TV', guide: 'TV Rehberi', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
 const TUR_AD = { live: 'Canlı', movie: 'Filmler', series: 'Diziler' };
 const SUTUN = 5;
 
@@ -15,14 +15,15 @@ export function browseScreen({ kind }) {
   const kok = el('div', 'screen browse k-' + kind);
   const src = ctx.store.active();
   const sid = src ? src.id : '';
-  const gercekTur = kind === 'favs' || kind === 'recents' ? '' : kind;
+  const gercekTur = kind === 'favs' || kind === 'recents' ? '' : kind === 'guide' ? 'live' : kind;
+  const canliTur = kind === 'live' || kind === 'guide'; // sağda şimdi/sonra paneli olan türler
   const solVar = kind !== 'recents';
   kok.innerHTML =
     ustCubuk(BASLIK[kind], src ? esc(src.name) : '') +
     '<div class="br">' +
     (solVar ? '<div class="cats"></div>' : '') +
     '<div class="content' + (solVar ? '' : ' wide') + '"></div>' +
-    (kind === 'live' ? '<div class="info"></div>' : '') +
+    (canliTur ? '<div class="info"></div>' : '') +
     '</div>' +
     '<div class="hint" id="hint"></div>';
 
@@ -39,9 +40,15 @@ export function browseScreen({ kind }) {
   let katT = 0;
   let epgT = 0;
   let epgNo = 0;
+  let kapali = false;
+  // Rehber: satırlarda görünen kanalların programları (kanal kimliği → liste); en çok 3 istek aynı anda
+  const epgMap = {};
+  const epgIstendi = {};
+  let epgKuyruk = [];
+  let epgCalisan = 0;
 
   const ipucu = () => {
-    const o = kind === 'live' ? 'OK: izle' : kind === 'recents' ? 'OK: devam et' : 'OK: aç';
+    const o = canliTur ? 'OK: izle' : kind === 'recents' ? 'OK: devam et' : 'OK: aç';
     const f = kind === 'recents' ? 'Sarı: geçmişi temizle' : 'Sarı / OK basılı tut: favori';
     hint.innerHTML = '▲▼◀▶ gezin · ' + o + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + ' · Geri';
   };
@@ -64,7 +71,34 @@ export function browseScreen({ kind }) {
   };
 
   // --- sağ: içerik
+  // Rehber satırının program metni ve ilerleme yüzdesi
+  const programSatiri = (it) => {
+    if (!provider() || !provider().hasEpg) return { h: '<span class="dim">Bu kaynakta program rehberi yok</span>', y: -1 };
+    const l = epgMap[it.id];
+    if (!l) return { h: '<span class="dim">…</span>', y: -1 };
+    const t = Date.now();
+    const simdi = l.filter((e) => e.s <= t && t < e.e)[0];
+    const sonra = l.filter((e) => e.s >= t)[0];
+    if (!simdi && !sonra) return { h: '<span class="dim">Program bilgisi yok</span>', y: -1 };
+    let h = '';
+    let y = -1;
+    if (simdi) {
+      y = Math.max(0, Math.min(100, Math.round(((t - simdi.s) / (simdi.e - simdi.s)) * 100)));
+      h += '<b>' + saat(simdi.s) + '</b>' + esc(simdi.t);
+    }
+    if (sonra) h += '<span class="sn">' + saat(sonra.s) + ' ' + esc(sonra.t) + '</span>';
+    return { h, y };
+  };
+  const rehberRender = (it) => {
+    const p = programSatiri(it);
+    return (
+      '<span class="num">' + (it.num || '') + '</span><span class="logo">' + logoHtml(it.logo) + '</span><span class="g2"><span class="g-n">' + esc(it.name) + '</span><span class="g-p">' + p.h + '</span>' +
+      (p.y >= 0 ? '<span class="g-b"><i style="width:' + p.y + '%"></i></span>' : '') +
+      '</span>' + yildiz(sid, it)
+    );
+  };
   const satirRender = (it) => {
+    if (kind === 'guide') return rehberRender(it);
     if (it.kind === 'live') {
       return '<span class="num">' + (it.num || '') + '</span><span class="logo">' + logoHtml(it.logo) + '</span><span class="nm">' + esc(it.name) + '</span>' + yildiz(sid, it);
     }
@@ -82,14 +116,17 @@ export function browseScreen({ kind }) {
     const yeni = el('div', 'content' + (solVar ? '' : ' wide') + (izgara ? ' grid' : ''));
     contEl.parentNode.replaceChild(yeni, contEl);
     contEl = yeni;
-    const rowH = izgara ? Math.round((contEl.clientWidth / SUTUN) * 1.5 + px() * 3.2) : Math.round(px() * 4.2);
+    const rowH = izgara ? Math.round((contEl.clientWidth / SUTUN) * 1.5 + px() * 3.2) : Math.round(px() * (kind === 'guide' ? 6.2 : 4.2));
     list = new VList(contEl, {
       cols: izgara ? SUTUN : 1,
       rowH,
       render: kind === 'recents' ? sonRender : izgara ? hucreRender : satirRender,
       empty: 'Burada gösterilecek bir şey yok',
       onFocus: (it) => {
-        if (it && it.kind === 'live') epgIste(it);
+        if (it && it.kind === 'live') {
+          epgIste(it);
+          rehberOnYukle();
+        }
       },
       onActivate: (it, i) => ac(it, i),
     });
@@ -120,6 +157,7 @@ export function browseScreen({ kind }) {
       return;
     }
     list.setMessage('Yükleniyor…');
+    epgKuyruk = [];
     try {
       const l = await provider().items(gercekTur, c.id);
       if (n !== yukSayac) return;
@@ -133,6 +171,49 @@ export function browseScreen({ kind }) {
   }
 
   // --- canlı TV: şimdi / sonra
+  // Rehber: görünen kanalların programlarını sırayla, en çok 3 istekle ister; gelen satır yeniden çizilir
+  function rehberOnYukle() {
+    if (kind !== 'guide' || !list || !provider() || !provider().hasEpg) return;
+    const bas = Math.max(0, list.index - 2);
+    const son = Math.min(list.items.length - 1, list.index + list.visRows + 2);
+    epgKuyruk = [];
+    for (let i = bas; i <= son; i++) {
+      const it = list.items[i];
+      if (it && it.kind === 'live' && !epgIstendi[it.id]) epgKuyruk.push(it);
+    }
+    epgIsle();
+  }
+  function epgIsle() {
+    while (epgCalisan < 3 && epgKuyruk.length) {
+      const it = epgKuyruk.shift();
+      if (epgIstendi[it.id]) continue;
+      epgIstendi[it.id] = 1;
+      epgCalisan++;
+      provider()
+        .shortEpg(it, 4)
+        .then(
+          (l) => {
+            epgMap[it.id] = l;
+          },
+          () => {
+            epgMap[it.id] = [];
+            setTimeout(() => {
+              delete epgIstendi[it.id]; // başarısız olanlar yarım dakika sonra yeniden denenebilir
+              delete epgMap[it.id];
+            }, 30000);
+          },
+        )
+        .then(() => {
+          epgCalisan--;
+          if (!kapali && list) {
+            const i = list.items.indexOf(it);
+            if (i >= 0) list.redraw(i);
+          }
+          epgIsle();
+        });
+    }
+  }
+
   function epgIste(it) {
     if (!infoEl) return;
     clearTimeout(epgT);
@@ -141,9 +222,23 @@ export function browseScreen({ kind }) {
     if (!provider() || !provider().hasEpg) return;
     epgT = setTimeout(async () => {
       try {
-        const l = await provider().shortEpg(it);
+        const l = await provider().shortEpg(it, kind === 'guide' ? 8 : 3);
         if (n !== epgNo) return;
         const t = Date.now();
+        if (kind === 'guide') {
+          // Kanalın yayın akışı: şimdikinden başlayarak sıradaki programlar
+          const gelecek = l.filter((e) => e.e > t);
+          let g = '<div class="i-t">' + esc(it.name) + '</div>';
+          if (!gelecek.length) g += '<div class="i-n dim">Program bilgisi yok</div>';
+          for (let i = 0; i < gelecek.length && i < 8; i++) {
+            const e = gelecek[i];
+            const simdi = e.s <= t;
+            g += '<div class="g-s' + (simdi ? ' now' : '') + '"><b>' + saat(e.s) + '</b>' + esc(e.t) + '</div>';
+            if (simdi && e.d) g += '<div class="g-d">' + esc(e.d.length > 170 ? e.d.slice(0, 167) + '…' : e.d) + '</div>';
+          }
+          infoEl.innerHTML = g;
+          return;
+        }
         const simdi = l.filter((e) => e.s <= t && t < e.e)[0];
         const sonra = l.filter((e) => e.s >= t)[0];
         let h = '<div class="i-t">' + esc(it.name) + '</div>';
@@ -220,6 +315,7 @@ export function browseScreen({ kind }) {
         else if (list) list.setItems(list.items, true);
         if (cats) cats.setItems(cats.items, true);
         odak(bolge);
+        rehberOnYukle();
       }
     },
     onLong: favDegis,
@@ -263,10 +359,13 @@ export function browseScreen({ kind }) {
     onHide() {
       clearTimeout(katT);
       clearTimeout(epgT);
+      epgKuyruk = [];
     },
     destroy() {
+      kapali = true;
       clearTimeout(katT);
       clearTimeout(epgT);
+      epgKuyruk = [];
     },
   };
 }

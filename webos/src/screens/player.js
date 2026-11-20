@@ -18,9 +18,12 @@ export function playerScreen({ list, index, fresh }) {
   const sid = src ? src.id : '';
   kok.innerHTML =
     '<video id="vid"></video>' +
-    '<div class="p-ov"><div class="p-top"><div class="p-title"></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
+    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">‹ Geri</div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
     '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-hint"></div></div></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
+  kok.addEventListener('mousemove', () => {
+    if (!kapali) goster();
+  });
   const v = kok.querySelector('#vid');
   const ov = kok.querySelector('.p-ov');
   const titleEl = kok.querySelector('.p-title');

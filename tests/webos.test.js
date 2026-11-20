@@ -299,3 +299,30 @@ test('paket: Chromium 38 (webOS 3) için yasak API/özellikler kaynakta kullanı
   assert.ok(!/var\(--|display\s*:\s*grid|(^|[;{\s])gap\s*:|(^|[;{\s])inset\s*:/m.test(css), 'tv.css Chromium 38 dışı özellik içeriyor');
   assert.deepEqual(sorunlar, []);
 });
+
+test('data/xtream: shortEpg adet parametresi, kısa süreli önbellek ve hata sonrası yeniden deneme', async () => {
+  const istekler = [];
+  let bozuk = true;
+  const b64 = (t) => Buffer.from(t, 'utf8').toString('base64');
+  const net = {
+    json: async (url) => {
+      istekler.push(url);
+      if (!url.includes('action=get_short_epg')) return {};
+      if (bozuk) throw new AgHatasi('Zaman aşımı', 0);
+      return { epg_listings: [{ start_timestamp: '2000', stop_timestamp: '3000', title: b64('Haber'), description: b64('Gün özeti') }, { start_timestamp: '3000', stop_timestamp: '4000', title: b64('Dizi') }] };
+    },
+  };
+  const p = createProvider(CFG, net);
+  const kanal = { streamId: 11 };
+  await assert.rejects(() => p.shortEpg(kanal, 8), /Zaman aşımı/);
+  bozuk = false;
+  const l = await p.shortEpg(kanal, 8);
+  assert.deepEqual(l.map((e) => e.t), ['Haber', 'Dizi']);
+  assert.equal(l[0].s, 2000000);
+  assert.ok(istekler[istekler.length - 1].includes('limit=8') && istekler[istekler.length - 1].includes('stream_id=11'));
+  const n = istekler.length;
+  await p.shortEpg(kanal, 8);
+  assert.equal(istekler.length, n, 'taze önbellek varken yeniden istenmez');
+  await p.shortEpg(kanal, 3);
+  assert.equal(istekler.length, n + 1, 'farklı adet ayrı istektir');
+});
