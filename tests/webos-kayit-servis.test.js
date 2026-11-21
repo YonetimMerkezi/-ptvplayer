@@ -168,3 +168,95 @@ test('kayıt servisi: kaydedilen dosya medya sunucusundan Range ile oynatılabil
   assert.equal(svc._medyaYol(join(yedek, 'baska.ts')), null, 'geliştirici alanının geri kalanı izinli değil');
   assert.ok(existsSync(r.dosya));
 });
+
+test('kayıt servisi: kayitAlan her diskin yazılabilirliğini ve boş alanını bildirir; blockinfo bellek sayılmaz', async () => {
+  mkdirSync(join(usb, 'blockinfo'), { recursive: true });
+  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
+  const r = await new Promise((coz, red) => svc.kayitAlan({}, (e, x) => (e ? red(e) : coz(x))));
+  assert.equal(r.returnValue, true);
+  const usbDisk = r.diskler.filter((d) => d.ad === 'USB 1 (sda1)')[0];
+  assert.ok(usbDisk, 'USB bölümü listelenir');
+  assert.equal(usbDisk.yazilabilir, true);
+  assert.ok(usbDisk.bos > 0, 'df boş alanı verir: ' + usbDisk.bos);
+  assert.ok(!r.diskler.some((d) => /blockinfo/.test(d.ad)), 'blockinfo bir bellek değildir');
+  assert.equal(r.diskler[r.diskler.length - 1].ad, 'Geliştirici alanı');
+  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
+  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya'); // klasör yerine dosya: yazılamayan disk olarak raporlanır
+  const r2 = await new Promise((coz, red) => svc.kayitAlan({}, (e, x) => (e ? red(e) : coz(x))));
+  const kotu = r2.diskler.filter((d) => d.ad === 'USB 1 (sda1)')[0];
+  assert.equal(kotu.yazilabilir, false);
+  assert.equal(kotu.hata, 'ENOTDIR');
+  rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
+});
+
+test('kayıt servisi: kayitAlan yazılamayan diskin sahibi, izni ve servis kimliğini bildirir', async () => {
+  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
+  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya'); // klasör yerine dosya: yazılamayan disk
+  try {
+    const r = await new Promise((coz, red) => svc.kayitAlan({}, (e, x) => (e ? red(e) : coz(x))));
+    const d = r.diskler.filter((x) => x.ad === 'USB 1 (sda1)')[0];
+    assert.equal(d.yazilabilir, false);
+    assert.equal(typeof d.ayrinti.mod, 'string');
+    assert.ok(d.ayrinti.mod.length >= 3, 'izin kipi sekizlik: ' + d.ayrinti.mod);
+    assert.equal(typeof d.ayrinti.sahipUid, 'number');
+    assert.equal(typeof r.kullanici.uid, 'number');
+    assert.ok(r.diskler.filter((x) => x.yazilabilir).every((x) => !x.ayrinti), 'yazılabilen diskte ayrıntı yok');
+  } finally {
+    rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
+  }
+});
+
+// Kök yetkili indirme servisini taklit eder: verilen adresi gerçekten indirip hedefe yazar (medya sunucusu dahil)
+function sahteIndirme(yapilan) {
+  return (uri, par, cb) => {
+    yapilan.push([uri, par]);
+    http.get(par.target, (res) => {
+      const parcalar = [];
+      res.on('data', (c) => parcalar.push(c));
+      res.on('end', () => {
+        writeFileSync(join(par.targetDir, par.targetFilename), Buffer.concat(parcalar));
+        cb({ returnValue: true, completed: true });
+      });
+    });
+  };
+}
+const usbDene = () => new Promise((coz, red) => svc.kayitUsbDene({}, (e, x) => (e ? red(e) : coz(x))));
+
+test('kayıt servisi: kayitUsbDene — kök yetkili indirme servisi dosyayı USB’ye yazarsa "yazildi"', async () => {
+  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
+  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya'); // doğrudan yazılamayan USB
+  const yapilan = [];
+  svc._lunaAyarla(sahteIndirme(yapilan), 3000);
+  try {
+    const r = await usbDene();
+    assert.equal(r.returnValue, true);
+    assert.equal(r.sonuclar.length, 1);
+    assert.equal(r.sonuclar[0].ad, 'USB 1 (sda1)');
+    assert.equal(r.sonuclar[0].sonuc, 'yazildi');
+    assert.equal(yapilan[0][0], 'luna://com.webos.service.downloadmanager/download');
+    assert.match(yapilan[0][1].target, /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]+\//, 'kaynak yerel medya sunucusundan');
+    assert.equal(yapilan[0][1].targetDir, bolum);
+    assert.equal(readFileSync(join(bolum, 'iptv-kayit-testi.bin')).length, 4096);
+    assert.ok(!existsSync(join(yedek, 'IPTV-Kayit', 'iptv-kayit-testi.bin')), 'kaynak dosya temizlenir');
+  } finally {
+    svc._lunaAyarla(null);
+    rmSync(join(bolum, 'iptv-kayit-testi.bin'), { force: true });
+    rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
+  }
+});
+
+test('kayıt servisi: kayitUsbDene — indirme servisi hiçbir şey yazmazsa "yok" ve yanıt bildirilir; luna yoksa hata', async () => {
+  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
+  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya');
+  try {
+    svc._lunaAyarla(null);
+    await assert.rejects(usbDene().then((r) => (r.returnValue === false ? Promise.reject(new Error(r.errorText)) : r)), /Luna çağrısı/);
+    svc._lunaAyarla((uri, par, cb) => cb({ returnValue: false, errorText: 'Denied method call' }), 600);
+    const r = await usbDene();
+    assert.equal(r.sonuclar[0].sonuc, 'yok');
+    assert.match(r.sonuclar[0].yanit, /Denied method call/);
+  } finally {
+    svc._lunaAyarla(null);
+    rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
+  }
+});

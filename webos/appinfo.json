@@ -12,5 +12,6 @@
   "resolution": "1920x1080",
   "disallowScrollingInMainFrame": true,
   "disableBackHistoryAPI": true,
+  "requiredPermissions": ["download.management", "download.operation", "storageaccess.operation"],
   "requiredACG": []
 }

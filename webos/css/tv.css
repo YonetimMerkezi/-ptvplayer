@@ -309,7 +309,7 @@ input.on2, .on2 input { border-color: #2dd4bf; background: #0f1a2a; }
 .p-k .k-y { background: #facc15; }
 .p-k .k-b { background: #3b82f6; }
 .p-acts { display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; -webkit-align-items: flex-end; align-items: flex-end; margin-top: 1.2rem; min-height: 6.4rem; }
-.p-b { display: block; min-width: 7.6rem; margin: 0 .8rem .6rem 0; padding: .7rem 1rem .6rem; border-radius: 1.4rem; text-align: center; background: rgba(21, 27, 43, .72); color: #dbe2f2; -webkit-transition: -webkit-transform .14s, background-color .14s, box-shadow .14s; transition: transform .14s, background-color .14s, box-shadow .14s; }
+.p-b { display: block; min-width: 6.4rem; margin: 0 .5rem .6rem 0; padding: .7rem .7rem .6rem; border-radius: 1.4rem; text-align: center; background: rgba(21, 27, 43, .72); color: #dbe2f2; -webkit-transition: -webkit-transform .14s, background-color .14s, box-shadow .14s; transition: transform .14s, background-color .14s, box-shadow .14s; }
 .p-i { display: block; height: 3rem; }
 .p-i svg { width: 3rem; height: 3rem; fill: currentColor; }
 .p-b em { display: block; margin-top: .2rem; font-style: normal; font-size: 1.3rem; line-height: 1.5rem; white-space: nowrap; }

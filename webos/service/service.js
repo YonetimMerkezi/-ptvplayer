@@ -23,6 +23,8 @@
 //   kayitBaslat {url, ad, sureSn}           → {returnValue, id, dosya, disk}
 //   kayitDurum  {id}                        → {returnValue, durum, bayt, sureMs, dosya, disk, http, mesaj}
 //   kayitDurdur {id}                        → {returnValue, durum, ...}
+//   kayitAlan   {}                          → {returnValue, kullanici{uid,gid}, diskler[{ad, yol, yazilabilir, hata, bos, ayrinti}]}   (bos: boş bayt, bilinmiyorsa null)
+//   kayitUsbDene {}                         → {returnValue, sonuclar[{ad, yol, sonuc: yazildi|varsayilan|yok|hata, yanit}]}   (kök yetkili indirme servisiyle USB'ye yazma denemesi)
 'use strict';
 
 var http = require('http');
@@ -30,6 +32,7 @@ var https = require('https');
 var zlib = require('zlib');
 var urlm = require('url');
 var os = require('os');
+var childProc = require('child_process');
 var crypto = require('crypto');
 var fs = require('fs');
 var pathm = require('path');
@@ -511,6 +514,7 @@ function medyaKokler() {
   var kokler = [];
   var sira = 0;
   medyaAltlar(usbDizini).forEach(function (d) {
+    if (/^blockinfo$/i.test(d)) return; // sistem klasörü, bellek değil
     var y1 = usbDizini + '/' + d;
     var bolumler = medyaAltlar(y1).filter(function (a) {
       return /^[a-z]+\d+$/i.test(a);
@@ -950,6 +954,174 @@ function kayitBaslat(p, cb) {
   cb(null, o);
 }
 
+// Boş alan: `df -k yol` (webOS'ta busybox df vardır). Dönen bayt ya da bilinmiyorsa null.
+function bosAlan(yol, cb) {
+  var bitti = false;
+  function son(v) {
+    if (bitti) return;
+    bitti = true;
+    cb(v);
+  }
+  try {
+    childProc.execFile('df', ['-k', yol], { timeout: 4000 }, function (e, cikti) {
+      if (e || !cikti) return son(null);
+      var satirlar = String(cikti).split('\n').filter(function (x) {
+        return x.replace(/\s+/g, '') !== '';
+      });
+      var t = satirlar.length > 1 ? satirlar[satirlar.length - 1].trim().split(/\s+/) : [];
+      var bos = Number(t[3]);
+      son(t.length >= 4 && bos >= 0 && isFinite(bos) ? bos * 1024 : null);
+    });
+  } catch (e2) {
+    son(null);
+  }
+}
+
+// cb(null, {returnValue, diskler}). Her aday için yazılabilir mi (klasör açılır, deneme dosyası yazılır) ve boş alan.
+function kayitAlan(p, cb) {
+  var adaylar = kayitAdaylari();
+  var sonuc = [];
+  var kalan = adaylar.length;
+  if (!kalan) return cb(null, { returnValue: true, diskler: [] });
+  adaylar.forEach(function (a, i) {
+    var k = kayitKlasoru(a.yol);
+    var kayit = { ad: a.ad, yol: a.yol, yazilabilir: !!k.yol, hata: k.hata || '', bos: null };
+    if (!k.yol) kayit.ayrinti = diskAyrinti(a.yol);
+    sonuc[i] = kayit;
+    bosAlan(k.yol || a.yol, function (bos) {
+      kayit.bos = bos;
+      if (--kalan === 0) cb(null, { returnValue: true, kullanici: kullaniciKimligi(), diskler: sonuc });
+    });
+  });
+}
+
+// Yazılamayan bir diskin nedenini anlamak için: sahibi, izin kipi ve bağlama seçenekleri (/proc/mounts).
+function kullaniciKimligi() {
+  var k = { uid: null, gid: null };
+  try {
+    k.uid = process.getuid();
+    k.gid = process.getgid();
+  } catch (e) {
+    /* kimlik okunamadı */
+  }
+  return k;
+}
+
+function diskAyrinti(yol) {
+  var a = { sahipUid: null, sahipGid: null, mod: '', baglama: '' };
+  try {
+    var st = fs.statSync(yol);
+    a.sahipUid = st.uid;
+    a.sahipGid = st.gid;
+    a.mod = (st.mode & 4095).toString(8);
+  } catch (e) {
+    /* klasör okunamadı */
+  }
+  try {
+    var en = '';
+    String(fs.readFileSync('/proc/mounts')).split('\n').forEach(function (satir) {
+      var t = satir.split(' ');
+      if (t.length < 4 || !(yol === t[1] || yol.indexOf(t[1] + '/') === 0) || t[1].length <= en.length) return;
+      en = t[1];
+      a.baglama = (t[2] + ' ' + t[3]).slice(0, 90);
+    });
+  } catch (e2) {
+    /* /proc/mounts yok (masaüstü) */
+  }
+  return a;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// USB'ye yazma denemesi: bu servis kök yetkisiz çalışır; TV'nin kök yetkili indirme servisi (luna) yerel bir adresten
+// küçük bir dosyayı USB'ye indirebilir mi? Evet ise kayıt aynı yolla USB'ye taşınabilir. Sonuç kullanıcıya gösterilir.
+var lunaCagri = null; // (uri, parametreler, cb(yanit)) — webOS'ta servis.call'a bağlanır
+var USB_TEST_AD = 'iptv-kayit-testi.bin';
+var USB_TEST_MS = 12000;
+
+function dosyaBoyutu(yol) {
+  try {
+    return fs.statSync(yol).size;
+  } catch (e) {
+    return -1;
+  }
+}
+
+function yanitOzeti(pl) {
+  try {
+    return JSON.stringify(pl).slice(0, 140);
+  } catch (e) {
+    return '';
+  }
+}
+
+function usbTekDene(h, url, boyut, cb) {
+  var hedef = h.yol + '/' + USB_TEST_AD;
+  var yedekHedef = '/media/internal/downloads/' + USB_TEST_AD; // indirme servisi yetkiyi reddederse düştüğü klasör
+  var yanit = '';
+  var son = false;
+  var t = null;
+  function bitir(sonuc) {
+    if (son) return;
+    son = true;
+    clearInterval(t);
+    cb({ ad: h.ad, yol: h.yol, sonuc: sonuc, yanit: yanit });
+  }
+  try {
+    lunaCagri('luna://com.webos.service.downloadmanager/download', { target: url, targetDir: h.yol, targetFilename: USB_TEST_AD, subscribe: false }, function (pl) {
+      yanit = yanitOzeti(pl);
+    });
+  } catch (e) {
+    yanit = hataKodu(e);
+    return bitir('hata');
+  }
+  var bas = Date.now();
+  t = setInterval(function () {
+    if (dosyaBoyutu(hedef) === boyut) return bitir('yazildi');
+    if (dosyaBoyutu(yedekHedef) === boyut) return bitir('varsayilan');
+    if (Date.now() - bas > USB_TEST_MS) bitir('yok');
+  }, 300);
+}
+
+// cb(null, {returnValue, sonuclar}). Yalnız doğrudan yazılamayan diskler denenir.
+function kayitUsbDene(p, cb) {
+  if (!lunaCagri) return cb(null, { returnValue: false, errorText: 'Luna çağrısı bu ortamda yok' });
+  var kaynakKlasor = '';
+  var hedefler = [];
+  kayitAdaylari().forEach(function (a) {
+    var k = kayitKlasoru(a.yol);
+    if (k.yol) kaynakKlasor = kaynakKlasor || k.yol;
+    else hedefler.push(a);
+  });
+  if (!hedefler.length) return cb(null, { returnValue: true, sonuclar: [] });
+  if (!kaynakKlasor) return cb(null, { returnValue: false, errorText: 'Deneme dosyası için yazılabilir yer yok' });
+  var icerik = new Buffer(4096);
+  icerik.fill(65);
+  var kaynak = kaynakKlasor + '/' + USB_TEST_AD;
+  try {
+    fs.writeFileSync(kaynak, icerik);
+  } catch (e) {
+    return cb(null, { returnValue: false, errorText: 'Deneme dosyası yazılamadı: ' + hataKodu(e) });
+  }
+  medyaBaslat({}, function (e2, b) {
+    if (e2) return cb(null, { returnValue: false, errorText: String((e2 && e2.message) || e2) });
+    var url = 'http://127.0.0.1:' + b.port + '/' + b.jeton + '/' + encodeURIComponent(kaynak);
+    var sonuclar = [];
+    var kalan = hedefler.length;
+    hedefler.forEach(function (h, i) {
+      usbTekDene(h, url, icerik.length, function (r) {
+        sonuclar[i] = r;
+        if (--kalan > 0) return;
+        try {
+          fs.unlinkSync(kaynak);
+        } catch (e3) {
+          /* kaynak zaten yok */
+        }
+        cb(null, { returnValue: true, sonuclar: sonuclar });
+      });
+    });
+  });
+}
+
 function kayitBul(p) {
   var r = kayitlar[p && p.id];
   if (r) return r;
@@ -985,6 +1157,12 @@ module.exports = {
   kayitBaslat: kayitBaslat,
   kayitDurum: kayitDurum,
   kayitDurdur: kayitDurdur,
+  kayitAlan: kayitAlan,
+  kayitUsbDene: kayitUsbDene,
+  _lunaAyarla: function (f, ms) {
+    lunaCagri = f;
+    if (ms) USB_TEST_MS = ms;
+  },
   _kayitAyarla: function (yedek) {
     kayitYedekKok = yedek;
   },
@@ -1016,6 +1194,11 @@ try {
 }
 if (Service) {
   var servis = new Service(SERVIS_ADI);
+  lunaCagri = function (uri, par, cb) {
+    servis.call(uri, par, function (m) {
+      cb(m && m.payload);
+    });
+  };
   // Parçalı okuma sürerken servis kapanmasın (dinamik servisler boşta ~5 sn sonra sonlanır)
   var etkinlik = null;
   var canliTut = function () {
@@ -1074,6 +1257,16 @@ if (Service) {
     kayitBaslat(m.payload || {}, function (e, r) {
       m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
       canliTut();
+    });
+  });
+  servis.register('kayitAlan', function (m) {
+    kayitAlan(m.payload || {}, function (e, r) {
+      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
+    });
+  });
+  servis.register('kayitUsbDene', function (m) {
+    kayitUsbDene(m.payload || {}, function (e, r) {
+      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
     });
   });
   servis.register('kayitDurum', function (m) {

@@ -748,6 +748,9 @@ export function playerScreen({ list, index, fresh }) {
   let kayitSure = 30;
   let kayitT = 0;
   let kayitHata = 0; // art arda başarısız durum sorgusu
+  let kayitDiskler = null; // servisin bildirdiği diskler (yazılabilirlik, boş alan)
+  let kayitKullanici = null; // servisin kullanıcı kimliği (uid:gid)
+  let kayitUsb = { bekliyor: false, metin: '' }; // USB yazma denemesinin durumu ve sonucu
   function kayitGoster() {
     const d = kayit && kayit.d;
     recEl.textContent = kayitIs.calisiyor(d) ? '● KAYIT ' + sure(d.sureMs) : '';
@@ -758,9 +761,14 @@ export function playerScreen({ list, index, fresh }) {
     const sureAd = kayitIs.sureAdi(kayitSure);
     if (kayit && kayit.bekliyor) return { satirlar: [{ ad: 'Kayıt başlatılıyor…' }], not: 'Disk yazılabilir mi denetleniyor, yayına bağlanılıyor.', bilgi: true };
     if (kayitIs.calisiyor(d)) return { satirlar: [{ ad: 'Kaydı durdur', eyl: 'durdur' }], not: kayitIs.durumMetni(d, kayit.sureSn) };
-    if (d && d.durum === 'bitti') return { satirlar: [{ ad: 'Kaydı oynat', eyl: 'oynat' }, { ad: 'Yeniden kaydet', sag: sureAd, eyl: 'basla' }], not: kayitIs.durumMetni(d, 0) };
-    const ilk = d ? kayitIs.durumMetni(d, 0) : kayit && kayit.hata ? 'Başlatılamadı: ' + kayit.hata : 'Canlı yayın USB belleğe MPEG-TS olarak yazılır. ◀▶ süreyi değiştirir. Hesabınız tek bağlantıya izin veriyorsa yayın kesilebilir.';
-    return { satirlar: [{ ad: d || (kayit && kayit.hata) ? 'Yeniden dene' : 'Kaydı başlat', sag: sureAd, eyl: 'basla' }], not: ilk };
+    const usbSatir = { ad: kayitUsb.bekliyor ? 'USB yazma deneniyor…' : 'USB yazma testi', eyl: 'usbtest' };
+    const usbNot = kayitUsb.metin ? kayitUsb.metin + ' — ' : '';
+    if (d && d.durum === 'bitti') return { satirlar: [{ ad: 'Kaydı oynat', eyl: 'oynat' }, { ad: 'Yeniden kaydet', sag: sureAd, eyl: 'basla' }, usbSatir], not: usbNot + kayitIs.durumMetni(d, 0) };
+    const alan = kayitDiskler ? kayitIs.alanMetni(kayitDiskler) : '';
+    const ayrinti = kayitDiskler ? kayitIs.ayrintiMetni(kayitDiskler, kayitKullanici) : '';
+    const genel = 'Yayın MPEG-TS olarak yazılır. ◀▶ süreyi değiştirir. Hesabınız tek bağlantıya izin veriyorsa yayın kesilebilir.';
+    const ilk = d ? kayitIs.durumMetni(d, 0) : kayit && kayit.hata ? 'Başlatılamadı: ' + kayit.hata : usbNot + (alan ? alan + ' — ' : '') + (ayrinti ? ayrinti + ' — ' : '') + genel;
+    return { satirlar: [{ ad: d || (kayit && kayit.hata) ? 'Yeniden dene' : 'Kaydı başlat', sag: sureAd, eyl: 'basla' }, usbSatir], not: ilk };
   }
   function kayitPanelYenile() {
     if (!kayitPanel || secim !== kayitPanel) return;
@@ -822,6 +830,20 @@ export function playerScreen({ list, index, fresh }) {
       kayitPanelYenile();
     }
   }
+  async function kayitUsbDene() {
+    if (kayitUsb.bekliyor) return;
+    kayitUsb = { bekliyor: true, metin: '' };
+    kayitPanelYenile();
+    let metin;
+    try {
+      metin = kayitIs.usbMetni(await kayitIs.api.usbDene());
+    } catch (e) {
+      metin = 'USB denemesi yapılamadı: ' + ((e && e.message) || 'servis hatası');
+    }
+    if (kapali) return;
+    kayitUsb = { bekliyor: false, metin };
+    kayitPanelYenile();
+  }
   async function kayitOynat() {
     const d = kayit && kayit.d;
     if (!d || d.durum !== 'bitti' || !d.dosya) return;
@@ -870,11 +892,23 @@ export function playerScreen({ list, index, fresh }) {
         if (x.eyl === 'basla') kayitBasla();
         else if (x.eyl === 'durdur') kayitDurdur();
         else if (x.eyl === 'oynat') kayitOynat();
+        else if (x.eyl === 'usbtest') kayitUsbDene();
       },
     };
     kayitPanel = s;
     secimAc(s);
     if (kayit && kayit.id && kayitIs.calisiyor(kayit.d)) kayitYokla(); // panel açılırken en güncel durum
+    kayitIs.api
+      .alan()
+      .then((r) => {
+        if (kapali) return;
+        kayitDiskler = (r && r.diskler) || [];
+        kayitKullanici = (r && r.kullanici) || null;
+        kayitPanelYenile();
+      })
+      .catch(() => {
+        /* disk bilgisi alınamadı: genel not kalır */
+      });
   }
 
   function ekranAc() {
@@ -953,6 +987,7 @@ export function playerScreen({ list, index, fresh }) {
     r.push({ ad: 'Ekran', sag: oranBul()[1] });
     if (gecikmeMs) r.push({ ad: 'Ses gecikmesi', sag: gecikmeMs + ' ms' });
     if (canli() && simdiProg) r.push({ ad: 'Program', sag: simdiProg.t });
+    if (canli() && provider() && provider().type === 'xtream') r.push({ ad: 'Sağlayıcı arşivi', sag: it.archive ? 'Var · ' + (it.archiveDays || 1) + ' gün' : 'Yok' }); // geri sarma için
     secimAc({ baslik: 'Bilgi', satirlar: r, idx: 0, bilgi: true, calis: secimKapat });
   }
 

@@ -61,6 +61,14 @@
         {
           "name": "kayitDurdur",
           "description": "Süren kaydı durdurur"
+        },
+        {
+          "name": "kayitAlan",
+          "description": "Kayıt için disklerin yazılabilirliğini ve boş alanını verir"
+        },
+        {
+          "name": "kayitUsbDene",
+          "description": "TV'nin kök yetkili indirme servisiyle USB'ye yazmayı dener"
         }
       ]
     }

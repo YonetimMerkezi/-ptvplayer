@@ -37,6 +37,8 @@ Kumanda: oklar gezinir, **OK** seçer, **Geri** döner. Listelerde **Sarı** tu�
 
 **Altyazı:** LG televizyonlar filmin içine gömülü altyazıyı uygulamaya vermez; listede altyazı görünmezse oynatıcıda **Altyazı › Altyazı ara…** ile film ya da bölüm için harici (Türkçe öncelikli) altyazı bulunur. Altyazı sesten kayıksa aynı menüdeki **Altyazıyı kaydır** ile ◀▶ 0,1 sn adımla düzeltilir (tuşu basılı tutarsanız adım büyür). **Altyazı görünümü** boyut, renk, arka plan ve konumu seçtirir (örnek metin gösterilir; ayarlar saklanır ve aranan altyazıya uygulanır). Altyazı kaynağı internet gerektirir; yapımın adı kaynaktaki adla birebir eşleşmezse (Türkçe ad, farklı yıl gibi) bulunamaz. **Fragman** TV'nin YouTube uygulamasında açılır.
 
+**Canlı yayın kaydı (deneme):** Canlı yayında **Kayıt** düğmesi yayını MPEG-TS olarak diske yazar (≈ 7–8 Mbps, saatte yaklaşık 3 GB). Panel, disklerin yazılabilirliğini, boş alanı ve yazılamıyorsa nedenini (diskin sahibi, izni) gösterir. Uygulamanın servisi kök yetkisiz çalıştığı için harici disklere doğrudan yazamayabilir; bu durumda kayıt dahili belleğe gider. **USB yazma testi** satırı, TV'nin kök yetkili indirme servisinin 4 KB'lık bir deneme dosyasını (`iptv-kayit-testi.bin`) USB'ye yazıp yazamadığını dener ve sonucu gösterir.
+
 ## 4. Liste yüklenmiyorsa
 
 Paketlenmiş uygulamalar için tarayıcı kuralları (CORS) bazı sunucuları engelleyebilir. Bu durumda uygulama otomatik olarak **televizyonun içindeki servis** üzerinden bağlanır. Elle seçmek için: **Ayarlar › Ağ yolu › TV servisi**. **Bağlantıyı sına** hangi yolla bağlandığını gösterir.

@@ -43,3 +43,28 @@ test('kayıt: kayıt dosyası yerel medya sunucusu adresiyle oynatılır', () =>
   assert.equal(o.name, 'Kayıt · TRT 1');
   assert.equal(o.url, 'http://127.0.0.1:4321/abc/' + encodeURIComponent('/tmp/usb/sda/sda1/IPTV-Kayit/A B-1.ts'));
 });
+
+test('kayıt: disk özeti — yazılabilir (boş alan ve tahmini süre), yazılamayan (neden), bilinmeyen alan', () => {
+  assert.equal(
+    K.alanMetni([
+      { ad: 'USB 2 (sda1)', yazilabilir: false, hata: 'EACCES', bos: null },
+      { ad: 'Dahili bellek', yazilabilir: true, hata: '', bos: 2.1 * 1024 * 1024 * 1024 },
+      { ad: 'Geliştirici alanı', yazilabilir: true, hata: '', bos: null },
+    ]),
+    'USB 2 (sda1): yazılamıyor (EACCES) · Dahili bellek: 2,10 GB boş (≈ 37 dk) · Geliştirici alanı: yazılabilir'
+  );
+  assert.equal(K.alanMetni(null), '');
+});
+
+test('kayıt: yazılamayan diskin nedeni ve USB denemesinin sonucu metne dökülür', () => {
+  const diskler = [
+    { ad: 'USB 2 (sda1)', yazilabilir: false, hata: 'EACCES', ayrinti: { sahipUid: 0, sahipGid: 0, mod: '755', baglama: 'vfat rw,uid=0' } },
+    { ad: 'Dahili bellek', yazilabilir: true, hata: '' },
+  ];
+  assert.equal(K.ayrintiMetni(diskler, { uid: 1000, gid: 1000 }), 'USB 2 (sda1): sahip 0:0, izin 755, servis 1000:1000, vfat rw,uid=0');
+  assert.equal(K.ayrintiMetni(null, null), '');
+  assert.equal(K.usbMetni({ sonuclar: [] }), 'Denenecek yazılamayan disk yok.');
+  assert.match(K.usbMetni({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'yazildi', yanit: '' }] }), /^USB 2 \(sda1\): yazıldı ✓/);
+  assert.match(K.usbMetni({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'yok', yanit: '{"errorText":"Denied"}' }] }), /yazılamadı \[\{"errorText":"Denied"\}\]$/);
+  assert.match(K.usbMetni({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'varsayilan', yanit: '' }] }), /dahili klasöre yazdı/);
+});

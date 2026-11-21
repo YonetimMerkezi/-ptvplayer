@@ -15,6 +15,8 @@ export const api = {
   baslat: (url, ad, sureSn) => servis('kayitBaslat', { url, ad, sureSn }, 20000),
   durum: (id) => servis('kayitDurum', { id }, 8000),
   durdur: (id) => servis('kayitDurdur', { id }, 8000),
+  alan: () => servis('kayitAlan', {}, 12000),
+  usbDene: () => servis('kayitUsbDene', {}, 30000),
   medyaBaslat: () => servis('medyaBaslat', {}, 10000),
   medyaSor: () => servis('medyaSor', {}, 8000),
 };
@@ -36,6 +38,43 @@ export function boyutYaz(b) {
 
 // Ortalama hız (Mbit/sn)
 export const hizYaz = (bayt, ms) => (ms > 1500 && bayt > 0 ? ((bayt * 8) / 1e6 / (ms / 1000)).toFixed(1).replace('.', ',') + ' Mbps' : '');
+
+// Disk özeti: "Dahili bellek: 2,1 GB boş (≈ 35 dk) · USB 2 (sda1): yazılamıyor (EACCES)". Süre tahmini 8 Mbps'lik yayına göredir.
+export const AKIS_BAYT_SN = 1000000; // 8 Mbps ≈ 1 MB/sn
+export function alanMetni(diskler) {
+  const l = Array.isArray(diskler) ? diskler : [];
+  const p = [];
+  for (let i = 0; i < l.length; i++) {
+    const d = l[i];
+    if (!d || !d.ad) continue;
+    if (!d.yazilabilir) p.push(d.ad + ': yazılamıyor (' + (d.hata || '?') + ')');
+    else if (d.bos > 0) p.push(d.ad + ': ' + boyutYaz(d.bos) + ' boş (≈ ' + Math.floor(d.bos / AKIS_BAYT_SN / 60) + ' dk)');
+    else p.push(d.ad + ': yazılabilir');
+  }
+  return p.join(' · ');
+}
+
+// Yazılamayan diskin nedeni: "USB 2 (sda1): sahip 0:0, izin 755, servis 1000:1000, vfat rw,uid=0".
+export function ayrintiMetni(diskler, kullanici) {
+  const l = Array.isArray(diskler) ? diskler : [];
+  const k = kullanici && kullanici.uid != null ? ', servis ' + kullanici.uid + ':' + kullanici.gid : '';
+  const p = [];
+  for (let i = 0; i < l.length; i++) {
+    const d = l[i];
+    const a = d && !d.yazilabilir ? d.ayrinti : null;
+    if (!a) continue;
+    p.push(d.ad + ': sahip ' + (a.sahipUid != null ? a.sahipUid + ':' + a.sahipGid : '?') + ', izin ' + (a.mod || '?') + k + (a.baglama ? ', ' + a.baglama : ''));
+  }
+  return p.join(' · ');
+}
+
+// USB yazma denemesinin sonucu (kök yetkili indirme servisi)
+export function usbMetni(r) {
+  const l = r && Array.isArray(r.sonuclar) ? r.sonuclar : [];
+  if (!l.length) return 'Denenecek yazılamayan disk yok.';
+  const ad = { yazildi: 'yazıldı ✓ (kök yetkili indirme servisi USB’ye yazabiliyor)', varsayilan: 'indirme servisi yetkiyi vermedi, dahili klasöre yazdı', yok: 'yazılamadı', hata: 'çağrı başarısız' };
+  return l.map((x) => x.ad + ': ' + (ad[x.sonuc] || x.sonuc) + (x.sonuc === 'yazildi' || !x.yanit ? '' : ' [' + x.yanit + ']')).join(' · ');
+}
 
 export const calisiyor = (d) => !!d && (d.durum === 'yaziyor' || d.durum === 'baglaniyor');
 export const bitti = (d) => !!d && (d.durum === 'bitti' || d.durum === 'hata');

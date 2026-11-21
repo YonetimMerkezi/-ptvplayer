@@ -571,6 +571,8 @@ test('kayıt: canlı düğme çubuğunda son sıradadır; kayıt başlar, durum 
   let durum = { returnValue: true, id: 'k1', durum: 'baglaniyor', bayt: 0, sureMs: 0, dosya: '/tmp/usb/sda/sda1/IPTV-Kayit/Kanal_1-20261121-120000.ts', disk: 'USB 1 (sda1)', http: 0, mesaj: '' };
   Object.assign(kayitIs.api, {
     hazir: () => true,
+    alan: async () => ({ kullanici: { uid: 1000, gid: 1000 }, diskler: [{ ad: 'USB 2 (sda1)', yazilabilir: false, hata: 'EACCES', bos: null, ayrinti: { sahipUid: 0, sahipGid: 0, mod: '755', baglama: 'vfat rw' } }, { ad: 'Dahili bellek', yazilabilir: true, hata: '', bos: 2 * 1024 * 1024 * 1024 }] }),
+    usbDene: async () => ({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'yazildi', yanit: '' }] }),
     baslat: async (url, ad, sn) => (cagri.push([url, ad, sn]), { ...durum }),
     durum: async () => ({ ...durum }),
     durdur: async () => ((durum = { ...durum, durum: 'bitti', mesaj: 'Durduruldu' }), { ...durum }),
@@ -585,6 +587,15 @@ test('kayıt: canlı düğme çubuğunda son sıradadır; kayıt başlar, durum 
     assert.match(h, /Kayıt \(deneme\)/);
     assert.match(h, /Kaydı başlat/);
     assert.match(h, /<b>30 sn<\/b>/);
+    await sonraki();
+    assert.match(o.q('.p-pick').innerHTML, /USB 2 \(sda1\): yazılamıyor \(EACCES\) · Dahili bellek: 2,00 GB boş \(≈ 35 dk\)/, 'diskler ve boş alan notta');
+    assert.match(o.q('.p-pick').innerHTML, /sahip 0:0, izin 755, servis 1000:1000, vfat rw/, 'yazılamama nedeni notta');
+    o.tus('down');
+    assert.match(o.q('.p-pick').innerHTML, /USB yazma testi/);
+    o.tus('ok');
+    await sonraki();
+    assert.match(o.q('.p-pick').innerHTML, /USB 2 \(sda1\): yazıldı ✓/, 'USB deneme sonucu notta');
+    o.tus('up');
     o.tus('right');
     assert.match(o.q('.p-pick').innerHTML, /<b>2 dk<\/b>/, '◀▶ süreyi değiştirir');
     o.tus('ok');
