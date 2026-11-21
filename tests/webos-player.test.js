@@ -378,6 +378,35 @@ test('altyazı: film için ara → Türkçe listenin başında → seç → meti
   o.bitir();
 });
 
+test('altyazı: Türkçe ad katalogda başka adla çıkar → "Hangi yapım?" seçtirilir, seçilince altyazılar gelir', async () => {
+  const ag = altyaziAgi();
+  const baz = ag.json;
+  ag.json = async (url) => {
+    if (/search=Esaretin%20Bedeli\.json/.test(url)) {
+      ag.istek.push(url);
+      return { metas: [{ id: 'tt0111161', name: 'The Shawshank Redemption', releaseInfo: '1994' }, { id: 'tt0293927', name: 'Shawshank: The Redeeming Feature', releaseInfo: '2001' }] };
+    }
+    return baz(url);
+  };
+  const o = kur({}, [{ id: 'f2', kind: 'movie', name: 'TR | Esaretin Bedeli (1994)', year: '1994', streamId: 8, ext: 'mp4' }], ag);
+  o.q('#vid').textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /Hangi yapım\?/.test(o.q('.p-pick').innerHTML), 'aday listesi');
+  const html = o.q('.p-pick').innerHTML;
+  assert.match(html, /The Shawshank Redemption \(1994\)/);
+  assert.ok(html.indexOf('(1994)') < html.indexOf('(2001)'), 'yılı uyan aday önce');
+  assert.ok(!ag.istek.some((u) => /\/subtitles\//.test(u)), 'kullanıcı seçmeden altyazı istenmez');
+  o.tus('ok'); // ilk aday
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  assert.ok(ag.istek.some((u) => u.endsWith('/subtitles/movie/tt0111161.json')));
+  o.tus('ok');
+  await bekleKadar(() => o.q('.p-pick').className === 'p-pick', 'panelin kapanması');
+  assert.ok(ag.istek.includes('http://altyazi.test/tr.srt'));
+  o.bitir();
+});
+
 test('altyazı: kaynakta kayıt yoksa ve canlı yayında ne denenir', async () => {
   const o = kur({}, [FILM], altyaziAgi({ bos: true }));
   o.q('#vid').textTracks = [];

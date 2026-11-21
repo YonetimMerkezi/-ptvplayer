@@ -82,26 +82,72 @@ export function imdbSec(metas, baslik, yil) {
 }
 
 const imdbOnbellek = {};
-// Dönen: IMDb kimliği ya da '' (bulunamadı). Ağ hatası fırlatılır ve önbelleğe yazılmaz.
-export async function imdbBul(net, v, ekAdlar) {
+const aramaOnbellek = {};
+const sahip = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+// Aranacak adlar (katalog adı + sağlayıcının verdiği özgün ad) ve filmde yıl
+function aramaAdlari(v, ekAdlar) {
   const t = trailerTitle(v.ad, v.yil);
   const yil = v.tur === 'movie' ? t.year || v.yil || 0 : 0;
-  const anahtar = v.tur + '|' + katla(t.title) + '|' + yil;
-  if (Object.prototype.hasOwnProperty.call(imdbOnbellek, anahtar)) return imdbOnbellek[anahtar];
   const adlar = [t.title];
   const ek = ekAdlar || [];
   for (let i = 0; i < ek.length; i++) {
     const a = trailerTitle(ek[i], yil).title;
     if (a && adlar.indexOf(a) < 0) adlar.push(a);
   }
+  return { adlar, yil, anahtar: v.tur + '|' + katla(t.title) + '|' + yil };
+}
+
+// Cinemeta araması (Türkçe adı da tanır ama sonuçta özgün/İngilizce adı verir). Ağ hatası fırlatılır, önbelleğe yazılmaz.
+async function cinemetaAra(net, tur, ad) {
+  const k = tur + '|' + katla(ad);
+  if (sahip(aramaOnbellek, k)) return aramaOnbellek[k];
+  const r = await net.json(CINEMETA + '/catalog/' + tur + '/top/search=' + encodeURIComponent(ad) + '.json', { timeoutMs: 15000 });
+  const m = r && Array.isArray(r.metas) ? r.metas : [];
+  aramaOnbellek[k] = m;
+  return m;
+}
+
+// Dönen: IMDb kimliği ya da '' (adı birebir tutan yapım yok). Ağ hatası fırlatılır ve önbelleğe yazılmaz.
+export async function imdbBul(net, v, ekAdlar) {
+  const a = aramaAdlari(v, ekAdlar);
+  if (sahip(imdbOnbellek, a.anahtar)) return imdbOnbellek[a.anahtar];
   let id = '';
-  for (let i = 0; i < adlar.length && !id; i++) {
-    if (!adlar[i]) continue;
-    const r = await net.json(CINEMETA + '/catalog/' + v.tur + '/top/search=' + encodeURIComponent(adlar[i]) + '.json', { timeoutMs: 15000 });
-    id = imdbSec(r && r.metas, adlar[i], yil);
+  for (let i = 0; i < a.adlar.length && !id; i++) {
+    if (!a.adlar[i]) continue;
+    id = imdbSec(await cinemetaAra(net, v.tur, a.adlar[i]), a.adlar[i], a.yil);
   }
-  imdbOnbellek[anahtar] = id;
+  imdbOnbellek[a.anahtar] = id;
   return id;
+}
+
+// Ad birebir tutmadıysa (Türkçe adlı yapımlar: Cinemeta "Esaretin Bedeli" aramasına "The Shawshank Redemption" döndürür)
+// kullanıcıya seçtirilecek adaylar: yılı uyanlar önce, en çok 6. Dönen: { liste: [{ id, ad, yil }], adlar, yil }
+export async function imdbAdaylari(net, v, ekAdlar) {
+  const a = aramaAdlari(v, ekAdlar);
+  const gorulen = {};
+  const uyan = [];
+  const digeri = [];
+  for (let i = 0; i < a.adlar.length; i++) {
+    if (!a.adlar[i]) continue;
+    const metas = await cinemetaAra(net, v.tur, a.adlar[i]);
+    for (let j = 0; j < metas.length; j++) {
+      const m = metas[j];
+      const id = String((m && (m.imdb_id || m.id)) || '');
+      if (!/^tt\d+$/.test(id) || gorulen[id]) continue;
+      gorulen[id] = true;
+      const y = yilOf(m);
+      const aday = { id, ad: String((m && m.name) || id), yil: y };
+      if (!a.yil || !y || Math.abs(y - a.yil) <= 1) uyan.push(aday);
+      else digeri.push(aday);
+    }
+  }
+  return { liste: uyan.concat(digeri).slice(0, 6), adlar: a.adlar, yil: a.yil };
+}
+
+// Kullanıcının seçtiği yapım bu oturumda hatırlanır (aynı yapım için yeniden sorulmaz)
+export function imdbHatirla(v, ekAdlar, id) {
+  imdbOnbellek[aramaAdlari(v, ekAdlar).anahtar] = id;
 }
 
 // Eklenti yanıtından seçim listesi: Türkçe önce, sonra İngilizce, sonra öteki diller (dil başına 1)

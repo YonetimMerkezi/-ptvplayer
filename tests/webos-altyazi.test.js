@@ -89,6 +89,32 @@ test('altyazı: imdbSec ad birebir ve yıl ±1 olmalı; imdbBul özgün adı den
   assert.equal(await A.imdbBul(net, { tur: 'movie', ad: 'Başka Film', yil: 2001 }, []), '', 'hata önbelleğe yazılmadı; bulunamayan "" döner');
 });
 
+test('altyazı: imdbAdaylari yılı uyanları öne alır, yinelenenleri ve geçersiz kimlikleri eler; imdbHatirla seçimi saklar', async () => {
+  const istek = [];
+  const net = {
+    json: async (url) => {
+      istek.push(url);
+      if (/search=Esaretin%20Bedeli\.json/.test(url)) {
+        return { metas: [{ id: 'tt0293927', name: 'Shawshank: The Redeeming Feature', releaseInfo: '2001' }, { id: 'tt0111161', name: 'The Shawshank Redemption', releaseInfo: '1994' }, { id: 'tt0111161', name: 'kopya', releaseInfo: '1994' }, { id: 'x', name: 'geçersiz' }] };
+      }
+      return { metas: [] };
+    },
+  };
+  const v = { tur: 'movie', ad: 'TR | Esaretin Bedeli (1994)', yil: 1994, sezon: 0, bolum: 0 };
+  assert.equal(await A.imdbBul(net, v, []), '', 'ad birebir tutmaz');
+  const a = await A.imdbAdaylari(net, v, []);
+  assert.deepEqual(a.liste.map((x) => x.id), ['tt0111161', 'tt0293927']);
+  assert.equal(a.liste[0].ad, 'The Shawshank Redemption');
+  assert.equal(a.liste[0].yil, 1994);
+  assert.deepEqual(a.adlar, ['Esaretin Bedeli']);
+  assert.equal(a.yil, 1994);
+  assert.equal(istek.length, 1, 'arama sonucu önbellekten kullanılır');
+  A.imdbHatirla(v, [], 'tt0111161');
+  assert.equal(await A.imdbBul(net, v, []), 'tt0111161', 'seçilen yapım hatırlanır');
+  const bos = await A.imdbAdaylari(net, { tur: 'series', ad: 'Hiç Yok', yil: 0, sezon: 1, bolum: 1 }, []);
+  assert.deepEqual(bos.liste, []);
+});
+
 test('altyazı: altyaziListesi bölüm kimliğini tt…:sezon:bölüm biçiminde ister', async () => {
   const istek = [];
   const net = { json: async (u) => (istek.push(u), { subtitles: [{ url: 'https://s/1.srt', lang: 'tur' }] }) };

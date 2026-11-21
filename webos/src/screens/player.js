@@ -6,7 +6,7 @@ import { VList } from '../vlist.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
 import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
-import { videoKimligi, imdbBul, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
+import { videoKimligi, imdbBul, imdbAdaylari, imdbHatirla, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
   1: 'Oynatma iptal edildi',
@@ -546,7 +546,34 @@ export function playerScreen({ list, index, fresh }) {
       if (!haricGecerli(n)) return;
       const imdb = await imdbBul(ctx.net, kimlik, ek);
       if (!haricGecerli(n)) return;
-      if (!imdb) return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Ad kaynaktaki adla birebir eşleşmezse (Türkçe ad, farklı yıl gibi) altyazı aranamaz.');
+      if (imdb) return haricListele(kimlik, imdb, n);
+      // Ad birebir tutmadı (çoğunlukla Türkçe ad): katalogun bulduğu yapımlar seçtirilir
+      const a = await imdbAdaylari(ctx.net, kimlik, ek);
+      if (!haricGecerli(n)) return;
+      if (!a.liste.length) {
+        return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Aranan: ' + a.adlar.join(' / ') + (a.yil ? ' (' + a.yil + ')' : '') + '. Katalog bu adla bir yapım bulamadı.');
+      }
+      secimAc({
+        baslik: 'Hangi yapım?',
+        satirlar: a.liste.map((x) => ({ ad: x.ad + (x.yil ? ' (' + x.yil + ')' : '') })),
+        idx: 0,
+        arama: n,
+        not: 'Adı tam tutan yapım bulunamadı. Doğru olanı seçin; yanlışını seçerseniz altyazı uymaz.',
+        calis(i) {
+          imdbHatirla(kimlik, ek, a.liste[i].id);
+          haricListele(kimlik, a.liste[i].id, n);
+        },
+      });
+    } catch (e) {
+      if (!haricGecerli(n)) return;
+      K.uyar('Altyazı aranamadı: ' + (e && e.message));
+      bosPanel('Altyazı aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
+    }
+  }
+  // IMDb kimliği belli: altyazı listesini getirip seçtirir
+  async function haricListele(kimlik, imdb, n) {
+    secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Altyazılar getiriliyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
+    try {
       const liste = await altyaziListesi(ctx.net, kimlik, imdb);
       if (!haricGecerli(n)) return;
       if (!liste.length) return bosPanel('Altyazı', 'Bu yapım için altyazı bulunamadı', 'Altyazı kaynağında bu film ya da bölüm için kayıt yok.');
