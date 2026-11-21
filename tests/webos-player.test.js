@@ -564,6 +564,33 @@ const sonraki = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); // bekleyen söz zincirleri bitsin (zamanlayıcılar sahte olabilir)
 };
 
+test('kayıt: servis disk bilgisini ya da USB denemesini reddederse neden panelde görünür (sessizce yutulmaz)', async () => {
+  const eski = { ...kayitIs.api };
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  Object.assign(kayitIs.api, {
+    hazir: () => true,
+    alan: async () => {
+      throw new Error('Denied method call "kayitAlan" for category "/"');
+    },
+    usbDene: async () => {
+      throw new Error('Denied method call "kayitUsbDene" for category "/"');
+    },
+  });
+  try {
+    const o = kur();
+    dugmeAc(o, 10);
+    await sonraki();
+    assert.match(o.q('.p-pick').innerHTML, /Disk bilgisi alınamadı: Denied method call &quot;kayitAlan&quot;|Disk bilgisi alınamadı: Denied method call "kayitAlan"/);
+    o.tus('down');
+    o.tus('ok');
+    await sonraki();
+    assert.match(o.q('.p-pick').innerHTML, /USB denemesi yapılamadı: Denied method call/);
+  } finally {
+    mock.timers.reset();
+    Object.assign(kayitIs.api, eski);
+  }
+});
+
 test('kayıt: canlı düğme çubuğunda son sıradadır; kayıt başlar, durum görünür, durdurulur ve kayıt oynatılır', async () => {
   const eski = { ...kayitIs.api };
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });

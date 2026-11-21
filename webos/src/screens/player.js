@@ -750,6 +750,7 @@ export function playerScreen({ list, index, fresh }) {
   let kayitHata = 0; // art arda başarısız durum sorgusu
   let kayitDiskler = null; // servisin bildirdiği diskler (yazılabilirlik, boş alan)
   let kayitKullanici = null; // servisin kullanıcı kimliği (uid:gid)
+  let kayitDiskHata = ''; // disk bilgisi alınamadıysa nedeni (sessizce yutulmaz)
   let kayitUsb = { bekliyor: false, metin: '' }; // USB yazma denemesinin durumu ve sonucu
   function kayitGoster() {
     const d = kayit && kayit.d;
@@ -764,7 +765,7 @@ export function playerScreen({ list, index, fresh }) {
     const usbSatir = { ad: kayitUsb.bekliyor ? 'USB yazma deneniyor…' : 'USB yazma testi', eyl: 'usbtest' };
     const usbNot = kayitUsb.metin ? kayitUsb.metin + ' — ' : '';
     if (d && d.durum === 'bitti') return { satirlar: [{ ad: 'Kaydı oynat', eyl: 'oynat' }, { ad: 'Yeniden kaydet', sag: sureAd, eyl: 'basla' }, usbSatir], not: usbNot + kayitIs.durumMetni(d, 0) };
-    const alan = kayitDiskler ? kayitIs.alanMetni(kayitDiskler) : '';
+    const alan = kayitDiskler ? kayitIs.alanMetni(kayitDiskler) : kayitDiskHata ? 'Disk bilgisi alınamadı: ' + kayitDiskHata : '';
     const ayrinti = kayitDiskler ? kayitIs.ayrintiMetni(kayitDiskler, kayitKullanici) : '';
     const genel = 'Yayın MPEG-TS olarak yazılır. ◀▶ süreyi değiştirir. Hesabınız tek bağlantıya izin veriyorsa yayın kesilebilir.';
     const ilk = d ? kayitIs.durumMetni(d, 0) : kayit && kayit.hata ? 'Başlatılamadı: ' + kayit.hata : usbNot + (alan ? alan + ' — ' : '') + (ayrinti ? ayrinti + ' — ' : '') + genel;
@@ -904,10 +905,13 @@ export function playerScreen({ list, index, fresh }) {
         if (kapali) return;
         kayitDiskler = (r && r.diskler) || [];
         kayitKullanici = (r && r.kullanici) || null;
+        kayitDiskHata = '';
         kayitPanelYenile();
       })
-      .catch(() => {
-        /* disk bilgisi alınamadı: genel not kalır */
+      .catch((e) => {
+        if (kapali) return;
+        kayitDiskHata = (e && e.message) || 'servis hatası';
+        kayitPanelYenile();
       });
   }
 
