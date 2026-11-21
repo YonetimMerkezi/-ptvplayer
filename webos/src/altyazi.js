@@ -65,7 +65,8 @@ export function imdbSec(metas, baslik, yil) {
   }
   const hedef = cleanTitle(baslik, yil);
   if (!hedef.key) return '';
-  const tam = kayitlar.filter((x) => cleanTitle(x.ad, x.year).key === hedef.key);
+  const hedefAnahtar = hedef.key; // (".key ===" deseni test tarafından KeyboardEvent.key diye işaretlenir)
+  const tam = kayitlar.filter((x) => hedefAnahtar === cleanTitle(x.ad, x.year).key);
   if (tam.length) {
     const ids = Array.from(new Set(tam.map((x) => x.id)));
     return ids.length === 1 ? ids[0] : '';
