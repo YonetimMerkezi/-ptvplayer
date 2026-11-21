@@ -18,6 +18,11 @@
 //   medyaBaslat {}                          → {returnValue, port, jeton}      (adres: http://127.0.0.1:port/jeton/<kodlanmış yol>)
 //   medyaSor {}                             → {returnValue, port, jeton}      (canlı tutar)
 //   medyaDurdur {}                          → {returnValue}
+//
+// Kayıt (deneme): canlı yayını (MPEG-TS) USB belleğe/diske yazar; yazılamazsa nedenini açıkça bildirir.
+//   kayitBaslat {url, ad, sureSn}           → {returnValue, id, dosya, disk}
+//   kayitDurum  {id}                        → {returnValue, durum, bayt, sureMs, dosya, disk, http, mesaj}
+//   kayitDurdur {id}                        → {returnValue, durum, ...}
 'use strict';
 
 var http = require('http');
@@ -461,6 +466,8 @@ var MEDYA_MIME = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
   srt: 'text/plain; charset=utf-8', vtt: 'text/vtt; charset=utf-8'
 };
+var KAYIT_KLASOR = 'IPTV-Kayit';
+var kayitYedekKok = '/media/developer'; // USB yazılamazsa son çare; testte değiştirilir
 var medyaKokleri = ['/tmp/usb', '/media/internal']; // izinli kökler (testte değiştirilir)
 var usbDizini = '/tmp/usb';
 var medya = null;
@@ -471,8 +478,9 @@ function medyaYol(yol) {
   var n = pathm.normalize(yol);
   if (n.charAt(0) !== '/') return null;
   if (n.length > 1) n = n.replace(/\/+$/, '');
-  for (var i = 0; i < medyaKokleri.length; i++) {
-    if (n === medyaKokleri[i] || n.indexOf(medyaKokleri[i] + '/') === 0) return n;
+  var kokler = medyaKokleri.concat([kayitYedekKok + '/' + KAYIT_KLASOR]); // yedek kayıt klasörü de oynatılabilsin
+  for (var i = 0; i < kokler.length; i++) {
+    if (n === kokler[i] || n.indexOf(kokler[i] + '/') === 0) return n;
   }
   return null;
 }
@@ -686,6 +694,282 @@ function medyaKontrol(simdi) {
   return false;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Kayıt (deneme)
+// Yayın adresi Node tarafında açılır, gelen MPEG-TS baytları olduğu gibi dosyaya yazılır (çözme/yeniden kodlama yok).
+// Disk sırası: takılı USB bellekler → dahili bellek → geliştirici alanı. Her adayda önce yazma denenir; hepsi
+// başarısızsa her birinin hata kodu (EACCES, EROFS …) bildirilir. Kayıtlar KAYIT_KLASOR altındadır ve medya
+// sunucusuyla (Range destekli) oynatılabilir.
+// ---------------------------------------------------------------------------------------------------------------
+var KAYIT_DURGUN_MS = 20000; // bu kadar süre hiç veri gelmezse yayın durdu sayılır
+var KAYIT_BAGLANTI_MS = 15000;
+var KAYIT_EN_FAZLA = 4 * 1024 * 1024 * 1024;
+var KAYIT_EN_UZUN_SN = 4 * 3600;
+var KAYIT_SAKLA = 6;
+var kayitlar = {};
+var kayitSayac = 0;
+
+function hataKodu(e) {
+  return String((e && (e.code || e.message)) || e);
+}
+
+function kayitAdi(ad) {
+  var t = { 'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U' };
+  var d = new Date();
+  function iki(n) {
+    return (n < 10 ? '0' : '') + n;
+  }
+  var damga = '' + d.getFullYear() + iki(d.getMonth() + 1) + iki(d.getDate()) + '-' + iki(d.getHours()) + iki(d.getMinutes()) + iki(d.getSeconds());
+  var temiz = String(ad || 'yayin')
+    .replace(/[çÇğĞıİöÖşŞüÜ]/g, function (h) {
+      return t[h];
+    })
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return (temiz || 'yayin') + '-' + damga + '.ts';
+}
+
+// Kök altında yazılabilir kayıt klasörü açar. Dönen: { yol } ya da { hata: kod }
+function kayitKlasoru(kok) {
+  var k = kok + '/' + KAYIT_KLASOR;
+  try {
+    fs.mkdirSync(k);
+  } catch (e) {
+    if (!e || e.code !== 'EEXIST') return { hata: hataKodu(e) };
+  }
+  var d = k + '/.yazma-denemesi';
+  try {
+    fs.writeFileSync(d, 'x');
+    fs.unlinkSync(d);
+  } catch (e2) {
+    return { hata: hataKodu(e2) };
+  }
+  return { yol: k };
+}
+
+function kayitAdaylari() {
+  var l = medyaKokler().kokler.slice();
+  l.push({ ad: 'Geliştirici alanı', yol: kayitYedekKok });
+  return l;
+}
+
+function kayitOzet(r) {
+  var bitis = r.bitis || Date.now();
+  var boyut = r.bayt;
+  if (r.bitti) {
+    try {
+      boyut = fs.statSync(r.dosya).size;
+    } catch (e) {
+      /* dosya yoksa sayaç kalır */
+    }
+  }
+  return {
+    returnValue: true,
+    id: r.id,
+    durum: r.durum, // baglaniyor | yaziyor | bitti | hata
+    bayt: boyut,
+    sureMs: Math.max(0, bitis - r.bas),
+    dosya: r.dosya,
+    disk: r.disk,
+    http: r.http,
+    mesaj: r.mesaj
+  };
+}
+
+function kayitVar() {
+  return Object.keys(kayitlar).some(function (k) {
+    return !kayitlar[k].bitti;
+  });
+}
+
+function kayitBitir(r, durum, mesaj) {
+  if (r.bitti) return;
+  r.bitti = true;
+  r.durum = durum;
+  r.mesaj = mesaj || '';
+  r.bitis = Date.now();
+  clearTimeout(r.sureT);
+  clearInterval(r.bekciT);
+  clearTimeout(r.baglantiT);
+  try {
+    if (r.res) r.res.unpipe(r.ws);
+  } catch (e) {
+    /* yoksay */
+  }
+  try {
+    if (r.req) r.req.abort();
+  } catch (e2) {
+    /* yoksay */
+  }
+  try {
+    if (r.ws) r.ws.end();
+  } catch (e3) {
+    /* yoksay */
+  }
+  if (r.ws && r.bayt === 0) {
+    // hiç veri gelmediyse boş dosya bırakılmaz
+    setTimeout(function () {
+      try {
+        fs.unlinkSync(r.dosya);
+      } catch (e4) {
+        /* yoksay */
+      }
+    }, 500);
+  }
+  // eski kayıt bilgilerini sınırla
+  var ids = Object.keys(kayitlar).filter(function (k) {
+    return kayitlar[k].bitti;
+  });
+  while (ids.length > KAYIT_SAKLA) delete kayitlar[ids.shift()];
+  if (kapaninca) kapaninca();
+}
+
+function kayitBaglan(r, adres, kalan) {
+  var u;
+  try {
+    u = urlm.parse(adres);
+  } catch (e) {
+    return kayitBitir(r, 'hata', 'Yayın adresi geçersiz');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return kayitBitir(r, 'hata', 'Yayın adresi desteklenmiyor');
+  var lib = u.protocol === 'https:' ? https : http;
+  var req = lib.request(
+    {
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port,
+      path: u.path,
+      method: 'GET',
+      headers: { 'User-Agent': UA, Accept: '*/*', 'Accept-Encoding': 'identity', Connection: 'close' },
+      rejectUnauthorized: false,
+      agent: false
+    },
+    function (res) {
+      if (r.bitti) return res.resume();
+      r.http = res.statusCode;
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        if (kalan <= 0) return kayitBitir(r, 'hata', 'Çok fazla yönlendirme');
+        return kayitBaglan(r, urlm.resolve(adres, res.headers.location), kalan - 1);
+      }
+      var tur = String(res.headers['content-type'] || '');
+      if (res.statusCode !== 200 || /text\/|json|xml|mpegurl/i.test(tur)) {
+        // Hata sayfası ya da HLS listesi: sunucunun ne söylediğini göster (ör. bağlantı sınırı iletisi)
+        var ilk = [];
+        var n = 0;
+        res.on('data', function (c) {
+          if (n < 200) {
+            ilk.push(c);
+            n += c.length;
+          }
+        });
+        var bitir = function () {
+          var metin = Buffer.concat(ilk).toString('utf8').replace(/\s+/g, ' ').slice(0, 120);
+          var neden = res.statusCode !== 200 ? 'Sunucu HTTP ' + res.statusCode + ' yanıtı verdi' : /mpegurl/i.test(tur) ? 'Sunucu HLS listesi verdi (TS gerekli)' : 'Sunucu yayın yerine metin verdi';
+          kayitBitir(r, 'hata', neden + (metin ? ': ' + metin : ''));
+        };
+        res.on('end', bitir);
+        res.on('error', bitir);
+        return;
+      }
+      clearTimeout(r.baglantiT);
+      r.durum = 'yaziyor';
+      r.son = Date.now();
+      var ws = fs.createWriteStream(r.dosya);
+      r.res = res;
+      r.ws = ws;
+      ws.on('error', function (e) {
+        kayitBitir(r, 'hata', 'Diske yazılamadı: ' + hataKodu(e));
+      });
+      res.on('data', function (c) {
+        r.bayt += c.length;
+        r.son = Date.now();
+        if (r.bayt >= KAYIT_EN_FAZLA) kayitBitir(r, 'bitti', 'Boyut sınırına ulaşıldı');
+      });
+      res.on('end', function () {
+        kayitBitir(r, r.bayt > 0 ? 'bitti' : 'hata', r.bayt > 0 ? 'Sunucu yayını kapattı' : 'Sunucu hiç veri vermedi');
+      });
+      res.on('error', function (e) {
+        kayitBitir(r, 'hata', 'Yayın kesildi: ' + hataKodu(e));
+      });
+      res.pipe(ws);
+    }
+  );
+  r.req = req;
+  req.on('error', function (e) {
+    kayitBitir(r, 'hata', 'Bağlanılamadı: ' + hataKodu(e));
+  });
+  req.end();
+}
+
+// cb(hata, yanit). Yanıt hemen döner (id); ilerleme kayitDurum ile izlenir.
+function kayitBaslat(p, cb) {
+  var adres = p && p.url ? String(p.url) : '';
+  if (!/^https?:\/\//i.test(adres)) return cb(new Error('Yayın adresi yok'));
+  if (kayitVar()) return cb(new Error('Zaten bir kayıt sürüyor'));
+  var sure = Math.max(1, Math.min(KAYIT_EN_UZUN_SN, Number(p.sureSn) || 30));
+  var denemeler = [];
+  var yol = '';
+  var disk = '';
+  var adaylar = kayitAdaylari();
+  for (var i = 0; i < adaylar.length && !yol; i++) {
+    var k = kayitKlasoru(adaylar[i].yol);
+    if (k.yol) {
+      yol = k.yol;
+      disk = adaylar[i].ad;
+    } else {
+      denemeler.push(adaylar[i].ad + ': ' + k.hata);
+    }
+  }
+  if (!yol) return cb(new Error('Hiçbir diske yazılamadı (' + denemeler.join('; ') + ')'));
+  var r = {
+    id: 'k' + ++kayitSayac,
+    dosya: yol + '/' + kayitAdi(p.ad),
+    disk: disk,
+    durum: 'baglaniyor',
+    bayt: 0,
+    http: 0,
+    mesaj: denemeler.length ? 'Önceki diskler yazılamadı: ' + denemeler.join('; ') : '',
+    bas: Date.now(),
+    son: Date.now(),
+    bitti: false
+  };
+  kayitlar[r.id] = r;
+  r.baglantiT = setTimeout(function () {
+    kayitBitir(r, 'hata', 'Sunucu ' + KAYIT_BAGLANTI_MS / 1000 + ' sn içinde yanıt vermedi');
+  }, KAYIT_BAGLANTI_MS);
+  r.sureT = setTimeout(function () {
+    kayitBitir(r, r.bayt > 0 ? 'bitti' : 'hata', r.bayt > 0 ? 'Süre doldu' : 'Hiç veri gelmedi');
+  }, sure * 1000);
+  r.bekciT = setInterval(function () {
+    if (r.durum === 'yaziyor' && Date.now() - r.son > KAYIT_DURGUN_MS) kayitBitir(r, r.bayt > 0 ? 'bitti' : 'hata', 'Yayın ' + KAYIT_DURGUN_MS / 1000 + ' sn veri vermedi');
+  }, 2000);
+  kayitBaglan(r, adres, MAX_YONLENDIRME);
+  var o = kayitOzet(r);
+  cb(null, o);
+}
+
+function kayitBul(p) {
+  var r = kayitlar[p && p.id];
+  if (r) return r;
+  var ids = Object.keys(kayitlar);
+  return !p || !p.id ? kayitlar[ids[ids.length - 1]] : null; // id verilmezse sonuncusu
+}
+
+function kayitDurum(p) {
+  var r = kayitBul(p);
+  if (!r) return { returnValue: false, errorText: 'Kayıt bulunamadı' };
+  return kayitOzet(r);
+}
+
+function kayitDurdur(p) {
+  var r = kayitBul(p);
+  if (!r) return { returnValue: false, errorText: 'Kayıt bulunamadı' };
+  kayitBitir(r, r.bayt > 0 ? 'bitti' : 'hata', r.bayt > 0 ? 'Durduruldu' : 'Hiç veri gelmeden durduruldu');
+  return kayitOzet(r);
+}
+
 module.exports = {
   getir: getir,
   oku: oku,
@@ -698,6 +982,13 @@ module.exports = {
   medyaBaslat: medyaBaslat,
   medyaSor: medyaSor,
   medyaDurdur: medyaDurdur,
+  kayitBaslat: kayitBaslat,
+  kayitDurum: kayitDurum,
+  kayitDurdur: kayitDurdur,
+  _kayitAyarla: function (yedek) {
+    kayitYedekKok = yedek;
+  },
+  _kayitlar: kayitlar,
   _medyaKontrol: medyaKontrol,
   _medyaYol: medyaYol,
   _medyaAyarla: function (kokler, usb) {
@@ -729,7 +1020,7 @@ if (Service) {
   var etkinlik = null;
   var canliTut = function () {
     try {
-      var bos = Object.keys(depo).length === 0 && !alici && !medya;
+      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar();
       if (!bos && !etkinlik && servis.activityManager) {
         servis.activityManager.create('iptv-canli', function (a) {
           etkinlik = a;
@@ -778,6 +1069,20 @@ if (Service) {
   });
   servis.register('medyaDurdur', function (m) {
     m.respond(medyaDurdur());
+  });
+  servis.register('kayitBaslat', function (m) {
+    kayitBaslat(m.payload || {}, function (e, r) {
+      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
+      canliTut();
+    });
+  });
+  servis.register('kayitDurum', function (m) {
+    m.respond(kayitDurum(m.payload || {}));
+    canliTut();
+  });
+  servis.register('kayitDurdur', function (m) {
+    m.respond(kayitDurdur(m.payload || {}));
+    canliTut();
   });
   servis.register('fetch', function (m) {
     getir(m.payload || {}, function (e, r) {

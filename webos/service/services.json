@@ -49,6 +49,18 @@
         {
           "name": "medyaDurdur",
           "description": "Medya sunucusunu durdurur"
+        },
+        {
+          "name": "kayitBaslat",
+          "description": "Canlı yayını USB belleğe/diske MPEG-TS olarak yazmaya başlar; id döndürür"
+        },
+        {
+          "name": "kayitDurum",
+          "description": "Kaydın durumunu verir (yazılan bayt, süre, dosya, disk, hata)"
+        },
+        {
+          "name": "kayitDurdur",
+          "description": "Süren kaydı durdurur"
         }
       ]
     }

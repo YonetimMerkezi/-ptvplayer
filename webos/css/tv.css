@@ -352,6 +352,8 @@ input.on2, .on2 input { border-color: #2dd4bf; background: #0f1a2a; }
 .p-sub.sk2 { bottom: 24rem; }
 .p-ov.on ~ .p-sub.sk1 { bottom: 25rem; }
 .p-ov.on ~ .p-sub.sk2 { bottom: 33rem; }
+.p-rec { display: none; margin-right: 2rem; font-size: 2rem; font-weight: 600; color: #ff5a5a; }
+.p-rec.on { display: inline-block; }
 .p-num { display: none; position: absolute; top: 6rem; right: 6rem; font-size: 6rem; font-weight: 600; color: #fff; text-shadow: 0 .2rem .6rem #000; }
 .p-num.on { display: block; }
 

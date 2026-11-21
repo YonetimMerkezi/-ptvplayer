@@ -360,8 +360,9 @@ test('altyazı: film için ara → Türkçe listenin başında → seç → meti
   o.tus('down'); // seçili satır "Türkçe (harici)" → "Altyazıyı kaydır"
   o.tus('ok');
   assert.match(o.q('.p-pick').innerHTML, /Altyazı senkronu/);
-  o.tus('right');
-  o.tus('right'); // +1,0 sn
+  o.tus('right'); // 0,1 sn adım
+  assert.match(o.q('.p-pick').innerHTML, /\+0,1 sn/);
+  for (let i = 0; i < 9; i++) o.tus('right'); // toplam +1,0 sn (art arda 10 basışa kadar adım büyümez)
   assert.match(o.q('.p-pick').innerHTML, /\+1,0 sn/);
   v.currentTime = 10.5;
   await bekle(300);
@@ -475,6 +476,36 @@ test('altyazı: ayar kayıtlıysa harici altyazı onunla çizilir; panel kapanı
   o.bitir();
 });
 
+test('altyazı: senkron 0,1 sn adımla ayarlanır; art arda basılınca adım büyür, yön değişince küçülür; Sıfırla 0 yapar', async () => {
+  const o = kur({}, [FILM], altyaziAgi());
+  const v = o.q('#vid');
+  v.textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  o.tus('ok');
+  await bekleKadar(() => o.q('.p-pick').className === 'p-pick', 'panelin kapanması');
+  o.tus('ok'); // Altyazı paneli: Kapalı, Türkçe (harici) [seçili], kaydır, ara, görünüm
+  o.tus('down');
+  o.tus('ok');
+  assert.match(o.q('.p-pick').innerHTML, /Altyazı senkronu/);
+  assert.match(o.q('.p-pick').innerHTML, /0,1 sn adımla/);
+  o.tus('right');
+  assert.match(o.q('.p-pick').innerHTML, /\+0,1 sn/);
+  o.tus('left');
+  o.tus('left');
+  assert.match(o.q('.p-pick').innerHTML, /-0,1 sn/, 'yön değişince 0,1 sn adım');
+  for (let i = 0; i < 12; i++) o.tus('right'); // seri: ilk 10 basış 0,1 sn, sonrakiler 0,5 sn
+  assert.match(o.q('.p-pick').innerHTML, /\+1,9 sn/, '−0,1 + 10×0,1 + 2×0,5 = +1,9');
+  o.tus('left'); // yön değişti: seri sıfırlanır
+  assert.match(o.q('.p-pick').innerHTML, /\+1,8 sn/);
+  o.tus('down');
+  o.tus('ok'); // Sıfırla
+  assert.match(o.q('.p-pick').innerHTML, /<b>0,0 sn<\/b>/);
+  o.bitir();
+});
+
 test('oynatıcı: kontroller bir süre sonra kendiliğinden kalkar (odak çubukta olsa da); panel açıkken ve duraklatılmışken kalmaz', () => {
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
@@ -525,6 +556,107 @@ test('oynatıcı: kontroller bir süre sonra kendiliğinden kalkar (odak çubukt
     o.bitir();
   } finally {
     mock.timers.reset();
+  }
+});
+
+const kayitIs = await import('../webos/src/kayit.js');
+const sonraki = async () => {
+  for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); // bekleyen söz zincirleri bitsin (zamanlayıcılar sahte olabilir)
+};
+
+test('kayıt: canlı düğme çubuğunda son sıradadır; kayıt başlar, durum görünür, durdurulur ve kayıt oynatılır', async () => {
+  const eski = { ...kayitIs.api };
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const cagri = [];
+  let durum = { returnValue: true, id: 'k1', durum: 'baglaniyor', bayt: 0, sureMs: 0, dosya: '/tmp/usb/sda/sda1/IPTV-Kayit/Kanal_1-20261121-120000.ts', disk: 'USB 1 (sda1)', http: 0, mesaj: '' };
+  Object.assign(kayitIs.api, {
+    hazir: () => true,
+    baslat: async (url, ad, sn) => (cagri.push([url, ad, sn]), { ...durum }),
+    durum: async () => ({ ...durum }),
+    durdur: async () => ((durum = { ...durum, durum: 'bitti', mesaj: 'Durduruldu' }), { ...durum }),
+    medyaBaslat: async () => ({ port: 4321, jeton: 'abc' }),
+    medyaSor: async () => ({ returnValue: true }),
+  });
+  try {
+    const o = kur();
+    assert.match(o.cubuk(), /Kayıt<\/em><\/span>$/, 'Kayıt en sonda');
+    dugmeAc(o, 10);
+    let h = o.q('.p-pick').innerHTML;
+    assert.match(h, /Kayıt \(deneme\)/);
+    assert.match(h, /Kaydı başlat/);
+    assert.match(h, /<b>30 sn<\/b>/);
+    o.tus('right');
+    assert.match(o.q('.p-pick').innerHTML, /<b>2 dk<\/b>/, '◀▶ süreyi değiştirir');
+    o.tus('ok');
+    await sonraki();
+    assert.equal(cagri.length, 1);
+    assert.match(cagri[0][0], /\.ts$/, 'kayıt her zaman TS adresinden');
+    assert.equal(cagri[0][1], 'Kanal 1');
+    assert.equal(cagri[0][2], 120);
+    h = o.q('.p-pick').innerHTML;
+    assert.match(h, /Kaydı durdur/);
+    assert.match(h, /Yayına bağlanılıyor/);
+    durum = { ...durum, durum: 'yaziyor', bayt: 3000000, sureMs: 12000 };
+    mock.timers.tick(1000);
+    await sonraki();
+    h = o.q('.p-pick').innerHTML;
+    assert.match(h, /Yazılıyor · 0:12 \/ 2:00 · 2,9 MB · 2,0 Mbps · USB 1 \(sda1\)/);
+    assert.equal(o.q('.p-rec').textContent, '● KAYIT 0:12');
+    assert.equal(o.q('.p-rec').className, 'p-rec on');
+    o.tus('back'); // panel kapanır, kayıt sürer
+    assert.equal(o.q('.p-pick').className, 'p-pick');
+    assert.equal(o.q('.p-rec').className, 'p-rec on');
+    o.tus('ok'); // düğme çubuğunda Kayıt: panel yeniden açılır
+    assert.match(o.q('.p-pick').innerHTML, /Kaydı durdur/);
+    o.tus('ok');
+    await sonraki();
+    h = o.q('.p-pick').innerHTML;
+    assert.match(h, /Kaydı oynat/);
+    assert.match(h, /Bitti \(Durduruldu\)/);
+    assert.equal(o.q('.p-rec').className, 'p-rec', 'bitince gösterge kalkar');
+    const altta = ctx.stack.length;
+    o.tus('ok'); // Kaydı oynat
+    await sonraki();
+    assert.equal(ctx.stack.length, altta + 1, 'kayıt yeni oynatıcı ekranında açılır');
+    const yeni = top();
+    assert.notEqual(yeni, o.scr);
+    assert.equal(yeni.el.querySelector('#vid').src, 'http://127.0.0.1:4321/abc/' + encodeURIComponent('/tmp/usb/sda/sda1/IPTV-Kayit/Kanal_1-20261121-120000.ts'));
+    assert.match(yeni.el.querySelector('.p-acts').innerHTML, /Duraklat|Oynat/, 'kayıtta film gibi sarma düğmeleri');
+    pop(); // geri: canlı yayın yeniden başlar
+    assert.equal(top(), o.scr);
+    o.bitir();
+  } finally {
+    mock.timers.reset();
+    Object.assign(kayitIs.api, eski);
+  }
+});
+
+test('kayıt: başlatılamazsa (disk yazılamıyor) neden panelde görünür; TV dışında kayıt yok denir; filmde Kayıt düğmesi yoktur', async () => {
+  const eski = { ...kayitIs.api };
+  Object.assign(kayitIs.api, {
+    hazir: () => true,
+    baslat: async () => {
+      throw new Error('Hiçbir diske yazılamadı (USB 1 (sda1): EROFS; Geliştirici alanı: EACCES)');
+    },
+  });
+  try {
+    const o = kur();
+    dugmeAc(o, 10);
+    o.tus('ok');
+    await bekleKadar(() => /Başlatılamadı: Hiçbir diske yazılamadı \(USB 1 \(sda1\): EROFS/.test(o.q('.p-pick').innerHTML), 'hata nedeni');
+    assert.match(o.q('.p-pick').innerHTML, /Yeniden dene/);
+    assert.notEqual(o.q('.p-rec').className, 'p-rec on', 'başlamayan kayıt için gösterge yok');
+    o.bitir();
+    kayitIs.api.hazir = () => false;
+    const c = kur();
+    dugmeAc(c, 10);
+    assert.match(c.q('.p-pick').innerHTML, /Bu ortamda kayıt yok/);
+    c.bitir();
+    const f = kur({}, [FILM]);
+    assert.doesNotMatch(f.cubuk(), /Kayıt/, 'film/dizi oynatıcısında kayıt düğmesi yok');
+    f.bitir();
+  } finally {
+    Object.assign(kayitIs.api, eski);
   }
 });
 

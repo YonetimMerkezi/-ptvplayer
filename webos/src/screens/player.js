@@ -1,11 +1,12 @@
 // Oynatıcı: HTML5 <video> (webOS yerel HLS/TS/MP4 çözücüsü). Canlıda kanal değiştirme ve sayı tuşları,
 // film/bölümde ileri-geri sarma, kaldığı yerden devam ve bölüm sonunda sıradaki bölüm.
-import { ctx, provider, pop, ikon } from '../ctx.js';
+import { ctx, provider, push, pop, ikon } from '../ctx.js';
 import { rakam } from '../keys.js';
 import { VList } from '../vlist.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
 import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
+import * as kayitIs from '../kayit.js';
 import { videoKimligi, imdbBul, imdbAdaylari, imdbHatirla, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
@@ -37,7 +38,7 @@ export function playerScreen({ list, index, fresh }) {
   const sid = src ? src.id : '';
   kok.innerHTML =
     '<video id="vid"></video>' +
-    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">' + ikon.geriOk + '<span>Geri</span></div><div class="p-title"></div></div><div class="p-r"><span class="p-fmt"></span><span class="clock"></span></div></div>' +
+    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">' + ikon.geriOk + '<span>Geri</span></div><div class="p-title"></div></div><div class="p-r"><span class="p-rec"></span><span class="p-fmt"></span><span class="clock"></span></div></div>' +
     '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-acts"></div><div class="p-hint"></div></div></div>' +
     '<div class="p-sub"></div><div class="p-list"><div class="p-list-in"></div></div><div class="p-pick"></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
@@ -48,6 +49,7 @@ export function playerScreen({ list, index, fresh }) {
   const ov = kok.querySelector('.p-ov');
   const titleEl = kok.querySelector('.p-title');
   const fmtEl = kok.querySelector('.p-fmt');
+  const recEl = kok.querySelector('.p-rec');
   const epgEl = kok.querySelector('.p-epg');
   const barEl = kok.querySelector('.p-bar');
   const barI = barEl.firstChild;
@@ -65,6 +67,7 @@ export function playerScreen({ list, index, fresh }) {
   let kapali = false;
   let bekleyenSeek = 0; // ms
   let ovT = 0;
+  let medyaDur = null; // yerel medya sunucusunu canlı tutan sorgu (yalnız yerel öğe oynarken)
   let saveT = 0;
   let beklT = 0;
   let epgT = 0;
@@ -132,12 +135,12 @@ export function playerScreen({ list, index, fresh }) {
     goster(o === 'video' ? undefined : o === 'sec' || o === 'liste' ? 0 : ODAK_MS);
   }
   // Düğme simgeleri (Oynat/Duraklat durumuna göre değişir)
-  const IKONLAR = { list: 'liste', last: 'onceki', fav: 'yildiz', audio: 'ses', sub: 'altyazi', aspect: 'ekran', sync: 'senkron', info: 'bilgi', sleep: 'uyku', fmt: 'bicim', rw: 'geri10', ff: 'ileri10', next: 'sonraki' };
+  const IKONLAR = { list: 'liste', last: 'onceki', fav: 'yildiz', audio: 'ses', sub: 'altyazi', aspect: 'ekran', sync: 'senkron', info: 'bilgi', sleep: 'uyku', fmt: 'bicim', rec: 'kayit', rw: 'geri10', ff: 'ileri10', next: 'sonraki' };
   const dugmeIkon = (id) => (id === 'pp' ? (v.paused ? ikon.oynat : ikon.duraklat) : ikon[IKONLAR[id]] || '');
   // Düğme çubuğu: canlıda kanal işlemleri, filmde sarma
   const dugmeler = () =>
     canli()
-      ? [['list', 'Kanallar'], ['last', 'Önceki'], ['fav', 'Favori'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku'], ['fmt', 'Biçim']]
+      ? [['list', 'Kanallar'], ['last', 'Önceki'], ['fav', 'Favori'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku'], ['fmt', 'Biçim'], ['rec', 'Kayıt']]
       : [['rw', '−10 sn'], ['pp', v.paused ? 'Oynat' : 'Duraklat'], ['ff', '+10 sn'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku']].concat(it.kind === 'episode' && list.length > 1 ? [['next', 'Sonraki bölüm']] : []);
   function barCiz() {
     const d = dugmeler();
@@ -183,6 +186,7 @@ export function playerScreen({ list, index, fresh }) {
     if (id === 'aspect') return ekranAc();
     if (id === 'sync') return senkronAc();
     if (id === 'info') return bilgiAc();
+    if (id === 'rec') return kayitAc();
     oyunEylem(id);
     barCiz();
   }
@@ -228,7 +232,7 @@ export function playerScreen({ list, index, fresh }) {
   }
 
   function kaydet() {
-    if (!sid || !it || canli()) return;
+    if (!sid || !it || canli() || it.kind === 'local') return;
     const t = v.currentTime || 0;
     const d = v.duration;
     if (t < 5) return;
@@ -281,6 +285,8 @@ export function playerScreen({ list, index, fresh }) {
   function baslat() {
     it = list[idx];
     haricKaldir(); // önceki yapımın harici altyazısı yenisine taşınmaz
+    if (medyaDur) medyaDur();
+    medyaDur = it.kind === 'local' ? kayitIs.medyaCanliTut() : null;
     hata = false;
     msg.className = 'p-msg';
     spin.className = 'p-spin on';
@@ -291,13 +297,13 @@ export function playerScreen({ list, index, fresh }) {
     zamanGuncelle();
     epgYukle();
     const p = provider();
-    const url = p ? p.urlFor(it, fmt()) : '';
+    const url = it.kind === 'local' && it.url ? it.url : p ? p.urlFor(it, fmt()) : ''; // yerel öğe (kayıt/USB) kendi adresini taşır
     kaynakUrl = url;
     if (!url) {
       return hataGoster('Oynatma adresi bulunamadı');
     }
     bekleyenSeek = 0;
-    if (!canli() && !(fresh && idx === index)) {
+    if (it.kind !== 'local' && !canli() && !(fresh && idx === index)) {
       const r = ctx.store.posOf(sid, it.id);
       if (r.pos > 20000 && (!r.dur || r.pos < r.dur - 30000)) bekleyenSeek = r.pos;
     }
@@ -666,22 +672,36 @@ export function playerScreen({ list, index, fresh }) {
       },
     });
   }
+  // Altyazı senkronu: ◀▶ 0,1 sn adımla; tuş basılı tutulup art arda basılırsa adım büyür (10 basıştan sonra 0,5 sn, 25'ten sonra 1 sn)
+  const KAYMA_ADIM = 100;
   function haricKaydirAc() {
     const yap = () => [{ ad: 'Altyazıyı geciktir', sag: kaymaYaz(harici.kayma) }, { ad: 'Sıfırla' }];
+    let seri = 0;
+    let sonBasis = 0;
+    let sonYon = 0;
     secimAc({
       baslik: 'Altyazı senkronu',
       satirlar: yap(),
       idx: 0,
-      not: '◀▶ ile 0,5 sn adımla ayarlayın. Altyazı sesten sonra geliyorsa eksi, önce geliyorsa artı değer verin.',
+      not: '◀▶ ile 0,1 sn adımla ayarlayın (tuşu basılı tutarsanız adım büyür). Altyazı sesten sonra geliyorsa eksi, önce geliyorsa artı değer verin.',
       yan(d) {
-        harici.kayma = Math.max(-30000, Math.min(30000, harici.kayma + d * 500));
+        const simdi = Date.now();
+        seri = simdi - sonBasis < 350 && d === sonYon ? seri + 1 : 0;
+        sonBasis = simdi;
+        sonYon = d;
+        const adim = seri >= 25 ? 10 : seri >= 10 ? 5 : 1;
+        harici.kayma = Math.max(-30000, Math.min(30000, harici.kayma + d * adim * KAYMA_ADIM));
         this.satirlar = yap();
         secimCiz();
         haricCiz();
       },
       calis(i) {
-        if (i === 1) this.yan(-harici.kayma / 500);
-        else secimKapat();
+        if (i === 1) {
+          harici.kayma = 0;
+          this.satirlar = yap();
+          secimCiz();
+          haricCiz();
+        } else secimKapat();
       },
     });
   }
@@ -721,6 +741,140 @@ export function playerScreen({ list, index, fresh }) {
         secimKapat();
       },
     });
+  }
+
+  // Canlı yayın kaydı (deneme): TV servisi yayını USB belleğe MPEG-TS olarak yazar. Panel kapansa da kayıt sürer.
+  let kayit = null; // { id, d (servisin son durumu), sureSn, ad, hata, bekliyor }
+  let kayitSure = 30;
+  let kayitT = 0;
+  let kayitHata = 0; // art arda başarısız durum sorgusu
+  function kayitGoster() {
+    const d = kayit && kayit.d;
+    recEl.textContent = kayitIs.calisiyor(d) ? '● KAYIT ' + sure(d.sureMs) : '';
+    recEl.className = 'p-rec' + (kayitIs.calisiyor(d) ? ' on' : '');
+  }
+  function kayitSatirlari() {
+    const d = kayit && kayit.d;
+    const sureAd = kayitIs.sureAdi(kayitSure);
+    if (kayit && kayit.bekliyor) return { satirlar: [{ ad: 'Kayıt başlatılıyor…' }], not: 'Disk yazılabilir mi denetleniyor, yayına bağlanılıyor.', bilgi: true };
+    if (kayitIs.calisiyor(d)) return { satirlar: [{ ad: 'Kaydı durdur', eyl: 'durdur' }], not: kayitIs.durumMetni(d, kayit.sureSn) };
+    if (d && d.durum === 'bitti') return { satirlar: [{ ad: 'Kaydı oynat', eyl: 'oynat' }, { ad: 'Yeniden kaydet', sag: sureAd, eyl: 'basla' }], not: kayitIs.durumMetni(d, 0) };
+    const ilk = d ? kayitIs.durumMetni(d, 0) : kayit && kayit.hata ? 'Başlatılamadı: ' + kayit.hata : 'Canlı yayın USB belleğe MPEG-TS olarak yazılır. ◀▶ süreyi değiştirir. Hesabınız tek bağlantıya izin veriyorsa yayın kesilebilir.';
+    return { satirlar: [{ ad: d || (kayit && kayit.hata) ? 'Yeniden dene' : 'Kaydı başlat', sag: sureAd, eyl: 'basla' }], not: ilk };
+  }
+  function kayitPanelYenile() {
+    if (!kayitPanel || secim !== kayitPanel) return;
+    const k = kayitSatirlari();
+    kayitPanel.satirlar = k.satirlar;
+    kayitPanel.not = k.not;
+    kayitPanel.bilgi = !!k.bilgi;
+    kayitPanel.idx = Math.min(kayitPanel.idx, k.satirlar.length - 1);
+    secimCiz();
+  }
+  let kayitPanel = null;
+  async function kayitYokla() {
+    if (!kayit || !kayit.id || kapali) return;
+    try {
+      const d = await kayitIs.api.durum(kayit.id);
+      if (kapali || !kayit) return;
+      kayitHata = 0;
+      const once = kayitIs.bitti(kayit.d);
+      kayit.d = d;
+      kayitGoster();
+      kayitPanelYenile();
+      if (kayitIs.bitti(d)) {
+        clearInterval(kayitT);
+        if (!once) toast(d.durum === 'hata' ? 'Kayıt başarısız: ' + d.mesaj : 'Kayıt bitti · ' + kayitIs.boyutYaz(d.bayt), 5000);
+      }
+    } catch (e) {
+      if (++kayitHata >= 8 && kayit) {
+        clearInterval(kayitT);
+        kayit.d = { durum: 'hata', mesaj: 'Servise ulaşılamıyor', bayt: 0, sureMs: 0, dosya: '', disk: '' };
+        kayitGoster();
+        kayitPanelYenile();
+      }
+    }
+  }
+  async function kayitBasla() {
+    const p = provider();
+    const url = p ? p.urlFor(it, 'ts') : ''; // kayıt her zaman TS (HLS listesi kaydedilemez)
+    if (!url) return toast('Kayıt için yayın adresi yok');
+    kayit = { id: '', d: null, sureSn: kayitSure, ad: it.name, hata: '', bekliyor: true };
+    const k = kayit;
+    kayitPanelYenile();
+    try {
+      const r = await kayitIs.api.baslat(url, it.name, k.sureSn);
+      if (kayit !== k || kapali) return;
+      k.bekliyor = false;
+      k.id = r.id;
+      k.d = r;
+      kayitHata = 0;
+      clearInterval(kayitT);
+      kayitT = setInterval(kayitYokla, 1000);
+      kayitGoster();
+      kayitPanelYenile();
+      toast('Kayıt başladı · ' + (r.disk || ''), 4000);
+    } catch (e) {
+      if (kayit !== k || kapali) return;
+      k.bekliyor = false;
+      k.hata = (e && e.message) || 'Servis hatası';
+      K.uyar('Kayıt başlatılamadı: ' + k.hata);
+      kayitPanelYenile();
+    }
+  }
+  async function kayitOynat() {
+    const d = kayit && kayit.d;
+    if (!d || d.durum !== 'bitti' || !d.dosya) return;
+    try {
+      const b = await kayitIs.api.medyaBaslat();
+      if (kapali) return;
+      secimKapat();
+      push(playerScreen({ list: [kayitIs.kayitOgesi(d, kayit.ad || '', b)], index: 0 })); // bu ekran gizlenince yayını durdurur, geri dönünce yeniden başlatır
+    } catch (e) {
+      toast('Kayıt açılamadı: ' + ((e && e.message) || 'servis hatası'), 5000);
+    }
+  }
+  async function kayitDurdur() {
+    if (!kayit || !kayit.id) return;
+    try {
+      kayit.d = await kayitIs.api.durdur(kayit.id);
+    } catch (e) {
+      toast('Kayıt durdurulamadı: ' + ((e && e.message) || 'servis hatası'), 4000);
+    }
+    kayitGoster();
+    kayitPanelYenile();
+  }
+  function kayitAc() {
+    if (!canli()) return;
+    if (!kayitIs.api.hazir()) return bosPanel('Kayıt', 'Bu ortamda kayıt yok', 'Kayıt yalnızca TV üzerinde, uygulamanın TV servisiyle çalışır.');
+    const k = kayitSatirlari();
+    const s = {
+      baslik: 'Kayıt (deneme)',
+      satirlar: k.satirlar,
+      not: k.not,
+      bilgi: !!k.bilgi,
+      idx: 0,
+      sure: 120000,
+      kapan() {
+        if (kayitPanel === s) kayitPanel = null;
+      },
+      yan(d) {
+        const x = this.satirlar[this.idx];
+        if (!x || !x.sag) return;
+        kayitSure = kayitIs.sonrakiSure(kayitSure, d);
+        kayitPanelYenile();
+      },
+      calis(i) {
+        const x = this.satirlar[i];
+        if (!x) return;
+        if (x.eyl === 'basla') kayitBasla();
+        else if (x.eyl === 'durdur') kayitDurdur();
+        else if (x.eyl === 'oynat') kayitOynat();
+      },
+    };
+    kayitPanel = s;
+    secimAc(s);
+    if (kayit && kayit.id && kayitIs.calisiyor(kayit.d)) kayitYokla(); // panel açılırken en güncel durum
   }
 
   function ekranAc() {
@@ -859,6 +1013,11 @@ export function playerScreen({ list, index, fresh }) {
     name: 'player',
     onShow() {
       baslat();
+    },
+    onHide() {
+      durdurKaynak(); // üstüne başka ekran (ör. kayıt oynatma) açılınca yayın arkada çalmasın
+      if (medyaDur) medyaDur();
+      medyaDur = null;
     },
     onKey(a) {
       // Odak Geri düğmesinde / düğme çubuğunda / kanal listesinde iken yön tuşları oradadır
@@ -999,6 +1158,8 @@ export function playerScreen({ list, index, fresh }) {
       kaydet();
       kapali = true;
       clearInterval(saveT);
+      clearInterval(kayitT);
+      if (medyaDur) medyaDur();
       clearTimeout(secimT);
       clearInterval(haricT);
       clearTimeout(ovT);
