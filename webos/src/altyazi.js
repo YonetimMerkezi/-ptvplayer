@@ -2,6 +2,8 @@
 // film/dizi için IMDb kimliğiyle altyazı aranır, SRT/VTT metni ayrıştırılır ve uygulamanın kendi katmanında gösterilir.
 // Kaynak: Stremio altyazı eklentisi protokolü (/subtitles/{tür}/{kimlik}.json → { subtitles: [{ id, url, lang }] }).
 import { CINEMETA, trailerTitle } from '../../www/js/cinemeta.js';
+import { cleanTitle } from '../../www/js/titleclean.js';
+import { fuzzyFind } from '../../www/js/title-match.js';
 
 export const ALTYAZI_KAYNAK = 'https://opensubtitles-v3.strem.io';
 
@@ -42,23 +44,41 @@ export function videoKimligi(it) {
   return null;
 }
 
-// Cinemeta arama sonucundan IMDb kimliği: ad BİREBİR tutmalı; filmde yıl ±1 uymalı (yanlış film altyazısı vermemek için kesin davranılır)
+// Cinemeta arama sonucundan IMDb kimliği: önce temizlenmiş tam ad, sonra belirsizliği
+// reddeden yüksek eşikli başlık eşleştirmesi. Yıl çakışmaları yanlış filmi engeller.
 export function imdbSec(metas, baslik, yil) {
-  const w = katla(baslik);
-  if (!w || !Array.isArray(metas)) return '';
-  const adaylar = [];
+  if (!baslik || !Array.isArray(metas)) return '';
+  const kayitlar = [];
+  const ekle = (m, ad) => {
+    const id = String((m && (m.imdb_id || m.id)) || '');
+    const ct = cleanTitle(ad, yilOf(m) || yil);
+    if (!/^tt\d+$/.test(id) || !ct.key) return;
+    const y = yilOf(m) || ct.year || 0;
+    if (yil && y && Math.abs(y - yil) > 1) return;
+    kayitlar.push({ id, ad: ct.title, year: y });
+  };
   for (let i = 0; i < metas.length; i++) {
     const m = metas[i];
-    const id = String((m && (m.imdb_id || m.id)) || '');
-    if (!/^tt\d+$/.test(id)) continue;
-    if (katla(m.name) !== w && katla(m.original_name) !== w) continue;
-    if (yil) {
-      const y = yilOf(m);
-      if (y && Math.abs(y - yil) > 1) continue;
-    }
-    adaylar.push(id);
+    if (!m) continue;
+    ekle(m, m.name);
+    if (m.original_name && m.original_name !== m.name) ekle(m, m.original_name);
   }
-  return adaylar.length ? adaylar[0] : '';
+  const hedef = cleanTitle(baslik, yil);
+  if (!hedef.key) return '';
+  const tam = kayitlar.filter((x) => cleanTitle(x.ad, x.year).key === hedef.key);
+  if (tam.length) {
+    const ids = Array.from(new Set(tam.map((x) => x.id)));
+    return ids.length === 1 ? ids[0] : '';
+  }
+  const dizin = new Map();
+  for (let i = 0; i < kayitlar.length; i++) {
+    const k = cleanTitle(kayitlar[i].ad, kayitlar[i].year).key;
+    if (!k) continue;
+    if (!dizin.has(k)) dizin.set(k, []);
+    dizin.get(k).push({ it: kayitlar[i], year: kayitlar[i].year });
+  }
+  const es = fuzzyFind(dizin, hedef.title, yil || hedef.year || 0);
+  return es && es.it ? es.it.id : '';
 }
 
 const imdbOnbellek = {};
