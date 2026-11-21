@@ -61,6 +61,9 @@ test('altyazı: imdbSec ad birebir ve yıl ±1 olmalı; imdbBul özgün adı den
   assert.equal(A.imdbSec([{ id: 'tt1', name: 'Dune', year: '2021' }, { id: 'tt2', name: 'Dune', year: '1984' }], 'dune', 1984), 'tt2');
   assert.equal(A.imdbSec([{ id: 'tt1', name: 'Dune', year: '2021' }], 'Dune', 1984), '', 'yıl uymuyorsa yanlış film seçilmez');
   assert.equal(A.imdbSec([{ id: 'tt1', name: 'Dune: Part Two', year: '2024' }], 'Dune', 2024), '', 'ad birebir değilse seçilmez');
+  assert.equal(A.imdbSec([{ id: 'tt3', name: 'The.Matrix.1999.1080p' }], 'The Matrix', 1999), 'tt3', 'IPTV biçimindeki noktalı ad ve kalite etiketleri temizlenir');
+  assert.equal(A.imdbSec([{ id: 'tt4', name: 'The Matrix Resurrections', year: '2021' }], 'The Matrix', 2021), '', 'kısmi ad yanlış yapımla eşleşmez');
+  assert.equal(A.imdbSec([{ id: 'tt5', name: 'The Matrix', year: '1999' }, { id: 'tt6', name: 'The Matrix', year: '2022' }], 'The Matrix', 1999), 'tt5', 'aynı adlı yapımlarda yıl doğru kaydı seçer');
   assert.equal(A.imdbSec([{ id: 'tt1', name: 'Şu İş', year: '2000' }], 'su is', 0), 'tt1', 'aksan ve büyük/küçük harf yok sayılır');
   assert.equal(A.imdbSec([{ id: 'x', name: 'A' }], 'A', 0), '', 'geçersiz kimlik');
 
