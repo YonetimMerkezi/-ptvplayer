@@ -1,12 +1,12 @@
 {
   "id": "com.sedonet.iptvplayerpro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "vendor": "Sedonet",
   "type": "web",
   "main": "index.html",
   "title": "IPTV Player Pro",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
-  "appDescription": "IPTV oynatıcı - webOS 3.0 test sürümü",
+  "appDescription": "IPTV Player Pro - LG webOS TV arayüzü",
   "resolution": "1920x1080"
 }
