@@ -564,7 +564,131 @@ const sonraki = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); // bekleyen söz zincirleri bitsin (zamanlayıcılar sahte olabilir)
 };
 
-test('kayıt: servis disk bilgisini ya da USB denemesini reddederse neden panelde görünür (sessizce yutulmaz)', async () => {
+const ARSIVLI = [1, 2].map((n) => ({ id: 'a' + n, kind: 'live', name: 'Arşivli ' + n, num: n, streamId: String(200 + n), archive: true, archiveDays: 3 }));
+const sunucuAgi = (ts) => ({ json: async (u) => (/get_short_epg/.test(u) ? { epg_listings: [] } : { server_info: { time_now: '2026-11-21 13:00:00', timestamp_now: ts } }), get: async () => '' });
+
+test('geri sarma: arşivli kanalda "Geri sar" düğmesi Kayıt\'tan önce gelir; arşivsiz kanalda ve filmde yoktur', () => {
+  const a = kur({}, ARSIVLI);
+  assert.match(a.cubuk(), /data-a="geri"[^>]*><span class="p-i">[\s\S]*?<em>Geri sar<\/em><\/span><span class="p-b" data-a="rec">/);
+  assert.match(a.q('.p-hint').innerHTML, /◀▶ Geri sar/);
+  a.bitir();
+  const b = kur();
+  assert.ok(!/Geri sar/.test(b.cubuk()), 'arşivsiz kanal');
+  assert.ok(!/Geri sar/.test(b.q('.p-hint').innerHTML));
+  b.bitir();
+});
+
+test('geri sarma: ◀ tuşları birikir, kısa bekleyişten sonra arşiv adresi bir kez açılır; ▶ ile canlıya dönülür', async () => {
+  const simdi = Date.UTC(2026, 10, 21, 10, 0, 0);
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: simdi });
+  try {
+    const o = kur({}, ARSIVLI, sunucuAgi(simdi / 1000));
+    const vid = o.q('#vid');
+    const canliUrl = vid.src;
+    assert.match(canliUrl, /\/live\/u\/p\/201\./);
+    assert.equal(o.tus('left'), true);
+    o.tus('left');
+    assert.equal(o.q('.p-geri').textContent, '◀ −10 dk', 'biriken hedef hemen görünür');
+    assert.equal(vid.src, canliUrl, 'bekleyiş bitmeden akış değişmez');
+    mock.timers.tick(800);
+    await sonraki();
+    assert.equal(vid.src, 'http://srv:80/timeshift/u/p/131/2026-11-21:12-50/201.ts', '10 dk geri, sunucu saatiyle 12:50; süre = geri kalış (bekleyişle 10 dk 1 sn) + 2 sa, dakikaya yukarı');
+    assert.equal(o.q('.p-geri').className, 'p-geri on');
+    vid.currentTime = 120; // 2 dk oynadı: canlıdan 8 dk geride
+    mock.timers.tick(2 * 60000);
+    assert.equal(o.q('.p-geri').textContent === '' || /−/.test(o.q('.p-geri').textContent), true);
+    o.tus('right'); // 8 dk → 3 dk geride kalmak değil: ▶ 5 dk ileri
+    mock.timers.tick(800);
+    await sonraki();
+    assert.match(vid.src, /timeshift/, 'hâlâ arşivde');
+    o.tus('rw');
+    o.tus('ff');
+    o.tus('ff');
+    mock.timers.tick(800);
+    await sonraki();
+    assert.match(vid.src, /\/live\/u\/p\/201\./, 'canlıdan fazla ileri sarınca canlıya dönülür');
+    assert.equal(o.q('.p-geri').className, 'p-geri');
+    o.bitir();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('geri sarma: panel 5-90 dk ve "Programın başına" sunar; seçilince arşiv açılır, "Canlıya dön" canlıya geri getirir; kanal değişince canlıdan başlar', async () => {
+  const simdi = Date.UTC(2026, 10, 21, 10, 0, 0);
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: simdi });
+  try {
+    const ag = {
+      json: async (u) => (/get_short_epg/.test(u) ? { epg_listings: [{ title: Buffer.from('Haber').toString('base64'), start_timestamp: String(simdi / 1000 - 40 * 60), stop_timestamp: String(simdi / 1000 + 20 * 60) }] } : { server_info: { time_now: '2026-11-21 13:00:00', timestamp_now: simdi / 1000 } }),
+      get: async () => '',
+    };
+    const o = kur({}, ARSIVLI, ag);
+    mock.timers.tick(1500); // EPG zamanlayıcısı
+    await sonraki();
+    const vid = o.q('#vid');
+    o.tus('down');
+    for (let i = 0; i < 20 && !/p-b on" data-a="geri"/.test(o.cubuk()); i++) o.tus('right');
+    assert.match(o.cubuk(), /p-b on" data-a="geri"/);
+    o.tus('ok');
+    const h = o.q('.p-pick').innerHTML;
+    assert.match(h, /Geri sar/);
+    for (const d of ['5 dk geri', '15 dk geri', '30 dk geri', '60 dk geri', '90 dk geri', 'Programın başına']) assert.ok(h.indexOf(d) >= 0, d + ' yok');
+    assert.ok(h.indexOf('Canlıya dön') < 0, 'canlıdayken "Canlıya dön" yok');
+    o.tus('down'); // 15 dk geri
+    o.tus('ok');
+    await sonraki();
+    assert.equal(vid.src, 'http://srv:80/timeshift/u/p/136/2026-11-21:12-45/201.ts');
+    // arşivdeyken panelde "Canlıya dön" en üstte
+    if (!/p-b on/.test(o.cubuk())) o.tus('down'); // panel kapanınca odak çubukta kalır
+    for (let i = 0; i < 20 && !/p-b on" data-a="geri"/.test(o.cubuk()); i++) o.tus('right');
+    o.tus('ok');
+    assert.match(o.q('.p-pick').innerHTML, /Canlıya dön/);
+    o.tus('ok');
+    await sonraki();
+    assert.match(vid.src, /\/live\/u\/p\/201\./);
+    // arşivdeyken kanal değişirse yeni kanal canlıdan açılır
+    o.tus('down'); // çubuktan yayına dön: ◀▶ yine geri sarar
+    o.tus('left');
+    mock.timers.tick(800);
+    await sonraki();
+    assert.match(vid.src, /timeshift/);
+    o.tus('chdown');
+    assert.match(vid.src, /\/live\/u\/p\/202\./, 'yeni kanal canlı');
+    assert.equal(o.q('.p-geri').className === 'p-geri' || o.q('.p-geri').textContent === '', true);
+    o.bitir();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('geri sarma: arşiv akışı bitince ya da hata verince canlıya dönülür', async () => {
+  const simdi = Date.UTC(2026, 10, 21, 10, 0, 0);
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: simdi });
+  try {
+    const o = kur({}, ARSIVLI, sunucuAgi(simdi / 1000));
+    const vid = o.q('#vid');
+    o.tus('rw');
+    mock.timers.tick(800);
+    await sonraki();
+    assert.match(vid.src, /timeshift\/u\/p\/\d+\/2026-11-21:12-45\/201\.ts/, '◀◀ = 15 dk');
+    (vid.l.ended || []).forEach((f) => f());
+    await sonraki();
+    assert.match(vid.src, /\/live\//, 'akış bitti → canlı');
+    o.tus('left');
+    mock.timers.tick(800);
+    await sonraki();
+    assert.match(vid.src, /timeshift/);
+    vid.setAttribute('src', vid.src); // gerçek video öğesi src özniteliğini taşır
+    (vid.l.error || []).forEach((f) => f());
+    await sonraki();
+    assert.match(vid.src, /\/live\//, 'arşiv hatası → canlı');
+    o.bitir();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('kayıt: servis disk bilgisini reddederse neden panelde görünür (sessizce yutulmaz)', async () => {
   const eski = { ...kayitIs.api };
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   Object.assign(kayitIs.api, {
@@ -572,19 +696,12 @@ test('kayıt: servis disk bilgisini ya da USB denemesini reddederse neden paneld
     alan: async () => {
       throw new Error('Denied method call "kayitAlan" for category "/"');
     },
-    usbDene: async () => {
-      throw new Error('Denied method call "kayitUsbDene" for category "/"');
-    },
   });
   try {
     const o = kur();
     dugmeAc(o, 10);
     await sonraki();
     assert.match(o.q('.p-pick').innerHTML, /Disk bilgisi alınamadı: Denied method call &quot;kayitAlan&quot;|Disk bilgisi alınamadı: Denied method call "kayitAlan"/);
-    o.tus('down');
-    o.tus('ok');
-    await sonraki();
-    assert.match(o.q('.p-pick').innerHTML, /USB denemesi yapılamadı: Denied method call/);
   } finally {
     mock.timers.reset();
     Object.assign(kayitIs.api, eski);
@@ -598,8 +715,7 @@ test('kayıt: canlı düğme çubuğunda son sıradadır; kayıt başlar, durum 
   let durum = { returnValue: true, id: 'k1', durum: 'baglaniyor', bayt: 0, sureMs: 0, dosya: '/tmp/usb/sda/sda1/IPTV-Kayit/Kanal_1-20261121-120000.ts', disk: 'USB 1 (sda1)', http: 0, mesaj: '' };
   Object.assign(kayitIs.api, {
     hazir: () => true,
-    alan: async () => ({ kullanici: { uid: 1000, gid: 1000 }, diskler: [{ ad: 'USB 2 (sda1)', yazilabilir: false, hata: 'EACCES', bos: null, ayrinti: { sahipUid: 0, sahipGid: 0, mod: '755', baglama: 'vfat rw' } }, { ad: 'Dahili bellek', yazilabilir: true, hata: '', bos: 2 * 1024 * 1024 * 1024 }] }),
-    usbDene: async () => ({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'yazildi', yanit: '' }] }),
+    alan: async () => ({ diskler: [{ ad: 'USB 2 (sda1)', yazilabilir: false, hata: 'EACCES', bos: null }, { ad: 'Dahili bellek', yazilabilir: true, hata: '', bos: 2 * 1024 * 1024 * 1024 }] }),
     baslat: async (url, ad, sn) => (cagri.push([url, ad, sn]), { ...durum }),
     durum: async () => ({ ...durum }),
     durdur: async () => ((durum = { ...durum, durum: 'bitti', mesaj: 'Durduruldu' }), { ...durum }),
@@ -616,13 +732,6 @@ test('kayıt: canlı düğme çubuğunda son sıradadır; kayıt başlar, durum 
     assert.match(h, /<b>30 sn<\/b>/);
     await sonraki();
     assert.match(o.q('.p-pick').innerHTML, /USB 2 \(sda1\): yazılamıyor \(EACCES\) · Dahili bellek: 2,00 GB boş \(≈ 35 dk\)/, 'diskler ve boş alan notta');
-    assert.match(o.q('.p-pick').innerHTML, /sahip 0:0, izin 755, servis 1000:1000, vfat rw/, 'yazılamama nedeni notta');
-    o.tus('down');
-    assert.match(o.q('.p-pick').innerHTML, /USB yazma testi/);
-    o.tus('ok');
-    await sonraki();
-    assert.match(o.q('.p-pick').innerHTML, /USB 2 \(sda1\): yazıldı ✓/, 'USB deneme sonucu notta');
-    o.tus('up');
     o.tus('right');
     assert.match(o.q('.p-pick').innerHTML, /<b>2 dk<\/b>/, '◀▶ süreyi değiştirir');
     o.tus('ok');

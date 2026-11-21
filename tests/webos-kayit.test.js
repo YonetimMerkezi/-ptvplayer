@@ -55,16 +55,3 @@ test('kayıt: disk özeti — yazılabilir (boş alan ve tahmini süre), yazıla
   );
   assert.equal(K.alanMetni(null), '');
 });
-
-test('kayıt: yazılamayan diskin nedeni ve USB denemesinin sonucu metne dökülür', () => {
-  const diskler = [
-    { ad: 'USB 2 (sda1)', yazilabilir: false, hata: 'EACCES', ayrinti: { sahipUid: 0, sahipGid: 0, mod: '755', baglama: 'vfat rw,uid=0' } },
-    { ad: 'Dahili bellek', yazilabilir: true, hata: '' },
-  ];
-  assert.equal(K.ayrintiMetni(diskler, { uid: 1000, gid: 1000 }), 'USB 2 (sda1): sahip 0:0, izin 755, servis 1000:1000, vfat rw,uid=0');
-  assert.equal(K.ayrintiMetni(null, null), '');
-  assert.equal(K.usbMetni({ sonuclar: [] }), 'Denenecek yazılamayan disk yok.');
-  assert.match(K.usbMetni({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'yazildi', yanit: '' }] }), /^USB 2 \(sda1\): yazıldı ✓/);
-  assert.match(K.usbMetni({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'yok', yanit: '{"errorText":"Denied"}' }] }), /yazılamadı \[\{"errorText":"Denied"\}\]$/);
-  assert.match(K.usbMetni({ sonuclar: [{ ad: 'USB 2 (sda1)', sonuc: 'varsayilan', yanit: '' }] }), /dahili klasöre yazdı/);
-});

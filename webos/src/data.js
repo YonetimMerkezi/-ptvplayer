@@ -5,6 +5,7 @@ import { M3UParser, groupSeries } from '../../www/js/m3u.js';
 import { fold } from '../../www/js/util.js';
 import { esle as isciEsle, isciKullanilir } from './isci-ist.js';
 import { AgHatasi } from './net.js';
+import * as A from './arsiv.js';
 
 const KIND_AKSIYON = {
   live: ['get_live_categories', 'get_live_streams', X.mapLive],
@@ -41,6 +42,18 @@ export function createXtream(src, net) {
   };
   const rawCats = (kind) => bir(cache, 'rc:' + kind, async () => gecerli(await J(KIND_AKSIYON[kind][0])));
   const epgOnbellek = {}; // kanal:adet → { at, p }; 2 dakika taze sayılır
+  let farkOnbellek = null; // sunucu saatinin UTC'den farkı (ms): bir kez sorulur; alınamazsa cihaz saati
+  const sunucuFarki = () =>
+    farkOnbellek ||
+    (farkOnbellek = J(null)
+      .then((j) => {
+        const f = A.sunucuFark(j && j.server_info);
+        return f == null ? A.cihazFark() : f;
+      })
+      .catch(() => {
+        farkOnbellek = null; // bir sonraki sarmada yeniden sorulur
+        return A.cihazFark();
+      }));
   return {
     type: 'xtream',
     auth: async () => X.checkAuth(await J(null)),
@@ -72,6 +85,12 @@ export function createXtream(src, net) {
       return '';
     },
     hasEpg: true,
+    // Arşivden (catch-up) oynatma adresi: başlangıç sunucu saatiyle dakika duyarlığında, süre dakika olarak
+    async arsivUrl(item, baslangicMs, sureDk) {
+      const fark = await sunucuFarki();
+      const kok = X.normalizeServer(cfg.server) + '/timeshift/' + encodeURIComponent(cfg.user) + '/' + encodeURIComponent(cfg.pass);
+      return kok + '/' + Math.max(1, Math.round(sureDk)) + '/' + A.damga(baslangicMs, fark) + '/' + item.streamId + '.ts';
+    },
   };
 }
 

@@ -7,6 +7,7 @@ import { el, esc, saat, sure, toast } from '../ui.js';
 import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
 import * as kayitIs from '../kayit.js';
+import * as arsiv from '../arsiv.js';
 import { videoKimligi, imdbBul, imdbAdaylari, imdbHatirla, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
@@ -38,7 +39,7 @@ export function playerScreen({ list, index, fresh }) {
   const sid = src ? src.id : '';
   kok.innerHTML =
     '<video id="vid"></video>' +
-    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">' + ikon.geriOk + '<span>Geri</span></div><div class="p-title"></div></div><div class="p-r"><span class="p-rec"></span><span class="p-fmt"></span><span class="clock"></span></div></div>' +
+    '<div class="p-ov"><div class="p-top"><div class="p-l"><div class="top-back" data-geri="1">' + ikon.geriOk + '<span>Geri</span></div><div class="p-title"></div></div><div class="p-r"><span class="p-geri"></span><span class="p-rec"></span><span class="p-fmt"></span><span class="clock"></span></div></div>' +
     '<div class="p-bot"><div class="p-epg"></div><div class="p-bar"><i></i></div><div class="p-time"></div><div class="p-acts"></div><div class="p-hint"></div></div></div>' +
     '<div class="p-sub"></div><div class="p-list"><div class="p-list-in"></div></div><div class="p-pick"></div>' +
     '<div class="p-spin"></div><div class="p-msg"></div><div class="p-num"></div>';
@@ -50,6 +51,7 @@ export function playerScreen({ list, index, fresh }) {
   const titleEl = kok.querySelector('.p-title');
   const fmtEl = kok.querySelector('.p-fmt');
   const recEl = kok.querySelector('.p-rec');
+  const geriEl = kok.querySelector('.p-geri');
   const epgEl = kok.querySelector('.p-epg');
   const barEl = kok.querySelector('.p-bar');
   const barI = barEl.firstChild;
@@ -84,6 +86,9 @@ export function playerScreen({ list, index, fresh }) {
   let uykuDk = 0;
   let secim = null; // açık seçim paneli: { baslik, satirlar:[{ad,sag,on}], idx, calis(i), yan(d), not, bilgi }
   let kaynakUrl = '';
+  let geri = null; // sağlayıcı arşivinden oynatılıyor: { start (ms) } — canlıya dönünce null
+  let geriBeklT = 0;
+  let geriHedef = null; // ◀▶ ile biriken, henüz uygulanmamış geri kalma (ms)
   let gecikmeMs = 0; // sesi geciktirme (ms); Web Audio ile, yalnız kullanıcı isteyince kurulur
   let sesGrafigi = null;
   let uykuT = 0;
@@ -135,12 +140,12 @@ export function playerScreen({ list, index, fresh }) {
     goster(o === 'video' ? undefined : o === 'sec' || o === 'liste' ? 0 : ODAK_MS);
   }
   // Düğme simgeleri (Oynat/Duraklat durumuna göre değişir)
-  const IKONLAR = { list: 'liste', last: 'onceki', fav: 'yildiz', audio: 'ses', sub: 'altyazi', aspect: 'ekran', sync: 'senkron', info: 'bilgi', sleep: 'uyku', fmt: 'bicim', rec: 'kayit', rw: 'geri10', ff: 'ileri10', next: 'sonraki' };
+  const IKONLAR = { list: 'liste', last: 'onceki', fav: 'yildiz', audio: 'ses', sub: 'altyazi', aspect: 'ekran', sync: 'senkron', info: 'bilgi', sleep: 'uyku', fmt: 'bicim', rec: 'kayit', geri: 'geri10', rw: 'geri10', ff: 'ileri10', next: 'sonraki' };
   const dugmeIkon = (id) => (id === 'pp' ? (v.paused ? ikon.oynat : ikon.duraklat) : ikon[IKONLAR[id]] || '');
   // Düğme çubuğu: canlıda kanal işlemleri, filmde sarma
   const dugmeler = () =>
     canli()
-      ? [['list', 'Kanallar'], ['last', 'Önceki'], ['fav', 'Favori'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku'], ['fmt', 'Biçim'], ['rec', 'Kayıt']]
+      ? [['list', 'Kanallar'], ['last', 'Önceki'], ['fav', 'Favori'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku'], ['fmt', 'Biçim']].concat(arsivVar() ? [['geri', 'Geri sar']] : [], [['rec', 'Kayıt']])
       : [['rw', '−10 sn'], ['pp', v.paused ? 'Oynat' : 'Duraklat'], ['ff', '+10 sn'], ['audio', 'Ses'], ['sub', 'Altyazı'], ['aspect', 'Ekran'], ['sync', 'Senkron'], ['info', 'Bilgi'], ['sleep', 'Uyku']].concat(it.kind === 'episode' && list.length > 1 ? [['next', 'Sonraki bölüm']] : []);
   function barCiz() {
     const d = dugmeler();
@@ -186,6 +191,7 @@ export function playerScreen({ list, index, fresh }) {
     if (id === 'aspect') return ekranAc();
     if (id === 'sync') return senkronAc();
     if (id === 'info') return bilgiAc();
+    if (id === 'geri') return geriAc();
     if (id === 'rec') return kayitAc();
     oyunEylem(id);
     barCiz();
@@ -208,18 +214,28 @@ export function playerScreen({ list, index, fresh }) {
   };
   const ipucu = () => {
     hintEl.innerHTML = canli()
-      ? '<span class="p-k">▲ Geri</span><span class="p-k">▼ Menü</span><span class="p-k">P+ P− Kanal</span><span class="p-k">0–9 Numara</span>' + renkliIpucu()
+      ? '<span class="p-k">▲ Geri</span><span class="p-k">▼ Menü</span><span class="p-k">P+ P− Kanal</span><span class="p-k">0–9 Numara</span>' + (arsivVar() ? '<span class="p-k">◀▶ Geri sar</span>' : '') + renkliIpucu()
       : '<span class="p-k">◀▶ 10 sn</span><span class="p-k">OK Duraklat</span><span class="p-k">▲ Geri</span><span class="p-k">▼ Menü</span>' + (list.length > 1 ? '<span class="p-k">P+ P− Bölüm</span>' : '');
     barCiz();
   };
 
   function zamanGuncelle() {
+    if (!geri && geriHedef == null && geriEl.className !== 'p-geri') {
+      geriEl.className = 'p-geri';
+      geriEl.textContent = '';
+    }
     const d = v.duration;
     const t = v.currentTime || 0;
     if (!canli() && isFinite(d) && d > 0) {
       barEl.style.display = '';
       barI.style.width = Math.min(100, (t / d) * 100) + '%';
       timeEl.textContent = sure(t * 1000) + ' / ' + sure(d * 1000);
+    } else if (canli() && geri) {
+      barEl.style.display = 'none';
+      timeEl.textContent = 'Canlıdan ' + arsiv.etiket(geriMs());
+      geriEl.textContent = '◀ ' + arsiv.etiket(geriMs());
+      geriEl.className = 'p-geri on';
+      return;
     } else if (canli() && simdiProg && Date.now() < simdiProg.e) {
       const n = Date.now();
       barEl.style.display = '';
@@ -284,6 +300,9 @@ export function playerScreen({ list, index, fresh }) {
 
   function baslat() {
     it = list[idx];
+    geri = null; // yeni kanal ya da yeniden deneme her zaman canlıdan başlar
+    geriHedef = null;
+    clearTimeout(geriBeklT);
     haricKaldir(); // önceki yapımın harici altyazısı yenisine taşınmaz
     if (medyaDur) medyaDur();
     medyaDur = it.kind === 'local' ? kayitIs.medyaCanliTut() : null;
@@ -309,6 +328,11 @@ export function playerScreen({ list, index, fresh }) {
     }
     K.bilgi('Oynat: ' + it.name + ' [' + (it.kind || '?') + '] ' + hostOf(url));
     if (sid && canli()) ctx.store.touch(sid, it, 0, 0);
+    oynat(url);
+  }
+
+  // Kaynağı verir ve oynatır; yayın hiç başlamazsa kullanıcıya haber verir.
+  function oynat(url) {
     v.src = url;
     try {
       v.play();
@@ -374,11 +398,19 @@ export function playerScreen({ list, index, fresh }) {
   v.addEventListener('error', () => {
     if (kapali || !v.getAttribute('src')) return;
     clearTimeout(beklT);
+    if (geri) {
+      toast('Arşiv oynatılamadı, canlıya dönülüyor', 4000);
+      geriGit(0);
+      return;
+    }
     const c = v.error ? v.error.code : 0;
     hataGoster((HATA[c] || 'Oynatılamadı') + (canli() ? ' · OK: yeniden dene · Sarı: biçimi değiştir' : ' · OK: yeniden dene'));
   });
   v.addEventListener('ended', () => {
-    if (canli()) return;
+    if (canli()) {
+      if (geri) geriGit(0); // arşiv akışı bitti: canlıya dön
+      return;
+    }
     if (it.kind === 'episode' && idx < list.length - 1 && ctx.store.setting('autoNext', true)) {
       kaydetBitti();
       idx++;
@@ -747,11 +779,80 @@ export function playerScreen({ list, index, fresh }) {
   let kayit = null; // { id, d (servisin son durumu), sureSn, ad, hata, bekliyor }
   let kayitSure = 30;
   let kayitT = 0;
+  // --- Sağlayıcı arşivinden geri sarma (Xtream tv_archive): diske yazılmaz, arşiv adresi o andan açılır
+  function arsivVar() {
+    const p = provider();
+    return !!it && canli() && !!it.archive && !!p && typeof p.arsivUrl === 'function';
+  }
+  // Şu an oynayan görüntünün canlıdan ne kadar geride olduğu (ms)
+  const geriMs = () => (geri ? Math.max(0, Date.now() - (geri.start + (v.currentTime || 0) * 1000)) : 0);
+  // geriMs kadar geriye git (0 = canlı)
+  async function geriGit(istenen) {
+    if (!arsivVar()) return;
+    const pl = arsiv.plan(Date.now(), istenen, arsiv.enFazlaGeri(it));
+    if (pl.canli) return baslat();
+    const hedef = it;
+    let url;
+    try {
+      url = await provider().arsivUrl(it, pl.start, pl.sureDk);
+    } catch (e) {
+      toast('Arşiv adresi alınamadı', 4000);
+      return;
+    }
+    if (kapali || hedef !== it) return;
+    geri = { start: pl.start };
+    geriHedef = null;
+    hata = false;
+    msg.className = 'p-msg';
+    spin.className = 'p-spin on';
+    durdurKaynak();
+    kaynakUrl = url;
+    K.bilgi('Arşiv: ' + it.name + ' ' + arsiv.etiket(Date.now() - pl.start) + ' ' + hostOf(url));
+    oynat(url);
+    zamanGuncelle();
+    barCiz();
+  }
+  // ◀▶ ile adım adım: tuşlar birikir, kısa bir bekleyişten sonra bir kez uygulanır (her basışta akış yeniden açılmasın)
+  function geriAdim(yon, buyuk) {
+    const mevcut = geriHedef != null ? geriHedef : geriMs();
+    const yeni = Math.max(0, Math.min(arsiv.enFazlaGeri(it), mevcut + yon * (buyuk ? 15 : 5) * arsiv.DK));
+    goster();
+    if (yeni === mevcut) return;
+    geriHedef = yeni;
+    geriEl.textContent = '◀ ' + arsiv.etiket(yeni);
+    geriEl.className = 'p-geri on';
+    clearTimeout(geriBeklT);
+    geriBeklT = setTimeout(() => {
+      const h = geriHedef;
+      geriHedef = null;
+      if (!kapali && h != null) geriGit(h);
+    }, 800);
+  }
+  function geriAc() {
+    if (!arsivVar()) return;
+    const enFazla = arsiv.enFazlaGeri(it);
+    const satirlar = [];
+    if (geri) satirlar.push({ ad: 'Canlıya dön', ms: 0 });
+    arsiv.ADIMLAR.forEach((dk) => {
+      if (dk * arsiv.DK <= enFazla) satirlar.push({ ad: dk + ' dk geri', ms: dk * arsiv.DK });
+    });
+    if (simdiProg && simdiProg.s < Date.now() - arsiv.CANLI_KENAR_MS && Date.now() - simdiProg.s <= enFazla) satirlar.push({ ad: 'Programın başına', sag: simdiProg.t, ms: Date.now() - simdiProg.s });
+    secimAc({
+      baslik: 'Geri sar',
+      satirlar,
+      not: 'Sağlayıcının yayın arşivinden oynatır (' + Math.round(arsiv.arsivMs(it) / 86400000) + ' gün). Kumandada ◀▶ 5 dk, ◀◀ ▶▶ 15 dk geri/ileri sarar.',
+      idx: 0,
+      calis(i) {
+        const x = satirlar[i];
+        secimKapat();
+        if (x) geriGit(x.ms);
+      },
+    });
+  }
+
   let kayitHata = 0; // art arda başarısız durum sorgusu
   let kayitDiskler = null; // servisin bildirdiği diskler (yazılabilirlik, boş alan)
-  let kayitKullanici = null; // servisin kullanıcı kimliği (uid:gid)
   let kayitDiskHata = ''; // disk bilgisi alınamadıysa nedeni (sessizce yutulmaz)
-  let kayitUsb = { bekliyor: false, metin: '' }; // USB yazma denemesinin durumu ve sonucu
   function kayitGoster() {
     const d = kayit && kayit.d;
     recEl.textContent = kayitIs.calisiyor(d) ? '● KAYIT ' + sure(d.sureMs) : '';
@@ -762,14 +863,11 @@ export function playerScreen({ list, index, fresh }) {
     const sureAd = kayitIs.sureAdi(kayitSure);
     if (kayit && kayit.bekliyor) return { satirlar: [{ ad: 'Kayıt başlatılıyor…' }], not: 'Disk yazılabilir mi denetleniyor, yayına bağlanılıyor.', bilgi: true };
     if (kayitIs.calisiyor(d)) return { satirlar: [{ ad: 'Kaydı durdur', eyl: 'durdur' }], not: kayitIs.durumMetni(d, kayit.sureSn) };
-    const usbSatir = { ad: kayitUsb.bekliyor ? 'USB yazma deneniyor…' : 'USB yazma testi', eyl: 'usbtest' };
-    const usbNot = kayitUsb.metin ? kayitUsb.metin + ' — ' : '';
-    if (d && d.durum === 'bitti') return { satirlar: [{ ad: 'Kaydı oynat', eyl: 'oynat' }, { ad: 'Yeniden kaydet', sag: sureAd, eyl: 'basla' }, usbSatir], not: usbNot + kayitIs.durumMetni(d, 0) };
+    if (d && d.durum === 'bitti') return { satirlar: [{ ad: 'Kaydı oynat', eyl: 'oynat' }, { ad: 'Yeniden kaydet', sag: sureAd, eyl: 'basla' }], not: kayitIs.durumMetni(d, 0) };
     const alan = kayitDiskler ? kayitIs.alanMetni(kayitDiskler) : kayitDiskHata ? 'Disk bilgisi alınamadı: ' + kayitDiskHata : '';
-    const ayrinti = kayitDiskler ? kayitIs.ayrintiMetni(kayitDiskler, kayitKullanici) : '';
     const genel = 'Yayın MPEG-TS olarak yazılır. ◀▶ süreyi değiştirir. Hesabınız tek bağlantıya izin veriyorsa yayın kesilebilir.';
-    const ilk = d ? kayitIs.durumMetni(d, 0) : kayit && kayit.hata ? 'Başlatılamadı: ' + kayit.hata : usbNot + (alan ? alan + ' — ' : '') + (ayrinti ? ayrinti + ' — ' : '') + genel;
-    return { satirlar: [{ ad: d || (kayit && kayit.hata) ? 'Yeniden dene' : 'Kaydı başlat', sag: sureAd, eyl: 'basla' }, usbSatir], not: ilk };
+    const ilk = d ? kayitIs.durumMetni(d, 0) : kayit && kayit.hata ? 'Başlatılamadı: ' + kayit.hata : (alan ? alan + ' — ' : '') + genel;
+    return { satirlar: [{ ad: d || (kayit && kayit.hata) ? 'Yeniden dene' : 'Kaydı başlat', sag: sureAd, eyl: 'basla' }], not: ilk };
   }
   function kayitPanelYenile() {
     if (!kayitPanel || secim !== kayitPanel) return;
@@ -831,20 +929,6 @@ export function playerScreen({ list, index, fresh }) {
       kayitPanelYenile();
     }
   }
-  async function kayitUsbDene() {
-    if (kayitUsb.bekliyor) return;
-    kayitUsb = { bekliyor: true, metin: '' };
-    kayitPanelYenile();
-    let metin;
-    try {
-      metin = kayitIs.usbMetni(await kayitIs.api.usbDene());
-    } catch (e) {
-      metin = 'USB denemesi yapılamadı: ' + ((e && e.message) || 'servis hatası');
-    }
-    if (kapali) return;
-    kayitUsb = { bekliyor: false, metin };
-    kayitPanelYenile();
-  }
   async function kayitOynat() {
     const d = kayit && kayit.d;
     if (!d || d.durum !== 'bitti' || !d.dosya) return;
@@ -893,7 +977,6 @@ export function playerScreen({ list, index, fresh }) {
         if (x.eyl === 'basla') kayitBasla();
         else if (x.eyl === 'durdur') kayitDurdur();
         else if (x.eyl === 'oynat') kayitOynat();
-        else if (x.eyl === 'usbtest') kayitUsbDene();
       },
     };
     kayitPanel = s;
@@ -904,7 +987,6 @@ export function playerScreen({ list, index, fresh }) {
       .then((r) => {
         if (kapali) return;
         kayitDiskler = (r && r.diskler) || [];
-        kayitKullanici = (r && r.kullanici) || null;
         kayitDiskHata = '';
         kayitPanelYenile();
       })
@@ -1157,11 +1239,13 @@ export function playerScreen({ list, index, fresh }) {
       }
       if (a === 'left' || a === 'rw') {
         if (!canli()) sar(-1);
+        else if (arsivVar()) geriAdim(1, a === 'rw');
         else goster();
         return true;
       }
       if (a === 'right' || a === 'ff') {
         if (!canli()) sar(1);
+        else if (arsivVar()) geriAdim(-1, a === 'ff');
         else goster();
         return true;
       }
@@ -1198,6 +1282,7 @@ export function playerScreen({ list, index, fresh }) {
       kapali = true;
       clearInterval(saveT);
       clearInterval(kayitT);
+      clearTimeout(geriBeklT);
       if (medyaDur) medyaDur();
       clearTimeout(secimT);
       clearInterval(haricT);

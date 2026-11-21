@@ -23,8 +23,7 @@
 //   kayitBaslat {url, ad, sureSn}           → {returnValue, id, dosya, disk}
 //   kayitDurum  {id}                        → {returnValue, durum, bayt, sureMs, dosya, disk, http, mesaj}
 //   kayitDurdur {id}                        → {returnValue, durum, ...}
-//   kayitAlan   {}                          → {returnValue, kullanici{uid,gid}, diskler[{ad, yol, yazilabilir, hata, bos, ayrinti}]}   (bos: boş bayt, bilinmiyorsa null)
-//   kayitUsbDene {}                         → {returnValue, sonuclar[{ad, yol, sonuc: yazildi|varsayilan|yok|hata, yanit}]}   (kök yetkili indirme servisiyle USB'ye yazma denemesi)
+//   kayitAlan   {}                          → {returnValue, diskler[{ad, yol, yazilabilir, hata, bos}]}   (bos: boş bayt, bilinmiyorsa null)
 'use strict';
 
 var http = require('http');
@@ -709,6 +708,9 @@ var KAYIT_DURGUN_MS = 20000; // bu kadar süre hiç veri gelmezse yayın durdu s
 var KAYIT_BAGLANTI_MS = 15000;
 var KAYIT_EN_FAZLA = 4 * 1024 * 1024 * 1024;
 var KAYIT_EN_UZUN_SN = 4 * 3600;
+var kayitHazirlaniyor = false;
+var KAYIT_BOS_PAY = 150 * 1024 * 1024; // diskte her zaman bu kadar boş yer kalır (dahili bellek dolarsa TV'nin kendi işleri bozulur)
+var KAYIT_EN_AZ_BOS = 20 * 1024 * 1024; // pay düşüldükten sonra bu kadar yer yoksa kayıt başlamaz
 var KAYIT_SAKLA = 6;
 var kayitlar = {};
 var kayitSayac = 0;
@@ -889,7 +891,7 @@ function kayitBaglan(r, adres, kalan) {
       res.on('data', function (c) {
         r.bayt += c.length;
         r.son = Date.now();
-        if (r.bayt >= KAYIT_EN_FAZLA) kayitBitir(r, 'bitti', 'Boyut sınırına ulaşıldı');
+        if (r.bayt >= r.sinir) kayitBitir(r, 'bitti', r.sinir < KAYIT_EN_FAZLA ? 'Boş alan sınırına ulaşıldı' : 'Boyut sınırına ulaşıldı');
       });
       res.on('end', function () {
         kayitBitir(r, r.bayt > 0 ? 'bitti' : 'hata', r.bayt > 0 ? 'Sunucu yayını kapattı' : 'Sunucu hiç veri vermedi');
@@ -911,7 +913,7 @@ function kayitBaglan(r, adres, kalan) {
 function kayitBaslat(p, cb) {
   var adres = p && p.url ? String(p.url) : '';
   if (!/^https?:\/\//i.test(adres)) return cb(new Error('Yayın adresi yok'));
-  if (kayitVar()) return cb(new Error('Zaten bir kayıt sürüyor'));
+  if (kayitVar() || kayitHazirlaniyor) return cb(new Error('Zaten bir kayıt sürüyor'));
   var sure = Math.max(1, Math.min(KAYIT_EN_UZUN_SN, Number(p.sureSn) || 30));
   var denemeler = [];
   var yol = '';
@@ -927,7 +929,18 @@ function kayitBaslat(p, cb) {
     }
   }
   if (!yol) return cb(new Error('Hiçbir diske yazılamadı (' + denemeler.join('; ') + ')'));
+  kayitHazirlaniyor = true; // boş alan ölçülürken ikinci bir kayıt başlamasın
+  bosAlan(yol, function (bos) {
+    kayitHazirlaniyor = false;
+    var sinir = bos == null ? KAYIT_EN_FAZLA : Math.min(KAYIT_EN_FAZLA, bos - KAYIT_BOS_PAY);
+    if (sinir < KAYIT_EN_AZ_BOS) return cb(new Error(disk + ' diskinde yeterli boş yer yok (' + Math.max(0, Math.floor(bos / 1048576)) + ' MB boş)'));
+    kayitKur(p, adres, sure, yol, disk, denemeler, sinir, cb);
+  });
+}
+
+function kayitKur(p, adres, sure, yol, disk, denemeler, sinir, cb) {
   var r = {
+    sinir: sinir,
     id: 'k' + ++kayitSayac,
     dosya: yol + '/' + kayitAdi(p.ad),
     disk: disk,
@@ -986,138 +999,10 @@ function kayitAlan(p, cb) {
   adaylar.forEach(function (a, i) {
     var k = kayitKlasoru(a.yol);
     var kayit = { ad: a.ad, yol: a.yol, yazilabilir: !!k.yol, hata: k.hata || '', bos: null };
-    if (!k.yol) kayit.ayrinti = diskAyrinti(a.yol);
     sonuc[i] = kayit;
     bosAlan(k.yol || a.yol, function (bos) {
       kayit.bos = bos;
-      if (--kalan === 0) cb(null, { returnValue: true, kullanici: kullaniciKimligi(), diskler: sonuc });
-    });
-  });
-}
-
-// Yazılamayan bir diskin nedenini anlamak için: sahibi, izin kipi ve bağlama seçenekleri (/proc/mounts).
-function kullaniciKimligi() {
-  var k = { uid: null, gid: null };
-  try {
-    k.uid = process.getuid();
-    k.gid = process.getgid();
-  } catch (e) {
-    /* kimlik okunamadı */
-  }
-  return k;
-}
-
-function diskAyrinti(yol) {
-  var a = { sahipUid: null, sahipGid: null, mod: '', baglama: '' };
-  try {
-    var st = fs.statSync(yol);
-    a.sahipUid = st.uid;
-    a.sahipGid = st.gid;
-    a.mod = (st.mode & 4095).toString(8);
-  } catch (e) {
-    /* klasör okunamadı */
-  }
-  try {
-    var en = '';
-    String(fs.readFileSync('/proc/mounts')).split('\n').forEach(function (satir) {
-      var t = satir.split(' ');
-      if (t.length < 4 || !(yol === t[1] || yol.indexOf(t[1] + '/') === 0) || t[1].length <= en.length) return;
-      en = t[1];
-      a.baglama = (t[2] + ' ' + t[3]).slice(0, 90);
-    });
-  } catch (e2) {
-    /* /proc/mounts yok (masaüstü) */
-  }
-  return a;
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// USB'ye yazma denemesi: bu servis kök yetkisiz çalışır; TV'nin kök yetkili indirme servisi (luna) yerel bir adresten
-// küçük bir dosyayı USB'ye indirebilir mi? Evet ise kayıt aynı yolla USB'ye taşınabilir. Sonuç kullanıcıya gösterilir.
-var lunaCagri = null; // (uri, parametreler, cb(yanit)) — webOS'ta servis.call'a bağlanır
-var USB_TEST_AD = 'iptv-kayit-testi.bin';
-var USB_TEST_MS = 12000;
-
-function dosyaBoyutu(yol) {
-  try {
-    return fs.statSync(yol).size;
-  } catch (e) {
-    return -1;
-  }
-}
-
-function yanitOzeti(pl) {
-  try {
-    return JSON.stringify(pl).slice(0, 140);
-  } catch (e) {
-    return '';
-  }
-}
-
-function usbTekDene(h, url, boyut, cb) {
-  var hedef = h.yol + '/' + USB_TEST_AD;
-  var yedekHedef = '/media/internal/downloads/' + USB_TEST_AD; // indirme servisi yetkiyi reddederse düştüğü klasör
-  var yanit = '';
-  var son = false;
-  var t = null;
-  function bitir(sonuc) {
-    if (son) return;
-    son = true;
-    clearInterval(t);
-    cb({ ad: h.ad, yol: h.yol, sonuc: sonuc, yanit: yanit });
-  }
-  try {
-    lunaCagri('luna://com.webos.service.downloadmanager/download', { target: url, targetDir: h.yol, targetFilename: USB_TEST_AD, subscribe: false }, function (pl) {
-      yanit = yanitOzeti(pl);
-    });
-  } catch (e) {
-    yanit = hataKodu(e);
-    return bitir('hata');
-  }
-  var bas = Date.now();
-  t = setInterval(function () {
-    if (dosyaBoyutu(hedef) === boyut) return bitir('yazildi');
-    if (dosyaBoyutu(yedekHedef) === boyut) return bitir('varsayilan');
-    if (Date.now() - bas > USB_TEST_MS) bitir('yok');
-  }, 300);
-}
-
-// cb(null, {returnValue, sonuclar}). Yalnız doğrudan yazılamayan diskler denenir.
-function kayitUsbDene(p, cb) {
-  if (!lunaCagri) return cb(null, { returnValue: false, errorText: 'Luna çağrısı bu ortamda yok' });
-  var kaynakKlasor = '';
-  var hedefler = [];
-  kayitAdaylari().forEach(function (a) {
-    var k = kayitKlasoru(a.yol);
-    if (k.yol) kaynakKlasor = kaynakKlasor || k.yol;
-    else hedefler.push(a);
-  });
-  if (!hedefler.length) return cb(null, { returnValue: true, sonuclar: [] });
-  if (!kaynakKlasor) return cb(null, { returnValue: false, errorText: 'Deneme dosyası için yazılabilir yer yok' });
-  var icerik = new Buffer(4096);
-  icerik.fill(65);
-  var kaynak = kaynakKlasor + '/' + USB_TEST_AD;
-  try {
-    fs.writeFileSync(kaynak, icerik);
-  } catch (e) {
-    return cb(null, { returnValue: false, errorText: 'Deneme dosyası yazılamadı: ' + hataKodu(e) });
-  }
-  medyaBaslat({}, function (e2, b) {
-    if (e2) return cb(null, { returnValue: false, errorText: String((e2 && e2.message) || e2) });
-    var url = 'http://127.0.0.1:' + b.port + '/' + b.jeton + '/' + encodeURIComponent(kaynak);
-    var sonuclar = [];
-    var kalan = hedefler.length;
-    hedefler.forEach(function (h, i) {
-      usbTekDene(h, url, icerik.length, function (r) {
-        sonuclar[i] = r;
-        if (--kalan > 0) return;
-        try {
-          fs.unlinkSync(kaynak);
-        } catch (e3) {
-          /* kaynak zaten yok */
-        }
-        cb(null, { returnValue: true, sonuclar: sonuclar });
-      });
+      if (--kalan === 0) cb(null, { returnValue: true, diskler: sonuc });
     });
   });
 }
@@ -1158,13 +1043,9 @@ module.exports = {
   kayitDurum: kayitDurum,
   kayitDurdur: kayitDurdur,
   kayitAlan: kayitAlan,
-  kayitUsbDene: kayitUsbDene,
-  _lunaAyarla: function (f, ms) {
-    lunaCagri = f;
-    if (ms) USB_TEST_MS = ms;
-  },
-  _kayitAyarla: function (yedek) {
+  _kayitAyarla: function (yedek, bosPay) {
     kayitYedekKok = yedek;
+    if (bosPay != null) KAYIT_BOS_PAY = bosPay;
   },
   _kayitlar: kayitlar,
   _medyaKontrol: medyaKontrol,
@@ -1194,11 +1075,6 @@ try {
 }
 if (Service) {
   var servis = new Service(SERVIS_ADI);
-  lunaCagri = function (uri, par, cb) {
-    servis.call(uri, par, function (m) {
-      cb(m && m.payload);
-    });
-  };
   // Parçalı okuma sürerken servis kapanmasın (dinamik servisler boşta ~5 sn sonra sonlanır)
   var etkinlik = null;
   var canliTut = function () {
@@ -1261,11 +1137,6 @@ if (Service) {
   });
   servis.register('kayitAlan', function (m) {
     kayitAlan(m.payload || {}, function (e, r) {
-      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
-    });
-  });
-  servis.register('kayitUsbDene', function (m) {
-    kayitUsbDene(m.payload || {}, function (e, r) {
       m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
     });
   });

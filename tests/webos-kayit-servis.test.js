@@ -189,74 +189,11 @@ test('kayıt servisi: kayitAlan her diskin yazılabilirliğini ve boş alanını
   rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
 });
 
-test('kayıt servisi: kayitAlan yazılamayan diskin sahibi, izni ve servis kimliğini bildirir', async () => {
-  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
-  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya'); // klasör yerine dosya: yazılamayan disk
+test('kayıt servisi: diskte pay bırakılacak kadar boş yer yoksa kayıt başlamaz (dahili belleği doldurmaz)', async () => {
+  svc._kayitAyarla(yedek, 1e15); // pay boş alandan büyük
   try {
-    const r = await new Promise((coz, red) => svc.kayitAlan({}, (e, x) => (e ? red(e) : coz(x))));
-    const d = r.diskler.filter((x) => x.ad === 'USB 1 (sda1)')[0];
-    assert.equal(d.yazilabilir, false);
-    assert.equal(typeof d.ayrinti.mod, 'string');
-    assert.ok(d.ayrinti.mod.length >= 3, 'izin kipi sekizlik: ' + d.ayrinti.mod);
-    assert.equal(typeof d.ayrinti.sahipUid, 'number');
-    assert.equal(typeof r.kullanici.uid, 'number');
-    assert.ok(r.diskler.filter((x) => x.yazilabilir).every((x) => !x.ayrinti), 'yazılabilen diskte ayrıntı yok');
+    await assert.rejects(new Promise((coz, red) => svc.kayitBaslat({ url: 'http://127.0.0.1:' + port + '/canli.ts', ad: 'Pay', sureSn: 5 }, (e, r) => (e ? red(e) : coz(r)))), /yeterli boş yer yok/);
   } finally {
-    rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
-  }
-});
-
-// Kök yetkili indirme servisini taklit eder: verilen adresi gerçekten indirip hedefe yazar (medya sunucusu dahil)
-function sahteIndirme(yapilan) {
-  return (uri, par, cb) => {
-    yapilan.push([uri, par]);
-    http.get(par.target, (res) => {
-      const parcalar = [];
-      res.on('data', (c) => parcalar.push(c));
-      res.on('end', () => {
-        writeFileSync(join(par.targetDir, par.targetFilename), Buffer.concat(parcalar));
-        cb({ returnValue: true, completed: true });
-      });
-    });
-  };
-}
-const usbDene = () => new Promise((coz, red) => svc.kayitUsbDene({}, (e, x) => (e ? red(e) : coz(x))));
-
-test('kayıt servisi: kayitUsbDene — kök yetkili indirme servisi dosyayı USB’ye yazarsa "yazildi"', async () => {
-  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
-  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya'); // doğrudan yazılamayan USB
-  const yapilan = [];
-  svc._lunaAyarla(sahteIndirme(yapilan), 3000);
-  try {
-    const r = await usbDene();
-    assert.equal(r.returnValue, true);
-    assert.equal(r.sonuclar.length, 1);
-    assert.equal(r.sonuclar[0].ad, 'USB 1 (sda1)');
-    assert.equal(r.sonuclar[0].sonuc, 'yazildi');
-    assert.equal(yapilan[0][0], 'luna://com.webos.service.downloadmanager/download');
-    assert.match(yapilan[0][1].target, /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]+\//, 'kaynak yerel medya sunucusundan');
-    assert.equal(yapilan[0][1].targetDir, bolum);
-    assert.equal(readFileSync(join(bolum, 'iptv-kayit-testi.bin')).length, 4096);
-    assert.ok(!existsSync(join(yedek, 'IPTV-Kayit', 'iptv-kayit-testi.bin')), 'kaynak dosya temizlenir');
-  } finally {
-    svc._lunaAyarla(null);
-    rmSync(join(bolum, 'iptv-kayit-testi.bin'), { force: true });
-    rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
-  }
-});
-
-test('kayıt servisi: kayitUsbDene — indirme servisi hiçbir şey yazmazsa "yok" ve yanıt bildirilir; luna yoksa hata', async () => {
-  rmSync(join(bolum, 'IPTV-Kayit'), { recursive: true, force: true });
-  writeFileSync(join(bolum, 'IPTV-Kayit'), 'dosya');
-  try {
-    svc._lunaAyarla(null);
-    await assert.rejects(usbDene().then((r) => (r.returnValue === false ? Promise.reject(new Error(r.errorText)) : r)), /Luna çağrısı/);
-    svc._lunaAyarla((uri, par, cb) => cb({ returnValue: false, errorText: 'Denied method call' }), 600);
-    const r = await usbDene();
-    assert.equal(r.sonuclar[0].sonuc, 'yok');
-    assert.match(r.sonuclar[0].yanit, /Denied method call/);
-  } finally {
-    svc._lunaAyarla(null);
-    rmSync(join(bolum, 'IPTV-Kayit'), { force: true });
+    svc._kayitAyarla(yedek, 150 * 1024 * 1024);
   }
 });
