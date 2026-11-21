@@ -1,5 +1,5 @@
 // LG webOS oynatıcı: kumanda odağı (Geri düğmesi, düğme çubuğu, kanal listesi, ▲▼ kanal değiştirme ayarı).
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 const temizle = []; // oluşturulan oynatıcıların zamanlayıcıları, test başarısız olsa da kapatılır
@@ -316,6 +316,7 @@ function altyaziAgi(durum = {}) {
     },
   };
 }
+const altMetin = (o) => o.q('.p-sub').children[0].textContent; // metin, .p-sub içindeki span'da
 const bekle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 // Koşul gerçekleşene kadar (en çok 3 sn) bekler: ağ sahtesi zamanlayıcılardan geçtiği için süre sabit varsayılmaz
 async function bekleKadar(f, ad) {
@@ -346,11 +347,11 @@ test('altyazı: film için ara → Türkçe listenin başında → seç → meti
   assert.ok(ag.istek.includes('http://altyazi.test/tr.srt'));
   v.currentTime = 11;
   await bekle(300); // 250 ms'lik çizim döngüsü
-  assert.equal(o.q('.p-sub').textContent, 'Merhaba dünya');
+  assert.equal(altMetin(o), 'Merhaba dünya');
   assert.equal(o.q('.p-sub').className, 'p-sub on');
   v.currentTime = 15;
   await bekle(300);
-  assert.equal(o.q('.p-sub').textContent, '');
+  assert.equal(altMetin(o), '');
   // Kaydır: altyazıyı 1 sn geciktir → 11 sn'de artık görünmez, 11,5 sn'de görünür? (kayma +1 sn: metin 11 sn'de başlar)
   o.tus('ok'); // çubukta Altyazı düğmesi: panel yeniden açılır
   const satirlar = o.q('.p-pick').innerHTML;
@@ -364,16 +365,16 @@ test('altyazı: film için ara → Türkçe listenin başında → seç → meti
   assert.match(o.q('.p-pick').innerHTML, /\+1,0 sn/);
   v.currentTime = 10.5;
   await bekle(300);
-  assert.equal(o.q('.p-sub').textContent, '', '10,5 sn − 1 sn = 9,5 sn: henüz yok');
+  assert.equal(altMetin(o), '', '10,5 sn − 1 sn = 9,5 sn: henüz yok');
   v.currentTime = 11.5;
   await bekle(300);
-  assert.equal(o.q('.p-sub').textContent, 'Merhaba dünya');
+  assert.equal(altMetin(o), 'Merhaba dünya');
   o.tus('back');
   // Kapalı: katman temizlenir
   o.tus('ok'); // panel yeniden açılır, seçili satır "Türkçe (harici)"
   o.tus('up'); // Kapalı
   o.tus('ok');
-  assert.equal(o.q('.p-sub').textContent, '');
+  assert.equal(altMetin(o), '');
   assert.equal(o.q('.p-sub').className, 'p-sub');
   o.bitir();
 });
@@ -407,6 +408,126 @@ test('altyazı: Türkçe ad katalogda başka adla çıkar → "Hangi yapım?" se
   o.bitir();
 });
 
+test('altyazı: Altyazı görünümü boyut/renk/arka plan/konumu seçer, saklar ve örnek metin gösterir; Varsayılana dön', () => {
+  const o = kur({}, [FILM], altyaziAgi());
+  o.q('#vid').textTracks = [];
+  dugmeAc(o, 4);
+  assert.match(o.q('.p-pick').innerHTML, /Altyazı görünümü/);
+  o.tus('down');
+  o.tus('down'); // Kapalı → Altyazı ara… → Altyazı görünümü
+  o.tus('ok');
+  const html = o.q('.p-pick').innerHTML;
+  assert.match(html, /Altyazı görünümü/);
+  for (const a of ['Boyut', 'Renk', 'Arka plan', 'Konum', 'Varsayılana dön']) assert.ok(html.indexOf(a) >= 0, a);
+  assert.match(html, /<b>Orta<\/b>/);
+  assert.equal(altMetin(o), 'Altyazı örnek metni\nİkinci satır', 'ayar yapılırken örnek görünür');
+  assert.equal(o.q('.p-sub').className, 'p-sub on');
+  o.tus('right'); // Boyut: Orta → Büyük
+  assert.equal(ctx.store.setting('subBoyut', 1), 2);
+  assert.equal(o.q('.p-sub').className, 'p-sub sb2 on');
+  o.tus('down');
+  o.tus('right'); // Renk: Sarı
+  o.tus('down');
+  o.tus('right');
+  o.tus('right'); // Arka plan: Siyah
+  o.tus('down');
+  o.tus('left'); // Konum: Altta → En yukarıda (başa sarar)
+  assert.equal(o.q('.p-sub').className, 'p-sub sb2 sr1 sz2 sk2 on');
+  assert.match(o.q('.p-pick').innerHTML, /<b>En yukarıda<\/b>/);
+  o.tus('down'); // Varsayılana dön
+  o.tus('ok');
+  assert.equal(o.q('.p-sub').className, 'p-sub on');
+  assert.equal(ctx.store.setting('subRenk', 0), 0);
+  o.tus('right'); // Boyut'a dönmeden: seçili satır "Varsayılana dön", ◀▶ etkisiz
+  assert.equal(o.q('.p-sub').className, 'p-sub on');
+  o.tus('back');
+  assert.equal(o.q('.p-pick').className, 'p-pick', 'Geri paneli kapatır');
+  assert.equal(altMetin(o), '', 'örnek kalkar');
+  assert.equal(o.q('.p-sub').className, 'p-sub');
+  o.bitir();
+});
+
+test('altyazı: ayar kayıtlıysa harici altyazı onunla çizilir; panel kapanınca gerçek metin geri gelir', async () => {
+  const o = kur({ subBoyut: 3, subRenk: 1 }, [FILM], altyaziAgi());
+  const v = o.q('#vid');
+  v.textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  o.tus('ok');
+  await bekleKadar(() => o.q('.p-pick').className === 'p-pick', 'panelin kapanması');
+  v.currentTime = 11;
+  await bekle(300);
+  assert.equal(altMetin(o), 'Merhaba dünya');
+  assert.equal(o.q('.p-sub').className, 'p-sub sb3 sr1 on', 'kayıtlı ayar uygulanır');
+  o.tus('ok'); // Altyazı paneli: Kapalı, Türkçe (harici), kaydır, ara, görünüm
+  for (let i = 0; i < 4; i++) o.tus('down');
+  o.tus('ok');
+  assert.match(o.q('.p-pick').innerHTML, /Altyazı görünümü/);
+  assert.equal(altMetin(o), 'Altyazı örnek metni\nİkinci satır');
+  o.tus('left'); // Boyut: Çok büyük → Büyük
+  await bekle(300);
+  assert.equal(altMetin(o), 'Altyazı örnek metni\nİkinci satır', 'harici metin örneği ezmez');
+  o.tus('back');
+  assert.equal(altMetin(o), 'Merhaba dünya', 'panel kapanınca gerçek altyazı döner');
+  assert.equal(o.q('.p-sub').className, 'p-sub sb2 sr1 on');
+  o.bitir();
+});
+
+test('oynatıcı: kontroller bir süre sonra kendiliğinden kalkar (odak çubukta olsa da); panel açıkken ve duraklatılmışken kalmaz', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const o = kur();
+    const v = o.q('#vid');
+    v.paused = false;
+    v.readyState = 4; // yayın başlamış sayılsın (30 sn'lik "yayın başlamadı" zamanlayıcısı hata göstermesin)
+    const ov = () => o.q('.p-ov').className;
+    o.tus('down'); // düğme çubuğu
+    assert.equal(ov(), 'p-ov on');
+    assert.match(o.cubuk(), /p-b on/);
+    mock.timers.tick(7500);
+    assert.equal(ov(), 'p-ov on', 'süre dolmadan kalkmaz');
+    mock.timers.tick(1000);
+    assert.equal(ov(), 'p-ov', 'odak çubukta iken de kalkar');
+    assert.doesNotMatch(o.cubuk(), /p-b on/, 'odak yayına döner');
+    o.tus('down'); // yayındaki ▼ çubuğu yeniden açar
+    assert.equal(ov(), 'p-ov on');
+    mock.timers.tick(6000);
+    o.tus('right'); // her tuş süreyi yeniler
+    mock.timers.tick(6000);
+    assert.equal(ov(), 'p-ov on');
+    mock.timers.tick(2500);
+    assert.equal(ov(), 'p-ov');
+    o.tus('down');
+    o.tus('up'); // Geri düğmesi
+    mock.timers.tick(8500);
+    assert.equal(ov(), 'p-ov', 'odak Geri düğmesinde iken de kalkar');
+    // Açık panel kontrolleri tutar; panel kapanınca süre işler
+    o.tus('down');
+    o.tus('right');
+    o.tus('right');
+    o.tus('right');
+    o.tus('ok'); // Ses paneli
+    assert.match(o.q('.p-pick').className, /on/);
+    mock.timers.tick(10000);
+    assert.equal(ov(), 'p-ov on', 'panel açıkken kontroller kalmaz');
+    mock.timers.tick(3000); // panelin kendi 12 sn'lik süresi doldu
+    assert.equal(o.q('.p-pick').className, 'p-pick');
+    assert.equal(ov(), 'p-ov on');
+    mock.timers.tick(8500);
+    assert.equal(ov(), 'p-ov');
+    // Duraklatılmış yayında kontroller kalır
+    v.paused = true;
+    o.tus('down');
+    mock.timers.tick(30000);
+    assert.equal(ov(), 'p-ov on', 'duraklatılmışken kalmaz');
+    o.bitir();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test('altyazı: kaynakta kayıt yoksa ve canlı yayında ne denenir', async () => {
   const o = kur({}, [FILM], altyaziAgi({ bos: true }));
   o.q('#vid').textTracks = [];
@@ -436,9 +557,9 @@ test('altyazı: Yeni yapım başlayınca eski harici altyazı kalkar', async () 
   assert.ok(ag.istek.some((u) => u.endsWith('/subtitles/series/tt0903747:1:1.json')), 'dizi: tt…:sezon:bölüm kimliği');
   o.q('#vid').currentTime = 11;
   await bekle(300);
-  assert.equal(o.q('.p-sub').textContent, 'Merhaba dünya');
+  assert.equal(altMetin(o), 'Merhaba dünya');
   o.tus('back');
   o.scr.onKey('chdown'); // sonraki bölüm
-  assert.equal(o.q('.p-sub').textContent, '', 'bölüm değişince altyazı kalkar');
+  assert.equal(altMetin(o), '', 'bölüm değişince altyazı kalkar');
   o.bitir();
 });

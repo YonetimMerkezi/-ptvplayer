@@ -15,6 +15,13 @@ const HATA = {
   4: 'Biçim desteklenmiyor ya da adres geçersiz',
 };
 
+// Altyazı görünümü: [saklama anahtarı, ad, seçenekler, varsayılan sıra, seçeneğe karşılık gelen CSS sınıfı]
+const SUB_AYAR = [
+  ['subBoyut', 'Boyut', ['Küçük', 'Orta', 'Büyük', 'Çok büyük'], 1, ['sb0', '', 'sb2', 'sb3']],
+  ['subRenk', 'Renk', ['Beyaz', 'Sarı', 'Camgöbeği'], 0, ['', 'sr1', 'sr2']],
+  ['subZemin', 'Arka plan', ['Yok', 'Yarı saydam', 'Siyah'], 0, ['', 'sz1', 'sz2']],
+  ['subKonum', 'Konum', ['Altta', 'Yukarıda', 'En yukarıda'], 0, ['', 'sk1', 'sk2']],
+];
 // Ekran boyutu seçenekleri: [ayar, ad, object-fit, ek dönüşüm] (Ayarlar ekranı da kullanır)
 export const ORAN = [
   ['contain', 'Sığdır (özgün oran)', 'contain', ''],
@@ -96,24 +103,33 @@ export function playerScreen({ list, index, fresh }) {
   oranUygula();
   const hostOf = (u) => (/^[a-z]+:\/\/([^/?#]+)/i.exec(String(u)) || [])[1] || '?';
 
+  // Kontroller kumandaya son dokunuştan sonra kendiliğinden kalkar; odak düğme çubuğunda ya da Geri düğmesinde olsa da.
+  // Kalmaz: açık panel/kanal listesi, hata iletisi ve duraklatılmış yayın (ms === 0 da süresiz gösterir).
+  const ODAK_MS = 8000;
   function goster(ms) {
     ov.className = 'p-ov on';
     clearTimeout(ovT);
-    if (ms !== 0 && odak === 'video') ovT = setTimeout(gizle, ms || 4500);
+    if (ms !== 0) ovT = setTimeout(gizle, ms || 4500);
   }
   function gizle() {
-    if (hata || odak !== 'video') return;
+    if (hata || odak === 'sec' || odak === 'liste' || (v.paused && !v.ended)) return;
+    if (odak !== 'video') {
+      odak = 'video'; // odak yayına döner: sonraki tuş yayın tuşu gibi çalışır
+      odakBoya();
+    }
     ov.className = 'p-ov';
   }
-  // Odak bölgesini değiştirir: Geri düğmesi / düğme çubuğu açıkken katman ekranda kalır
+  function odakBoya() {
+    const geri = kok.querySelector('.top-back');
+    if (geri) geri.className = 'top-back' + (odak === 'ust' ? ' on' : '');
+    barCiz();
+    listEl.className = 'p-list' + (odak === 'liste' ? ' on' : '');
+  }
+  // Odak bölgesini değiştirir
   function odakAyarla(o) {
     odak = o;
-    const geri = kok.querySelector('.top-back');
-    if (geri) geri.className = 'top-back' + (o === 'ust' ? ' on' : '');
-    barCiz();
-    listEl.className = 'p-list' + (o === 'liste' ? ' on' : '');
-    if (o === 'video') goster();
-    else goster(0);
+    odakBoya();
+    goster(o === 'video' ? undefined : o === 'sec' || o === 'liste' ? 0 : ODAK_MS);
   }
   // Düğme simgeleri (Oynat/Duraklat durumuna göre değişir)
   const IKONLAR = { list: 'liste', last: 'onceki', fav: 'yildiz', audio: 'ses', sub: 'altyazi', aspect: 'ekran', sync: 'senkron', info: 'bilgi', sleep: 'uyku', fmt: 'bicim', rw: 'geri10', ff: 'ileri10', next: 'sonraki' };
@@ -448,9 +464,11 @@ export function playerScreen({ list, index, fresh }) {
   }
   function secimKapat() {
     clearTimeout(secimT);
+    const kapan = secim && secim.kapan;
     secim = null;
     pickEl.className = 'p-pick';
     odakAyarla('alt');
+    if (kapan) kapan();
   }
   pickEl.addEventListener('click', (e) => {
     let n = e.target;
@@ -483,26 +501,44 @@ export function playerScreen({ list, index, fresh }) {
 
   // --- Harici altyazı: TV gömülü altyazıyı uygulamaya vermediğinde IMDb kimliğiyle aranır ve kendi katmanımızda gösterilir
   const subEl = kok.querySelector('.p-sub');
+  const subIc = document.createElement('span'); // metin burada; arka plan yalnız metnin genişliğini kaplasın
+  subIc.className = 'p-sub-t';
+  subEl.appendChild(subIc);
+  let onizleme = false; // Altyazı ayarları paneli açıkken örnek metin gösterilir
+  const subDeger = (a) => Math.max(0, Math.min(a[2].length - 1, Number(ctx.store.setting(a[0], a[3])) || 0));
+  const subSinif = (acik) => {
+    let c = 'p-sub';
+    for (let i = 0; i < SUB_AYAR.length; i++) {
+      const k = SUB_AYAR[i][4][subDeger(SUB_AYAR[i])];
+      if (k) c += ' ' + k;
+    }
+    return c + (acik ? ' on' : '');
+  };
   let harici = null; // { cues, ad, kayma } — kayma ms; + = altyazı gecikir
   let haricT = 0;
   let aramaNo = 0;
   let sonMetin = '';
   const kaymaYaz = (k) => (k > 0 ? '+' : '') + (k / 1000).toFixed(1).replace('.', ',') + ' sn';
+  function onizleCiz() {
+    subIc.textContent = 'Altyazı örnek metni\nİkinci satır';
+    subEl.className = subSinif(true);
+  }
   function haricCiz() {
+    if (onizleme) return onizleCiz();
     if (!harici) return;
     const m = aktifMetin(harici.cues, Math.round((v.currentTime || 0) * 1000) - harici.kayma);
     if (m === sonMetin) return;
     sonMetin = m;
-    subEl.textContent = m;
-    subEl.className = m ? 'p-sub on' : 'p-sub';
+    subIc.textContent = m;
+    subEl.className = subSinif(!!m);
   }
   function haricKaldir() {
     aramaNo++; // süren arama/indirme sonucu artık kullanılmaz
     clearInterval(haricT);
     harici = null;
     sonMetin = '';
-    subEl.textContent = '';
-    subEl.className = 'p-sub';
+    subIc.textContent = '';
+    subEl.className = subSinif(false);
   }
   function haricAc(cues, ad) {
     clearInterval(haricT);
@@ -592,6 +628,44 @@ export function playerScreen({ list, index, fresh }) {
       bosPanel('Altyazı aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
     }
   }
+  // Altyazı görünümü: boyut, renk, arka plan, konum (yalnız aranan/harici altyazıya uygulanır; gömülü altyazıyı TV çizer)
+  function altyaziAyarAc() {
+    const yap = () => SUB_AYAR.map((a) => ({ ad: a[1], sag: a[2][subDeger(a)] })).concat([{ ad: 'Varsayılana dön' }]);
+    const yenile = (sc) => {
+      sc.satirlar = yap();
+      secimCiz();
+      onizleCiz();
+      if (harici) sonMetin = '\u0000'; // panel kapanınca gerçek altyazı yeniden çizilsin
+    };
+    onizleme = true;
+    onizleCiz();
+    secimAc({
+      baslik: 'Altyazı görünümü',
+      satirlar: yap(),
+      idx: 0,
+      not: '◀▶ değiştirir. Ayarlar aranan (harici) altyazıya uygulanır.',
+      kapan() {
+        onizleme = false;
+        sonMetin = '\u0000';
+        if (harici) haricCiz();
+        else {
+          subIc.textContent = '';
+          subEl.className = subSinif(false);
+        }
+      },
+      yan(d) {
+        const a = SUB_AYAR[this.idx];
+        if (!a) return;
+        ctx.store.setSetting(a[0], (subDeger(a) + d + a[2].length) % a[2].length);
+        yenile(this);
+      },
+      calis(i) {
+        if (i < SUB_AYAR.length) return this.yan(1);
+        for (let j = 0; j < SUB_AYAR.length; j++) ctx.store.setSetting(SUB_AYAR[j][0], SUB_AYAR[j][3]);
+        yenile(this);
+      },
+    });
+  }
   function haricKaydirAc() {
     const yap = () => [{ ad: 'Altyazıyı geciktir', sag: kaymaYaz(harici.kayma) }, { ad: 'Sıfırla' }];
     secimAc({
@@ -626,6 +700,7 @@ export function playerScreen({ list, index, fresh }) {
         r.push({ ad: 'Altyazıyı kaydır', sag: kaymaYaz(harici.kayma), eyl: 'kaydir' });
       }
       if (kimlik) r.push({ ad: 'Altyazı ara…', eyl: 'ara' });
+      if (kimlik || harici) r.push({ ad: 'Altyazı görünümü', eyl: 'ayar' });
       return r;
     };
     const not = !l.length && kimlik && !harici ? 'TV bu yayının gömülü altyazısını uygulamaya vermiyor. “Altyazı ara…” ile harici altyazı bulunabilir.' : '';
@@ -638,6 +713,7 @@ export function playerScreen({ list, index, fresh }) {
         const x = this.satirlar[i];
         if (x.eyl === 'ara') return haricAra(kimlik);
         if (x.eyl === 'kaydir') return haricKaydirAc();
+        if (x.eyl === 'ayar') return altyaziAyarAc();
         if (x.eyl === 'harici') return secimKapat();
         haricKaldir();
         for (let j = 0; j < l.length; j++) l[j].mode = x.eyl === 'iz' && j === x.iz ? 'showing' : 'disabled';
@@ -830,7 +906,7 @@ export function playerScreen({ list, index, fresh }) {
         if (a === 'left' || a === 'right') {
           altIdx = Math.max(0, Math.min(d.length - 1, altIdx + (a === 'right' ? 1 : -1)));
           barCiz();
-          goster(0);
+          goster(ODAK_MS);
           return true;
         }
         if (a === 'ok') {
