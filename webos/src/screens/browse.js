@@ -75,7 +75,7 @@ export function browseScreen({ kind }) {
       onFocus: (c) => {
         if (sessiz) return;
         clearTimeout(katT);
-        katT = setTimeout(() => katYukle(c), 260);
+        katT = setTimeout(() => katYukle(c), 160);
       },
       onActivate: () => odak('list'),
     });
@@ -184,12 +184,37 @@ export function browseScreen({ kind }) {
       if (n !== yukSayac) return;
       list.setItems(l);
       if (vitrin && !l.length) vitrin.temizle();
+      komsuOnYukle(c);
     } catch (e) {
       if (n !== yukSayac) return;
       K.hata(e);
       list.setMessage('Yüklenemedi: ' + (e && e.message ? e.message : e) + ' — OK ile yeniden dene');
       list.retry = () => katYukle(c);
     }
+  }
+
+  // Açık kategorinin altındaki ve üstündeki komşular, ön planı bekletmeden sırayla arka planda önbelleğe alınır:
+  // kategoriler arasında gezerken içerik hazır gelir. Aynı anda tek istek; kategori değişince zincir durur.
+  let onNo = 0;
+  function komsuOnYukle(c) {
+    if (kind === 'favs' || kind === 'recents' || kind === 'live' || kind === 'guide' || !cats || !provider() || provider().type !== 'xtream') return;
+    const no = ++onNo;
+    const i = cats.items.findIndex((x) => x.id === c.id);
+    if (i < 0) return;
+    const sira = [cats.items[i + 1], cats.items[i + 2], cats.items[i - 1]].filter(Boolean);
+    const adim = () => {
+      if (kapali || no !== onNo || !sira.length) return;
+      const x = sira.shift();
+      provider()
+        .items(gercekTur, x.id, null)
+        .then(
+          () => setTimeout(adim, 400),
+          () => {
+            /* önyükleme başarısız: kategori seçilince normal yoldan yüklenir */
+          },
+        );
+    };
+    setTimeout(adim, 700);
   }
 
   // --- canlı TV: şimdi / sonra
@@ -319,6 +344,11 @@ export function browseScreen({ kind }) {
       return;
     }
     kategoriMesaji('Yükleniyor…');
+    if (vitrinli) {
+      // Son açılan kategorinin içeriği, kategori listesi gelmeden istenir (kategori listesiyle paralel)
+      const sonKat = String(ctx.store.setting(katAnahtar, ''));
+      if (sonKat) provider().items(gercekTur, sonKat).catch(() => {});
+    }
     try {
       const liste = await provider().categories(gercekTur);
       (vitrinli ? contEl : catsEl).innerHTML = '';

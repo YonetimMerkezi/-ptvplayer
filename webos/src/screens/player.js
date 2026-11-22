@@ -8,7 +8,7 @@ import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
 import * as kayitIs from '../kayit.js';
 import * as arsiv from '../arsiv.js';
-import { videoKimligi, imdbBul, imdbAdaylari, imdbHatirla, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
+import { videoKimligi, imdbBul, imdbAdaylari, imdbHatirla, imdbBilgi, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
   1: 'Oynatma iptal edildi',
@@ -27,6 +27,9 @@ const SUB_AYAR = [
 // Ekran boyutu seçenekleri: [ayar, ad, object-fit, ek dönüşüm] (Ayarlar ekranı da kullanır)
 export const ORAN = [
   ['contain', 'Sığdır (özgün oran)', 'contain', ''],
+  ['z95', 'Küçült %95 (kenar payı)', 'contain', 'scale(.95)'],
+  ['z90', 'Küçült %90 (geniş kenar payı)', 'contain', 'scale(.9)'],
+  ['z85', 'Küçült %85 (en geniş kenar payı)', 'contain', 'scale(.85)'],
   ['cover', 'Doldur (kenarları kırp)', 'cover', ''],
   ['fill', 'Uzat (tam ekran)', 'fill', ''],
   ['z110', 'Yakınlaştır %10', 'contain', 'scale(1.1)'],
@@ -552,7 +555,7 @@ export function playerScreen({ list, index, fresh }) {
     }
     return c + (acik ? ' on' : '');
   };
-  let harici = null; // { cues, ad, kayma } — kayma ms; + = altyazı gecikir
+  let harici = null; // { cues, ad, kayma, olcek } — kayma ms; + = altyazı gecikir; olcek: altyazı zamanı = (video zamanı − kayma) × olcek (fps farkından doğan giderek açılan kayma)
   let haricT = 0;
   let aramaNo = 0;
   let sonMetin = '';
@@ -564,7 +567,7 @@ export function playerScreen({ list, index, fresh }) {
   function haricCiz() {
     if (onizleme) return onizleCiz();
     if (!harici) return;
-    const m = aktifMetin(harici.cues, Math.round((v.currentTime || 0) * 1000) - harici.kayma);
+    const m = aktifMetin(harici.cues, Math.round(((v.currentTime || 0) * 1000 - harici.kayma) * harici.olcek));
     if (m === sonMetin) return;
     sonMetin = m;
     subIc.textContent = m;
@@ -580,7 +583,7 @@ export function playerScreen({ list, index, fresh }) {
   }
   function haricAc(cues, ad) {
     clearInterval(haricT);
-    harici = { cues, ad, kayma: 0 };
+    harici = { cues, ad, kayma: 0, olcek: 1 };
     sonMetin = '\u0000';
     haricCiz();
     haricT = setInterval(haricCiz, 250);
@@ -620,43 +623,52 @@ export function playerScreen({ list, index, fresh }) {
       if (!haricGecerli(n)) return;
       const imdb = await imdbBul(ctx.net, kimlik, ek);
       if (!haricGecerli(n)) return;
-      if (imdb) return haricListele(kimlik, imdb, n);
+      if (imdb) return haricListele(kimlik, imdb, n, ek);
       // Ad birebir tutmadı (çoğunlukla Türkçe ad): katalogun bulduğu yapımlar seçtirilir
-      const a = await imdbAdaylari(ctx.net, kimlik, ek);
-      if (!haricGecerli(n)) return;
-      if (!a.liste.length) {
-        return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Aranan: ' + a.adlar.join(' / ') + (a.yil ? ' (' + a.yil + ')' : '') + '. Katalog bu adla bir yapım bulamadı.');
-      }
-      secimAc({
-        baslik: 'Hangi yapım?',
-        satirlar: a.liste.map((x) => ({ ad: x.ad + (x.yil ? ' (' + x.yil + ')' : '') })),
-        idx: 0,
-        arama: n,
-        not: 'Adı tam tutan yapım bulunamadı. Doğru olanı seçin; yanlışını seçerseniz altyazı uymaz.',
-        calis(i) {
-          imdbHatirla(kimlik, ek, a.liste[i].id);
-          haricListele(kimlik, a.liste[i].id, n);
-        },
-      });
+      await haricAdaylar(kimlik, ek, n, 'Adı tam tutan yapım bulunamadı. Doğru olanı seçin; yanlışını seçerseniz altyazı uymaz.');
     } catch (e) {
       if (!haricGecerli(n)) return;
       K.uyar('Altyazı aranamadı: ' + (e && e.message));
       bosPanel('Altyazı aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
     }
   }
-  // IMDb kimliği belli: altyazı listesini getirip seçtirir
-  async function haricListele(kimlik, imdb, n) {
+  // Katalogun bulduğu yapımları seçtirir (yılı uyanlar önce)
+  async function haricAdaylar(kimlik, ek, n, not) {
+    const a = await imdbAdaylari(ctx.net, kimlik, ek);
+    if (!haricGecerli(n)) return;
+    if (!a.liste.length) {
+      return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Aranan: ' + a.adlar.join(' / ') + (a.yil ? ' (' + a.yil + ')' : '') + '. Katalog bu adla bir yapım bulamadı.');
+    }
+    secimAc({
+      baslik: 'Hangi yapım?',
+      satirlar: a.liste.map((x) => ({ ad: x.ad + (x.yil ? ' (' + x.yil + ')' : '') })),
+      idx: 0,
+      arama: n,
+      not: not || 'Doğru yapımı seçin; yanlışını seçerseniz altyazı uymaz.',
+      calis(i) {
+        imdbHatirla(kimlik, ek, a.liste[i].id);
+        haricListele(kimlik, a.liste[i].id, n, ek);
+      },
+    });
+  }
+  // IMDb kimliği belli: altyazı listesini getirip seçtirir. Eşleşen yapımın adı başlıkta görünür; yanlışsa son satırdan başka yapım seçilir.
+  async function haricListele(kimlik, imdb, n, ek) {
     secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Altyazılar getiriliyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
     try {
       const liste = await altyaziListesi(ctx.net, kimlik, imdb);
       if (!haricGecerli(n)) return;
-      if (!liste.length) return bosPanel('Altyazı', 'Bu yapım için altyazı bulunamadı', 'Altyazı kaynağında bu film ya da bölüm için kayıt yok.');
+      const bil = imdbBilgi(imdb);
+      const yapim = bil && bil.ad ? bil.ad + (bil.yil ? ' (' + bil.yil + ')' : '') : '';
+      if (!liste.length) return bosPanel('Altyazı', 'Bu yapım için altyazı bulunamadı', (yapim ? 'Eşleşen yapım: ' + yapim + '. ' : '') + 'Altyazı kaynağında bu film ya da bölüm için kayıt yok. Başka yapım seçmek için Altyazı ara… menüsünü yeniden açın.');
+      const satirlar = liste.map((x) => ({ ad: x.ad }));
+      satirlar.push({ ad: 'Yanlış yapım mı? Başka yapım seç…' });
       secimAc({
-        baslik: 'Altyazı seç',
-        satirlar: liste.map((x) => ({ ad: x.ad })),
+        baslik: yapim ? 'Altyazı seç · ' + yapim : 'Altyazı seç',
+        satirlar,
         idx: 0,
         arama: n,
         calis(i) {
+          if (i >= liste.length) return haricAdaylar(kimlik, ek || [], n, 'Doğru yapımı seçin. Seçilen yapımın altyazıları listelenir.').catch(() => {});
           haricIndir(liste[i], n);
         },
       });
@@ -704,10 +716,46 @@ export function playerScreen({ list, index, fresh }) {
       },
     });
   }
-  // Altyazı senkronu: ◀▶ 0,1 sn adımla; tuş basılı tutulup art arda basılırsa adım büyür (10 basıştan sonra 0,5 sn, 25'ten sonra 1 sn)
+  // Altyazı senkronu: üç araç.
+  //  1) Gecikme: ◀▶ 0,1 sn adımla (tuş basılı tutulursa adım büyür: 10 basıştan sonra 0,5 sn, 25'ten sonra 1 sn). Sabit kaymayı düzeltir.
+  //  2) Şimdiki söze göre eşle: videoda duyulan cümleye karşılık gelen altyazı satırı seçilir; gecikme kendiliğinden hesaplanır (uzun kaymalar için en hızlı yol).
+  //  3) Hız düzeltme: filmin fps'i altyazınınkinden farklıysa (23,976 ↔ 25 gibi) kayma film ilerledikçe büyür; sabit gecikme bunu düzeltemez, hız oranı seçilir.
   const KAYMA_ADIM = 100;
+  const KAYMA_SINIR = 600000; // ±10 dk
+  // [ölçek, ad]: altyazı zamanı = (video zamanı − kayma) × ölçek
+  const OLCEKLER = [
+    [1, 'Yok (özgün hız)'],
+    [25 / 23.976, 'Altyazı 23,976 fps · video 25 fps'],
+    [23.976 / 25, 'Altyazı 25 fps · video 23,976 fps'],
+    [25 / 24, 'Altyazı 24 fps · video 25 fps'],
+    [24 / 25, 'Altyazı 25 fps · video 24 fps'],
+    [24 / 23.976, 'Altyazı 23,976 fps · video 24 fps'],
+    [23.976 / 24, 'Altyazı 24 fps · video 23,976 fps'],
+  ];
+  const olcekSira = () => {
+    for (let i = 0; i < OLCEKLER.length; i++) if (Math.abs(OLCEKLER[i][0] - harici.olcek) < 0.00002) return i;
+    return 0;
+  };
+  const sureYaz = (msn) => {
+    const sn = Math.max(0, Math.round(msn / 1000));
+    const h = Math.floor(sn / 3600);
+    const dk = Math.floor((sn % 3600) / 60);
+    const s2 = sn % 60;
+    return (h ? h + ':' : '') + (h && dk < 10 ? '0' : '') + dk + ':' + (s2 < 10 ? '0' : '') + s2;
+  };
   function haricKaydirAc() {
-    const yap = () => [{ ad: 'Altyazıyı geciktir', sag: kaymaYaz(harici.kayma) }, { ad: 'Sıfırla' }];
+    const yap = () => [
+      { ad: 'Altyazıyı geciktir', sag: kaymaYaz(harici.kayma) },
+      { ad: 'Şimdiki söze göre eşle…' },
+      { ad: 'Hız düzeltme', sag: olcekSira() ? OLCEKLER[olcekSira()][1] : 'Yok' },
+      { ad: 'Sıfırla' },
+    ];
+    const son = harici.cues.length ? harici.cues[harici.cues.length - 1].s : 0;
+    const sure = Math.round((v.duration || 0) * 1000);
+    let ipucu = '◀▶ ile 0,1 sn adımla (tuşu basılı tutarsanız adım büyür). Altyazı sesten sonra geliyorsa eksi, önce geliyorsa artı değer verin.';
+    if (isFinite(sure) && sure > 0 && son > 0) {
+      ipucu += ' Altyazının son satırı ' + sureYaz(son) + ', video ' + sureYaz(sure) + '.' + (son > sure * 1.005 ? ' Altyazı videodan uzun: Hız düzeltme’de “Altyazı 23,976 fps · video 25 fps” seçeneğini deneyin.' : '');
+    }
     let seri = 0;
     let sonBasis = 0;
     let sonYon = 0;
@@ -715,25 +763,74 @@ export function playerScreen({ list, index, fresh }) {
       baslik: 'Altyazı senkronu',
       satirlar: yap(),
       idx: 0,
-      not: '◀▶ ile 0,1 sn adımla ayarlayın (tuşu basılı tutarsanız adım büyür). Altyazı sesten sonra geliyorsa eksi, önce geliyorsa artı değer verin.',
+      sure: 30000,
+      not: ipucu,
       yan(d) {
-        const simdi = Date.now();
-        seri = simdi - sonBasis < 350 && d === sonYon ? seri + 1 : 0;
-        sonBasis = simdi;
-        sonYon = d;
-        const adim = seri >= 25 ? 10 : seri >= 10 ? 5 : 1;
-        harici.kayma = Math.max(-30000, Math.min(30000, harici.kayma + d * adim * KAYMA_ADIM));
+        if (this.idx === 2) {
+          // Hız düzeltme satırında ◀▶ oranları gezer
+          const k = (olcekSira() + d + OLCEKLER.length) % OLCEKLER.length;
+          // Ölçek değişirken şimdiki an sabit kalsın: kayma, aynı videoya göre yeniden hesaplanır
+          const t = (v.currentTime || 0) * 1000;
+          const simdiki = (t - harici.kayma) * harici.olcek;
+          harici.olcek = OLCEKLER[k][0];
+          harici.kayma = Math.max(-KAYMA_SINIR, Math.min(KAYMA_SINIR, Math.round(t - simdiki / harici.olcek)));
+        } else {
+          const simdi = Date.now();
+          seri = simdi - sonBasis < 350 && d === sonYon ? seri + 1 : 0;
+          sonBasis = simdi;
+          sonYon = d;
+          const adim = seri >= 25 ? 10 : seri >= 10 ? 5 : 1;
+          harici.kayma = Math.max(-KAYMA_SINIR, Math.min(KAYMA_SINIR, harici.kayma + d * adim * KAYMA_ADIM));
+        }
         this.satirlar = yap();
         secimCiz();
         haricCiz();
       },
       calis(i) {
-        if (i === 1) {
+        if (i === 1) return haricEsleAc();
+        if (i === 2) {
+          harici.olcek = OLCEKLER[(olcekSira() + 1) % OLCEKLER.length][0];
+          this.satirlar = yap();
+          secimCiz();
+          haricCiz();
+        } else if (i === 3) {
           harici.kayma = 0;
+          harici.olcek = 1;
           this.satirlar = yap();
           secimCiz();
           haricCiz();
         } else secimKapat();
+      },
+    });
+  }
+  // Videoda şu an duyulan cümleye karşılık gelen altyazı satırını seçtirir; gecikme buna göre hesaplanır.
+  function haricEsleAc() {
+    const t0 = Math.round((v.currentTime || 0) * 1000);
+    const cues = harici.cues;
+    const sim = (t0 - harici.kayma) * harici.olcek; // altyazı çizgisindeki şimdiki an
+    let k = -1;
+    for (let i = 0; i < cues.length; i++) {
+      if (cues[i].b <= sim) k = i;
+      else break;
+    }
+    const bas = Math.max(0, k - 4);
+    const bit = Math.min(cues.length, Math.max(k, 0) + 6);
+    const satirlar = [];
+    for (let i = bas; i < bit; i++) satirlar.push({ ad: cues[i].m.replace(/\s*\n\s*/g, ' / ').slice(0, 70), sag: sureYaz(cues[i].b) });
+    if (!satirlar.length) return bosPanel('Altyazı', 'Eşlenecek satır yok', 'Altyazı dosyası boş görünüyor.');
+    secimAc({
+      baslik: 'Şimdi hangi cümle söyleniyor?',
+      satirlar,
+      idx: Math.max(0, k - bas),
+      sure: 60000,
+      not: 'Videoda şu an duyduğunuz (ya da az önce duyduğunuz) cümleye en yakın altyazı satırını seçin. Eşleşince gecikme kendiliğinden ayarlanır; gerekirse ◀▶ ile ince ayar yapın.',
+      calis(i) {
+        const c = cues[bas + i];
+        harici.kayma = Math.max(-KAYMA_SINIR, Math.min(KAYMA_SINIR, Math.round(t0 - c.b / harici.olcek)));
+        sonMetin = '\u0000';
+        haricCiz();
+        toast('Altyazı eşlendi: ' + kaymaYaz(harici.kayma));
+        haricKaydirAc();
       },
     });
   }
