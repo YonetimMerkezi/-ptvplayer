@@ -14,7 +14,7 @@ globalThis.window = globalThis.window || {};
 globalThis.document = globalThis.document || { createElement: () => new F() };
 
 const { vitrinMetni, createArkaPlan, createVitrin } = await import('../webos/src/vitrin.js');
-const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleParam, YOUTUBE_UYGULAMA } = await import('../webos/src/fragman.js');
+const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, contentTarget, ayarKaynagi } = await import('../webos/src/fragman.js');
 
 // Elle işletilen zamanlayıcı
 function saat() {
@@ -150,13 +150,44 @@ test('fragman: sağlayıcının kimliği varsa arama yapılmaz; yoksa YouTube ar
 test('fragman: YouTube uygulaması doğru kimlik ve adresle açılır; hata iletilir', async () => {
   const cagrilar = [];
   const luna = async (uri, par) => (cagrilar.push({ uri, par }), { returnValue: true });
-  assert.equal(await youtubeAc('dQw4w9WgXcQ', luna), true);
-  assert.equal(cagrilar[0].uri, 'luna://com.webos.applicationManager/launch');
+  assert.equal(await youtubeAc('dQw4w9WgXcQ', luna, { bekle: 0 }), true);
+  const ac = cagrilar[cagrilar.length - 1];
+  assert.equal(ac.uri, 'luna://com.webos.applicationManager/launch');
+  assert.equal(ac.par.id, YOUTUBE_UYGULAMA);
+  assert.equal(ac.par.params.contentTarget, 'https://www.youtube.com/tv?v=dQw4w9WgXcQ', 'varsayılan biçim tam adres');
+  assert.equal(VARSAYILAN_BICIM, 'tv');
+  assert.ok(!('contentId' in ac.par.params), 'yalın kimlik gönderilmez');
+  await assert.rejects(() => youtubeAc('x', async (uri) => (/launch$/.test(uri) ? { returnValue: false, errorText: 'app yok' } : { returnValue: false }), { bekle: 0 }), /app yok/);
+});
+
+test('fragman: seçilebilir contentTarget biçimleri; biçim ve kapatma ayarı uygulanır', async () => {
+  assert.equal(contentTarget('ABC', 'v'), izleParam('ABC'));
+  assert.equal(contentTarget('ABC', 'watch'), 'https://www.youtube.com/watch?v=ABC');
+  assert.equal(contentTarget('ABC', 'tvhash'), 'https://www.youtube.com/tv#/watch?v=ABC');
+  assert.equal(contentTarget('ABC', 'yok'), 'https://www.youtube.com/tv?v=ABC', 'bilinmeyen biçim varsayılana döner');
+  assert.equal(new Set(BICIMLER.map((b) => b[0])).size, BICIMLER.length);
+  const cagrilar = [];
+  const luna = async (uri, par) => (cagrilar.push({ uri, par }), { returnValue: true });
+  // Ayarlardan gelen biçim
+  ayarKaynagi(() => ({ bicim: 'watch', kapat: true }));
+  await youtubeAc('ABC', luna, { bekle: 0 });
+  assert.match(cagrilar[0].uri, /closeByAppId$/, 'önce YouTube kapatılır');
   assert.equal(cagrilar[0].par.id, YOUTUBE_UYGULAMA);
-  assert.equal(cagrilar[0].par.params.contentTarget, 'v=dQw4w9WgXcQ', 'YouTube uygulaması "v=KİMLİK" bekler; tam adres ana sayfayı açar');
-  assert.equal(cagrilar[0].par.params.contentTarget, izleParam('dQw4w9WgXcQ'));
-  assert.ok(!('contentId' in cagrilar[0].par.params), 'yalın kimlik gönderilmez');
-  await assert.rejects(() => youtubeAc('x', async () => ({ returnValue: false, errorText: 'app yok' })), /app yok/);
+  assert.equal(cagrilar[cagrilar.length - 1].par.params.contentTarget, 'https://www.youtube.com/watch?v=ABC');
+  // Kapatma kapalıysa yalnız açma çağrısı yapılır; seçenek ayarı ezer
+  cagrilar.length = 0;
+  ayarKaynagi(() => ({ bicim: 'watch', kapat: false }));
+  await youtubeAc('ABC', luna, { bekle: 0, bicim: 'v' });
+  assert.equal(cagrilar.length, 1);
+  assert.match(cagrilar[0].uri, /launch$/);
+  assert.equal(cagrilar[0].par.params.contentTarget, 'v=ABC');
+  // YouTube kapalıyken kapatma hata verse de açılır
+  cagrilar.length = 0;
+  ayarKaynagi(() => ({}));
+  const l2 = async (uri, par) => (cagrilar.push({ uri, par }), /launch$/.test(uri) ? { returnValue: true } : { returnValue: false, errorText: 'çalışmıyor' });
+  assert.equal(await youtubeAc('ABC', l2, { bekle: 0 }), true);
+  assert.ok(cagrilar.some((c) => /launch$/.test(c.uri)));
+  ayarKaynagi(() => ({}));
 });
 
 test('fragman: ekran akışı — iletiler, bulunamayan fragman, açılamayan YouTube, eş zamanlı ikinci istek yok sayılır', async () => {
