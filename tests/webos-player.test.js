@@ -229,14 +229,14 @@ test('oynatıcı: Ekran düğmesi boyutu seçer, ayara yazar ve videoya uygular'
   const v = o.q('#vid');
   dugmeAc(o, 5);
   assert.match(o.q('.p-pick').innerHTML, /Yakınlaştır %25/);
-  for (let i = 0; i < 4; i++) o.tus('down');
+  for (let i = 0; i < 7; i++) o.tus('down'); // Sığdır, Küçült %95/%90/%85, Doldur, Uzat, Yakınlaştır %10, Yakınlaştır %25
   o.tus('ok');
   assert.equal(ctx.store.setting('aspect', ''), 'z125');
   assert.equal(v.style.transform, 'scale(1.25)');
   assert.equal(v.style.objectFit, 'contain');
   assert.equal(o.q('.p-pick').className, 'p-pick', 'seçim yapılınca panel kapanır');
   o.tus('ok'); // Ekran paneli yeniden açılır; seçili satır = Yakınlaştır %25
-  for (let i = 0; i < 4; i++) o.tus('up');
+  for (let i = 0; i < 7; i++) o.tus('up');
   o.tus('ok');
   assert.equal(v.style.transform, '');
   o.bitir();
@@ -500,7 +500,7 @@ test('altyazı: senkron 0,1 sn adımla ayarlanır; art arda basılınca adım b�
   assert.match(o.q('.p-pick').innerHTML, /\+1,9 sn/, '−0,1 + 10×0,1 + 2×0,5 = +1,9');
   o.tus('left'); // yön değişti: seri sıfırlanır
   assert.match(o.q('.p-pick').innerHTML, /\+1,8 sn/);
-  o.tus('down');
+  for (let i = 0; i < 3; i++) o.tus('down'); // Geciktir, Şimdiki söze göre eşle, Hız düzeltme, Sıfırla
   o.tus('ok'); // Sıfırla
   assert.match(o.q('.p-pick').innerHTML, /<b>0,0 sn<\/b>/);
   o.bitir();

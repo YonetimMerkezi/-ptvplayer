@@ -28,7 +28,10 @@ test('tema: kimlikler tekil, renkler geçerli; vurgu rengi üzerindeki yazı oku
   for (const t of TEMALAR) {
     for (const k of ['bg', 'surface', 'raised', 'line', 'accent', 'ink']) assert.match(t[k], /^#[0-9a-f]{6}$/, t.id + '.' + k);
     assert.ok(oran(t.accent, t.ink) >= 4.5, t.id + ': vurgu/yazı karşıtlığı ' + oran(t.accent, t.ink).toFixed(1));
-    assert.ok(oran(t.bg, '#e8ecf4') >= 7, t.id + ': zemin üzerinde ana yazı okunur');
+    // Koyu temalarda özgün açık yazı (#e8ecf4) ≥ 7; canlı (orta tonlu) temalarda yazı beyaza çekilir, yine de ≥ 4.5 (WCAG AA) ve kutu/vurgulu kutu üzerinde de okunur
+    if (t.canli) {
+      for (const k of ['bg', 'surface', 'raised']) assert.ok(oran(t[k], '#ffffff') >= 4.4, t.id + ': ' + k + ' üzerinde beyaz yazı okunur (' + oran(t[k], '#ffffff').toFixed(1) + ')');
+    } else assert.ok(oran(t.bg, '#e8ecf4') >= 7, t.id + ': zemin üzerinde ana yazı okunur');
     if (t.multi) {
       assert.equal(t.p.length, 9);
       for (let i = 1; i <= 8; i++) assert.match(t.p[i], /^#[0-9a-f]{6}$/);
@@ -96,4 +99,16 @@ test('kumanda: varsayılan atamalar, değiştirme ve bozuk kayıtta varsayılana
   // Her varsayılan eylem listede bulunur
   for (const v of Object.values(VARSAYILAN.oyn)) assert.ok(OYNATICI.some((x) => x[0] === v));
   for (const v of Object.values(VARSAYILAN.ana)) assert.ok(ANA.some((x) => x[0] === v));
+});
+
+test('tema: canlı temalarda soluk gri yazılar parlar, koyu lacivert katmanlar zeminin rengine döner', () => {
+  const t = temaBul('canli-mavi');
+  assert.equal(t.canli, true);
+  const c = cssUret(css, t);
+  for (const eski of ['#9aa6bf', '#7f8aa3', '#c9d2e6', '#e8ecf4', '#0a0e17', '#2dd4bf']) assert.ok(!c.toLowerCase().includes(eski), eski + ' kalmadı');
+  assert.ok(!/rgba\(10, ?14, ?23,/.test(c), 'lacivert katman kalmadı');
+  assert.ok(c.includes('color: #ffffff'), 'ana yazı beyaz');
+  // Boyut ve düzen kuralları aynen korunur
+  const yalin = (x) => x.replace(/#[0-9a-f]{6}\b/gi, '#').replace(/rgba\([0-9, ]+,/g, 'rgba(V,');
+  assert.equal(yalin(c), yalin(css));
 });
