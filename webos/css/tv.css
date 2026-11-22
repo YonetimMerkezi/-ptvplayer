@@ -278,8 +278,8 @@ input.on2, .on2 input { border-color: #2dd4bf; background: #0f1a2a; }
 .tt-r.geri b { color: #04141a; }
 
 /* Oynatıcı */
-.player { background: #000; }
-.player video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; }
+.player { background: #000; overflow: hidden; }
+.player video { -webkit-transform-origin: 50% 50%; transform-origin: 50% 50%; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; }
 .p-ov { position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0; -webkit-transition: opacity .2s; transition: opacity .2s; pointer-events: none; }
 .p-ov.on { opacity: 1; }
 .p-top { position: absolute; top: 0; left: 0; right: 0; height: 9rem; padding: 2rem 4rem 0; background: -webkit-linear-gradient(top, rgba(0,0,0,.85), rgba(0,0,0,0)); background: linear-gradient(to bottom, rgba(0,0,0,.85), rgba(0,0,0,0)); display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; }
