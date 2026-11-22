@@ -22,9 +22,12 @@ export function createXtream(src, net) {
   const J = (action, params) => net.json(X.apiUrl(cfg, action, params), { timeoutMs: 60000 });
   // Büyük liste yanıtı: önce ham metin alınır, ayrıştırma ve eşleme arka plan işçisinde yapılır (kumanda tuşları takılmasın).
   // grup: aynı gruptaki yeni istek (kullanıcı başka kategoriye geçti) öncekini keser.
-  const liste = async (kind, params, cats, grup) => {
+  // cats: kategori dizisi ya da onu verecek söz; liste isteğiyle birlikte paralel beklenir (ardışık iki gidiş-dönüş yerine bir).
+  const liste = async (kind, params, catsSozu, grup) => {
     const [, aksiyon, map] = KIND_AKSIYON[kind];
-    const metin = await net.get(X.apiUrl(cfg, aksiyon, params), { timeoutMs: 60000, grup });
+    const sonuc = await Promise.all([net.get(X.apiUrl(cfg, aksiyon, params), { timeoutMs: 60000, grup }), catsSozu]);
+    const metin = sonuc[0];
+    const cats = sonuc[1];
     if (isciKullanilir(metin)) {
       try {
         return await isciEsle(metin, kind, cats);
@@ -60,9 +63,10 @@ export function createXtream(src, net) {
     async categories(kind) {
       return (await rawCats(kind)).map((c) => ({ id: String(c.category_id), name: String(c.category_name || '').trim() || 'Diğer' }));
     },
-    items: (kind, catId) =>
-      bir(cache, 'it:' + kind + ':' + catId, async () => liste(kind, { category_id: catId }, await rawCats(kind), 'kat')),
-    all: (kind) => bir(cache, 'all:' + kind, async () => liste(kind, undefined, await rawCats(kind))),
+    // grup: aynı gruptaki yeni istek öncekini keser (varsayılan 'kat'); null = kesilmez (arka plan önyüklemesi)
+    items: (kind, catId, grup) =>
+      bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' : grup)),
+    all: (kind) => bir(cache, 'all:' + kind, () => liste(kind, undefined, rawCats(kind))),
     seriesInfo: (item) => bir(cache, 'si:' + item.seriesId, async () => X.mapSeriesInfo(await J('get_series_info', { series_id: item.seriesId }))),
     vodInfo: (item) => bir(cache, 'vi:' + item.streamId, async () => X.mapVodInfo(await J('get_vod_info', { vod_id: item.streamId }))),
     // Kanalın şimdiki ve sonraki programları (adet: kaç program; varsayılan 3)

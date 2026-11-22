@@ -84,6 +84,8 @@ export function imdbSec(metas, baslik, yil) {
 
 const imdbOnbellek = {};
 const aramaOnbellek = {};
+const imdbBilgiDefteri = {}; // IMDb kimliği → { ad, yil } (altyazı listesinde "hangi yapım" gösterilsin)
+export const imdbBilgi = (id) => imdbBilgiDefteri[id] || null;
 const sahip = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 // Aranacak adlar (katalog adı + sağlayıcının verdiği özgün ad) ve filmde yıl
@@ -105,6 +107,10 @@ async function cinemetaAra(net, tur, ad) {
   if (sahip(aramaOnbellek, k)) return aramaOnbellek[k];
   const r = await net.json(CINEMETA + '/catalog/' + tur + '/top/search=' + encodeURIComponent(ad) + '.json', { timeoutMs: 15000 });
   const m = r && Array.isArray(r.metas) ? r.metas : [];
+  for (let i = 0; i < m.length; i++) {
+    const id = String((m[i] && (m[i].imdb_id || m[i].id)) || '');
+    if (/^tt\d+$/.test(id) && !imdbBilgiDefteri[id]) imdbBilgiDefteri[id] = { ad: String(m[i].name || ''), yil: yilOf(m[i]) };
+  }
   aramaOnbellek[k] = m;
   return m;
 }

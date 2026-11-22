@@ -20,6 +20,13 @@ export const TEMALAR = [
   T('ocean', 'Okyanus', '#03131b', '#08232d', '#103846', '#155568', '#2dd4bf', '#032a2a'),
   T('graphite', 'Grafit', '#101216', '#1b1f25', '#292f38', '#414955', '#cbd5e1', '#18202a'),
   T('rose', 'Gül kurusu', '#160811', '#29101d', '#3b192a', '#633047', '#fb8cae', '#390b20'),
+  // Canlı temalar: koyu değil, orta tonlu doygun zemin; yazılar beyaza yakın, soluk gri yok (canli: true → yazı ve katman renkleri de paletten türetilir)
+  T('canli-mavi', 'Canlı mavi', '#1747a6', '#1f52bb', '#2a60d0', '#6b9dfa', '#ffd23f', '#1a1400', { canli: true }),
+  T('canli-gok', 'Canlı gök mavisi', '#075d8c', '#0a73ad', '#117eb8', '#5cc6ff', '#ffe14d', '#1a1400', { canli: true }),
+  T('canli-yesil', 'Canlı yeşil', '#0a5a3a', '#0e714a', '#14835a', '#4fd9a0', '#ffe14d', '#1a1400', { canli: true }),
+  T('canli-mor', 'Canlı mor', '#4b21a8', '#5d2cc4', '#7440e0', '#a98aff', '#ffd23f', '#1a1400', { canli: true }),
+  T('canli-kirmizi', 'Canlı kırmızı', '#9a1030', '#b81838', '#cf2a50', '#ff7d99', '#ffe14d', '#1a1400', { canli: true }),
+  T('canli-turuncu', 'Canlı turuncu', '#8f3e08', '#ad500b', '#ba570d', '#ffa862', '#fff1a8', '#2b1203', { canli: true }),
   // Çok renkli temalar: ana sayfadaki her karo kendi renginde
   T('cards', 'Renkli kartlar', '#090c14', '#111623', '#1a2133', '#2a3350', '#a78bfa', '#170a3a', { multi: true, p: PAL }),
   T('solid', 'Dolu renk', '#080b12', '#101521', '#19202f', '#283148', '#a78bfa', '#170a3a', { multi: true, dolu: true, p: PAL }),
@@ -80,12 +87,24 @@ export function cssUret(css, t) {
     // Tek geçişte değiştir: bir rolün yeni rengi başka bir varsayılan renkle çakışsa bile ikinci kez değişmesin
     const harita = {};
     for (let i = 0; i < ESLEME.length; i++) harita[ESLEME[i][0]] = ESLEME[i][1](t);
+    if (t.canli) {
+      // Soluk griler ve açık yazı renkleri: zeminin tonuna karışmış, parlak ve yüksek karşıtlıklı yazılar
+      harita['#e8ecf4'] = harita['#dbe2f2'] = harita['#d7deee'] = '#ffffff';
+      harita['#c9d2e6'] = harita['#aab5cc'] = karistir('#ffffff', t.line, 0.1);
+      harita['#9aa6bf'] = harita['#8b97b1'] = karistir('#ffffff', t.line, 0.3);
+      harita['#7f8aa3'] = harita['#56627d'] = karistir('#ffffff', t.line, 0.45);
+    }
     c = c.replace(/#[0-9a-fA-F]{6}\b/g, (m) => {
       const k = m.toLowerCase();
       return Object.prototype.hasOwnProperty.call(harita, k) ? harita[k] : m;
     });
     // Parıltılardaki şeffaf vurgu rengi de paletin vurgusuna döner
     c = c.replace(/rgba\(45, ?212, ?191,/g, 'rgba(' + rgbMetni(t.accent) + ',');
+    if (t.canli) {
+      // Koyu lacivert katmanlar (afiş altı, ayrıntı perdesi, açık paneller, bildirim) zeminin kendi rengine döner
+      c = c.replace(/rgba\(10, ?14, ?23,/g, 'rgba(' + rgbMetni(t.bg) + ',');
+      c = c.replace(/rgba\(27, ?36, ?55,/g, 'rgba(' + rgbMetni(t.surface) + ',');
+    }
   }
   if (t.zemin) c += '\nhtml, body { background: ' + t.zemin + '; }\n.screen { background: transparent; }\n.player { background: #000; }';
   if (t.multi && t.p) {
