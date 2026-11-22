@@ -162,6 +162,9 @@ export function browseScreen({ kind }) {
     }
   };
 
+  // İki liste aynı mı: uzunluk ve ilk/son öğenin kimliği (tam karşılaştırma gereksiz)
+  const ayniListe = (a, b) => !!a && !!b && a.length === b.length && (!a.length || (a[0].id === b[0].id && a[a.length - 1].id === b[b.length - 1].id));
+
   async function katYukle(c, koru) {
     if (!c) return;
     secilenKat = c;
@@ -180,9 +183,24 @@ export function browseScreen({ kind }) {
     list.setMessage('Yükleniyor…');
     epgKuyruk = [];
     try {
-      const l = await provider().items(gercekTur, c.id);
+      // Güncel liste hemen istenir; bu sırada önceki oturumdan kayıtlı liste varsa (kalıcı önbellek) o anında gösterilir, güncel gelince yerini alır.
+      const tazeSoz = provider().items(gercekTur, c.id);
+      let taze = false;
+      let eskiGoruldu = false;
+      if (provider().onbellekten) {
+        provider()
+          .onbellekten(gercekTur, c.id)
+          .then((e) => {
+            if (!e || !e.length || taze || n !== yukSayac) return;
+            eskiGoruldu = true;
+            list.setItems(e);
+          })
+          .catch(() => {});
+      }
+      const l = await tazeSoz;
+      taze = true;
       if (n !== yukSayac) return;
-      list.setItems(l);
+      if (!(eskiGoruldu && ayniListe(list.items, l))) list.setItems(l, eskiGoruldu); // kayıtlı liste güncelle aynıysa yeniden çizilmez; farklıysa odak yeri korunur
       if (vitrin && !l.length) vitrin.temizle();
       komsuOnYukle(c);
     } catch (e) {
@@ -201,20 +219,20 @@ export function browseScreen({ kind }) {
     const no = ++onNo;
     const i = cats.items.findIndex((x) => x.id === c.id);
     if (i < 0) return;
-    const sira = [cats.items[i + 1], cats.items[i + 2], cats.items[i - 1]].filter(Boolean);
+    const sira = [cats.items[i + 1], cats.items[i + 2], cats.items[i - 1], cats.items[i + 3], cats.items[i + 4], cats.items[i - 2]].filter(Boolean);
     const adim = () => {
       if (kapali || no !== onNo || !sira.length) return;
       const x = sira.shift();
       provider()
         .items(gercekTur, x.id, null)
         .then(
-          () => setTimeout(adim, 400),
+          () => setTimeout(adim, 150),
           () => {
             /* önyükleme başarısız: kategori seçilince normal yoldan yüklenir */
           },
         );
     };
-    setTimeout(adim, 700);
+    setTimeout(adim, 150);
   }
 
   // --- canlı TV: şimdi / sonra
@@ -324,6 +342,8 @@ export function browseScreen({ kind }) {
     hedef.innerHTML = '<div class="vl-msg" style="display:block">' + html + '</div>';
   }
 
+  const ayniKategoriler = (a, b) => a.length === b.length && a.every((x, i) => String(x.id) === String(b[i].id));
+
   async function ilkYukle() {
     yuklendi = true;
     if (!src) return;
@@ -350,13 +370,45 @@ export function browseScreen({ kind }) {
       if (sonKat) provider().items(gercekTur, sonKat).catch(() => {});
     }
     try {
-      const liste = await provider().categories(gercekTur);
-      (vitrinli ? contEl : catsEl).innerHTML = '';
-      katKur(liste);
-      if (vitrinli) {
-        const son = String(ctx.store.setting(katAnahtar, ''));
-        const i = liste.findIndex((x) => String(x.id) === son);
-        if (i > 0) cats.setIndex(i);
+      // Önceki oturumdan kayıtlı kategori listesi varsa hemen gösterilir (güncel liste gelene dek kategori beklenmez)
+      let gosterildi = false;
+      const kur = (liste) => {
+        (vitrinli ? contEl : catsEl).innerHTML = '';
+        katKur(liste);
+        if (vitrinli) {
+          const son = String(ctx.store.setting(katAnahtar, ''));
+          const i = liste.findIndex((x) => String(x.id) === son);
+          if (i > 0) cats.setIndex(i);
+        }
+      };
+      let taze = false;
+      const tazeSoz = provider().categories(gercekTur);
+      if (provider().categoriesOnbellekten) {
+        provider()
+          .categoriesOnbellekten(gercekTur)
+          .then((e) => {
+            if (!e || !e.length || taze || kapali) return;
+            gosterildi = true;
+            kur(e);
+          })
+          .catch(() => {});
+      }
+      const liste = await tazeSoz;
+      taze = true;
+      if (!gosterildi) kur(liste);
+      else if (!ayniKategoriler(cats.items, liste)) {
+        // Kategori listesi değişmiş: odaktaki kategoriyi koruyarak yeniden kur (içerik yeniden yüklenmesin)
+        const eskiId = cats.cur ? String(cats.cur.id) : '';
+        catsEl.innerHTML = '';
+        catsEl.className = 'cats' + (vitrinli && bolge !== 'cats' ? ' gizli' : '');
+        sessiz = true;
+        try {
+          katKur(liste);
+          const i = liste.findIndex((x) => String(x.id) === eskiId);
+          if (i > 0) cats.setIndex(i);
+        } finally {
+          sessiz = false;
+        }
       }
     } catch (e) {
       K.hata(e);

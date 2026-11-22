@@ -1,7 +1,7 @@
 // Tema merkezi: renk temalarını gezip OK ile uygular; sağda seçilen temanın küçük önizlemesi görünür.
 import { ctx, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
-import { TEMALAR, VARSAYILAN_TEMA, temaUygula } from '../tema.js';
+import { TEMALAR, VARSAYILAN_TEMA, temaUygula, temaBul } from '../tema.js';
 import { el, esc, px, toast } from '../ui.js';
 import * as K from '../log.js';
 
@@ -30,7 +30,7 @@ export function temaScreen() {
   const src = ctx.store.active();
   kok.innerHTML = ustCubuk('Tema merkezi', src ? esc(src.name) : '') + '<div class="l-body"><div class="l-list"></div><div class="l-panel"></div></div><div class="hint">▲▼ gezin · OK: temayı uygula · Geri</div>';
   const panel = kok.querySelector('.l-panel');
-  const secili = () => ctx.store.setting('theme', VARSAYILAN_TEMA);
+  const secili = () => temaBul(ctx.store.setting('theme', VARSAYILAN_TEMA)).id; // kaldırılmış tek renkli tema kayıtlıysa varsayılan görünür
   let mesgul = false;
 
   const list = new VList(kok.querySelector('.l-list'), {

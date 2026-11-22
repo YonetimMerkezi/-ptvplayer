@@ -35,7 +35,7 @@ export function settingsScreen() {
     return [
       { id: 'source', ad: 'Etkin kaynak', deger: () => (src ? src.name : '—'), yardim: 'OK: kaynakları yönet' },
       { id: 'add', ad: 'Kaynak ekle', deger: () => '', yardim: 'Xtream ya da M3U bağlantısı ekler' },
-      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Renk temaları: turkuaz, mavi, mor, gün batımı, neon …' },
+      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Çok renkli temalar: canlı renkler, renkli kartlar, dolu renk, neon, gün batımı' },
       { id: 'keys', ad: 'Kumanda tuşları', deger: () => '', yardim: 'Kırmızı / yeşil / sarı / mavi tuşlara oynatıcıda ve ana sayfada yapılacak eylemi atayın' },
       { id: 'fontScale', ad: 'Yazı boyutu', deger: () => ad(YAZI, ctx.store.setting('fontScale', '1')), yardim: 'Tüm ekranlardaki yazı ve düğme boyutunu büyütür ya da küçültür' },
       { id: 'aspect', ad: 'Görüntü oranı', deger: () => ad(ORAN, ctx.store.setting('aspect', 'contain')), yardim: 'Videonun ekrana yerleşimi: sığdır, doldur (kenarları kırp) ya da uzat. Oynatıcıda renkli tuşla da değişir' },
@@ -46,6 +46,7 @@ export function settingsScreen() {
       { id: 'netMode', ad: 'Ağ yolu', deger: () => ad(AG, ctx.store.setting('netMode', 'auto')), yardim: 'Otomatik: önce doğrudan, olmazsa TV servisi. Liste yüklenmiyorsa “TV servisi”ni deneyin' },
       { id: 'test', ad: 'Bağlantıyı sına', deger: () => '', yardim: 'Etkin kaynağa bağlanıp sonucu ve kullanılan yolu gösterir' },
       { id: 'recents', ad: 'Geçmişi temizle', deger: () => '', yardim: 'Son izlenenleri ve kaldığı yer bilgisini siler' },
+      { id: 'ytest', ad: 'Fragman testi', deger: () => '', yardim: 'Kırmızı tuşla fragman açılınca YouTube ana sayfası geliyorsa burada farklı açma biçimlerini deneyin; videoyu açan biçimi seçin' },
       { id: 'keytest', ad: 'Tuş testi', deger: () => '', yardim: 'Kumandada basılan tuşların TV’den hangi kodla geldiğini gösterir. Geri tuşu çalışmazsa buradan bakın' },
       { id: 'log', ad: 'Hata kaydı', deger: () => String(K.kayitlar().length) + ' satır', yardim: 'Sorun bildirirken bu ekranı gösterin' },
       { id: 'about', ad: 'Hakkında', deger: () => 'Sürüm ' + SURUM, yardim: '' },
@@ -105,6 +106,7 @@ export function settingsScreen() {
       if (src) ctx.store.clearRecents(src.id);
       toast('Geçmiş temizlendi');
     } else if (r.id === 'log') open('log');
+    else if (r.id === 'ytest') open('fragmantesti');
     else if (r.id === 'keytest') open('tustesti');
     else if (r.id === 'about') open('about');
     list.redraw(list.index);
