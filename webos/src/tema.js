@@ -3,30 +3,23 @@
 // Paletler Android uygulamasının tema renkleriyle aynıdır (www/css/app.css).
 
 // Paletin rolleri: bg zemin, surface kutu, raised vurgulu kutu, line çizgi, accent vurgu, ink vurgu üzerindeki yazı
-export const VARSAYILAN_TEMA = 'varsayilan';
+export const VARSAYILAN_TEMA = 'canli-renkli';
+// tv.css'in özgün (boyanmamış) turkuaz renkleri: artık seçilebilir tema değil; yalnız boyama mantığı bu kimliği "değiştirme" diye tanır.
+const ORIJINAL_TEMA = 'varsayilan';
 
 const T = (id, ad, bg, surface, raised, line, accent, ink, ek) => Object.assign({ id, ad, bg, surface, raised, line, accent, ink }, ek || {});
 const PAL = ['#a3b3cc', '#4ade80', '#fb923c', '#a78bfa', '#38bdf8', '#22d3ee', '#f472b6', '#fbbf24', '#fb7185'];
 
 export const TEMALAR = [
-  T(VARSAYILAN_TEMA, 'Turkuaz (varsayılan)', '#0a0e17', '#151b2b', '#1b2437', '#26324b', '#2dd4bf', '#04141a'),
-  T('green', 'Yeşil', '#050f10', '#0b1f1c', '#12302a', '#1d4a3e', '#4ade80', '#032312'),
-  T('blue', 'Mavi', '#080d1f', '#111a33', '#1b2546', '#26315a', '#38bdf8', '#04202c'),
-  T('cyan', 'Açık turkuaz', '#04141a', '#0a222b', '#103340', '#17505f', '#22d3ee', '#02222a'),
-  T('purple', 'Mor', '#0b0818', '#181233', '#251c4d', '#382a73', '#a78bfa', '#170a3a'),
-  T('orange', 'Turuncu', '#120a04', '#231508', '#35200d', '#5a3512', '#fb923c', '#2b1203'),
-  T('red', 'Kırmızı', '#12060a', '#251016', '#3a1722', '#5c2434', '#fb7185', '#2d0610'),
-  T('midnight', 'Gece yarısı', '#070b16', '#111827', '#1e293b', '#334155', '#a5b4fc', '#111337'),
-  T('ocean', 'Okyanus', '#03131b', '#08232d', '#103846', '#155568', '#2dd4bf', '#032a2a'),
-  T('graphite', 'Grafit', '#101216', '#1b1f25', '#292f38', '#414955', '#cbd5e1', '#18202a'),
-  T('rose', 'Gül kurusu', '#160811', '#29101d', '#3b192a', '#633047', '#fb8cae', '#390b20'),
-  // Canlı temalar: koyu değil, orta tonlu doygun zemin; yazılar beyaza yakın, soluk gri yok (canli: true → yazı ve katman renkleri de paletten türetilir)
-  T('canli-mavi', 'Canlı mavi', '#1747a6', '#1f52bb', '#2a60d0', '#6b9dfa', '#ffd23f', '#1a1400', { canli: true }),
-  T('canli-gok', 'Canlı gök mavisi', '#075d8c', '#0a73ad', '#117eb8', '#5cc6ff', '#ffe14d', '#1a1400', { canli: true }),
-  T('canli-yesil', 'Canlı yeşil', '#0a5a3a', '#0e714a', '#14835a', '#4fd9a0', '#ffe14d', '#1a1400', { canli: true }),
-  T('canli-mor', 'Canlı mor', '#4b21a8', '#5d2cc4', '#7440e0', '#a98aff', '#ffd23f', '#1a1400', { canli: true }),
-  T('canli-kirmizi', 'Canlı kırmızı', '#9a1030', '#b81838', '#cf2a50', '#ff7d99', '#ffe14d', '#1a1400', { canli: true }),
-  T('canli-turuncu', 'Canlı turuncu', '#8f3e08', '#ad500b', '#ba570d', '#ffa862', '#fff1a8', '#2b1203', { canli: true }),
+  // Canlı renkler (varsayılan): orta tonlu doygun mor-pembe zemin, her karo ayrı parlak renkte dolu; yazılar beyaz (canli), vurgu sarı.
+  // Tek renkli temalar kaldırıldı: yalnız çok renkli temalar var.
+  T(VARSAYILAN_TEMA, 'Canlı renkler', '#3a1bb8', '#4a28cc', '#5f36e6', '#b79bff', '#ffd21f', '#1a1400', {
+    canli: true,
+    multi: true,
+    dolu: true,
+    p: ['#e4e9ff', '#22d36b', '#ff8a1f', '#b18cff', '#3aa0ff', '#19d3e6', '#ff5ab0', '#ffd21f', '#ff5566'],
+    zemin: 'linear-gradient(135deg, #3a1bb8 0%, #7b1fc9 48%, #c71f87 100%)',
+  }),
   // Çok renkli temalar: ana sayfadaki her karo kendi renginde
   T('cards', 'Renkli kartlar', '#090c14', '#111623', '#1a2133', '#2a3350', '#a78bfa', '#170a3a', { multi: true, p: PAL }),
   T('solid', 'Dolu renk', '#080b12', '#101521', '#19202f', '#283148', '#a78bfa', '#170a3a', { multi: true, dolu: true, p: PAL }),
@@ -83,7 +76,7 @@ const ESLEME = [
 // tv.css metnini palete göre yeniden boyar; çok renkli temalarda karo kuralları ve (varsa) gradyan zemin eklenir.
 export function cssUret(css, t) {
   let c = String(css);
-  if (t.id !== VARSAYILAN_TEMA) {
+  if (t.id !== ORIJINAL_TEMA) {
     // Tek geçişte değiştir: bir rolün yeni rengi başka bir varsayılan renkle çakışsa bile ikinci kez değişmesin
     const harita = {};
     for (let i = 0; i < ESLEME.length; i++) harita[ESLEME[i][0]] = ESLEME[i][1](t);
@@ -141,7 +134,7 @@ export async function temaUygula(id, doc) {
   const t = temaBul(id);
   const link = doc.querySelector('link[rel="stylesheet"]');
   let st = doc.getElementById('tema-css');
-  if (t.id === VARSAYILAN_TEMA) {
+  if (t.id === ORIJINAL_TEMA) {
     if (st && st.parentNode) st.parentNode.removeChild(st);
     if (link) link.disabled = false;
     doc.documentElement.className = '';

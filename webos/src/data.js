@@ -6,6 +6,7 @@ import { fold } from '../../www/js/util.js';
 import { esle as isciEsle, isciKullanilir } from './isci-ist.js';
 import { AgHatasi } from './net.js';
 import * as A from './arsiv.js';
+import { onbellek as varsayilanOnbellek } from './onbellek.js';
 
 const KIND_AKSIYON = {
   live: ['get_live_categories', 'get_live_streams', X.mapLive],
@@ -16,9 +17,17 @@ const KIND_AKSIYON = {
 const bir = (cache, key, fn) => cache[key] || (cache[key] = fn().catch((e) => { delete cache[key]; throw e; }));
 const gecerli = (l) => (Array.isArray(l) ? l.filter((c) => c && typeof c === 'object') : []);
 
-export function createXtream(src, net) {
+export function createXtream(src, net, kalici = varsayilanOnbellek) {
   const cfg = { server: src.server, user: src.user, pass: src.pass };
   const cache = {};
+  // Kalıcı önbellek anahtarı: kaynak başına ayrı (başka kaynağın listesi gösterilmesin)
+  const kAnahtar = (ek) => 'x:' + (src.id || src.server + '|' + src.user) + ':' + ek;
+  // Yazma ekran çizildikten sonra yapılır (büyük listenin kopyalanması eski TV'de kısa takılma yapar); canlı kanal listeleri kaydedilmez
+  const kaydet = (ek, l) => {
+    if (ek.indexOf('it:live:') === 0) return l;
+    setTimeout(() => kalici.yaz(kAnahtar(ek), l).catch(() => {}), 1500);
+    return l;
+  };
   const J = (action, params) => net.json(X.apiUrl(cfg, action, params), { timeoutMs: 60000 });
   // Büyük liste yanıtı: önce ham metin alınır, ayrıştırma ve eşleme arka plan işçisinde yapılır (kumanda tuşları takılmasın).
   // grup: aynı gruptaki yeni istek (kullanıcı başka kategoriye geçti) öncekini keser.
@@ -43,7 +52,8 @@ export function createXtream(src, net) {
     }
     return map(gecerli(json), cats);
   };
-  const rawCats = (kind) => bir(cache, 'rc:' + kind, async () => gecerli(await J(KIND_AKSIYON[kind][0])));
+  const rawCats = (kind) => bir(cache, 'rc:' + kind, async () => kaydet('rc:' + kind, gecerli(await J(KIND_AKSIYON[kind][0]))));
+  const adlandir = (l) => l.map((c) => ({ id: String(c.category_id), name: String(c.category_name || '').trim() || 'Diğer' }));
   const epgOnbellek = {}; // kanal:adet → { at, p }; 2 dakika taze sayılır
   let farkOnbellek = null; // sunucu saatinin UTC'den farkı (ms): bir kez sorulur; alınamazsa cihaz saati
   const sunucuFarki = () =>
@@ -61,11 +71,14 @@ export function createXtream(src, net) {
     type: 'xtream',
     auth: async () => X.checkAuth(await J(null)),
     async categories(kind) {
-      return (await rawCats(kind)).map((c) => ({ id: String(c.category_id), name: String(c.category_name || '').trim() || 'Diğer' }));
+      return adlandir(await rawCats(kind));
     },
+    // Kalıcı önbellekteki (önceki oturumdan) kategori listesi ve kategori içeriği: yoksa null. Ekran önce bunu gösterir, güncel liste arkadan gelir.
+    categoriesOnbellekten: (kind) => kalici.oku(kAnahtar('rc:' + kind)).then((l) => (l ? adlandir(gecerli(l)) : null)).catch(() => null),
+    onbellekten: (kind, catId) => kalici.oku(kAnahtar('it:' + kind + ':' + catId)).catch(() => null),
     // grup: aynı gruptaki yeni istek öncekini keser (varsayılan 'kat'); null = kesilmez (arka plan önyüklemesi)
     items: (kind, catId, grup) =>
-      bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' : grup)),
+      bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' : grup).then((l) => kaydet('it:' + kind + ':' + catId, l))),
     all: (kind) => bir(cache, 'all:' + kind, () => liste(kind, undefined, rawCats(kind))),
     seriesInfo: (item) => bir(cache, 'si:' + item.seriesId, async () => X.mapSeriesInfo(await J('get_series_info', { series_id: item.seriesId }))),
     vodInfo: (item) => bir(cache, 'vi:' + item.streamId, async () => X.mapVodInfo(await J('get_vod_info', { vod_id: item.streamId }))),

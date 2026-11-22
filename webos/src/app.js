@@ -1,5 +1,5 @@
 // Açılış, ekran kaydı, tuş dağıtıcı (uzaktan kumanda) ve saat.
-import { ctx, open, pop, top, cikis, geri, geriOdakla } from './ctx.js';
+import { ctx, open, pop, top, cikis, geri, geriOdakla, provider } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
 import { actionOfEvent } from './keys.js';
@@ -21,6 +21,8 @@ import { kumandaScreen } from './screens/kumanda.js';
 import { sporScreen } from './screens/spor.js';
 import { macScreen } from './screens/mac.js';
 import { tusTestiScreen } from './screens/tustesti.js';
+import { fragmanTestiScreen } from './screens/fragmantesti.js';
+import { ayarKaynagi, VARSAYILAN_BICIM } from './fragman.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -180,6 +182,7 @@ export function kaydet() {
     spor: sporScreen,
     mac: macScreen,
     tustesti: tusTestiScreen,
+    fragmantesti: fragmanTestiScreen,
     browse: browseScreen,
     detail: detailScreen,
     vizyon: vizyonDetayScreen,
@@ -201,8 +204,9 @@ export function start() {
   kaydet();
   boyutla(yaziOlcegi());
   window.addEventListener('resize', () => boyutla(yaziOlcegi()));
+  ayarKaynagi(() => ({ bicim: ctx.store.setting('ytBicim', VARSAYILAN_BICIM), kapat: ctx.store.setting('ytKapat', true) }));
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
-  if (tema !== VARSAYILAN_TEMA) temaUygula(tema).catch((e) => K.hata(e));
+  temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);
   setInterval(saatleriYaz, 15000);
   K.bilgi('Açıldı: ' + window.innerWidth + '×' + window.innerHeight);
@@ -217,4 +221,29 @@ export function start() {
   saatleriYaz();
   const b = document.getElementById('boot');
   if (b && b.parentNode) b.parentNode.removeChild(b);
+  setTimeout(isit, 3000); // ana sayfa çizildikten sonra Filmler/Diziler'in açılacağı kategori arka planda önbelleğe alınır
+}
+
+// Filmler ve Diziler'de son açılan (yoksa ilk) kategorinin içeriği önceden indirilir: bölüme girince liste hazır gelir.
+// Yalnız Xtream; sırayla ve arka planda (grup yok: kullanıcı başka kategoriye geçse de kesilmez); hata sessizce geçilir.
+function isit() {
+  try {
+    const src = ctx.store.active();
+    const p = provider();
+    if (!src || !p || p.type !== 'xtream') return;
+    ['movie', 'series'].reduce(
+      (zincir, tur) =>
+        zincir
+          .then(() => p.categories(tur))
+          .then((cats) => {
+            const son = String(ctx.store.setting('kat:' + tur + ':' + src.id, ''));
+            const c = cats.filter((x) => String(x.id) === son)[0] || cats[0];
+            return c ? p.items(tur, c.id, null) : null;
+          })
+          .catch(() => {}),
+      Promise.resolve(),
+    );
+  } catch (e) {
+    /* ısınma başarısız: bölüm açılınca normal yoldan yüklenir */
+  }
 }
