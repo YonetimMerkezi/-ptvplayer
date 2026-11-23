@@ -65,6 +65,10 @@
         {
           "name": "kayitAlan",
           "description": "Kayıt için disklerin yazılabilirliğini ve boş alanını verir"
+        },
+        {
+          "name": "resim",
+          "description": "Resmi getirip data: adresi olarak verir (logo yedeği)"
         }
       ]
     }

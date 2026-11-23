@@ -8,7 +8,7 @@ import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
 import * as kayitIs from '../kayit.js';
 import * as arsiv from '../arsiv.js';
-import { videoKimligi, imdbBul, imdbAdaylari, imdbHatirla, imdbBilgi, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
+import { videoKimligi, imdbCoz, imdbAdaylari, imdbHatirla, imdbBilgi, imdbAdi, kaliciHafiza, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
   1: 'Oynatma iptal edildi',
@@ -607,57 +607,81 @@ export function playerScreen({ list, index, fresh }) {
       bosPanel('Altyazı indirilemedi', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip başka bir seçenek deneyin.');
     }
   }
-  async function haricAra(kimlik) {
-    const n = ++aramaNo;
-    secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Altyazı aranıyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
+  // Sağlayıcının verdiği özgün ad, yıl, TMDB/IMDb kimliği (altyazı eşleşmesinde en güvenilir ipuçları)
+  async function saglayiciIpucu(kimlik) {
+    const ip = { adlar: [], yil: 0, tmdb: String(it.tmdb || ''), imdb: String(it.imdb || '') };
     try {
-      let ek = [];
-      if (kimlik.tur === 'movie') {
-        try {
-          const vi = await provider().vodInfo(it);
-          if (vi && vi.originalName) ek = [vi.originalName]; // Türkçe adlı filmler özgün adla da aranır
-        } catch (e) {
-          /* özgün ad alınamadı: yalnız katalog adıyla aranır */
-        }
+      const vi = kimlik.tur === 'movie' ? await provider().vodInfo(it) : it.seriesId ? await provider().seriesInfo(it) : null;
+      if (vi) {
+        if (vi.originalName) ip.adlar.push(vi.originalName);
+        ip.tmdb = ip.tmdb || String(vi.tmdb || '');
+        ip.imdb = ip.imdb || String(vi.imdb || '');
+        ip.yil = Number((/\b(?:19|20)\d{2}\b/.exec(String(vi.year || '')) || [])[0]) || 0;
       }
-      if (!haricGecerli(n)) return;
-      const imdb = await imdbBul(ctx.net, kimlik, ek);
-      if (!haricGecerli(n)) return;
-      if (imdb) return haricListele(kimlik, imdb, n, ek);
-      // Ad birebir tutmadı (çoğunlukla Türkçe ad): katalogun bulduğu yapımlar seçtirilir
-      await haricAdaylar(kimlik, ek, n, 'Adı tam tutan yapım bulunamadı. Doğru olanı seçin; yanlışını seçerseniz altyazı uymaz.');
     } catch (e) {
-      if (!haricGecerli(n)) return;
-      K.uyar('Altyazı aranamadı: ' + (e && e.message));
-      bosPanel('Altyazı aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
+      /* sağlayıcı bilgisi alınamadı: yalnız katalog adıyla aranır */
     }
+    return ip;
   }
-  // Katalogun bulduğu yapımları seçtirir (yılı uyanlar önce)
-  async function haricAdaylar(kimlik, ek, n, not) {
-    const a = await imdbAdaylari(ctx.net, kimlik, ek);
-    if (!haricGecerli(n)) return;
+  const imdbKalici = kaliciHafiza(
+    () => ctx.store.setting('altyaziEs', null),
+    (m) => ctx.store.setSetting('altyaziEs', m)
+  );
+  // Aday yapımlardan seçtirir; seçim hatırlanır ve altyazı listesi açılır
+  function haricYapimSec(kimlik, ip, a, n, not) {
     if (!a.liste.length) {
-      return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Aranan: ' + a.adlar.join(' / ') + (a.yil ? ' (' + a.yil + ')' : '') + '. Katalog bu adla bir yapım bulamadı.');
+      return bosPanel('Altyazı', 'Bu yapım altyazı kaynağında bulunamadı', 'Aranan: ' + a.adlar.join(' / ') + (a.yil ? ' (' + a.yil + ')' : '') + '. IMDb ve Cinemeta bu adla bir yapım bulamadı.');
     }
     secimAc({
       baslik: 'Hangi yapım?',
       satirlar: a.liste.map((x) => ({ ad: x.ad + (x.yil ? ' (' + x.yil + ')' : '') })),
       idx: 0,
       arama: n,
-      not: not || 'Doğru yapımı seçin; yanlışını seçerseniz altyazı uymaz.',
+      not,
       calis(i) {
-        imdbHatirla(kimlik, ek, a.liste[i].id);
-        haricListele(kimlik, a.liste[i].id, n, ek);
+        imdbHatirla(kimlik, ip, a.liste[i].id, imdbKalici);
+        haricListele(kimlik, a.liste[i].id, n, ip);
       },
     });
   }
+  async function haricAra(kimlik) {
+    const n = ++aramaNo;
+    secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Altyazı aranıyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
+    try {
+      const ip = await saglayiciIpucu(kimlik);
+      if (!haricGecerli(n)) return;
+      const r = await imdbCoz(ctx.net, kimlik, ip, imdbKalici);
+      if (!haricGecerli(n)) return;
+      if (r.id) return haricListele(kimlik, r.id, n, ip);
+      // Kesin eşleşme yok (Türkçe ad, aynı adlı birden çok yapım): bulunan yapımlar seçtirilir
+      haricYapimSec(kimlik, ip, r, n, 'Adı kesin eşleşen yapım bulunamadı. Doğru olanı seçin; seçiminiz hatırlanır, yanlışını seçerseniz altyazı uymaz.');
+    } catch (e) {
+      if (!haricGecerli(n)) return;
+      K.uyar('Altyazı aranamadı: ' + (e && e.message));
+      bosPanel('Altyazı aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
+    }
+  }
+  // Eşleşme yanlışsa: kayıtlı eşleşmeye bakmadan IMDb/Cinemeta adaylarını gösterir
+  async function haricBaskaYapim(kimlik, ip, n) {
+    secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Yapımlar aranıyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
+    try {
+      const a = await imdbAdaylari(ctx.net, kimlik, ip);
+      if (!haricGecerli(n)) return;
+      haricYapimSec(kimlik, ip, a, n, 'Altyazı hangi yapıma ait olsun? Seçiminiz hatırlanır.');
+    } catch (e) {
+      if (!haricGecerli(n)) return;
+      K.uyar('Yapım aranamadı: ' + (e && e.message));
+      bosPanel('Yapım aranamadı', (e && e.message) || 'Ağ hatası', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
+    }
+  }
   // IMDb kimliği belli: altyazı listesini getirip seçtirir. Eşleşen yapımın adı başlıkta görünür; yanlışsa son satırdan başka yapım seçilir.
-  async function haricListele(kimlik, imdb, n, ek) {
+  async function haricListele(kimlik, imdb, n, ip) {
     secimAc({ baslik: 'Altyazı ara', satirlar: [{ ad: 'Altyazılar getiriliyor…' }], idx: 0, bilgi: true, arama: n, sure: 60000, calis: secimKapat });
     try {
       const liste = await altyaziListesi(ctx.net, kimlik, imdb);
       if (!haricGecerli(n)) return;
-      const bil = imdbBilgi(imdb);
+      const bil = imdbBilgi(imdb) || (await imdbAdi(ctx.net, kimlik.tur, imdb));
+      if (!haricGecerli(n)) return;
       const yapim = bil && bil.ad ? bil.ad + (bil.yil ? ' (' + bil.yil + ')' : '') : '';
       if (!liste.length) return bosPanel('Altyazı', 'Bu yapım için altyazı bulunamadı', (yapim ? 'Eşleşen yapım: ' + yapim + '. ' : '') + 'Altyazı kaynağında bu film ya da bölüm için kayıt yok. Başka yapım seçmek için Altyazı ara… menüsünü yeniden açın.');
       const satirlar = liste.map((x) => ({ ad: x.ad }));
@@ -668,7 +692,7 @@ export function playerScreen({ list, index, fresh }) {
         idx: 0,
         arama: n,
         calis(i) {
-          if (i >= liste.length) return haricAdaylar(kimlik, ek || [], n, 'Doğru yapımı seçin. Seçilen yapımın altyazıları listelenir.').catch(() => {});
+          if (i >= liste.length) return haricBaskaYapim(kimlik, ip, n);
           haricIndir(liste[i], n);
         },
       });

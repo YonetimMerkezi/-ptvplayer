@@ -57,62 +57,164 @@ test('altyazı: videoKimligi — canlıda yok; filmde ad/yıl; bölümde sezon v
   assert.equal(A.videoKimligi({ kind: 'episode', seriesName: 'D', episodeNum: 5 }), null, 'sezon yoksa (eski kayıt) aranmaz');
 });
 
-test('altyazı: imdbSec ad birebir ve yıl ±1 olmalı; imdbBul özgün adı dener, sonucu önbellekler, ağ hatasını önbelleğe yazmaz', async () => {
-  assert.equal(A.imdbSec([{ id: 'tt1', name: 'Dune', year: '2021' }, { id: 'tt2', name: 'Dune', year: '1984' }], 'dune', 1984), 'tt2');
-  assert.equal(A.imdbSec([{ id: 'tt1', name: 'Dune', year: '2021' }], 'Dune', 1984), '', 'yıl uymuyorsa yanlış film seçilmez');
-  assert.equal(A.imdbSec([{ id: 'tt1', name: 'Dune: Part Two', year: '2024' }], 'Dune', 2024), '', 'ad birebir değilse seçilmez');
-  assert.equal(A.imdbSec([{ id: 'tt3', name: 'The.Matrix.1999.1080p' }], 'The Matrix', 1999), 'tt3', 'IPTV biçimindeki noktalı ad ve kalite etiketleri temizlenir');
-  assert.equal(A.imdbSec([{ id: 'tt4', name: 'The Matrix Resurrections', year: '2021' }], 'The Matrix', 2021), '', 'kısmi ad yanlış yapımla eşleşmez');
-  assert.equal(A.imdbSec([{ id: 'tt5', name: 'The Matrix', year: '1999' }, { id: 'tt6', name: 'The Matrix', year: '2022' }], 'The Matrix', 1999), 'tt5', 'aynı adlı yapımlarda yıl doğru kaydı seçer');
-  assert.equal(A.imdbSec([{ id: 'tt1', name: 'Şu İş', year: '2000' }], 'su is', 0), 'tt1', 'aksan ve büyük/küçük harf yok sayılır');
-  assert.equal(A.imdbSec([{ id: 'x', name: 'A' }], 'A', 0), '', 'geçersiz kimlik');
-
+// Sahte ağ: IMDb öneri araması (v3.sg.media-imdb.com) + Cinemeta arama/üstveri. tablo: { 'aranan ad': { imdb: [...], cin: [...] } }
+function ag(tablo, meta = {}) {
   const istek = [];
-  let bozuk = false;
-  const net = {
-    json: async (url) => {
+  return {
+    istek,
+    cokme: false,
+    imdbCokme: false,
+    json: async function (url) {
       istek.push(url);
-      if (bozuk) throw new Error('Zaman aşımı');
-      if (/search=Kurtlar%20Vadisi\.json/.test(url)) return { metas: [] };
-      if (/search=Valley%20of%20the%20Wolves\.json/.test(url)) return { metas: [{ id: 'tt0455276', name: 'Valley of the Wolves', year: '2003' }] };
-      return { metas: [] };
+      let m;
+      if ((m = /media-imdb\.com\/suggestion\/x\/(.+)\.json$/.exec(url))) {
+        if (this.cokme || this.imdbCokme) throw new Error('Zaman aşımı');
+        const t = tablo[decodeURIComponent(m[1])];
+        return { d: (t && t.imdb) || [] };
+      }
+      if ((m = /\/catalog\/(?:movie|series)\/top\/search=(.+)\.json$/.exec(url))) {
+        if (this.cokme) throw new Error('Zaman aşımı');
+        const t = tablo[decodeURIComponent(m[1]).toLowerCase()];
+        return { metas: (t && t.cin) || [] };
+      }
+      if ((m = /\/meta\/(?:movie|series)\/(tt\d+)\.json$/.exec(url))) return { meta: { moviedb_id: meta[m[1]] } };
+      return {};
     },
   };
-  const v = { tur: 'series', ad: 'TR | Kurtlar Vadisi', yil: 0, sezon: 1, bolum: 1 };
-  assert.equal(await A.imdbBul(net, v, ['Valley of the Wolves']), 'tt0455276');
-  assert.equal(istek.length, 2, 'önce katalog adı, sonra özgün ad');
-  assert.equal(await A.imdbBul(net, v, ['Valley of the Wolves']), 'tt0455276');
-  assert.equal(istek.length, 2, 'ikinci çağrı önbellekten');
-  bozuk = true;
-  await assert.rejects(() => A.imdbBul(net, { tur: 'movie', ad: 'Başka Film', yil: 2001 }, []), /Zaman aşımı/);
-  bozuk = false;
-  assert.equal(await A.imdbBul(net, { tur: 'movie', ad: 'Başka Film', yil: 2001 }, []), '', 'hata önbelleğe yazılmadı; bulunamayan "" döner');
+}
+const IM = (id, l, y, qid) => ({ id, l, y, qid: qid || 'movie' });
+const film = (ad, yil) => ({ tur: 'movie', ad, yil: yil || 0, sezon: 0, bolum: 0 });
+const dizi = (ad) => ({ tur: 'series', ad, yil: 0, sezon: 1, bolum: 1 });
+
+test('imdbCoz: Türkçe adlı film IMDb aramasının AKA eşleşmesiyle çözülür (yıl tek yapımla uyuşur); bölüm/oyun/kişi sonuçları elenir', async () => {
+  const n = ag({ 'esaretin bedeli': { imdb: [IM('tt0111161', 'The Shawshank Redemption', 1994), IM('tt9999991', 'Esaretin Bedeli Belgeseli', 2010, 'tvEpisode'), { id: 'nm0000151', l: 'Morgan Freeman', qid: '' }, IM('tt0293927', 'Shawshank: The Redeeming Feature', 2001, 'video')] } });
+  const r = await A.imdbCoz(n, film('TR | Esaretin Bedeli (1994)', 1994), {}, null);
+  assert.deepEqual({ id: r.id, kaynak: r.kaynak }, { id: 'tt0111161', kaynak: 'yil' });
+  assert.ok(n.istek.some((u) => u.indexOf(A.IMDB_ARAMA + 'esaretin%20bedeli.json') === 0), 'ad küçük harfli ve kodlanmış');
 });
 
-test('altyazı: imdbAdaylari yılı uyanları öne alır, yinelenenleri ve geçersiz kimlikleri eler; imdbHatirla seçimi saklar', async () => {
-  const istek = [];
-  const net = {
-    json: async (url) => {
-      istek.push(url);
-      if (/search=Esaretin%20Bedeli\.json/.test(url)) {
-        return { metas: [{ id: 'tt0293927', name: 'Shawshank: The Redeeming Feature', releaseInfo: '2001' }, { id: 'tt0111161', name: 'The Shawshank Redemption', releaseInfo: '1994' }, { id: 'tt0111161', name: 'kopya', releaseInfo: '1994' }, { id: 'x', name: 'geçersiz' }] };
-      }
-      return { metas: [] };
+test('imdbCoz: kesinlik sırası — kalıcı kayıt > sağlayıcı IMDb > TMDB doğrulaması > birebir ad; ağa hiç gitmeden döner', async () => {
+  const n = ag({});
+  const depo = {};
+  const kalici = A.kaliciHafiza(() => depo.m, (m) => (depo.m = m));
+  // sağlayıcının IMDb kimliği doğrudan kullanılır
+  assert.deepEqual(await A.imdbCoz(n, film('Bir Film', 2020), { imdb: 'tt1234567' }, kalici), { id: 'tt1234567', kaynak: 'saglayici' });
+  assert.equal(n.istek.length, 0);
+  // geçersiz kimlik yok sayılır, kalıcı kayıt öne geçer
+  kalici.koy('movie|kayitli film|2019', 'tt7654321');
+  assert.deepEqual(await A.imdbCoz(n, film('Kayıtlı Film', 2019), { imdb: 'x1' }, kalici), { id: 'tt7654321', kaynak: 'kayit' });
+  assert.equal(n.istek.length, 0);
+  // birebir ad (özgün ad): IMDb sonuçları aynı adı taşıyan birden çok yapım içerse de yıl doğruyu seçer
+  const n2 = ag({ dune: { imdb: [IM('tt1160419', 'Dune', 2021), IM('tt0087182', 'Dune', 1984)], cin: [] } });
+  const r = await A.imdbCoz(n2, film('Dune', 1984), {}, null);
+  assert.deepEqual({ id: r.id, kaynak: r.kaynak }, { id: 'tt0087182', kaynak: 'tam-ad' });
+});
+
+test('imdbCoz: sağlayıcının özgün adı önce aranır; TMDB kimliği Cinemeta kaydıyla doğrulanır', async () => {
+  const n = ag(
+    {
+      'kurtlar vadisi irak': { imdb: [IM('tt0455276', 'Valley of the Wolves: Iraq', 2006)], cin: [{ id: 'tt0455276', name: 'Valley of the Wolves: Iraq', year: '2006', moviedb_id: 14137 }] },
+      'valley of the wolves: iraq': { imdb: [IM('tt0455276', 'Valley of the Wolves: Iraq', 2006), IM('tt1111111', 'Valley of the Wolves: Iraq (Part 2)', 2006)], cin: [{ id: 'tt0455276', name: 'Valley of the Wolves: Iraq', year: '2006', moviedb_id: 14137 }] },
     },
-  };
-  const v = { tur: 'movie', ad: 'TR | Esaretin Bedeli (1994)', yil: 1994, sezon: 0, bolum: 0 };
-  assert.equal(await A.imdbBul(net, v, []), '', 'ad birebir tutmaz');
-  const a = await A.imdbAdaylari(net, v, []);
-  assert.deepEqual(a.liste.map((x) => x.id), ['tt0111161', 'tt0293927']);
-  assert.equal(a.liste[0].ad, 'The Shawshank Redemption');
-  assert.equal(a.liste[0].yil, 1994);
-  assert.deepEqual(a.adlar, ['Esaretin Bedeli']);
-  assert.equal(a.yil, 1994);
-  assert.equal(istek.length, 1, 'arama sonucu önbellekten kullanılır');
-  A.imdbHatirla(v, [], 'tt0111161');
-  assert.equal(await A.imdbBul(net, v, []), 'tt0111161', 'seçilen yapım hatırlanır');
-  const bos = await A.imdbAdaylari(net, { tur: 'series', ad: 'Hiç Yok', yil: 0, sezon: 1, bolum: 1 }, []);
-  assert.deepEqual(bos.liste, []);
+    { tt1111111: '55', tt0455276: '14137' }
+  );
+  const r = await A.imdbCoz(n, film('Kurtlar Vadisi Irak', 2006), { adlar: ['Valley of the Wolves: Iraq'], tmdb: '14137' }, null);
+  assert.deepEqual({ id: r.id, kaynak: r.kaynak }, { id: 'tt0455276', kaynak: 'tmdb' });
+  const ilk = n.istek.find((u) => /media-imdb/.test(u));
+  assert.match(decodeURIComponent(ilk), /valley of the wolves: iraq\.json$/, 'özgün ad önce aranır');
+  // TMDB kimliği aramada görünmezse adayların kaydı sorulur
+  const n2 = ag({ 'gizli film': { imdb: [IM('tt2000001', 'Hidden Movie', 2015), IM('tt2000002', 'Hidden Movie 2', 2015)] } }, { tt2000001: '777', tt2000002: '888' });
+  const r2 = await A.imdbCoz(n2, film('Gizli Film', 2015), { tmdb: '888' }, null);
+  assert.deepEqual({ id: r2.id, kaynak: r2.kaynak }, { id: 'tt2000002', kaynak: 'tmdb' });
+  assert.ok(n2.istek.some((u) => /\/meta\/movie\/tt2000002\.json/.test(u)));
+});
+
+test('imdbCoz: dizi — IMDb ve Cinemeta aynı yapımı gösterirse seçilir; film/dizi türü karışmaz', async () => {
+  const n = ag({
+    'kurtlar vadisi': {
+      imdb: [IM('tt0421384', 'Kurtlar Vadisi', 2003, 'tvSeries'), IM('tt0455276', 'Valley of the Wolves: Iraq', 2006, 'movie'), IM('tt1111999', 'Kurtlar Vadisi: Pusu', 2007, 'tvSeries')],
+      cin: [{ id: 'tt0421384', name: 'Kurtlar Vadisi', year: '2003–2005' }],
+    },
+  });
+  const r = await A.imdbCoz(n, dizi('TR | Kurtlar Vadisi'), {}, null);
+  assert.deepEqual({ id: r.id, kaynak: r.kaynak }, { id: 'tt0421384', kaynak: 'tam-ad' });
+  const n2 = ag({ 'yüzüklerin efendisi': { imdb: [IM('tt7631058', 'The Lord of the Rings: The Rings of Power', 2022, 'tvSeries'), IM('tt0120737', 'The Lord of the Rings: The Fellowship of the Ring', 2001), IM('tt0167261', 'The Lord of the Rings: The Two Towers', 2002)] } });
+  const f = await A.imdbCoz(n2, film('Yüzüklerin Efendisi', 2002), {}, null);
+  assert.deepEqual({ id: f.id, kaynak: f.kaynak }, { id: 'tt0167261', kaynak: 'yil' }, 'dizi sonucu atlanır, yıl iki filmden doğrusunu seçer');
+});
+
+test('imdbCoz: IMDb ilk sonucu Cinemeta ile aynıysa seçilir; belirsizse yıl uyanlar önde aday listesi döner ve seçim kalıcıdır', async () => {
+  const n = ag({ 'çapraz film': { imdb: [IM('tt3000001', 'Cross Movie', 0), IM('tt3000002', 'Other Cross', 0)], cin: [{ id: 'tt3000001', name: 'Cross Movie', year: '2012' }] } });
+  const r = await A.imdbCoz(n, film('Çapraz Film'), {}, null);
+  assert.deepEqual({ id: r.id, kaynak: r.kaynak }, { id: 'tt3000001', kaynak: 'capraz' });
+
+  const n2 = ag({
+    'belirsiz': { imdb: [IM('tt4000001', 'Foo', 1980), IM('tt4000002', 'Bar', 2016), IM('tt4000003', 'Baz', 2016), IM('tt4000004', 'Qux', 2001, 'tvSeries')] },
+  });
+  const depo = {};
+  const kalici = A.kaliciHafiza(() => depo.m, (m) => (depo.m = m));
+  const v = film('Belirsiz', 2016);
+  const a = await A.imdbCoz(n2, v, {}, kalici);
+  assert.equal(a.id, '');
+  assert.deepEqual(a.liste.map((x) => x.id), ['tt4000002', 'tt4000003', 'tt4000001'], 'yılı uyanlar önde; dizi (tür uymaz) listede yok');
+  assert.deepEqual(a.adlar, ['Belirsiz']);
+  assert.equal(a.yil, 2016);
+  assert.equal(depo.m, undefined, 'belirsiz sonuç hafızaya yazılmaz');
+  A.imdbHatirla(v, {}, 'tt4000003', kalici);
+  const b = await A.imdbCoz(ag({}), v, {}, kalici);
+  assert.deepEqual(b, { id: 'tt4000003', kaynak: 'kayit' }, 'seçim ağa gitmeden hatırlanır');
+  // yeni oturum (aynı kalıcı hafıza): yine hatırlanır
+  assert.equal(kalici.al('movie|belirsiz|2016'), 'tt4000003');
+  // başka yapım seç: kayıtlı eşleşmeye bakmadan adaylar
+  const c = await A.imdbAdaylari(n2, v, {});
+  assert.equal(c.liste[0].id, 'tt4000002');
+});
+
+test('imdbCoz: bir kaynak çökse de diğeri sürer; ikisi de çökerse hata fırlatılır ve önbelleğe yazılmaz', async () => {
+  const n = ag({ 'tek kaynak film': { imdb: [IM('tt5000001', 'Single Source', 2011)], cin: [{ id: 'tt5000001', name: 'Single Source', year: '2011' }] } });
+  n.imdbCokme = true;
+  const r = await A.imdbCoz(n, film('Tek Kaynak Film', 2011), {}, null);
+  assert.equal(r.id, '', 'yalnız Cinemeta: kesin eşleşme yok, aday verir');
+  assert.equal(r.liste[0].id, 'tt5000001');
+  const m = ag({});
+  m.cokme = true;
+  await assert.rejects(() => A.imdbCoz(m, film('Çöken Film', 2011), {}, null), /Zaman aşımı/);
+  m.cokme = false;
+  const s = await A.imdbCoz(m, film('Çöken Film', 2011), {}, null);
+  assert.deepEqual(s.liste, [], 'hata önbelleğe yazılmadı; bulunamayan boş liste');
+});
+
+test('imdbCoz: otomatik eşleşme yalnız oturumda önbelleklenir ve kalıcı yazılmaz; sağlayıcı kimliği onun önüne, kullanıcı seçimi ikisinin önüne geçer', async () => {
+  const n = ag({ 'öncelik filmi': { imdb: [IM('tt6000001', 'Priority Movie', 2014)], cin: [{ id: 'tt6000001', name: 'Priority Movie', year: '2014' }] } });
+  const depo = {};
+  const kalici = A.kaliciHafiza(() => depo.m, (m) => (depo.m = m));
+  const v = film('Öncelik Filmi', 2014);
+  assert.equal((await A.imdbCoz(n, v, {}, kalici)).id, 'tt6000001');
+  assert.equal(depo.m, undefined, 'otomatik eşleşme kalıcı hafızaya yazılmaz');
+  const sayi = n.istek.length;
+  assert.deepEqual(await A.imdbCoz(n, v, {}, kalici), { id: 'tt6000001', kaynak: 'onbellek' });
+  assert.equal(n.istek.length, sayi, 'ikinci çağrı ağa gitmez');
+  assert.deepEqual(await A.imdbCoz(n, v, { imdb: 'tt6000002' }, kalici), { id: 'tt6000002', kaynak: 'saglayici' }, 'sağlayıcı kimliği otomatik önbellekten güvenilir');
+  A.imdbHatirla(v, {}, 'tt6000003', kalici);
+  assert.deepEqual(await A.imdbCoz(n, v, { imdb: 'tt6000002' }, kalici), { id: 'tt6000003', kaynak: 'kayit' }, 'kullanıcı seçimi sağlayıcı kimliğini de geçersiz kılar');
+  assert.equal(kalici.al('movie|oncelik filmi|2014'), 'tt6000003');
+  const ad = await A.imdbAdi(ag({}, { tt6000009: '1' }), 'movie', 'tt6000009');
+  assert.equal(ad, null, 'adı bilinmeyen kimlikte null');
+});
+
+test('kaliciHafiza: sınırı aşınca en eskiyi atar, aynı kaydı yeniden yazmaz', () => {
+  let yazilan = 0;
+  let m = null;
+  const k = A.kaliciHafiza(() => m, (x) => ((m = JSON.parse(JSON.stringify(x))), yazilan++), 3);
+  for (let i = 1; i <= 5; i++) k.koy('a' + i, 'tt000000' + i);
+  assert.equal(k.al('a1'), '');
+  assert.equal(k.al('a2'), '');
+  assert.equal(k.al('a5'), 'tt0000005');
+  assert.deepEqual(m.s, ['a3', 'a4', 'a5']);
+  const once = yazilan;
+  k.koy('a5', 'tt0000005');
+  assert.equal(yazilan, once, 'değişmeyen kayıt yazılmaz');
+  assert.equal(A.kaliciHafiza(() => 'bozuk', () => {}).al('x'), '', 'bozuk depo boş sayılır');
 });
 
 test('altyazı: altyaziListesi bölüm kimliğini tt…:sezon:bölüm biçiminde ister', async () => {

@@ -96,6 +96,16 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Sağlayıcının verdiği TMDB sayısı ve IMDb kimliği (yoksa ''). Alan adları paneller arasında değişir.
+export const tmdbOf = (o) => {
+  const v = String((o && (o.tmdb_id || o.tmdb || o.tmdbid || o.themoviedb)) || '').trim();
+  return /^\d{1,9}$/.test(v) && Number(v) > 0 ? v : '';
+};
+export const imdbOf = (o) => {
+  const v = String((o && (o.imdb_id || o.imdb || o.imdbid)) || '').trim();
+  return /^tt\d{5,10}$/.test(v) ? v : '';
+};
+
 export function mapLive(list, cats) {
   const cm = catMap(cats);
   return objs(list).map((s) => ({
@@ -132,6 +142,8 @@ export function mapVod(list, cats) {
     ext: s.container_extension || 'mp4',
     rating: num(s.rating_5based || s.rating),
     added: num(s.added),
+    tmdb: tmdbOf(s),
+    imdb: imdbOf(s),
   }));
 }
 
@@ -149,6 +161,8 @@ export function mapSeries(list, cats) {
     trailer: youtubeIdOf(s.youtube_trailer),
     rating: num(s.rating_5based || s.rating),
     added: num(s.last_modified),
+    tmdb: tmdbOf(s),
+    imdb: imdbOf(s),
   }));
 }
 
@@ -182,6 +196,9 @@ export function mapSeriesInfo(json) {
     rating: info.rating_5based || info.rating || '',
     logo: info.cover || '',
     trailer: youtubeIdOf(info.youtube_trailer), // sağlayıcının fragmanı (Türk yapımlarında Cinemeta'da çoğu zaman yok)
+    originalName: String(info.o_name || info.original_name || '').trim(),
+    tmdb: tmdbOf(info),
+    imdb: imdbOf(info),
     seasons,
   };
 }
@@ -201,6 +218,8 @@ export function mapVodInfo(json) {
     backdrop: firstUrl(i.backdrop_path),
     trailer: youtubeIdOf(i.youtube_trailer),
     originalName: String(i.o_name || i.original_name || '').trim(), // Türkçe adlı filmlerde IMDb eşleşmesi özgün adla da aranır
+    tmdb: tmdbOf(i),
+    imdb: imdbOf(i),
   };
 }
 

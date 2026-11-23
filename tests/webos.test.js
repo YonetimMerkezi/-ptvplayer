@@ -275,7 +275,7 @@ test('paket: sürüm, kimlik ve servis adı birbiriyle tutarlı; gerekli dosyala
   assert.equal(sj.id, SERVIS.replace(/^luna:\/\//, '').replace(/\/$/, ''), 'uygulamanın çağırdığı servis adı services.json ile aynı');
   assert.equal(sj.id, sp.name);
   assert.ok(sj.id.startsWith(app.id + '.'), 'servis kimliği uygulama kimliğiyle başlamalı (webOS kuralı)');
-  assert.deepEqual(sj.services[0].commands.map((c) => c.name).sort(), ['aliciBaslat', 'aliciDurdur', 'aliciSonuc', 'aliciSor', 'fetch', 'kayitAlan', 'kayitBaslat', 'kayitDurdur', 'kayitDurum', 'medyaBaslat', 'medyaDurdur', 'medyaKokler', 'medyaListele', 'medyaSor', 'read']);
+  assert.deepEqual(sj.services[0].commands.map((c) => c.name).sort(), ['aliciBaslat', 'aliciDurdur', 'aliciSonuc', 'aliciSor', 'fetch', 'kayitAlan', 'kayitBaslat', 'kayitDurdur', 'kayitDurum', 'medyaBaslat', 'medyaDurdur', 'medyaKokler', 'medyaListele', 'medyaSor', 'read', 'resim']);
   for (const f of [app.icon, app.largeIcon, app.bgImage, app.splashBackground]) assert.ok(existsSync(w('assets', f)), f + ' eksik');
   assert.match(oku('src', 'version.js'), /__VERSION__/);
 });

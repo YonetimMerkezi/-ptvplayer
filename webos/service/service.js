@@ -72,7 +72,7 @@ function basliklariBirlestir(ozel) {
 
 // Tek istek (yönlendirmeleri izler). Sertifika doğrulaması bilerek gevşektir: 2016-2017 TV'lerin kök sertifika
 // listesi eskidir ve IPTV sunucularının çoğu kendinden imzalıdır; adresi kullanıcı kendisi girer.
-function istek(adres, basliklar, bitis, kalan, cb) {
+function istek(adres, basliklar, bitis, kalan, cb, sinir) {
   var u;
   try {
     u = urlm.parse(adres);
@@ -98,7 +98,7 @@ function istek(adres, basliklar, bitis, kalan, cb) {
         res.resume();
         if (kalan <= 0) return son(new Error('Çok fazla yönlendirme'));
         bitti = true;
-        return istek(urlm.resolve(adres, res.headers.location), basliklar, bitis, kalan - 1, cb);
+        return istek(urlm.resolve(adres, res.headers.location), basliklar, bitis, kalan - 1, cb, sinir);
       }
       var akis = res;
       var kodlama = String(res.headers['content-encoding'] || '').toLowerCase();
@@ -108,7 +108,7 @@ function istek(adres, basliklar, bitis, kalan, cb) {
       var boyut = 0;
       akis.on('data', function (c) {
         boyut += c.length;
-        if (boyut > MAX_BAYT) {
+        if (boyut > (sinir || MAX_BAYT)) {
           req.abort();
           return son(new Error('Yanıt çok büyük'));
         }
@@ -160,6 +160,47 @@ function getir(p, cb) {
     yanit.done = false;
     cb(null, yanit);
   });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Resim yedeği: <img> doğrudan yüklenemezse (eski TV'lerin kök sertifika listesi eski; bazı sunucular başvuranı denetler)
+// resmi bu servis getirir ve data: adresi olarak verir. Yalnız küçük resimler (kanal logoları) için.
+// ---------------------------------------------------------------------------------------------------------------
+var RESIM_EN_FAZLA = 160 * 1024; // luna yanıtı (base64) ~215 KB: parçalı okuma gerekmez
+var RESIM_SURE_MS = 12000;
+
+// İlk baytlardan resim türü; resim değilse ''.
+function resimTuru(b) {
+  if (!b || b.length < 4) return '';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x01 && b[3] === 0x00) return 'image/x-icon';
+  var bas = b.toString('utf8', 0, Math.min(b.length, 400)).replace(/^﻿/, '').trim().toLowerCase();
+  if (bas.indexOf('<svg') === 0 || (bas.indexOf('<?xml') === 0 && bas.indexOf('<svg') > 0)) return 'image/svg+xml';
+  return '';
+}
+
+function resimGetir(p, cb) {
+  var adres = p && p.url ? String(p.url) : '';
+  if (!/^https?:\/\//i.test(adres)) return cb(new Error('Adres yok'));
+  var kok = (/^(https?:\/\/[^\/?#]+)/i.exec(adres) || [])[1] || '';
+  var basliklar = basliklariBirlestir({ Accept: 'image/*,*/*;q=0.8', Referer: kok + '/' });
+  istek(
+    adres,
+    basliklar,
+    Date.now() + RESIM_SURE_MS,
+    MAX_YONLENDIRME,
+    function (e, r) {
+      if (e) return cb(e);
+      if (r.status !== 200) return cb(new Error('HTTP ' + r.status));
+      var tur = resimTuru(r.body);
+      if (!tur) return cb(new Error('Resim değil'));
+      cb(null, { returnValue: true, mime: tur, data: r.body.toString('base64') });
+    },
+    RESIM_EN_FAZLA
+  );
 }
 
 function oku(p) {
@@ -1043,6 +1084,8 @@ module.exports = {
   kayitDurum: kayitDurum,
   kayitDurdur: kayitDurdur,
   kayitAlan: kayitAlan,
+  resimGetir: resimGetir,
+  resimTuru: resimTuru,
   _kayitAyarla: function (yedek, bosPay) {
     kayitYedekKok = yedek;
     if (bosPay != null) KAYIT_BOS_PAY = bosPay;
@@ -1152,6 +1195,11 @@ if (Service) {
     getir(m.payload || {}, function (e, r) {
       m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
       canliTut();
+    });
+  });
+  servis.register('resim', function (m) {
+    resimGetir(m.payload || {}, function (e, r) {
+      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
     });
   });
   servis.register('read', function (m) {

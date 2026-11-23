@@ -6,6 +6,7 @@ import { actionOfEvent } from './keys.js';
 import { saatleriYaz, toast, enYakin, boyutla } from './ui.js';
 import { temaUygula, VARSAYILAN_TEMA } from './tema.js';
 import * as K from './log.js';
+import { resimYedegiKur } from './resim.js';
 import { baslat as donukluguIzle } from './donukluk.js';
 import { homeScreen } from './screens/home.js';
 import { addSourceScreen } from './screens/addsource.js';
@@ -208,6 +209,7 @@ export function start() {
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
   temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);
+  resimYedegiKur(document); // yüklenemeyen logo: servis yedeği, olmazsa gizle (kırık simge görünmez)
   setInterval(saatleriYaz, 15000);
   K.bilgi('Açıldı: ' + window.innerWidth + '×' + window.innerHeight);
   if (ctx.store.active()) {

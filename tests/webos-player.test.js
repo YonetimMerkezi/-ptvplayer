@@ -409,6 +409,73 @@ test('altyazı: Türkçe ad katalogda başka adla çıkar → "Hangi yapım?" se
   o.bitir();
 });
 
+test('altyazı: sağlayıcının IMDb kimliği doğrudan kullanılır (arama yok); yanlışsa "Başka yapım seç" adayları getirir ve seçim kalıcı saklanır', async () => {
+  const ag = altyaziAgi();
+  const baz = ag.json;
+  ag.json = async (url) => {
+    if (/action=get_vod_info/.test(url)) {
+      ag.istek.push(url);
+      return { info: { o_name: 'The Dark Knight', imdb_id: 'tt0468569', tmdb_id: '155' } };
+    }
+    if (/\/subtitles\/movie\/tt0468569\.json$/.test(url)) {
+      ag.istek.push(url);
+      return { subtitles: [{ id: '1', url: 'http://altyazi.test/tr2.srt', lang: 'tur' }, { id: '2', url: 'http://altyazi.test/en2.srt', lang: 'eng' }] };
+    }
+    if (/\/meta\/movie\/tt0468569\.json/.test(url)) {
+      ag.istek.push(url);
+      return { meta: { name: 'The Dark Knight', year: '2008', moviedb_id: 155 } };
+    }
+    if (/media-imdb\.com\/suggestion/.test(url)) {
+      ag.istek.push(url);
+      return { d: [{ id: 'tt0293927', l: 'Shawshank: The Redeeming Feature', y: 2001, qid: 'video' }, { id: 'tt0468570', l: 'Esaretin Bedeli II', y: 1994, qid: 'movie' }] };
+    }
+    return baz(url);
+  };
+  const o = kur({}, [{ id: 'f3', kind: 'movie', name: 'TR | Kara Şövalye (1994)', year: '1994', streamId: 9, ext: 'mp4' }], ag);
+  o.q('#vid').textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  assert.ok(ag.istek.some((u) => u.endsWith('/subtitles/movie/tt0468569.json')), 'sağlayıcının IMDb kimliğiyle altyazı istenir');
+  assert.ok(!ag.istek.some((u) => /media-imdb|catalog\/movie/.test(u)), 'kimlik belliyken arama yapılmaz');
+  assert.match(o.q('.p-pick').innerHTML, /Altyazı seç · The Dark Knight \(2008\)/, 'kimlik sağlayıcıdan gelse de eşleşen yapımın adı başlıkta görünür');
+  assert.match(o.q('.p-pick').innerHTML, /Başka yapım seç/);
+  o.tus('down'); // Türkçe → İngilizce
+  o.tus('down'); // → Başka yapım seç
+  o.tus('ok');
+  await bekleKadar(() => /Hangi yapım\?/.test(o.q('.p-pick').innerHTML), 'aday listesi');
+  assert.match(o.q('.p-pick').innerHTML, /Esaretin Bedeli II \(1994\)/);
+  o.tus('ok'); // ilk satır: yılı uyan aday
+  await bekleKadar(() => ag.istek.some((u) => u.endsWith('/subtitles/movie/tt0468570.json')), 'seçilen yapımın altyazıları');
+  const kayit = ctx.store.setting('altyaziEs', null);
+  assert.equal(kayit.v['movie|kara sovalye|1994'], 'tt0468570', 'seçim kalıcı ayara yazıldı');
+  o.bitir();
+});
+
+test('altyazı: dizi bölümünde sağlayıcının özgün adı ve IMDb kimliği kullanılır', async () => {
+  const ag = altyaziAgi();
+  const baz = ag.json;
+  ag.json = async (url) => {
+    if (/action=get_series_info/.test(url)) {
+      ag.istek.push(url);
+      return { info: { name: 'Kurtlar Vadisi', o_name: 'Valley of the Wolves', imdb_id: 'tt0903747' }, episodes: {} };
+    }
+    return baz(url);
+  };
+  const bolum = { id: 'ep1', kind: 'episode', name: 'Kurtlar Vadisi · 1', seriesName: 'Kurtlar Vadisi', seriesId: '55', season: 1, episodeNum: 1, episodeId: 1, ext: 'mp4' };
+  const o = kur({}, [bolum], ag);
+  o.q('#vid').textTracks = [];
+  dugmeAc(o, 4);
+  o.tus('down');
+  o.tus('ok');
+  await bekleKadar(() => /Altyazı seç/.test(o.q('.p-pick').innerHTML), 'altyazı listesi');
+  assert.ok(ag.istek.some((u) => /action=get_series_info.*series_id=55/.test(u)), 'dizi bilgisi sağlayıcıdan alınır');
+  assert.ok(ag.istek.some((u) => u.endsWith('/subtitles/series/tt0903747:1:1.json')));
+  assert.ok(!ag.istek.some((u) => /catalog\/series/.test(u)), 'sağlayıcı kimliği varken arama yok');
+  o.bitir();
+});
+
 test('altyazı: Altyazı görünümü boyut/renk/arka plan/konumu seçer, saklar ve örnek metin gösterir; Varsayılana dön', () => {
   const o = kur({}, [FILM], altyaziAgi());
   o.q('#vid').textTracks = [];

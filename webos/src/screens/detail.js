@@ -16,6 +16,9 @@ const bolumOge = (item, e, sezon) => ({
   name: item.name + ' · ' + (e.title || 'Bölüm ' + e.episodeNum),
   logo: e.logo || item.logo,
   seriesName: item.name,
+  seriesId: item.seriesId, // altyazı eşleşmesi için sağlayıcının özgün ad ve IMDb/TMDB kimliği
+  tmdb: item.tmdb,
+  imdb: item.imdb,
   season: Number(sezon || e.season) || 0, // altyazı araması sezon ve bölüm numarasıyla yapılır
   episodeNum: e.episodeNum,
 });
