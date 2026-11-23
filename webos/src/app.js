@@ -27,6 +27,8 @@ import { adScreen } from './screens/ad.js';
 import { ayarKaynagi, donusKaynagi, qrKaynagi, VARSAYILAN_BICIM, VARSAYILAN_YOL } from './fragman.js';
 import { donusHazirla, donusUygula, bekciyiDurdur } from './donus.js';
 import { fragmanQrScreen } from './screens/fragmanqr.js';
+import { telefonKumandaScreen } from './screens/telefonkumanda.js';
+import { telefonuBaslat } from './telefon.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -188,6 +190,7 @@ export function kaydet() {
     tustesti: tusTestiScreen,
     fragmantesti: fragmanTestiScreen,
     fragmanqr: fragmanQrScreen,
+    telefonkumanda: telefonKumandaScreen,
     ad: adScreen,
     browse: browseScreen,
     detail: detailScreen,
@@ -237,6 +240,7 @@ export function start() {
   saatleriYaz();
   const b = document.getElementById('boot');
   if (b && b.parentNode) b.parentNode.removeChild(b);
+  setTimeout(telefonuBaslat, 1500); // telefon kumandası açık bırakıldıysa sunucu ve yoklama başlar
   setTimeout(isit, 3000); // ana sayfa çizildikten sonra Filmler/Diziler'in açılacağı kategori arka planda önbelleğe alınır
 }
 

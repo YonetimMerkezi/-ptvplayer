@@ -2,7 +2,7 @@
 // Her TV'de çalışır (TV'nin YouTube uygulamasına ya da tarayıcısına bağlı değildir).
 import { pop, ustCubuk } from '../ctx.js';
 import { el, esc } from '../ui.js';
-import { qrSvg } from '../qr.js';
+import { qrSvg } from '../../../www/js/qr.js';
 
 // p: { url, ad }
 export function fragmanQrScreen(p) {
@@ -10,7 +10,7 @@ export function fragmanQrScreen(p) {
   let svg = '';
   let hata = '';
   try {
-    svg = qrSvg(p.url, 0);
+    svg = qrSvg(p.url, { margin: 2 });
   } catch (e) {
     hata = String(e && e.message ? e.message : e);
   }

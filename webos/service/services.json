@@ -81,6 +81,18 @@
         {
           "name": "donusIptal",
           "description": "Dönüş bekçisini durdurur"
+        },
+        {
+          "name": "kumandaBaslat",
+          "description": "Telefon kumandası sunucusunu başlatır; port ve 4 haneli kodu döndürür"
+        },
+        {
+          "name": "kumandaSor",
+          "description": "Telefondan gelen tuş/yazı/oynat komutlarını uzun yoklamayla verir (uygulama açıkken sürekli sorulur)"
+        },
+        {
+          "name": "kumandaDurdur",
+          "description": "Telefon kumandası sunucusunu durdurur"
         }
       ]
     }

@@ -47,6 +47,8 @@ Kumanda: oklar gezinir, **OK** seçer, **Geri** döner. Listelerde **Sarı** tu�
 
 **Yayın kalitesi:** **Ayarlar › Yayın kalitesi** varsayılan olarak **En yüksek**tir: kaynak birden çok kaliteli bir HLS yayını verirse en yüksek uygun sürüm (H.264, en çok 1080p; HEVC/4K eski modellerde açılmayabildiği için elenir) doğrudan seçilir ve oynatıcıda “HLS 1080p” gibi görünür. Liste alınamazsa ya da seçilen sürüm açılmazsa özgün adresle devam edilir. Ses ayrı listeden gelen yayınlarda seçim yapılmaz. İnternet yavaşsa ve görüntü takılıyorsa **Otomatik**e alın. TS ve film/dizi dosyaları (MP4/MKV) zaten tek kaliteli olduğundan seçilecek bir şey yoktur.
 
+**Telefon kumandası:** **Ayarlar › Telefon kumandası** QR kodu ve 4 haneli kodu gösterir. Telefon ve TV aynı Wi-Fi'deyken kodu telefon kamerasıyla okutun; açılan sayfa kumanda olur: yön/OK/Geri ve renkli tuşlar, oynat/duraklat/sar, kanal ve rakam tuşları, aramaya yazı gönderme ve “TV'de oynat” (yayın bağlantısı ya da YouTube linki). Sayfayı telefonun ana ekranına ekleyebilirsiniz; kod değişmez. Uygulama açıkken çalışır; kapatılana dek her açılışta kendiliğinden başlar.
+
 **Fragman:** Kırmızı tuş fragmanı **Ayarlar › Fragman testi**nde seçili yolla açar: (1) bu uygulamanın penceresinde YouTube TV sayfası (varsayılan; Geri ile çıkınca uygulama kapanır, TV servisi onu birkaç saniyede kendiliğinden yeniden açar ve kaldığınız ekrana döndürür; dönmezse aynı ekranda “Dönüş notları” nedeni gösterir), (2) TV'nin YouTube uygulaması (farklı açma biçimleri denenebilir), (3) telefonda izlemek için QR kod. Ayrıntı ekranındaki **Fragman: telefonda izle (QR)** düğmesi her zaman QR gösterir.
 
 ## 4. Liste yüklenmiyorsa
