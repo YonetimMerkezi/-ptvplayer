@@ -1,5 +1,19 @@
 // Küçük yardımcılar: Türkçe duyarsız arama metni, kimlik, biçimleme.
 
+// Genel (g bayraklı) düzenli ifadenin tüm eşleşmeleri DİZİ olarak. String.prototype.matchAll yerine kullanılır: LG webOS 3.x'in Chromium'unda matchAll'ın
+// döndürdüğü yineleyici for-of/yayma ile okunamaz ("Invalid attempt to iterate non-iterable instance") ve Array.from boş dizi verir.
+export function allMatches(re, s) {
+  const out = [];
+  const str = String(s == null ? '' : s);
+  re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(str))) {
+    out.push(m);
+    if (m[0].length === 0) re.lastIndex++;
+  }
+  return out;
+}
+
 // Yalnız ASCII içeren adlar (çoğu kanal/film adı) için kısa yol: "tr" yerel ayarlı küçük harf (yavaş) gerekmez, sonuç aynıdır
 // (ASCII'de tek fark "I" → "ı" idi ve o zaten sonra "i"ye çevriliyordu). Türkçe harf varsa tam yol: İ → i, küçült, aksan at, ı → i.
 const NON_ASCII = /[^\x00-\x7f]/;

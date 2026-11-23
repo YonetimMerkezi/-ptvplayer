@@ -157,8 +157,8 @@ test('fragman: YouTube uygulaması doğru kimlik ve adresle açılır; hata ilet
   const ac = cagrilar[cagrilar.length - 1];
   assert.equal(ac.uri, 'luna://com.webos.applicationManager/launch');
   assert.equal(ac.par.id, YOUTUBE_UYGULAMA);
-  assert.equal(ac.par.params.contentTarget, 'https://www.youtube.com/tv?v=dQw4w9WgXcQ', 'varsayılan biçim tam adres');
-  assert.equal(VARSAYILAN_BICIM, 'tv');
+  assert.equal(ac.par.params.contentTarget, 'v=dQw4w9WgXcQ', 'varsayılan biçim: v=KİMLİK');
+  assert.equal(VARSAYILAN_BICIM, 'v');
   assert.ok(!('contentId' in ac.par.params), 'yalın kimlik gönderilmez');
   await assert.rejects(() => youtubeAc('x', async (uri) => (/launch$/.test(uri) ? { returnValue: false, errorText: 'app yok' } : { returnValue: false }), { bekle: 0 }), /app yok/);
 });
@@ -167,7 +167,8 @@ test('fragman: seçilebilir contentTarget biçimleri; biçim ve kapatma ayarı u
   assert.equal(contentTarget('ABC', 'v'), izleParam('ABC'));
   assert.equal(contentTarget('ABC', 'watch'), 'https://www.youtube.com/watch?v=ABC');
   assert.equal(contentTarget('ABC', 'tvhash'), 'https://www.youtube.com/tv#/watch?v=ABC');
-  assert.equal(contentTarget('ABC', 'yok'), 'https://www.youtube.com/tv?v=ABC', 'bilinmeyen biçim varsayılana döner');
+  assert.equal(contentTarget('ABC', 'yok'), 'v=ABC', 'bilinmeyen biçim varsayılana döner');
+  assert.equal(contentTarget('ABC', 'tv'), 'https://www.youtube.com/tv?v=ABC');
   assert.equal(new Set(BICIMLER.map((b) => b[0])).size, BICIMLER.length);
   const cagrilar = [];
   const luna = async (uri, par) => (cagrilar.push({ uri, par }), { returnValue: true });
@@ -220,6 +221,9 @@ test('fragman: contentId biçimleri doğru parametre adıyla gider; TV yanıtlar
   assert.deepEqual(baslatParams('ABC', 'id'), { contentTarget: 'ABC' });
   assert.deepEqual(baslatParams('ABC', 'cid'), { contentId: 'v=ABC' });
   assert.deepEqual(baslatParams('ABC', 'cidid'), { contentId: 'ABC' });
+  assert.deepEqual(baslatParams('ABC', 'v'), { contentTarget: 'v=ABC' });
+  assert.deepEqual(baslatParams('ABC', 'hepsi'), { contentTarget: 'v=ABC', contentId: 'v=ABC' }, 'birden çok ad aynı değeri alır');
+  assert.equal(BICIMLER[0][0], VARSAYILAN_BICIM, 'varsayılan biçim listenin başında');
   const cagrilar = [];
   const luna = async (uri, par) => (cagrilar.push({ uri, par }), { returnValue: true, appId: 'youtube.leanback.v4' });
   ayarKaynagi(() => ({}));
@@ -232,17 +236,26 @@ test('fragman: contentId biçimleri doğru parametre adıyla gider; TV yanıtlar
   assert.ok(t.adimlar.some((a) => /^closeByAppId/.test(a)));
 });
 
-test('fragman: YouTube kapatılamadıysa açma çağrısı bir kez daha yinelenir; hata TV iletisiyle atılır ve tanıda kalır', async () => {
+test('fragman: açma çağrısı varsayılan olarak tek; “bir kez daha yinele” seçilirse ve YouTube kapatılamadıysa ikinci çağrı; hata TV iletisiyle tanıda kalır', async () => {
   ayarKaynagi(() => ({}));
   const cagrilar = [];
   const kapatmaz = async (uri, par) => (cagrilar.push(uri), /launch$/.test(uri) ? { returnValue: true } : { returnValue: false, errorText: 'izin yok' });
   await youtubeAc('ABC', kapatmaz, { bekle: 1 });
-  assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 2, 'arka planda açık YouTube parametreyi kaçırabilir: ikinci çağrı');
+  assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 1, 'varsayılan: tek açma çağrısı (ardışık iki launch YouTube’u ana sayfaya düşürebilir)');
+  cagrilar.length = 0;
+  await youtubeAc('ABC', kapatmaz, { bekle: 1, ikinci: true });
+  assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 2, 'ikinci seçeneği açıkken ve kapatılamadıysa ikinci çağrı');
+  cagrilar.length = 0;
+  ayarKaynagi(() => ({ ikinci: true }));
+  await youtubeAc('ABC', kapatmaz, { bekle: 1 });
+  assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 2, 'ayardan gelen ikinci seçeneği de uygulanır');
+  ayarKaynagi(() => ({}));
   cagrilar.length = 0;
   const kapatir = async (uri) => (cagrilar.push(uri), { returnValue: true });
-  await youtubeAc('ABC', kapatir, { bekle: 1 });
+  await youtubeAc('ABC', kapatir, { bekle: 1, ikinci: true });
   assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 1, 'kapatma işlediyse tek çağrı yeter');
   await assert.rejects(() => youtubeAc('ABC', async (uri) => (/launch$/.test(uri) ? { returnValue: false, errorText: 'Denied method call' } : { returnValue: true }), { bekle: 0 }), /Denied method call/);
   assert.equal(sonDeneme().hata, 'Denied method call');
   assert.ok(sonDeneme().adimlar.some((a) => /Denied method call/.test(a)));
 });
+

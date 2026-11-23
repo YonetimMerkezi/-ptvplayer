@@ -207,7 +207,7 @@ export function start() {
   kaydet();
   boyutla(yaziOlcegi());
   window.addEventListener('resize', () => boyutla(yaziOlcegi()));
-  ayarKaynagi(() => ({ bicim: ctx.store.setting('ytBicim', VARSAYILAN_BICIM), kapat: ctx.store.setting('ytKapat', true) }));
+  ayarKaynagi(() => ({ bicim: ctx.store.setting('ytBicim2', VARSAYILAN_BICIM), kapat: ctx.store.setting('ytKapat', true), ikinci: ctx.store.setting('ytIkinci', false) }));
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
   temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);

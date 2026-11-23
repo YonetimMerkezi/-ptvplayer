@@ -3,7 +3,7 @@
 // LiveSoccerTV. Resmî API değil, herkese açık HTML sayfalarıdır; sayfa yapısı değişebilir. Bu yüzden ayrıştırıcılar esnektir (satırın yapılandırılmış
 // parçaları ya da düz metni ile çalışır) ve ne okuduklarını gösteren bir teşhis (diag) döndürür. Hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
-import { fold } from './util.js';
+import { fold, allMatches } from './util.js';
 import { norm, hasAny, teamPhrases, teamLabel, withTimeout } from './sports.js';
 
 export const SE_BASE = 'https://www.sporekrani.com';
@@ -43,7 +43,7 @@ const eqTok = (a, b) => fold(a) === fold(b);
 // Bağlantının iç HTML'indeki <img> etiketleri → [{ alt, url }]. Adres: boyutlandırılmış srcset varsa onun ilki, yoksa tembel yükleme (data-src) ya da src.
 export function imgsOf(inner, base = SE_BASE) {
   const out = [];
-  for (const m of String(inner).matchAll(/<img\b[^>]*>/gi)) {
+  for (const m of allMatches(/<img\b[^>]*>/gi, inner)) {
     const tag = m[0];
     const attr = (re) => {
       const x = re.exec(tag) || [];
@@ -305,7 +305,7 @@ export function parseLiveSoccerTv(html, base = 'https://www.livesoccertv.com') {
   const seen = new Set();
   let comp = '';
   const text = (x) => decodeEntities(String(x).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
-  for (const m of src.matchAll(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi)) {
+  for (const m of allMatches(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi, src)) {
     try {
       const attrs = m[1];
       const inner = m[2];
@@ -328,7 +328,7 @@ export function parseLiveSoccerTv(html, base = 'https://www.livesoccertv.com') {
       const teams = name.split(/\s+vs?\.?\s+/i).map((x) => x.trim());
       if (!id || !dv || teams.length !== 2 || !teams[0] || !teams[1] || seen.has(id)) continue;
       const chans = [];
-      for (const c of inner.matchAll(/<a\b[^>]*href\s*=\s*"[^"]*\/channels\/[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)) chans.push(text(c[1]));
+      for (const c of allMatches(/<a\b[^>]*href\s*=\s*"[^"]*\/channels\/[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, inner)) chans.push(text(c[1]));
       const channels = dedupe(chans);
       if (channels.length) diag.withChannel++;
       diag.fsample = diag.fsample || `${name} | ${channels.join(', ')}`.slice(0, 160);

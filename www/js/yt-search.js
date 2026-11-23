@@ -64,26 +64,33 @@ function objectEnd(src, start) {
   return -1;
 }
 
-// Sayfadaki her ytInitialData geçişini dener: düz nesne ("= {…}") ya da kaçışlı dizge (JSON.parse('\\x7b…')). İlk çözülen veri döner.
-function* initialData(src) {
+// Sayfadaki her ytInitialData geçişini sırayla dener: düz nesne ("= {…}") ya da kaçışlı dizge (JSON.parse('\\x7b…')). Çözülen her veri
+// görüt(veri)'ye verilir; görüt doğru bir değer dönerse tarama durur ve o değer döner. (Üreteç/for-of kullanılmaz: LG webOS 3.x'in Chromium'unda
+// Symbol.iterator yoktur, üreteç üzerinde for-of "Invalid attempt to iterate non-iterable instance" hatası verir.)
+function eachInitialData(src, visit) {
   for (let from = 0; ; ) {
     const at = src.indexOf('ytInitialData', from);
-    if (at < 0) return;
+    if (at < 0) return undefined;
     from = at + 13;
     const m = /^["'\]]*\s*=\s*(JSON\.parse\(\s*(['"])|\{)/.exec(src.slice(from, from + 80));
     if (!m) continue;
     const bodyAt = from + m[0].length;
+    let data = null;
     try {
       if (m[2]) {
         let end = bodyAt;
         while (end < src.length && src[end] !== m[2]) end += src[end] === '\\' ? 2 : 1;
-        yield JSON.parse(unescapeJs(src.slice(bodyAt, end)));
+        data = JSON.parse(unescapeJs(src.slice(bodyAt, end)));
       } else {
         const start = bodyAt - 1;
         const end = objectEnd(src, start);
-        if (end > start) yield JSON.parse(src.slice(start, end + 1));
+        if (end > start) data = JSON.parse(src.slice(start, end + 1));
       }
-    } catch { /* bu geçiş çözülemedi; sonrakini dene */ }
+    } catch { data = null; /* bu geçiş çözülemedi; sonrakini dene */ }
+    if (data) {
+      const r = visit(data);
+      if (r) return r;
+    }
   }
 }
 
@@ -92,7 +99,9 @@ const VIDEO_RENDERERS = ['videoRenderer', 'videoWithContextRenderer', 'compactVi
 const lengthOf = (v) => {
   const direct = secondsOf(text(v.lengthText));
   if (direct) return direct;
-  for (const o of Array.isArray(v.thumbnailOverlays) ? v.thumbnailOverlays : []) {
+  const ov = Array.isArray(v.thumbnailOverlays) ? v.thumbnailOverlays : [];
+  for (let i = 0; i < ov.length; i++) {
+    const o = ov[i];
     const t = o && o.thumbnailOverlayTimeStatusRenderer && text(o.thumbnailOverlayTimeStatusRenderer.text);
     if (t) return secondsOf(t);
   }
@@ -102,16 +111,16 @@ const lengthOf = (v) => {
 // Arama sayfası HTML'i → [{ id, title, channel, seconds, verified }] (sayfadaki sırayla; kısa video/oynatma listesi/kanal olmayanlar)
 export function parseYoutubeResults(html) {
   const src = String(html || '');
-  for (const data of initialData(src)) {
+  const found = eachInitialData(src, (data) => {
     const out = [];
-    const seen = new Set();
+    const seen = {};
     const walk = (node, d) => {
       if (!node || typeof node !== 'object' || d > 40) return;
-      if (Array.isArray(node)) { for (const x of node) walk(x, d + 1); return; }
-      for (const key of VIDEO_RENDERERS) {
-        const v = node[key];
-        if (v && typeof v.videoId === 'string' && /^[A-Za-z0-9_-]{11}$/.test(v.videoId) && !seen.has(v.videoId)) {
-          seen.add(v.videoId);
+      if (Array.isArray(node)) { for (let i = 0; i < node.length; i++) walk(node[i], d + 1); return; }
+      for (let r = 0; r < VIDEO_RENDERERS.length; r++) {
+        const v = node[VIDEO_RENDERERS[r]];
+        if (v && typeof v.videoId === 'string' && /^[A-Za-z0-9_-]{11}$/.test(v.videoId) && !seen[v.videoId]) {
+          seen[v.videoId] = true;
           const badges = Array.isArray(v.ownerBadges) ? v.ownerBadges : [];
           out.push({
             id: v.videoId,
@@ -122,12 +131,13 @@ export function parseYoutubeResults(html) {
           });
         }
       }
-      for (const k of Object.keys(node)) if (!VIDEO_RENDERERS.includes(k)) walk(node[k], d + 1);
+      const keys = Object.keys(node);
+      for (let k = 0; k < keys.length; k++) if (VIDEO_RENDERERS.indexOf(keys[k]) < 0) walk(node[keys[k]], d + 1);
     };
     walk(data, 0);
-    if (out.length) return out;
-  }
-  return [];
+    return out.length ? out : null;
+  });
+  return found || [];
 }
 
 // Başlıkta geçen yıllar (1900–2099)
@@ -141,8 +151,8 @@ export const TOP_TRUSTED = 3;
 export function pickTrailers(results, wanted = [], { year = 0 } = {}) {
   const names = (Array.isArray(wanted) ? wanted : [wanted]).map(tokens).filter((t) => t.length);
   const overlap = (title) => {
-    const have = new Set(tokens(title));
-    return Math.max(0, ...names.map((n) => n.filter((t) => have.has(t)).length / n.length));
+    const have = tokens(title);
+    return Math.max.apply(null, [0].concat(names.map((n) => n.filter((t) => have.indexOf(t) >= 0).length / n.length)));
   };
   const y = Number(year) || 0;
   return (Array.isArray(results) ? results : [])
@@ -165,12 +175,12 @@ export function listTrailers(results, wanted = [], { year = 0 } = {}) {
   const src = Array.isArray(results) ? results : [];
   const best = pickTrailers(src, wanted, { year }).map((p) => ({ ...p, good: true }));
   const y = Number(year) || 0;
-  const used = new Set(best.map((p) => p.id));
+  const used = best.map((p) => p.id);
   const rest = src
-    .filter((r) => !used.has(r.id) && !unwanted.test(r.title) && r.seconds >= MIN_SECONDS && r.seconds <= MAX_SECONDS)
+    .filter((r) => used.indexOf(r.id) < 0 && !unwanted.test(r.title) && r.seconds >= MIN_SECONDS && r.seconds <= MAX_SECONDS)
     .filter((r) => { const ys = yearsIn(r.title); return !(y && ys.length && !ys.some((v) => Math.abs(v - y) <= 1)); })
     .map((r) => ({ id: r.id, title: r.title, channel: r.channel, seconds: r.seconds, good: false }));
-  return [...best, ...rest].slice(0, MAX_LIST);
+  return best.concat(rest).slice(0, MAX_LIST);
 }
 
 export const resultsUrl = (query) => `${YT_RESULTS}?search_query=${encodeURIComponent(String(query || '').trim())}&sp=EgIQAQ%253D%253D`; // sp: yalnız videolar

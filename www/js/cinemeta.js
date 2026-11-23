@@ -265,7 +265,9 @@ export const genreTr = (g) => GENRES_TR[String(g || '').trim().toLowerCase()] ||
 export const MAX_TRAILERS = 4;
 export function trailerIds(detail, providerTrailer) {
   const all = [...(detail && Array.isArray(detail.trailers) ? detail.trailers : []), providerTrailer].map(youtubeIdOf).filter(Boolean);
-  return [...new Set(all)].slice(0, MAX_TRAILERS);
+  const out = [];
+  for (let i = 0; i < all.length && out.length < MAX_TRAILERS; i++) if (out.indexOf(all[i]) < 0) out.push(all[i]); // Set/spread yok: webOS 3.x'te yinelenebilir nesne desteği eksik
+  return out;
 }
 
 // Fragman bulunamadığında YouTube araması: katalog adındaki dil öneki ("TR | "), kalite etiketleri ve yıl ayıklanır.

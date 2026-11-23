@@ -6,29 +6,32 @@ import { luna } from './luna.js';
 import * as K from './log.js';
 
 export const YOUTUBE_UYGULAMA = 'youtube.leanback.v4';
-// YouTube uygulamasının videoyu kabul ettiği contentTarget biçimi TV sürümüne göre değişir: bir sürümde "v=KİMLİK", başkasında tam adres ister;
-// yanlış biçimde uygulama açılır ama video yerine YouTube ana sayfası gelir. Bu yüzden biçim Ayarlar › Fragman testi ile seçilir ve saklanır.
+// YouTube uygulamasının videoyu kabul ettiği parametre biçimi TV sürümüne göre değişir. En yaygın bildirilen çalışan biçim contentTarget: "v=KİMLİK";
+// yalın kimlik uygulamayı açar ama video başlamaz (ana sayfa kalır), tam adres bazı sürümlerde küçük pencere ya da çift yükleme yapar.
+// Biçim Ayarlar › Fragman testi ile seçilir ve saklanır.
 export const izleParam = (id) => 'v=' + encodeURIComponent(id);
-// [kod, ad, değer(id), parametre adı (varsayılan contentTarget)]. TV'nin YouTube sürümüne göre hangisinin işlediği değişir; "Ayarlar › Fragman testi" ile seçilir.
+// [kod, ad, değer(id), parametre adı ya da adları (varsayılan contentTarget)]
 export const BICIMLER = [
+  ['v', 'Kısa: v=KİMLİK (önerilen)', izleParam],
+  ['hepsi', 'v=KİMLİK, contentTarget + contentId birlikte', izleParam, ['contentTarget', 'contentId']],
   ['tv', 'Tam adres: youtube.com/tv?v=…', (id) => 'https://www.youtube.com/tv?v=' + encodeURIComponent(id)],
   ['watch', 'İzle adresi: youtube.com/watch?v=…', (id) => 'https://www.youtube.com/watch?v=' + encodeURIComponent(id)],
   ['tvhash', 'Tam adres: youtube.com/tv#/watch?v=…', (id) => 'https://www.youtube.com/tv#/watch?v=' + encodeURIComponent(id)],
-  ['v', 'Kısa: v=KİMLİK', izleParam],
   ['tvhttp', 'Tam adres (http): youtube.com/tv?v=…', (id) => 'http://www.youtube.com/tv?v=' + encodeURIComponent(id)],
-  ['id', 'Yalın kimlik', (id) => String(id)],
   ['cid', 'contentId: v=KİMLİK', izleParam, 'contentId'],
   ['cidid', 'contentId: yalın kimlik', (id) => String(id), 'contentId'],
+  ['id', 'Yalın kimlik', (id) => String(id)],
 ];
-export const VARSAYILAN_BICIM = 'tv';
+export const VARSAYILAN_BICIM = 'v';
 export const TEST_VIDEO = 'jNQXAC9IVRw'; // Fragman testinde açılan kısa, kalıcı video
 const bicimBul = (bicim) => BICIMLER.filter((x) => x[0] === bicim)[0] || BICIMLER.filter((x) => x[0] === VARSAYILAN_BICIM)[0];
 export const contentTarget = (id, bicim) => bicimBul(bicim)[2](id);
-// YouTube'a gönderilen params nesnesi: { contentTarget: … } ya da biçime göre { contentId: … }
+// YouTube'a gönderilen params nesnesi: { contentTarget: … } ya da biçime göre { contentId: … } (birden çok ad varsa hepsine aynı değer)
 export const baslatParams = (id, bicim) => {
   const b = bicimBul(bicim);
+  const adlar = Array.isArray(b[3]) ? b[3] : [b[3] || 'contentTarget'];
   const p = {};
-  p[b[3] || 'contentTarget'] = b[2](id);
+  for (let i = 0; i < adlar.length; i++) p[adlar[i]] = b[2](id);
   return p;
 };
 
@@ -105,8 +108,11 @@ async function youtubeKapat(l, tani) {
   return false;
 }
 
+// secenek / ayar: bicim (BICIMLER kodu), kapat (önce YouTube'u kapat), ikinci (kapatılamadıysa açma çağrısını bir kez daha yinele), bekle (ms).
+// Açma çağrısı varsayılan olarak TEK kez yapılır: webOS aynı uygulamaya her launch çağrısında uygulamayı yeniden başlatır; ardışık iki çağrı
+// YouTube'u videodan ana sayfaya düşürebilir.
 export async function youtubeAc(id, luna_ = luna, secenek = {}) {
-  const ay = Object.assign({ bicim: VARSAYILAN_BICIM, kapat: true, bekle: 900 }, ayarOku(), secenek);
+  const ay = Object.assign({ bicim: VARSAYILAN_BICIM, kapat: true, ikinci: false, bekle: 1500 }, ayarOku(), secenek);
   const params = baslatParams(id, ay.bicim);
   const tani = (sonTani = { bicim: ay.bicim, params, adimlar: [] });
   let kapandi = false;
@@ -121,8 +127,8 @@ export async function youtubeAc(id, luna_ = luna, secenek = {}) {
   };
   try {
     await ac();
-    // Kapatılamadıysa YouTube arka planda açık olabilir: uygulama ilk çağrıdaki parametreyi kaçırabildiğinden aynı çağrı bir kez daha yapılır
-    if (ay.kapat !== false && !kapandi && ay.bekle > 0) {
+    // İsteğe bağlı: kapatılamadıysa YouTube arka planda açık olabilir ve ilk çağrıdaki parametreyi kaçırabilir; aynı çağrı bir kez daha yapılır
+    if (ay.ikinci && !kapandi && ay.bekle > 0) {
       await bekle(Math.round(ay.bekle * 1.6));
       await ac();
     }

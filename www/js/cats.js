@@ -3,7 +3,7 @@
 //
 // prefs = { order: [kimlik], hidden: [kimlik], locked: [kimlik], folders: [{ id, name, items: [öğe kimliği] }] }
 // Kimlikler: grup "g:<ad>", klasör "f:<id>".
-import { fold } from './util.js';
+import { fold, allMatches } from './util.js';
 
 export const emptyPrefs = () => ({ order: [], hidden: [], locked: [], folders: [] });
 
@@ -155,7 +155,7 @@ export function smartSort(groups, now = Date.now()) {
   const key = (g, i) => {
     const w = words(g.name);
     const adult = RE_ADULT.test(w) ? 1 : 0;
-    const years = [...w.matchAll(/ (20\d\d) /g)].map((m) => Number(m[1]));
+    const years = allMatches(/ (20\d\d) /g, w).map((m) => Number(m[1]));
     const fresh = RE_FRESH.test(w) || years.some((y) => y >= year - 1 && y <= year + 1);
     const tier = fresh ? 0 : RE_PLATFORM.test(w) ? 1 : 2;
     const foreign = RE_FOREIGN.test(w) ? 1 : 0;
