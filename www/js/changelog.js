@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 178,
+    title: 'Vitrinde fragman tam genişlikte (Netflix düzeni)',
+    items: [
+      'Telefonda fragman artık kırpılmadan, ekranın üstünde tam genişlikte 16:9 oynar; başlık, puan ve düğmeler hemen altında durur (özet fragman oynarken gizlenir)',
+      'Arayüz gizlenince fragman ekranın ortasına kayar; dokununca yerine döner',
+    ],
+  },
+  {
     id: 177,
     title: 'Vitrinde fragman izlerken arayüz kendiliğinden gizlenir',
     items: [

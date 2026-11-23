@@ -535,14 +535,18 @@ html.tv.hero-live .hero-p { -webkit-line-clamp: 2; }
   html:not(.tv) #hero-bg i.poster { left: 0; right: 0; width: auto; -webkit-mask-image: none; mask-image: none; }
   html:not(.tv) #hero-bg i.poster img { object-fit: cover; object-position: center 18%; }
   html:not(.tv) #hero-bg canvas.glow { display: none; }
-  /* Fragman (vitrinde bekleyince sessiz başlar): afişle aynı alanı (üst %58) kaplar; 16:9 video alanı dolduracak büyüklükte ve ortalı, kenarlar afiş gibi sayfaya karışır */
-  html:not(.tv) #hero-tr { bottom: auto; height: 58vh; background: transparent; -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
-  html:not(.tv) #hero-tr .ht-frame { width: calc(58vh * 16 / 9); left: 50%; transform: translateX(-50%); }
-  html:not(.tv) #hero-tr .ht-frame.lo { width: calc(29vh * 16 / 9); height: 85%; transform-origin: 50% 0; transform: translateX(-50%) scale(2); }
-  html:not(.tv) #hero-tr::after { background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.05) 30%, rgba(0, 0, 0, 0.78) 100%); }
-  /* ses düğmesi: vitrinin sağ üstünde yuvarlak simge (yazısız) */
+  /* Fragman (Netflix düzeni): oynarken video üstte tam genişlikte 16:9, kırpılmadan durur; başlık, bilgi ve düğmeler hemen altındadır (afiş solar, özet gizlenir).
+     Sinema kipinde (arayüz gizli) video ekranın ortasına kayar. Oynatıcı kutudan büyüktür (170%): YouTube'un üst/alt şeritleri kutunun dışında kalır. */
+  html:not(.tv) #hero-tr { bottom: auto; height: 56.25vw; background: #000; transition: opacity 0.9s ease, transform 0.9s ease, visibility 0s linear 0.9s; }
+  html:not(.tv) #hero-tr.live { transition: opacity 0.9s ease, transform 0.9s ease; }
+  html:not(.tv) #hero-tr::after { background: linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 45%); } /* üst çubuktaki simgeler okunur kalsın */
+  html:not(.tv).hero-cine #hero-tr { transform: translateY(calc((100vh - 56.25vw) / 2)); }
+  html:not(.tv).hero-live #hero-bg { opacity: 0; }
+  html:not(.tv).hero-live #hero:not([hidden]) { height: auto; justify-content: flex-start; padding-top: calc(56.25vw - var(--bar-h) + 10px); } /* üst çubuk (--bar-h) videonun üstünde durur; bilgi videonun altından başlar */
+  html:not(.tv).hero-live #hero .hero-p { display: none; }
+  /* ses düğmesi: videonun sağ altında yuvarlak simge (yazısız) */
   html:not(.tv) #hero:not([hidden]) { position: relative; }
-  html:not(.tv).hero-live .hero-snd { display: grid; place-items: center; position: absolute; top: 8px; right: 12px; z-index: 2; width: 40px; height: 40px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; color: #fff; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  html:not(.tv).hero-live .hero-snd { display: grid; place-items: center; position: absolute; top: calc(56.25vw - var(--bar-h) - 52px); right: 12px; z-index: 2; width: 40px; height: 40px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; color: #fff; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
   html:not(.tv).hero-live .hero-snd span { display: none; }
   html:not(.tv).hero-live .hero-snd .ic { width: 20px; height: 20px; }
 }

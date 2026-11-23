@@ -345,14 +345,19 @@ test('vitrin sahnesi: opts.muted ile baştan sessiz başlar (telefon); seçenek 
   assert.match(b.host.innerHTML, /embed\/a1\?[^"]*mute=0/);
 });
 
-test('bağlantı: dikey telefon vitrininde de fragman (sessiz, sinema kipi yok, ses düğmesi); yatay çevrilince kesilir', () => {
+test('bağlantı: dikey telefon vitrininde de fragman (sessiz, Netflix düzeni, ses düğmesi); yatay çevrilince kesilir', () => {
   const app = kaynak('www/js/app.js');
   assert.match(app, /const phoneVitrin = \(\) => !isTvUi\(\) && document\.documentElement\.classList\.contains\('hero-on'\) && document\.documentElement\.classList\.contains\('hero-rows'\) && !!\(window\.matchMedia && window\.matchMedia\('\(orientation: portrait\)'\)\.matches\)/);
   assert.match(app, /start: \(ids\) => heroStage\.start\(ids, \{ muted: !isTvUi\(\) \}\)/, 'telefonda sessiz başlar');
   assert.match(app, /matchMedia\('\(orientation: portrait\)'\)\.addEventListener\('change', \(\) => \{\s*if \(!heroTrailerOn\(\)\) heroTrailer\.cancel\(\);/);
   const css = kaynak('www/css/app.css');
-  assert.match(css, /html:not\(\.tv\) #hero-tr \{ bottom: auto; height: 58vh;/, 'fragman afişle aynı alanı (üst %58) kaplar');
-  assert.match(css, /html:not\(\.tv\) #hero-tr \.ht-frame \{ width: calc\(58vh \* 16 \/ 9\); left: 50%; transform: translateX\(-50%\); \}/, '16:9 video alanı doldurur, ortalı');
+  // Netflix düzeni: video üstte tam genişlikte 16:9 (kırpma yok), bilgi altında; sinema kipinde ekranın ortasına kayar
+  assert.match(css, /html:not\(\.tv\) #hero-tr \{ bottom: auto; height: 56\.25vw; background: #000;/, 'video tam genişlik, 16:9');
+  assert.doesNotMatch(css, /html:not\(\.tv\) #hero-tr \.ht-frame \{[^}]*translateX/, 'yatay kırpma/ortalama hilesi kalmadı');
+  assert.match(css, /html:not\(\.tv\)\.hero-cine #hero-tr \{ transform: translateY\(calc\(\(100vh - 56\.25vw\) \/ 2\)\); \}/, 'sinema kipinde ortada');
+  assert.match(css, /html:not\(\.tv\)\.hero-live #hero-bg \{ opacity: 0; \}/, 'oynarken afiş solar');
+  assert.match(css, /html:not\(\.tv\)\.hero-live #hero:not\(\[hidden\]\) \{ height: auto; justify-content: flex-start; padding-top: calc\(56\.25vw - var\(--bar-h\) \+ 10px\); \}/, 'bilgi videonun altından başlar');
+  assert.match(css, /html:not\(\.tv\)\.hero-live #hero \.hero-p \{ display: none; \}/);
   assert.match(css, /html:not\(\.tv\)\.hero-live \.hero-snd \{ display: grid;[^}]*position: absolute;/, 'telefonda yuvarlak ses düğmesi');
   assert.match(css, /@media \(orientation: landscape\) \{ html:not\(\.tv\):not\(\.kbd\) #hero-tr \{ display: none !important; \} \}/);
   assert.match(css, /@media not all and \(orientation: landscape\) \{ html:not\(\.tv\):not\(\.hero-rows\) #hero-tr \{ display: none !important; \} \}/);
