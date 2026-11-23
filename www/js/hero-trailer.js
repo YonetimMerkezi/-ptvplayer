@@ -4,12 +4,13 @@
 //   → herhangi bir tuş/dokunuş bilgiyi geri getirir, hareketsiz kalınca yine kaybolur → odak başka yapıma geçince ya da video bitince durur.
 // resolve(it): Promise<string[]> (YouTube kimlikleri; boşsa fragman yok). start(ids, it): oynatıcıyı kurar. stop(): kaldırır.
 // setCine(bool): bilgileri gizler/gösterir. enabled(it): bu yapım için KENDİLİĞİNDEN çalışsın mı (ayar açıkken). timers: sınama için sahte zamanlayıcı.
+// idle: dokunuş/tuştan sonra bilgi yeniden kaybolana dek bekleme (sayı ya da sayı döndüren işlev; verilmezse cine ile aynı).
 // play(it): "Fragmanı oynat" düğmesi; beklemeden ve otomatik oynatma ayarından bağımsız başlar (allowed(it) izin vermeli); fragman yoksa notFound(it) çağrılır.
 export const DWELL_MS = 1500;
 export const PREFETCH_MS = 400;
 export const CINE_MS = 4000;
 
-export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, cine = CINE_MS, resolve, start, stop, setCine, enabled = () => true, allowed = enabled, notFound = () => {}, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
+export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, cine = CINE_MS, idle = null, resolve, start, stop, setCine, enabled = () => true, allowed = enabled, notFound = () => {}, timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) } }) {
   let cur = null; // odaktaki yapım
   let state = 'idle'; // idle | arming | resolving | loading | playing
   let skip = ''; // bitmiş / başarısız / fragmanı olmayan yapım: odak değişene dek yeniden denenmez
@@ -37,14 +38,18 @@ export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, ci
     state = 'idle';
     showInfo();
   };
-  const armCine = () => {
+  const idleMs = () => {
+    const v = typeof idle === 'function' ? idle() : idle;
+    return v > 0 ? v : cine;
+  };
+  const armCine = (ms = cine) => {
     if (cineT) timers.clear(cineT);
     cineT = timers.set(() => {
       cineT = null;
       if (state !== 'playing' || cineOn) return;
       cineOn = true;
       setCine(true);
-    }, cine);
+    }, ms);
   };
   return {
     // Vitrin bir yapımı gösterdi (aynı yapım yeniden boyanırsa süren fragman kesilmez)
@@ -119,7 +124,7 @@ export function createHeroTrailer({ dwell = DWELL_MS, prefetch = PREFETCH_MS, ci
     activity() {
       if (state !== 'playing') return;
       showInfo();
-      armCine();
+      armCine(idleMs());
     },
     // Vitrin kapandı, sayfa/oynatıcı açıldı, uygulama arka plana gitti
     cancel() {

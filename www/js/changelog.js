@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 177,
+    title: 'Vitrinde fragman izlerken arayüz kendiliğinden gizlenir',
+    items: [
+      'Film ve dizi vitrininde fragman başlayıp birkaç saniye geçince diğer her şey kararıp gizlenir, ekranda yalnız fragman kalır',
+      'Ekrana dokununca ya da kumandada herhangi bir tuşa basınca arayüz geri gelir (ilk dokunuş ya da tuş yalnızca arayüzü getirir, görünmeyen bir şeyi tetiklemez); telefonda 7 saniye dokunmazsanız yine gizlenir',
+    ],
+  },
+  {
     id: 176,
     title: 'Canlı, çok renkli temalar ve daha hızlı açılış',
     items: [

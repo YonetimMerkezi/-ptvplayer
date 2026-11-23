@@ -1436,9 +1436,21 @@ const heroTrailer = createHeroTrailer({
   resolve: heroTrailerIds,
   start: (ids) => heroStage.start(ids, { muted: !isTvUi() }),
   stop: () => { heroStage.stop(); heroLive(false); },
-  setCine: (on) => { if (isTvUi() || !on) document.documentElement.classList.toggle('hero-cine', on); }, // telefonda bilgi gizlenmez
+  setCine: (on) => document.documentElement.classList.toggle('hero-cine', on), // sinema kipi: fragman oynayınca arayüz kararıp gizlenir (TV ve telefon)
+  idle: () => (isTvUi() ? 0 : 7000), // telefonda dokunuştan sonra arayüz 7 sn görünür (TV'de CINE_MS)
 });
-for (const ev of ['keydown', 'pointerdown', 'touchstart']) document.addEventListener(ev, () => heroTrailer.activity(), { capture: true, passive: true });
+// Sinema kipinde (arayüz gizliyken) ilk dokunuş/tuş yalnız arayüzü geri getirir; görünmeyen öğeyi tetiklemez (dokunuşta #app pointer-events: none,
+// tuşta olay burada kesilir). Ses tuşları (Oynat/Duraklat, M) hem sesi değiştirir hem arayüzü getirir. Kaydırma/tekerlek de etkinliktir (gezinirken arayüz kaybolmasın).
+const isHeroSoundKey = (e) => e.key === 'MediaPlayPause' || e.key === 'm' || e.key === 'M';
+document.addEventListener('keydown', (e) => {
+  const cine = heroTrailer.cine;
+  heroTrailer.activity();
+  if (cine && !isHeroSoundKey(e) && !/^(INPUT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, { capture: true });
+for (const ev of ['pointerdown', 'touchstart', 'touchmove', 'wheel']) document.addEventListener(ev, () => heroTrailer.activity(), { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') heroTrailer.cancel(); });
 if (window.matchMedia) {
   // Telefon yatay çevrilince vitrin kapanır: fragman da kesilir; dikeye dönünce vitrin yine odaktaki yapımı gösteriyorsa bekleme yeniden başlar

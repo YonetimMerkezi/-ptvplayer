@@ -257,12 +257,15 @@ test('bağlantı: vitrin boyanınca fragman denetleyicisine bildirilir; vitrin k
   assert.match(app, /const heroTrailerCan = \(\) => \(isTvUi\(\) \|\| phoneVitrin\(\)\) && !kidActive\(\) && !heroBusy\(\) && document\.visibilityState !== 'hidden';\nconst heroTrailerOn = \(\) => heroTrailerCan\(\) && trailerAutoOn\(\);/, 'TV ya da telefon dikey vitrin, çocuk modu dışı, sayfa/oynatıcı yok; kendiliğinden oynama ayrıca ayara ve Pro\'ya bağlı');
   assert.match(app, /document\.querySelector\('#sheets > \*'\) \|\| document\.body\.classList\.contains\('player-open'\)/);
   assert.match(app, /visibilitychange', \(\) => \{ if \(document\.visibilityState === 'hidden'\) heroTrailer\.cancel\(\)/);
-  assert.match(app, /\['keydown', 'pointerdown', 'touchstart'\]/, 'tuş/dokunuş bilgiyi geri getirir');
-  assert.match(app, /setCine: \(on\) => \{ if \(isTvUi\(\) \|\| !on\) document\.documentElement\.classList\.toggle\('hero-cine', on\); \}/, 'sinema kipi yalnız TV\'de');
+  assert.match(app, /\['pointerdown', 'touchstart', 'touchmove', 'wheel'\]/, 'dokunuş/kaydırma bilgiyi geri getirir');
+  assert.match(app, /document\.addEventListener\('keydown', \(e\) => \{\n  const cine = heroTrailer\.cine;\n  heroTrailer\.activity\(\);/, 'tuş bilgiyi geri getirir');
+  assert.match(app, /setCine: \(on\) => document\.documentElement\.classList\.toggle\('hero-cine', on\)/, 'sinema kipi TV\'de de telefonda da');
+  assert.match(app, /idle: \(\) => \(isTvUi\(\) \? 0 : 7000\)/, 'telefonda dokunuştan sonra 7 sn görünür, TV\'de CINE_MS');
   assert.match(app, /new Promise\(\(res\) => loadTitleExtras\(it, meta && meta\.imdbId, type,/, 'sağlayıcı → Cinemeta → YouTube sırası');
   assert.match(app, /if \(!setting\('trailerFind'\)\) return \[\];/);
   const html = kaynak('www/index.html');
   assert.match(html, /<div id="hero-tr" aria-hidden="true" inert><\/div>/, 'katman etkileşime kapalı: kumanda odağı iframe\'e girmez');
+  assert.match(html, /<div id="hero-dim" aria-hidden="true" inert><\/div>\n<div id="hero-tr"/, 'karartma katmanı fragmanın altında');
 });
 
 test('bağlantı: fragman katmanı tam ekran, oynamadan görünmez; cine kipinde bilgi solar; video başlık şeridi ekran dışında', () => {
@@ -271,6 +274,54 @@ test('bağlantı: fragman katmanı tam ekran, oynamadan görünmez; cine kipinde
   assert.match(css, /#hero-tr\.live \{ visibility: visible; opacity: 1;/);
   assert.match(css, /#hero-tr \.ht-frame \{ position: absolute; left: 0; top: -35%; width: 100%; height: 170%;/);
   assert.match(css, /html\.hero-cine #app \{ opacity: 0; \}/);
+  assert.match(css, /html\.hero-cine #app \{ pointer-events: none; \}/, 'gizliyken dokunuş görünmeyen öğeye gitmez');
+  assert.match(css, /html:not\(\.tv\) #hero-dim \{ display: block; position: fixed; inset: 0; z-index: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0\.9s ease; \}/);
+  assert.match(css, /html:not\(\.tv\)\.hero-cine #hero-dim \{ opacity: 1; \}/, 'telefonda zemin kararır');
+  assert.match(css, /html:not\(\.tv\)\.hero-cine #hero-tr::after \{ opacity: 0; \}/, 'telefonda video üstündeki gölge de kalkar');
+});
+
+test('vitrin fragmanı: idle verilince dokunuştan sonra bilgi o süre sonra kaybolur; ilk gizleme CINE_MS', async () => {
+  const c = clock();
+  const log = [];
+  const ht = createHeroTrailer({
+    timers: c, idle: () => 7000,
+    resolve: async () => ['v'], start: () => log.push('start'), stop: () => log.push('stop'), setCine: (v) => log.push('cine:' + v),
+  });
+  ht.focus(A);
+  await c.advance(DWELL_MS);
+  ht.playing();
+  await c.advance(CINE_MS - 1);
+  assert.equal(ht.cine, false);
+  await c.advance(1);
+  assert.equal(ht.cine, true, 'ilk gizleme CINE_MS sonra');
+  ht.activity();
+  assert.equal(ht.cine, false, 'dokunuş bilgiyi getirir');
+  await c.advance(6999);
+  assert.equal(ht.cine, false, 'telefonda 7 sn görünür kalır');
+  await c.advance(1);
+  assert.equal(ht.cine, true);
+  ht.activity();
+  ht.activity(); // sürekli kaydırma: sayaç her seferinde yeniden başlar
+  await c.advance(5000);
+  ht.activity();
+  await c.advance(6999);
+  assert.equal(ht.cine, false);
+});
+
+test('vitrin fragmanı: idle sayı, işlev ya da boş olabilir; geçersizse CINE_MS kullanılır', async () => {
+  for (const idle of [undefined, null, 0, () => 0, () => undefined, -5]) {
+    const c = clock();
+    const ht = createHeroTrailer({ timers: c, idle, resolve: async () => ['v'], start: () => {}, stop: () => {}, setCine: () => {} });
+    ht.focus(A);
+    await c.advance(DWELL_MS);
+    ht.playing();
+    await c.advance(CINE_MS);
+    ht.activity();
+    await c.advance(CINE_MS - 1);
+    assert.equal(ht.cine, false, String(idle));
+    await c.advance(1);
+    assert.equal(ht.cine, true, String(idle));
+  }
 });
 
 test('bağlantı: vitrinde ses düğmesi (TV, fragman oynarken), Oynat/Duraklat ve M tuşu; düğme hero-live ile görünür', () => {
