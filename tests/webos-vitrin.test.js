@@ -14,7 +14,7 @@ globalThis.window = globalThis.window || {};
 globalThis.document = globalThis.document || { createElement: () => new F() };
 
 const { vitrinMetni, createArkaPlan, createVitrin } = await import('../webos/src/vitrin.js');
-const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, yolAc, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, YOLLAR, VARSAYILAN_YOL, ytTvAdresi, kisaAdres, qrKaynagi, gitKaynagi, contentTarget, baslatParams, sonDeneme, ayarKaynagi } = await import('../webos/src/fragman.js');
+const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, yolAc, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, YOLLAR, VARSAYILAN_YOL, ytTvAdresi, kisaAdres, qrKaynagi, gitKaynagi, donusKaynagi, contentTarget, baslatParams, sonDeneme, ayarKaynagi } = await import('../webos/src/fragman.js');
 
 // Elle işletilen zamanlayıcı
 function saat() {
@@ -237,6 +237,22 @@ test('fragman yolları: varsayılan YouTube TV sayfası; sayfa yolu pencereyi vi
   assert.deepEqual(gidilen, ['https://www.youtube.com/tv?v=dQw4w9WgXcQ#/']);
   assert.deepEqual(lunaCagri, []);
   assert.ok(iletiler.some((t) => /yeniden açın/.test(t)), 'çıkınca uygulamanın kapanacağı söylenir');
+  // Dönüş bekçisi kurulabilirse ileti kendiliğinden açılacağını söyler ve sayfaya gitmeden önce beklenir; kurulamazsa yöneltme yine yapılır
+  gidilen.length = 0;
+  iletiler.length = 0;
+  let sira = [];
+  donusKaynagi(async () => (sira.push('hazirla'), { kuruldu: true, neden: '' }));
+  gitKaynagi((u) => (sira.push('git'), gidilen.push(u)));
+  assert.equal(await fragmanOynat(film, null, { bildir, luna }), true);
+  assert.deepEqual(sira, ['hazirla', 'git'], 'önce bekçi kurulur, sonra sayfaya gidilir');
+  assert.ok(iletiler.some((t) => /kendiliğinden açılır/.test(t)));
+  donusKaynagi(async () => { throw new Error('servis yok'); });
+  gidilen.length = 0;
+  iletiler.length = 0;
+  assert.equal(await fragmanOynat(film, null, { bildir, luna }), true);
+  assert.equal(gidilen.length, 1, 'bekçi kurulamasa da fragman açılır');
+  assert.ok(iletiler.some((t) => /yeniden açın/.test(t)));
+  donusKaynagi(async () => ({ kuruldu: false, neden: '' }));
   // Ayardan QR yolu: sayfa açılmaz, QR ekranı kısa bağlantıyla ve yapım adıyla açılır
   gidilen.length = 0;
   ayarKaynagi(() => ({ yol: 'qr' }));

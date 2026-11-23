@@ -7,6 +7,7 @@ import { ctx, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { YOLLAR, VARSAYILAN_YOL, BICIMLER, VARSAYILAN_BICIM, TEST_VIDEO, youtubeAc, yolAc, sonDeneme } from '../fragman.js';
 import { el, esc, px, toast } from '../ui.js';
+import { luna, SERVIS } from '../luna.js';
 import * as K from '../log.js';
 
 export function fragmanTestiScreen() {
@@ -22,6 +23,7 @@ export function fragmanTestiScreen() {
   const kapat = () => ctx.store.setting('ytKapat', true);
   const ikinci = () => ctx.store.setting('ytIkinci', false);
   let mesgul = false;
+  let donusTani = null; // TV servisindeki dönüş bekçisinin son notları (YouTube sayfasından dönüşü tanılamak için)
   const satirlar = () =>
     YOLLAR.map((y) => ({ id: y[0], ad: y[1], tur: 'yol' }))
       .concat(BICIMLER.map((b) => ({ id: b[0], ad: 'YouTube uygulaması · ' + b[1], tur: 'bicim' })))
@@ -39,7 +41,7 @@ export function fragmanTestiScreen() {
     if (r.tur === 'kapat') return 'Açık: YouTube arka planda açıksa önce kapatılır, böylece video parametresi kaçmaz. OK ile aç/kapat.';
     if (r.tur === 'ikinci') return 'Kapalı (önerilen): açma çağrısı bir kez yapılır. Açık: YouTube kapatılamadıysa çağrı 2,4 sn sonra yinelenir. OK ile aç/kapat.';
     if (r.tur === 'yol') {
-      if (r.id === 'sayfa') return 'OK: bu uygulama YouTube TV sayfasına gider ve deneme videosunu oynatır. Video oynuyorsa bu yol doğrudur. Çıkmak için Geri’ye basın; uygulama kapanırsa yeniden açın. Sayfa açılmazsa ya da hata verirse başka yolu deneyin.';
+      if (r.id === 'sayfa') return 'OK: bu uygulama YouTube TV sayfasına gider ve deneme videosunu oynatır. Geri ile çıkınca uygulama kapanır; TV servisi onu birkaç saniye içinde kendiliğinden yeniden açar ve bu ekrana döndürür. Dönmezse aşağıdaki “Dönüş notları” nedenini gösterir.';
       if (r.id === 'qr') return 'OK: ekranda QR kod çıkar. Telefonun kamerasıyla okutun; fragman telefonda açılır. Her TV’de çalışır.';
       return 'Aşağıdaki biçimlerden birini seçin: TV’nin YouTube uygulaması o biçimle açılır.';
     }
@@ -51,6 +53,7 @@ export function fragmanTestiScreen() {
     const t = sonDeneme();
     panel.innerHTML =
       '<div class="pn-t">' + esc(r.ad) + '</div><div class="pn-d">' + esc(aciklama(r)) + '</div>' +
+      (r.tur === 'yol' && r.id === 'sayfa' && donusTani ? '<div class="pn-d sm">Dönüş notları (' + esc(donusTani.durum) + '):<br>' + donusTani.tani.map(esc).join('<br>') + '</div>' : '') +
       (t ? '<div class="pn-d sm">Son deneme (' + esc(t.bicim) + '):<br>' + t.adimlar.map(esc).join('<br>') + (t.hata ? '<br>Hata: ' + esc(t.hata) : '') + '</div>' : '');
   };
   const list = new VList(kok.querySelector('.l-list'), {
@@ -99,6 +102,14 @@ export function fragmanTestiScreen() {
     name: 'fragmantesti',
     onShow() {
       list.setItems(satirlar(), true);
+      luna(SERVIS + 'donusDurum', {}, 4000)
+        .then((d) => {
+          if (d && d.returnValue !== false && d.durum && d.durum !== 'yok') {
+            donusTani = { durum: String(d.durum), tani: (d.tani || []).map(String) };
+            panelYaz(satirlar()[list.index] || satirlar()[0]);
+          }
+        })
+        .catch(() => {});
     },
     onKey: (a) => list.key(a),
   };

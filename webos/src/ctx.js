@@ -85,7 +85,9 @@ export function pop() {
 
 export function open(ad, arg) {
   if (!ctx.reg[ad]) throw new Error('Ekran yok: ' + ad);
-  push(ctx.reg[ad](arg));
+  const e = ctx.reg[ad](arg);
+  e.acilis = { ad, arg }; // fragmandan dönüşte ekranı yeniden kurmak için (donus.js)
+  push(e);
 }
 
 // Yığını tek ekrana indir (örn. kaynak değişince ana sayfaya dön)

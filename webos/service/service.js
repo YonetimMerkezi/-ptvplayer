@@ -19,6 +19,12 @@
 //   medyaSor {}                             → {returnValue, port, jeton}      (canlı tutar)
 //   medyaDurdur {}                          → {returnValue}
 //
+// Fragman dönüşü: fragman sayfası uygulamanın kendi penceresinde açılır; YouTube Geri ile pencereyi kapatınca uygulama da kapanır.
+// Bekçi uygulamanın kapandığını görünce onu yeniden açar (launch parametresi: {donus: 1, tani}).
+//   donusKur   {uyg, params, sureMs}        → {returnValue}      (uygulama çalışıyorken çağrılır; kapanırsa yeniden açılır)
+//   donusDurum {}                           → {returnValue, durum, tani[], uyg}
+//   donusIptal {}                           → {returnValue}
+//
 // Kayıt (deneme): canlı yayını (MPEG-TS) USB belleğe/diske yazar; yazılamazsa nedenini açıkça bildirir.
 //   kayitBaslat {url, ad, sureSn}           → {returnValue, id, dosya, disk}
 //   kayitDurum  {id}                        → {returnValue, durum, bayt, sureMs, dosya, disk, http, mesaj}
@@ -234,6 +240,208 @@ var ALICI_MAX_KUYRUK = 5;
 
 var alici = null;
 var kapaninca = null; // servis katmanı: alıcı kapanınca canlı tutma etkinliğini bırakır
+
+// ---- Fragman dönüşü: uygulama kapanınca yeniden aç ----
+var DONUS_SORGU_MS = 1000;
+var DONUS_EN_AZ_MS = 60000;
+var DONUS_EN_COK_MS = 3 * 3600 * 1000;
+var DONUS_DOSYA = pathm.join(os.tmpdir(), 'iptv-donus.json');
+var donus = null; // etkin bekçi
+var donusSon = null; // son bekçinin özeti (bitince de kalır)
+var donusCagri = null; // servis katmanı: (uri, params, cb(yanit|null)) — yoksa bekçi kurulamaz
+var DONUS_YOLLARI = [
+  ['running', 'luna://com.webos.applicationManager/running'],
+  ['running', 'luna://com.webos.service.applicationmanager/running'],
+  ['onde', 'luna://com.webos.applicationManager/getForegroundAppInfo'],
+  ['onde', 'luna://com.webos.service.applicationmanager/getForegroundAppInfo']
+];
+
+function donusYaz(d) {
+  donusSon = { durum: d.durum, uyg: d.uyg, tani: d.tani.slice(0, 30), zaman: Date.now() };
+  try {
+    fs.writeFileSync(DONUS_DOSYA, JSON.stringify(donusSon));
+  } catch (e) {
+    /* /tmp yazılamıyorsa yalnız bellekte kalır */
+  }
+}
+
+function donusNot(d, metin) {
+  d.tani.push(metin);
+  if (d.tani.length > 40) d.tani.splice(1, d.tani.length - 40);
+}
+
+function donusBitir(d, durum) {
+  if (!d || d.bitti) return;
+  d.bitti = true;
+  d.durum = durum;
+  if (d.zaman) clearInterval(d.zaman);
+  d.zaman = null;
+  if (donus === d) donus = null;
+  donusNot(d, durum);
+  donusYaz(d);
+  if (kapaninca) kapaninca();
+}
+
+function donusIptal() {
+  if (donus) donusBitir(donus, 'iptal');
+  return { returnValue: true };
+}
+
+function donusDurum() {
+  var o = donus ? { durum: donus.durum, uyg: donus.uyg, tani: donus.tani.slice(0, 30) } : donusSon;
+  if (!o) {
+    try {
+      o = JSON.parse(fs.readFileSync(DONUS_DOSYA, 'utf8'));
+    } catch (e) {
+      o = null;
+    }
+  }
+  if (!o) return { returnValue: true, durum: 'yok', tani: [], uyg: '' };
+  return { returnValue: true, durum: o.durum, tani: o.tani || [], uyg: o.uyg || '' };
+}
+
+// Bir sorguyu bir kez yapar; yanıt gelmezse 3 sn sonra null ile döner
+function donusSorgu(uri, cb) {
+  var bitti = false;
+  var t = setTimeout(function () {
+    if (!bitti) {
+      bitti = true;
+      cb(null);
+    }
+  }, 3000);
+  try {
+    donusCagri(uri, {}, function (r) {
+      if (bitti) return;
+      bitti = true;
+      clearTimeout(t);
+      cb(r || null);
+    });
+  } catch (e) {
+    if (!bitti) {
+      bitti = true;
+      clearTimeout(t);
+      cb(null);
+    }
+  }
+}
+
+// Uygulama çalışıyor mu? true/false; hiçbir yol yanıt vermezse null. Çalışan yol aklında tutulur.
+function donusCalisiyorMu(d, cb) {
+  var sira = d.yol >= 0 ? [d.yol] : [0, 1, 2, 3];
+  var i = 0;
+  var dene = function () {
+    if (i >= sira.length) return cb(null);
+    var k = sira[i++];
+    donusSorgu(DONUS_YOLLARI[k][1], function (r) {
+      var j;
+      if (r && r.returnValue !== false) {
+        if (DONUS_YOLLARI[k][0] === 'running' && r.running && r.running.length !== undefined) {
+          var bulundu = false;
+          for (j = 0; j < r.running.length; j++) if (r.running[j] && r.running[j].id === d.uyg) bulundu = true;
+          if (d.yol < 0) donusNot(d, 'yol: ' + DONUS_YOLLARI[k][1] + ' (' + r.running.length + ' uygulama)');
+          d.yol = k;
+          return cb(bulundu);
+        }
+        if (DONUS_YOLLARI[k][0] === 'onde' && typeof r.appId === 'string') {
+          if (d.yol < 0) donusNot(d, 'yol: ' + DONUS_YOLLARI[k][1] + ' (ön: ' + r.appId + ')');
+          d.yol = k;
+          return cb(r.appId === d.uyg);
+        }
+      }
+      if (d.yol < 0) donusNot(d, 'yanıtsız: ' + DONUS_YOLLARI[k][1] + (r && r.errorText ? ' (' + r.errorText + ')' : ''));
+      if (d.yol >= 0) return cb(null); // çalışan yol bu kez yanıt vermedi: sonra yeniden denenir
+      dene();
+    });
+  };
+  dene();
+}
+
+function donusAc(d, deneme) {
+  var bitti = false;
+  var t = setTimeout(function () {
+    if (!bitti) {
+      bitti = true;
+      sonuc(null);
+    }
+  }, 4000);
+  var sonuc = function (r) {
+    if (r && r.returnValue !== false) {
+      donusNot(d, 'yeniden açıldı (' + deneme + '. deneme)');
+      return donusBitir(d, 'açıldı');
+    }
+    donusNot(d, 'açma ' + deneme + ' başarısız' + (r && r.errorText ? ': ' + r.errorText : ''));
+    if (deneme >= 5) return donusBitir(d, 'açılamadı');
+    d.acmaT = setTimeout(function () {
+      donusAc(d, deneme + 1);
+    }, 1500);
+  };
+  try {
+    donusCagri('luna://com.webos.applicationManager/launch', { id: d.uyg, params: d.params }, function (r) {
+      if (bitti) return;
+      bitti = true;
+      clearTimeout(t);
+      sonuc(r);
+    });
+  } catch (e) {
+    if (!bitti) {
+      bitti = true;
+      clearTimeout(t);
+      sonuc(null);
+    }
+  }
+}
+
+function donusSor(d) {
+  if (d.bitti || d.sorgu || d.aciliyor) return;
+  if (Date.now() > d.bitis) return donusBitir(d, 'süre doldu');
+  d.sorgu = true;
+  donusCalisiyorMu(d, function (calisiyor) {
+    d.sorgu = false;
+    if (d.bitti) return;
+    if (calisiyor === null) {
+      d.yanitsiz++;
+      return;
+    }
+    if (calisiyor) {
+      if (!d.goruldu) donusNot(d, 'uygulama çalışıyor');
+      d.goruldu = true;
+      d.yok = 0;
+      return;
+    }
+    if (!d.goruldu) return; // hiç görülmediyse (kimlik eşleşmedi) yanlış yere yeniden açmayız
+    d.yok++;
+    if (d.yok >= 2) {
+      d.aciliyor = true;
+      donusNot(d, 'uygulama kapandı → açılıyor');
+      donusAc(d, 1);
+    }
+  });
+}
+
+// uyg uygulama kimliği; params açılışta uygulamaya iletilir; sureMs bekçinin en uzun ömrü
+function donusKur(p) {
+  p = p || {};
+  var uyg = String(p.uyg || '');
+  if (!/^[A-Za-z0-9._-]{3,80}$/.test(uyg)) return { returnValue: false, errorText: 'Geçersiz uygulama kimliği' };
+  if (!donusCagri) return { returnValue: false, errorText: 'Servis köprüsü yok' };
+  if (donus) donusBitir(donus, 'yenisiyle değişti');
+  var ms = Number(p.sureMs) || 3600000;
+  if (ms < DONUS_EN_AZ_MS) ms = DONUS_EN_AZ_MS;
+  if (ms > DONUS_EN_COK_MS) ms = DONUS_EN_COK_MS;
+  var par = {};
+  var k;
+  if (p.params && typeof p.params === 'object') for (k in p.params) if (Object.prototype.hasOwnProperty.call(p.params, k)) par[k] = p.params[k];
+  par.donus = 1;
+  var d = { uyg: uyg, params: par, bitis: Date.now() + ms, durum: 'bekliyor', tani: ['kuruldu: ' + uyg], yol: -1, goruldu: false, yok: 0, yanitsiz: 0, sorgu: false, aciliyor: false, bitti: false, zaman: null, acmaT: null };
+  donus = d;
+  donusYaz(d);
+  d.zaman = setInterval(function () {
+    donusSor(d);
+  }, DONUS_SORGU_MS);
+  donusSor(d);
+  if (kapaninca) kapaninca();
+  return { returnValue: true, durum: d.durum };
+}
 
 var SAYFA =
   '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">' +
@@ -1088,6 +1296,21 @@ module.exports = {
   kayitAlan: kayitAlan,
   resimGetir: resimGetir,
   resimTuru: resimTuru,
+  donusKur: donusKur,
+  donusDurum: donusDurum,
+  donusIptal: donusIptal,
+  _donusCagri: function (f) {
+    donusCagri = f;
+  },
+  _donus: function () {
+    return donus;
+  },
+  _donusSor: function () {
+    if (donus) donusSor(donus);
+  },
+  _donusDosya: function (y) {
+    DONUS_DOSYA = y;
+  },
   _kayitAyarla: function (yedek, bosPay) {
     kayitYedekKok = yedek;
     if (bosPay != null) KAYIT_BOS_PAY = bosPay;
@@ -1124,7 +1347,7 @@ if (Service) {
   var etkinlik = null;
   var canliTut = function () {
     try {
-      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar();
+      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar() && !donus;
       if (!bos && !etkinlik && servis.activityManager) {
         servis.activityManager.create('iptv-canli', function (a) {
           etkinlik = a;
@@ -1198,6 +1421,20 @@ if (Service) {
       m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
       canliTut();
     });
+  });
+  donusCagri = function (uri, par, cb) {
+    servis.call(uri, par || {}, function (m) {
+      cb(m && m.payload ? m.payload : null);
+    });
+  };
+  servis.register('donusKur', function (m) {
+    m.respond(donusKur(m.payload || {}));
+  });
+  servis.register('donusDurum', function (m) {
+    m.respond(donusDurum());
+  });
+  servis.register('donusIptal', function (m) {
+    m.respond(donusIptal());
   });
   servis.register('resim', function (m) {
     resimGetir(m.payload || {}, function (e, r) {

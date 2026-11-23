@@ -80,6 +80,12 @@ export const gitKaynagi = (f) => {
   git = f;
 };
 
+// Sayfa yolunda çıkmadan önce: ekranı kaydeder, uygulama kapanınca yeniden açacak bekçiyi kurar. {kuruldu, neden}
+let donusHazir = async () => ({ kuruldu: false, neden: 'bağlı değil' });
+export const donusKaynagi = (f) => {
+  donusHazir = f;
+};
+
 // Aynı yapım için aramayı tekrarlamamak için (oturum boyunca); bulunamayan ya da hata alan silinir
 const bulunan = {};
 let calisiyor = false;
@@ -178,8 +184,15 @@ export async function yolAc(yol, id, { ad = '', luna: l, bildir = () => {} } = {
     return true;
   }
   if (secilen === 'sayfa') {
-    bildir('Fragman açılıyor… Çıkınca uygulamayı yeniden açın');
-    await bekle(500); // iletinin görünmesi için
+    let d;
+    try {
+      d = await donusHazir();
+    } catch (e) {
+      d = { kuruldu: false, neden: String(e && e.message ? e.message : e) };
+    }
+    if (!d || !d.kuruldu) K.bilgi('Dönüş bekçisi yok: ' + ((d && d.neden) || ''));
+    bildir(d && d.kuruldu ? 'Fragman açılıyor… Geri ile çıkınca uygulama kendiliğinden açılır' : 'Fragman açılıyor… Çıkınca uygulamayı yeniden açın');
+    await bekle(800); // iletinin görünmesi için
     git(ytTvAdresi(id));
     return true;
   }

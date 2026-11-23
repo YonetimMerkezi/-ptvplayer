@@ -24,7 +24,8 @@ import { macScreen } from './screens/mac.js';
 import { tusTestiScreen } from './screens/tustesti.js';
 import { fragmanTestiScreen } from './screens/fragmantesti.js';
 import { adScreen } from './screens/ad.js';
-import { ayarKaynagi, qrKaynagi, VARSAYILAN_BICIM, VARSAYILAN_YOL } from './fragman.js';
+import { ayarKaynagi, donusKaynagi, qrKaynagi, VARSAYILAN_BICIM, VARSAYILAN_YOL } from './fragman.js';
+import { donusHazirla, donusUygula, bekciyiDurdur } from './donus.js';
 import { fragmanQrScreen } from './screens/fragmanqr.js';
 
 const UZUN_BASMA_MS = 650;
@@ -211,6 +212,7 @@ export function start() {
   window.addEventListener('resize', () => boyutla(yaziOlcegi()));
   ayarKaynagi(() => ({ bicim: ctx.store.setting('ytBicim2', VARSAYILAN_BICIM), kapat: ctx.store.setting('ytKapat', true), ikinci: ctx.store.setting('ytIkinci', false), yol: ctx.store.setting('ytYol', VARSAYILAN_YOL) }));
   qrKaynagi((p) => open('fragmanqr', p));
+  donusKaynagi(() => donusHazirla());
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
   temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);
@@ -219,8 +221,15 @@ export function start() {
   K.bilgi('Açıldı: ' + window.innerWidth + '×' + window.innerHeight);
   if (ctx.store.active()) {
     open('home');
+    // Fragman sayfasından dönüş: kapanmadan önceki ekranlar geri kurulur (kayıt varsa; elle açıldıysa bekçi durdurulur)
+    const dn = donusUygula();
+    if (dn.kayit && !dn.donus) bekciyiDurdur();
+    if (dn.donus) {
+      K.bilgi('Fragmandan dönüldü: ' + dn.acilan + ' ekran açıldı' + (dn.tani ? ' · ' + dn.tani : ''));
+      setTimeout(() => toast('Fragmandan döndünüz', 2500), 600);
+    }
     // Açılışta son kanal: en son izlenen canlı kanal doğrudan oynar (Geri ana sayfaya döner)
-    if (ctx.store.setting('autoplay', false)) {
+    if (!dn.donus && ctx.store.setting('autoplay', false)) {
       const son = ctx.store.recents(ctx.store.active().id).filter((r) => r.item && r.item.kind === 'live')[0];
       if (son) open('player', { list: [son.item], index: 0 });
     }

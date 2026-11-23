@@ -69,6 +69,18 @@
         {
           "name": "resim",
           "description": "Resmi getirip data: adresi olarak verir (logo yedeği)"
+        },
+        {
+          "name": "donusKur",
+          "description": "Uygulama kapanınca (fragman sayfası) onu kendiliğinden yeniden açan bekçiyi kurar"
+        },
+        {
+          "name": "donusDurum",
+          "description": "Dönüş bekçisinin son durumunu ve tanı notlarını verir"
+        },
+        {
+          "name": "donusIptal",
+          "description": "Dönüş bekçisini durdurur"
         }
       ]
     }
