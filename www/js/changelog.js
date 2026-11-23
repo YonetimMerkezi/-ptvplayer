@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 176,
+    title: 'Canlı, çok renkli temalar ve daha hızlı açılış',
+    items: [
+      'Tek renkli temalar kalmadı: Yeşil, Mavi, Turkuaz, Mor, Turuncu, Kırmızı, Gece yarısı, Okyanus, Grafit ve Gül kurusu artık çok renkli arka plan, kendi renginde simgeler ve renkli ana kutular ile geliyor (Ayarlar › Genel ayarlar › Tema rengi)',
+      'İlk kurulumda liste indirme ve açılış hızlandı: Xtream listeleri aynı anda indirilir, liste diske ekran çizildikten sonra yazılır',
+      'Film ve dizi vitrininde kaydırma daha akıcı; ana sayfa açılışındaki donma azaldı',
+    ],
+  },
+  {
     id: 175,
     title: 'TV’de akıcılık: fragman isteğe bağlı, veriler belleğe alınıyor',
     items: [

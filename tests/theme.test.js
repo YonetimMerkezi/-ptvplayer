@@ -15,18 +15,22 @@ test('tema listesi: varsayılan yeşil, kimlikler benzersiz, bilinmeyen kimlik y
   assert.equal(themeById('purple').id, 'purple');
 });
 
-test('her temanın renkleri CSS\'te tanımlı ve önizleme rengi vurgu rengiyle aynı', () => {
+test('her temanın renkleri CSS\'te tanımlı; tüm temalar çok renkli (gradyan önizleme + tam palet)', () => {
   const root = css.match(/:root \{[\s\S]*?\n\}/)[0];
   assert.match(root, /--accent: #4ade80/, 'varsayılan (yeşil) :root içinde');
   for (const t of THEMES) {
-    const block = t.id === DEFAULT_THEME ? root : (css.match(new RegExp(`html\\[data-theme="${t.id}"\\] \\{([^}]*)\\}`)) || [])[1];
+    const own = (css.match(new RegExp(`html\\[data-theme="${t.id}"\\] \\{([^}]*)\\}`)) || [])[1];
+    // varsayılan tema temel değerleri :root'tan alır, canlı katmanı kendi bloğundadır
+    const block = t.id === DEFAULT_THEME ? root + (own || '') : own;
     assert.ok(block, `${t.id} teması CSS'te yok`);
     for (const k of ['--bg', '--surface', '--raised', '--line', '--sel', '--bg-grad', '--accent', '--accent-ink', '--accent-soft', '--mini']) {
       assert.ok(block.includes(k + ':'), `${t.id}: ${k} eksik`);
     }
-    // çok renkli temalarda swatch bir gradyandır; vurgu rengi eşleşmesi yalnız tek renkli temalar için aranır
-    if (!t.multi) assert.ok(block.toLowerCase().includes('--accent: ' + t.swatch.toLowerCase()), `${t.id}: önizleme rengi vurgu rengiyle uyuşmuyor`);
-    else assert.match(t.swatch, /gradient\(/, `${t.id}: çok renkli temanın önizlemesi gradyan olmalı`);
+    assert.equal(t.multi, true, `${t.id}: tek renkli tema kalmamalı`);
+    assert.match(t.swatch, /gradient\(/, `${t.id}: önizleme yuvarlağı gradyan olmalı`);
+    for (let i = 0; i <= 8; i++) assert.ok((own || '').includes(`--p${i}:`), `${t.id}: --p${i} eksik`);
+    // canlı arka plan: en az üç renkli ışıltı (tek renkli zemin değil)
+    if (t.vivid) assert.ok(((own.match(/--bg-grad:[^;]*/) || [''])[0].match(/radial-gradient/g) || []).length >= 3, `${t.id}: arka plan çok renkli değil`);
   }
 });
 
@@ -52,18 +56,31 @@ test('ayar kutuları (.set-tile) renklerini temadan alır, sabit renk yok', () =
   assert.match(all, /\.set-tile \.ic \{[^}]*color: var\(--accent\)/);
 });
 
-test('çok renkli temalar: 4 tane, palet tam, applyTheme data-multi yazar ve tek renkliye dönünce siler', () => {
+test('çok renkli temalar: hepsi; applyTheme data-multi ve data-vivid yazar, eski biçimli temada vivid silinir', () => {
   const multi = THEMES.filter((t) => t.multi);
-  assert.deepEqual(multi.map((t) => t.id), ['cards', 'solid', 'neon', 'sunset']);
-  for (const t of multi) {
-    const block = css.match(new RegExp(`html\\[data-theme="${t.id}"\\] \\{([^}]*)\\}`))[1];
-    for (let i = 0; i <= 8; i++) assert.ok(block.includes(`--p${i}:`), `${t.id}: --p${i} eksik`);
-  }
+  assert.equal(multi.length, THEMES.length, 'tek renkli tema kalmamalı');
+  const vivid = THEMES.filter((t) => t.vivid).map((t) => t.id);
+  assert.deepEqual(vivid, ['green', 'blue', 'cyan', 'purple', 'orange', 'red', 'midnight', 'ocean', 'graphite', 'rose']);
+  for (const t of THEMES.filter((x) => x.vivid)) assert.ok(['glass', 'solid', 'neon'].includes(t.vivid), `${t.id}: bilinmeyen biçim`);
   const doc = { documentElement: { dataset: {} }, querySelector: () => null };
   assert.equal(applyTheme('neon', doc), 'neon');
   assert.equal(doc.documentElement.dataset.multi, '1');
+  assert.equal('vivid' in doc.documentElement.dataset, false, 'eski çok renkli temada vivid yok');
   assert.equal(applyTheme('blue', doc), 'blue');
-  assert.equal('multi' in doc.documentElement.dataset, false);
+  assert.equal(doc.documentElement.dataset.multi, '1');
+  assert.equal(doc.documentElement.dataset.vivid, 'neon');
+  assert.equal(applyTheme('cyan', doc), 'cyan');
+  assert.equal(doc.documentElement.dataset.vivid, 'solid');
+});
+
+test('canlı temalar: her ana kutu için üç biçimde de kural var, palet kutulara bağlı', () => {
+  for (const k of ['live', 'movie', 'series', 'today']) assert.ok(css.includes(`html[data-vivid] .tile.t-${k} {`), `canlı tema: ${k} kutusu`);
+  for (const v of ['glass', 'solid', 'neon']) {
+    assert.ok(css.includes(`html[data-vivid=${v}] .tile:not(.mini) {`), `${v}: ana kutu biçimi yok`);
+    assert.ok(css.includes(`html[data-vivid=${v}] .set-tile`), `${v}: ayar kutusu biçimi yok`);
+  }
+  // ayar kutusu biçimleri genel .set-tile kurallarından SONRA gelmeli (aynı özgüllükte sıra belirler)
+  assert.ok(css.indexOf('html[data-vivid=solid] .set-tile {') > css.indexOf('html[data-multi] .set-tile .ic {'));
 });
 
 test('çok renkli temalarda her sekme, her ayar kutusu ve ana kutu için renk kuralı var', () => {

@@ -18,7 +18,7 @@ KOK = Path(__file__).resolve().parent.parent
 OUT = KOK / 'www' / 'img' / 'themes'
 W, H, SCALE = 390, 640, 1.5   # telefon dikey ekranı; kart ~165 px genişliğinde gösterilir
 CHROME = os.environ.get('CHROME', '/usr/bin/google-chrome')
-HTTP_PORT, MOCK_PORT = 8765, 8099
+HTTP_PORT, MOCK_PORT = int(os.environ.get('HTTP_PORT', 8765)), int(os.environ.get('MOCK_PORT', 8099))  # başka bir şey bu portları tutuyorsa ortam değişkeniyle değiştirilir
 
 SEED = """
 try {
@@ -56,6 +56,12 @@ async def main(only):
                 if await c.count():
                     await c.first.click()
                     await pg.wait_for_timeout(300)
+            await pg.add_style_tag(content='#banner { display: none !important; }')  # geçici uyarı çubuğu (ör. rehber hatası) yerleşimi kaydırmasın
+            for beklenen in ("includes('Hata:')", "includes('Hata:') === false"):  # çevrimdışı rehber hatası geçici bir şerit çıkarır: önce görünmesi, sonra kaybolması beklenir
+                try:
+                    await pg.wait_for_function("() => document.body.innerText." + beklenen.replace(' === false', '') + (' === false' if 'false' in beklenen else ''), timeout=15000)
+                except Exception:
+                    pass
             for tid in ids:
                 await pg.evaluate("(id) => import('./js/theme.js').then((m) => m.applyTheme(id))", tid)
                 await pg.wait_for_timeout(500)
