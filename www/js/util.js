@@ -1,10 +1,16 @@
 // Küçük yardımcılar: Türkçe duyarsız arama metni, kimlik, biçimleme.
 
+// Yalnız ASCII içeren adlar (çoğu kanal/film adı) için kısa yol: "tr" yerel ayarlı küçük harf (yavaş) gerekmez, sonuç aynıdır
+// (ASCII'de tek fark "I" → "ı" idi ve o zaten sonra "i"ye çevriliyordu). Türkçe harf varsa tam yol: İ → i, küçült, aksan at, ı → i.
+const NON_ASCII = /[^\x00-\x7f]/;
 export function fold(s) {
-  return String(s ?? '')
-    .toLocaleLowerCase('tr')
+  s = String(s ?? '');
+  if (!NON_ASCII.test(s)) return s.toLowerCase().replace(/\s+/g, ' ').trim();
+  return s
+    .replace(/İ/g, 'i')
+    .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/ı/g, 'i')
     .replace(/\s+/g, ' ')
     .trim();

@@ -250,14 +250,15 @@ export class Shelves {
     el.className = 'sh-row';
     el.dataset.row = r;
     el.setAttribute('style', `top:${r * this.rowH}px;height:${this.rowH}px`);
-    el.innerHTML = this._rowHtml(r);
+    const html = this._rowHtml(r);
+    el.innerHTML = html;
     let next = null;
     for (const [q, o] of this._rows) if (q > r && (!next || q < next.q)) next = { q, el: o.el };
     this.win.insertBefore(el, next ? next.el : null);
     const strip = el.querySelector('.sh-strip');
     const saved = this._h.get(row.id);
     if (saved) strip.scrollLeft = saved;
-    this._rows.set(r, { el, id: row.id, html: el.innerHTML });
+    this._rows.set(r, { el, id: row.id, html }); // üretilen metin saklanır (innerHTML'i geri okumak her satır kurulumunda ek serileştirme demekti)
   }
 
   // En üstteki satırın ilk yapımı değişince haber verir (onTopItem): dokunmatikte odak olmadığından vitrin kaydırmayı izler.
@@ -294,14 +295,13 @@ export class Shelves {
     const act = document.activeElement;
     const focus = this.win.contains(act) ? this._cellOf(act) : null;
     for (const [r, o] of [...this._rows]) {
-      const tmp = document.createElement('div');
-      tmp.innerHTML = this._rowHtml(r);
-      if (tmp.innerHTML === o.html) continue;
+      const html = this._rowHtml(r);
+      if (html === o.html) continue;
       const strip = o.el.querySelector('.sh-strip');
       const left = strip.scrollLeft;
-      o.el.innerHTML = tmp.innerHTML;
+      o.el.innerHTML = html;
       o.el.querySelector('.sh-strip').scrollLeft = left;
-      o.html = o.el.innerHTML;
+      o.html = html;
     }
     if (focus && !this.win.contains(document.activeElement)) this._refocus(focus);
   }

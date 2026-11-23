@@ -91,7 +91,14 @@ export const LIST_RADIO_PREFIX = 'ls:';
 const LIST_GROUP_RE = /\b(radyo|radyolar|radio|radios)\b/;
 const LIST_NAME_RE = /\b(radyo|radio)\b/;
 export const LIST_RADIO_MAX = 2000;
-export const isListRadio = (it) => !!it && it.kind === 'live' && (LIST_GROUP_RE.test(fold(it.group || '')) || LIST_NAME_RE.test(fold(it.name || '')));
+// Ön eleme: yalnız ASCII bir metin "rad" içermiyorsa radyo olamaz (fold ASCII'de yalnız küçültür); ASCII dışı metin (İ, ı, aksan) tam fold'a gider.
+const NON_ASCII = /[^\x00-\x7f]/;
+const RAD = /rad/i;
+const hits = (v, re) => {
+  const t = String(v || '');
+  return (NON_ASCII.test(t) || RAD.test(t)) && re.test(fold(t));
+};
+export const isListRadio = (it) => !!it && it.kind === 'live' && (hits(it.group, LIST_GROUP_RE) || hits(it.name, LIST_NAME_RE));
 
 // Canlı kanallar → istasyon kaydı. sid: kaynak kimliği (iki kaynakta aynı kanal kimliği çakışmasın); urlOf(item) → oynatma adresi ('' ise kayıt atlanır). Aynı ad bir kez gelir.
 export function listStations(items, { sid = '', urlOf = (it) => it.url || '' } = {}) {

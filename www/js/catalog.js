@@ -41,24 +41,52 @@ export async function loadCatalog(source, net, { onStage = () => {}, onProgress 
     const auth = X.checkAuth(await net.json(X.apiUrl(cfg)));
     if (!auth.ok) throw new Error(auth.reason);
     cat.account = { expires: auth.expires, maxConnections: auth.maxConnections, timezone: auth.timezone };
-    const fetchList = async (label, action, extra) => {
-      onStage(label);
+    // Altı liste aynı anda istenir: sunucunun yanıt süresi (büyük film listesi saniyeler sürebilir) art arda beklenmez, toplam süre en yavaş
+    // isteğe iner. Küçük kategori istekleri ayrı havuzdan gider (fast), büyük listelerin arkasında beklemez. Eşzamanlı isteği reddeden
+    // sunucular için (429/5xx, bağlantı kesme) başarısız olanlar sırayla bir kez daha denenir.
+    const LISTS = [
+      ['Canlı kategoriler', 'get_live_categories', true],
+      ['Canlı kanallar', 'get_live_streams', false],
+      ['Film kategorileri', 'get_vod_categories', true],
+      ['Filmler', 'get_vod_streams', false],
+      ['Dizi kategorileri', 'get_series_categories', true],
+      ['Diziler', 'get_series', false],
+    ];
+    const fetchOne = (action, fast) => net.json(X.apiUrl(cfg, action, {}), fast ? { fast: true } : {});
+    const retryable = (e) => !!e && /HTTP (429|5\d\d)|reset|refused|closed|aborted|unexpected end|EOF|Connection|ECONN/i.test(String((e && e.message) || e));
+    onStage('Listeler indiriliyor…');
+    let done = 0;
+    const out = new Array(LISTS.length);
+    const err = new Array(LISTS.length);
+    await Promise.all(
+      LISTS.map(async ([, action, fast], i) => {
+        try {
+          out[i] = await fetchOne(action, fast);
+        } catch (e) {
+          err[i] = e;
+        }
+        onStage(`Listeler indiriliyor… ${++done}/${LISTS.length}`);
+      }),
+    );
+    for (let i = 0; i < LISTS.length; i++) {
+      if (!err[i] || !retryable(err[i])) continue;
+      onStage(LISTS[i][0] + ' yeniden deneniyor…');
       try {
-        return await net.json(X.apiUrl(cfg, action, extra || {}));
+        out[i] = await fetchOne(LISTS[i][1], false);
+        err[i] = null;
       } catch (e) {
-        cat.warnings.push(`${label.replace('…', '')} alınamadı: ${e.message}`);
-        return [];
+        err[i] = e;
       }
-    };
-    const lc = await fetchList('Canlı kategoriler…', 'get_live_categories');
-    const ls = await fetchList('Canlı kanallar…', 'get_live_streams');
-    cat.live = X.mapLive(ls, lc);
-    const vc = await fetchList('Film kategorileri…', 'get_vod_categories');
-    const vs = await fetchList('Filmler…', 'get_vod_streams');
-    cat.movies = X.mapVod(vs, vc);
-    const sc = await fetchList('Dizi kategorileri…', 'get_series_categories');
-    const ss = await fetchList('Diziler…', 'get_series');
-    cat.series = X.mapSeries(ss, sc);
+    }
+    for (let i = 0; i < LISTS.length; i++) {
+      if (err[i]) {
+        cat.warnings.push(`${LISTS[i][0]} alınamadı: ${err[i].message}`);
+        out[i] = [];
+      }
+    }
+    cat.live = X.mapLive(out[1], out[0]);
+    cat.movies = X.mapVod(out[3], out[2]);
+    cat.series = X.mapSeries(out[5], out[4]);
   } else {
     const parser = new M3UParser();
     if (source.text != null || source.local) {

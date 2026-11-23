@@ -40,8 +40,10 @@ export function genreChips(movies, { key = (it) => it.id, min = MIN_GENRE, max =
   const seen = new Map(MOVIE_GENRES.map((g) => [g.id, new Set()]));
   for (const it of Array.isArray(movies) ? movies : []) {
     if (!it || it.kind !== 'movie') continue;
+    const ids = genresOfMovie(it);
+    if (!ids.length) continue; // türü olmayan film için (pahalı olabilen) anahtar hesaplanmaz
     const k = key(it);
-    for (const id of genresOfMovie(it)) seen.get(id).add(k);
+    for (const id of ids) seen.get(id).add(k);
   }
   return MOVIE_GENRES.map((g) => ({ id: g.id, label: g.label, icon: g.icon, n: seen.get(g.id).size }))
     .filter((g) => g.n >= min)

@@ -668,6 +668,19 @@ function rerenderKeepingList() {
   renderTab();
 }
 
+// Kataloğu diske yazar: IndexedDB'ye yazarken nesne grafiği ana iş parçacığında kopyalanır (36 bin kayıtta telefonda ~1 sn). Bu yüzden önce ekran
+// çizilir, yazma bir sonraki çizimden sonra sessizce yapılır. Bellekteki kayıt hemen güncellenir (cache.set bunu eşzamanlı yapar).
+function saveCatalogLater(id, cat) {
+  const run = () => {
+    const bar = $('#banner');
+    const note = !bar || bar.hidden || !!bar.dataset.mem; // çubukta uyarı varsa üzerine yazılmaz
+    if (note) memProgress({ label: 'Liste belleğe kaydediliyor…', pct: 25 });
+    return store.cache.set('cat:' + id, catalogToStorable(cat)).catch(() => {}).finally(() => { if (note) memHide(); });
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(run, 0));
+  else setTimeout(run, 0);
+}
+
 async function refreshCatalog({ quiet = false } = {}) {
   if (!S.source || S.loading) return;
   S.loading = true;
@@ -680,14 +693,12 @@ async function refreshCatalog({ quiet = false } = {}) {
       onProgress: (n) => banner(`Liste indiriliyor… ${(n / 1048576).toFixed(1)} MB`, { spin: true }),
     });
     if (!S.source || S.source.id !== id) return;
-    memProgress({ label: 'Liste belleğe kaydediliyor…', pct: 25 });
-    await store.cache.set('cat:' + id, catalogToStorable(cat));
-    memProgress({ label: 'Liste belleğe alınıyor…', pct: 65 });
     S.linkErr = false;
     setCatalog(cat);
     if (S.tab !== 'multi') rerenderKeepingList(); // çoklu ekranda yayınlar kesilmesin
     S.memWarm = Date.now();
     memHide();
+    saveCatalogLater(id, cat); // diske yazma (büyük listede yapısal kopya yüzlerce ms sürer) ekranı çizdikten sonra yapılır
     banner(cat.warnings.length ? cat.warnings[0] : null, { err: cat.warnings.length > 0 });
     if (!quiet) toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi`);
     maybeRefreshEpg(true);
@@ -1868,7 +1879,7 @@ function mediaRow(it, i) {
 // ---- afişsiz filmlere afiş: sağlayıcı afiş adresi vermediyse film, ayrıntı sayfasındaki eşleştirmeyle (yerel katalog, olmazsa Cinemeta)
 // bulunur ve afişi oradan gelir. Yalnız ekranda çizilen kutular için, aynı anda en çok 2 istekle çalışır; bulunamayan film harfli kutuda kalır.
 const posterUrl = (imdbId) => `https://images.metahub.space/poster/medium/${imdbId}/img`;
-const posterImg = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">`;
+const posterImg = (src) => `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">`;
 const posterAsked = new Set();
 const posterQueue = [];
 let posterBusy = 0;
@@ -3421,7 +3432,6 @@ function sourceForm(edit) {
           });
           const saved = store.saveSource(src);
           if (text != null) await store.cache.set('file:' + saved.id, text);
-          await store.cache.set('cat:' + saved.id, catalogToStorable(cat));
           store.setActive(saved.id);
           S.source = saved;
           S.prog = store.progressAll(saved.id);
@@ -3430,6 +3440,7 @@ function sourceForm(edit) {
           sh.close();
           renderTop();
           renderTab();
+          saveCatalogLater(saved.id, cat);
           toast(`${cat.live.length} kanal · ${cat.movies.length} film · ${cat.series.length} dizi yüklendi`);
           maybeRefreshEpg(true);
         } catch (ex) {
@@ -3506,9 +3517,16 @@ function tickClock() {
 // Ana ekran kısayol kutusunun simgesi; sayı (favori/izleme) yazıyla yarışmasın diye simgenin köşesinde rozet olur.
 const miniIc = (name, n) => `<span class="t-ic">${icon(name)}${n ? `<i class="t-n">${n > 99 ? '99+' : n}</i>` : ''}</span>`;
 // ---- Ana ekran: "Ne izleyeceğine karar veremedin mi?" — kendi film listenden türe göre öneri. Tür çipine dokun; aynı çipe yine dokunursan başka filmler gelir.
+// Anahtar öğeye bağlı saklanır: ana sayfa her açıldığında binlerce film adı yeniden temizlenmesin (telefonda saniyeye yaklaşıyordu).
+const picksKeyCache = new WeakMap();
 const picksKey = (it) => {
-  const ct = cleanTitle(it.name, it.year);
-  return ct.key ? `${ct.key}|${ct.year || ''}` : it.id;
+  let k = picksKeyCache.get(it);
+  if (k === undefined) {
+    const ct = cleanTitle(it.name, it.year);
+    k = ct.key ? `${ct.key}|${ct.year || ''}` : it.id;
+    picksKeyCache.set(it, k);
+  }
+  return k;
 };
 const homePick = { src: '', genre: '', ids: [], seen: new Map() };
 const pickWatched = (it) => !!(S.prog[it.id] && S.prog[it.id].pos > 0);

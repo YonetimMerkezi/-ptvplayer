@@ -9,10 +9,13 @@ const TAGS = new Set([
 
 // "Ç" gibi harflerde Türkçe locale kaydırması olmadan sadeleştir
 const MAP = { 'ı':'i','İ':'i','I':'i','ş':'s','Ş':'s','ğ':'g','Ğ':'g','ü':'u','Ü':'u','ö':'o','Ö':'o','ç':'c','Ç':'c','â':'a','Â':'a','î':'i','Î':'i','û':'u','Û':'u' };
+const MAP_RE = new RegExp('[' + Object.keys(MAP).join('') + ']', 'g');
+const NON_ASCII = /[^\x00-\x7f]/;
 export function fold(s) {
-  let o = '';
-  for (const ch of String(s)) o += MAP[ch] ?? ch;
-  return o.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  s = String(s);
+  // ASCII adlarda harf eşlemesi gerekmez ("I" zaten küçük harfte "i" olur)
+  if (!NON_ASCII.test(s)) return s.toLowerCase();
+  return s.replace(MAP_RE, (c) => MAP[c]).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 const YEAR_MIN = 1900, YEAR_MAX = new Date().getFullYear() + 1;

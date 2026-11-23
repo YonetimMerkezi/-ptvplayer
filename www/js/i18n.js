@@ -55,7 +55,18 @@ function compile(pairs) {
   pats.sort((a, b) => b.len - a.len); // uzun kalıp önce
 }
 
+// Sonuç (bulunamayan dahil) metne göre saklanır: film adı gibi sözlükte olmayan metinler her seferinde tüm kalıpları gezmesin.
+const memo = new Map();
 function lookup(k, depth = 0) {
+  if (depth > 0) return lookupRaw(k, depth);
+  const m = memo.get(k);
+  if (m !== undefined) return m;
+  const r = lookupRaw(k, 0);
+  if (memo.size >= 6000) memo.clear();
+  memo.set(k, r);
+  return r;
+}
+function lookupRaw(k, depth) {
   if (!exact) compile(EN_PAIRS);
   const hit = exact.get(k);
   if (hit !== undefined) return hit;

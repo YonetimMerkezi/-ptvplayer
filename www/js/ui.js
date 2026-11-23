@@ -18,7 +18,7 @@ export function toast(msg, ms = 2800) {
 export function logo(url, name) {
   const ch = esc((String(name || '?').trim()[0] || '?').toUpperCase());
   const img = url
-    ? `<img src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">`
+    ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">`
     : '';
   return `<div class="logo">${img}${ch}</div>`;
 }
