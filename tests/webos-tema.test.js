@@ -41,6 +41,22 @@ test('tema: kimlikler tekil, renkler geçerli; vurgu rengi üzerindeki yazı oku
   assert.equal(temaBul('yok').id, VARSAYILAN_TEMA, 'bilinmeyen kimlik varsayılana döner');
 });
 
+test('tema: hepsi canlı ve çok renkli (gradyan zemin, dolu karolar, sekiz ayrı karo rengi); eski koyu temalar yenisine döner', () => {
+  assert.ok(TEMALAR.length >= 7, 'zengin bir tema seçkisi var');
+  for (const t of TEMALAR) {
+    assert.ok(t.canli && t.multi && t.dolu, t.id + ': canlı, çok renkli, dolu karolu');
+    assert.match(t.zemin, /^linear-gradient\(.*#[0-9a-f]{6} 0%.*#[0-9a-f]{6} 100%\)$/, t.id + ': gradyan zemin');
+    assert.ok((t.zemin.match(/#[0-9a-f]{6}/g) || []).length >= 3, t.id + ': en az üç renk durağı');
+    assert.equal(new Set(t.p.slice(1, 9)).size, 8, t.id + ': sekiz karo rengi birbirinden farklı');
+    // Gradyanın her durağında beyaz yazı okunur (başlık, saat ve ipucu satırı zeminin üstünde)
+    for (const d of t.zemin.match(/#[0-9a-f]{6}/g)) assert.ok(oran(d, '#ffffff') >= 4.4, t.id + ': ' + d + ' üzerinde beyaz yazı ' + oran(d, '#ffffff').toFixed(1));
+  }
+  assert.equal(temaBul('sunset').id, 'gunbatimi');
+  assert.equal(temaBul('neon').id, 'aurora');
+  assert.equal(temaBul('cards').id, VARSAYILAN_TEMA);
+  assert.equal(temaBul('solid').id, VARSAYILAN_TEMA);
+});
+
 // Boyama mantığını sınamak için tek renkli deneme paleti (uygulamada tek renkli tema yok)
 const MOR = { id: 'deneme-mor', ad: 'Deneme', bg: '#0b0818', surface: '#181233', raised: '#251c4d', line: '#382a73', accent: '#a78bfa', ink: '#170a3a' };
 

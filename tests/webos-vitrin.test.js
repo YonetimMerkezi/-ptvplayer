@@ -14,7 +14,7 @@ globalThis.window = globalThis.window || {};
 globalThis.document = globalThis.document || { createElement: () => new F() };
 
 const { vitrinMetni, createArkaPlan, createVitrin } = await import('../webos/src/vitrin.js');
-const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, contentTarget, ayarKaynagi } = await import('../webos/src/fragman.js');
+const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, contentTarget, baslatParams, sonDeneme, ayarKaynagi } = await import('../webos/src/fragman.js');
 
 // Elle işletilen zamanlayıcı
 function saat() {
@@ -80,7 +80,8 @@ test('vitrin: odakta liste bilgisi hemen, bekleme sonunda ayrıntı gelir; geni�
     },
     seriesInfo: async () => ({ plot: 'Dizi konusu', logo: 'http://x/c.jpg' }),
   };
-  const v = createVitrin(host, { saglayici: () => p, resim, zamanlayici: z });
+  const zemin = new F();
+  const v = createVitrin(host, { zemin, saglayici: () => p, resim, zamanlayici: z });
   const film = { id: 'm1', kind: 'movie', name: 'TR | Film Adı | 2023', logo: 'http://x/p.jpg' };
   v.odak(film);
   const tx = host.querySelector('.v-tx');
@@ -95,7 +96,9 @@ test('vitrin: odakta liste bilgisi hemen, bekleme sonunda ayrıntı gelir; geni�
   assert.ok(tx.innerHTML.includes('Konu burada'));
   assert.ok(tx.innerHTML.includes('Oyuncular: Oyuncu 1'));
   assert.ok(istekler.includes('http://x/b.jpg'), 'ayrıntıdaki geniş görsel yüklenir');
-  assert.ok(/\bon\b/.test(host.querySelector('.v-bg').className));
+  assert.ok(/\bon\b/.test(zemin.querySelector('.v-bg').className), 'geniş görsel ekran zemininde (vitrin kutusunda değil) gösterilir');
+  assert.ok(zemin.innerHTML.includes('v-vg'), 'zemin yumuşatma katmanını içerir');
+  assert.ok(!host.innerHTML.includes('v-bg'), 'vitrin kutusunda ayrı görsel katmanı yok');
   assert.equal(v.bilgi(film).plot, 'Konu burada');
   v.odak(film);
   v.temizle();
@@ -105,14 +108,14 @@ test('vitrin: odakta liste bilgisi hemen, bekleme sonunda ayrıntı gelir; geni�
 test('vitrin: M3U kaynakta ayrıntı istenmez; hızlı gezerken yalnız son öğe için istek atılır', async () => {
   const z = saat();
   let n = 0;
-  const m3u = createVitrin(new F(), { saglayici: () => ({ type: 'm3u', vodInfo: async () => n++ }), resim: (u, ok) => ok(u), zamanlayici: z });
+  const m3u = createVitrin(new F(), { zemin: new F(), saglayici: () => ({ type: 'm3u', vodInfo: async () => n++ }), resim: (u, ok) => ok(u), zamanlayici: z });
   m3u.odak({ id: 'a', kind: 'movie', name: 'A' });
   z.calistir();
   await bekle();
   assert.equal(n, 0);
   const sayac = [];
   const p = { type: 'xtream', vodInfo: async (it) => (sayac.push(it.id), {}) };
-  const v = createVitrin(new F(), { saglayici: () => p, resim: (u, ok) => ok(u), zamanlayici: z });
+  const v = createVitrin(new F(), { zemin: new F(), saglayici: () => p, resim: (u, ok) => ok(u), zamanlayici: z });
   v.odak({ id: 'a', kind: 'movie', name: 'A' });
   v.odak({ id: 'b', kind: 'movie', name: 'B' });
   v.odak({ id: 'c', kind: 'movie', name: 'C' });
@@ -209,4 +212,37 @@ test('fragman: ekran akışı — iletiler, bulunamayan fragman, açılamayan Yo
   assert.equal(await fragmanOynat({ id: 'd', name: 'D', trailer: 'dQw4w9WgXcQ' }, null, {}), false, 'ilk istek sürerken ikincisi başlamaz');
   birakma();
   assert.equal(await birinci, true);
+});
+
+test('fragman: contentId biçimleri doğru parametre adıyla gider; TV yanıtları tanı olarak saklanır', async () => {
+  assert.deepEqual(baslatParams('ABC', 'tv'), { contentTarget: 'https://www.youtube.com/tv?v=ABC' });
+  assert.deepEqual(baslatParams('ABC', 'tvhttp'), { contentTarget: 'http://www.youtube.com/tv?v=ABC' });
+  assert.deepEqual(baslatParams('ABC', 'id'), { contentTarget: 'ABC' });
+  assert.deepEqual(baslatParams('ABC', 'cid'), { contentId: 'v=ABC' });
+  assert.deepEqual(baslatParams('ABC', 'cidid'), { contentId: 'ABC' });
+  const cagrilar = [];
+  const luna = async (uri, par) => (cagrilar.push({ uri, par }), { returnValue: true, appId: 'youtube.leanback.v4' });
+  ayarKaynagi(() => ({}));
+  await youtubeAc('ABC', luna, { bekle: 0, bicim: 'cid' });
+  const ac = cagrilar[cagrilar.length - 1];
+  assert.deepEqual(ac.par.params, { contentId: 'v=ABC' });
+  const t = sonDeneme();
+  assert.equal(t.bicim, 'cid');
+  assert.ok(t.adimlar.some((a) => /^launch .*contentId.*"appId":"youtube\.leanback\.v4"/.test(a)), 'launch yanıtı ham olarak saklanır');
+  assert.ok(t.adimlar.some((a) => /^closeByAppId/.test(a)));
+});
+
+test('fragman: YouTube kapatılamadıysa açma çağrısı bir kez daha yinelenir; hata TV iletisiyle atılır ve tanıda kalır', async () => {
+  ayarKaynagi(() => ({}));
+  const cagrilar = [];
+  const kapatmaz = async (uri, par) => (cagrilar.push(uri), /launch$/.test(uri) ? { returnValue: true } : { returnValue: false, errorText: 'izin yok' });
+  await youtubeAc('ABC', kapatmaz, { bekle: 1 });
+  assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 2, 'arka planda açık YouTube parametreyi kaçırabilir: ikinci çağrı');
+  cagrilar.length = 0;
+  const kapatir = async (uri) => (cagrilar.push(uri), { returnValue: true });
+  await youtubeAc('ABC', kapatir, { bekle: 1 });
+  assert.equal(cagrilar.filter((u) => /launch$/.test(u)).length, 1, 'kapatma işlediyse tek çağrı yeter');
+  await assert.rejects(() => youtubeAc('ABC', async (uri) => (/launch$/.test(uri) ? { returnValue: false, errorText: 'Denied method call' } : { returnValue: true }), { bekle: 0 }), /Denied method call/);
+  assert.equal(sonDeneme().hata, 'Denied method call');
+  assert.ok(sonDeneme().adimlar.some((a) => /Denied method call/.test(a)));
 });

@@ -14,7 +14,19 @@ const KIND_AKSIYON = {
   series: ['get_series_categories', 'get_series', X.mapSeries],
 };
 
-const bir = (cache, key, fn) => cache[key] || (cache[key] = fn().catch((e) => { delete cache[key]; throw e; }));
+// Aynı anahtar için tek istek; tamamlanan söz hazir işareti alır (ekran, bellekteki içeriği beklemeden açabilsin)
+const bir = (cache, key, fn) => {
+  if (cache[key]) return cache[key];
+  const p = fn().catch((e) => {
+    delete cache[key];
+    throw e;
+  });
+  cache[key] = p;
+  p.then(() => {
+    p.hazir = true;
+  }, () => {});
+  return p;
+};
 const gecerli = (l) => (Array.isArray(l) ? l.filter((c) => c && typeof c === 'object') : []);
 
 export function createXtream(src, net, kalici = varsayilanOnbellek) {
@@ -76,6 +88,8 @@ export function createXtream(src, net, kalici = varsayilanOnbellek) {
     // Kalıcı önbellekteki (önceki oturumdan) kategori listesi ve kategori içeriği: yoksa null. Ekran önce bunu gösterir, güncel liste arkadan gelir.
     categoriesOnbellekten: (kind) => kalici.oku(kAnahtar('rc:' + kind)).then((l) => (l ? adlandir(gecerli(l)) : null)).catch(() => null),
     onbellekten: (kind, catId) => kalici.oku(kAnahtar('it:' + kind + ':' + catId)).catch(() => null),
+    // Kategori içeriği bu oturumda zaten bellekte mi (açılışta ağ beklenmez)
+    hazir: (kind, catId) => !!(cache['it:' + kind + ':' + catId] && cache['it:' + kind + ':' + catId].hazir),
     // grup: aynı gruptaki yeni istek öncekini keser (varsayılan 'kat'); null = kesilmez (arka plan önyüklemesi)
     items: (kind, catId, grup) =>
       bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' : grup).then((l) => kaydet('it:' + kind + ':' + catId, l))),

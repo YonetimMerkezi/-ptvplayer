@@ -1,6 +1,28 @@
 // Liste sıralama: A→Z, Z→A, eklenme zamanı, puan. Saf mantık (aynı girdi → aynı çıktı, kararlı).
+import { fold } from './util.js';
 
-const collator = new Intl.Collator('tr', { sensitivity: 'base', numeric: true });
+// Intl olmayan ya da sınırlı eski TV tarayıcılarında (webOS 3) Türkçe duyarsız, sayıları değerine göre karşılaştıran yedek kullanılır.
+function dogal(a, b) {
+  const x = fold(a).split(/(\d+)/);
+  const y = fold(b).split(/(\d+)/);
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    if (x[i] === y[i]) continue;
+    if (i % 2 === 1) return Number(x[i]) - Number(y[i]) || (x[i] < y[i] ? -1 : 1);
+    return x[i] < y[i] ? -1 : 1;
+  }
+  return x.length - y.length;
+}
+function yapCollator() {
+  try {
+    if (typeof Intl !== 'undefined' && Intl.Collator) return new Intl.Collator('tr', { sensitivity: 'base', numeric: true });
+  } catch (e) {
+    /* yedeğe geç */
+  }
+  return { compare: dogal };
+}
+const collator = yapCollator();
+
+export const yedekKarsilastir = dogal;
 
 export const SORTS = [
   ['default', 'Varsayılan sıra'],

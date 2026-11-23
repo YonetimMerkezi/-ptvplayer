@@ -21,7 +21,11 @@ export function enYakin(e, sel, kok) {
 // 1rem = ekran yüksekliğinin 1/54'ü (1080p'de 20px); tüm ölçüler rem ile yazıldığı için her çözünürlükte aynı görünür. olcek: yazı boyutu ayarı.
 export function boyutla(olcek) {
   const h = window.innerHeight || 720;
-  document.documentElement.style.fontSize = (h / 54) * (olcek > 0 ? olcek : 1) + 'px';
+  const o = olcek > 0 ? olcek : 1;
+  document.documentElement.style.fontSize = (h / 54) * o + 'px';
+  // Sabit yükseklikli kutular (ana sayfa kartları vb.) en büyük boyutta taşmasın diye css [data-fs] ile ayrıca ayarlanır
+  const k = document.documentElement;
+  if (k.setAttribute) k.setAttribute('data-fs', o >= 1.25 ? 'xl' : o >= 1.1 ? 'l' : o < 0.95 ? 's' : 'n');
 }
 
 export const px = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 20; // 1rem kaç piksel

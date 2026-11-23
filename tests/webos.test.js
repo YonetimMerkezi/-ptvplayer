@@ -350,7 +350,7 @@ test('paket: Geri tuşu uygulamaya ulaşsın diye geçmiş (History) API\'si kap
 
 test('oynatıcı: Ses/Altyazı/Ekran seçilince panel kapanır; ◀ ve zaman aşımı da kapatır', () => {
   const k = oku('src', 'screens', 'player.js');
-  for (const ad of ["toast('Ses: '", "toast(x.eyl === 'iz' ? 'Altyazı: '", "ctx.store.setSetting('aspect', ORAN[i][0]);"]) {
+  for (const ad of ["toast('Ses: '", "toast(x.eyl === 'iz' ? 'Altyazı: '", "ctx.store.setSetting(oranAyar()[0], ORAN[i][0]);"]) {
     const i = k.indexOf(ad);
     assert.ok(i > 0, ad + ' bulunamadı');
     assert.match(k.slice(i, i + 160), /secimKapat\(\);/, ad + ' sonrası panel kapanmalı');

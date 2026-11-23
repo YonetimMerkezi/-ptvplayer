@@ -69,11 +69,13 @@ export function createArkaPlan(katman, { resim = resimDene } = {}) {
   };
 }
 
-// host: .vit kutusu. saglayici(): geçerli sağlayıcı. Dönen: { odak(it), temizle(), bilgi(it) }
-export function createVitrin(host, { saglayici, resim = resimDene, ipucu = true, zamanlayici } = {}) {
-  host.innerHTML = '<div class="v-bg"></div><div class="v-sh"></div><div class="v-pst"></div><div class="v-tx"></div>' + (ipucu ? '<div class="v-h"><i></i>Kırmızı: ▶ Fragman</div>' : '');
+// host: .vit (metin, küçük afiş, ipucu); zemin: ekranın tamamını kaplayan katman (geniş görsel + yumuşatan karartma).
+// saglayici(): geçerli sağlayıcı. Dönen: { odak(it), temizle(), bilgi(it) }
+export function createVitrin(host, { zemin, saglayici, resim = resimDene, ipucu = true, zamanlayici } = {}) {
+  zemin.innerHTML = '<div class="v-bg"></div><div class="v-vg"></div>';
+  host.innerHTML = '<div class="v-pst"></div><div class="v-tx"></div>' + (ipucu ? '<div class="v-h"><i></i>Kırmızı: ▶ Fragman</div>' : '');
   const metin = host.querySelector('.v-tx');
-  const arka = createArkaPlan(host.querySelector('.v-bg'), { resim });
+  const arka = createArkaPlan(zemin.querySelector('.v-bg'), { resim });
   const afis = createArkaPlan(host.querySelector('.v-pst'), { resim });
   const bilgi = {};
 

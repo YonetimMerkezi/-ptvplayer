@@ -63,6 +63,7 @@ function kur(ayar, liste, ag) {
   ctx.store = createStore(bellekDepo());
   ctx.store.addSource({ type: 'xtream', name: 'T', server: 'http://srv:80', user: 'u', pass: 'p' });
   ctx.net = ag || { json: async () => ({ epg_listings: [] }), get: async () => '' };
+  ctx.store.setSetting('kalite', 'auto'); // varsayılan 'en yüksek' HLS listesini önce çözer (eşzamansız); bu testler adresi hemen bekler — en yüksek kalite ayrı testlerde
   for (const k in ayar || {}) ctx.store.setSetting(k, ayar[k]);
   push({ el: new F('alt'), name: 'alt', onKey: () => false });
   const scr = playerScreen({ list: liste || KANALLAR, index: 0 });
@@ -227,11 +228,14 @@ test('oynatıcı: Altyazı düğmesi altyazıyı açar ve kapatır', () => {
 test('oynatıcı: Ekran düğmesi boyutu seçer, ayara yazar ve videoya uygular', () => {
   const o = kur();
   const v = o.q('#vid');
+  assert.equal(v.style.objectFit, 'fill', 'kanallar varsayılan olarak ekranı tam doldurur (Uzat)');
   dugmeAc(o, 5);
   assert.match(o.q('.p-pick').innerHTML, /Yakınlaştır %25/);
-  for (let i = 0; i < 7; i++) o.tus('down'); // Sığdır, Küçült %95/%90/%85, Doldur, Uzat, Yakınlaştır %10, Yakınlaştır %25
+  assert.match(o.q('.p-pick').innerHTML, /Ekran boyutu · kanallar/);
+  for (let i = 0; i < 2; i++) o.tus('down'); // açılışta seçili: Uzat → Yakınlaştır %10 → Yakınlaştır %25
   o.tus('ok');
-  assert.equal(ctx.store.setting('aspect', ''), 'z125');
+  assert.equal(ctx.store.setting('aspectLive', ''), 'z125', 'kanallarda ayrı ayara yazılır');
+  assert.equal(ctx.store.setting('aspect', ''), '', 'film/dizi ayarı değişmez');
   assert.equal(v.style.transform, 'scale(1.25)');
   assert.equal(v.style.objectFit, 'contain');
   assert.equal(o.q('.p-pick').className, 'p-pick', 'seçim yapılınca panel kapanır');
@@ -239,7 +243,20 @@ test('oynatıcı: Ekran düğmesi boyutu seçer, ayara yazar ve videoya uygular'
   for (let i = 0; i < 7; i++) o.tus('up');
   o.tus('ok');
   assert.equal(v.style.transform, '');
+  assert.equal(v.style.objectFit, 'contain');
   o.bitir();
+});
+
+test('oynatıcı: film/dizi özgün oranda (Sığdır) açılır; kanal ve film oranı ayrı saklanır', () => {
+  const film = kur({}, [{ id: 'fx', kind: 'movie', name: 'Film', streamId: 5, ext: 'mp4' }]);
+  assert.equal(film.q('#vid').style.objectFit, 'contain');
+  film.bitir();
+  const kanal = kur({ aspect: 'cover' }, undefined);
+  assert.equal(kanal.q('#vid').style.objectFit, 'fill', 'film oranı ayarı kanalları etkilemez');
+  kanal.bitir();
+  const secili = kur({ aspectLive: 'cover' }, undefined);
+  assert.equal(secili.q('#vid').style.objectFit, 'cover', 'kanallarda yapılan seçim korunur');
+  secili.bitir();
 });
 
 test('oynatıcı: Senkron ◀▶ ile 50 ms adımla sesi geciktirir; Web Audio yoksa uyarır ve sıfırda kalır', () => {
@@ -907,5 +924,100 @@ test('altyazı: Yeni yapım başlayınca eski harici altyazı kalkar', async () 
   o.tus('back');
   o.scr.onKey('chdown'); // sonraki bölüm
   assert.equal(altMetin(o), '', 'bölüm değişince altyazı kalkar');
+  o.bitir();
+});
+
+// ---- Yayın kalitesi: HLS ana listesinden en yüksek sürüm
+const ANA_LISTE = [
+  '#EXTM3U',
+  '#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,CODECS="avc1.4d401e,mp4a.40.2"',
+  'v1/index.m3u8',
+  '#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"',
+  'v2/index.m3u8',
+  '#EXT-X-STREAM-INF:BANDWIDTH=5200000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2"',
+  'v3/index.m3u8',
+  '#EXT-X-STREAM-INF:BANDWIDTH=16000000,RESOLUTION=3840x2160,CODECS="hvc1.2.4.L153,mp4a.40.2"',
+  'v4/index.m3u8',
+].join('\n');
+const kaliteAgi = (metin, hata) => ({
+  json: async () => ({ epg_listings: [] }),
+  istek: [],
+  get: async function (url, opt) {
+    this.istek.push(url);
+    if (hata) throw new Error('bağlanılamadı');
+    if (opt && opt.sonUrl) opt.sonUrl(url);
+    return metin;
+  },
+});
+const kanalK = (n) => [{ id: 'q' + n, kind: 'live', name: 'Kalite ' + n, num: n, streamId: 900 + n }];
+
+test('kalite: en yüksek seçeneği çözer — 1080p H.264 seçilir (HEVC ve 4K elenir), etiketi gösterilir', async () => {
+  const ag = kaliteAgi(ANA_LISTE);
+  const o = kur({ kalite: 'max' }, kanalK(1), ag);
+  const vid = o.q('#vid');
+  await bekleKadar(() => !!vid.src, 'oynatma');
+  assert.equal(vid.src, 'http://srv:80/live/u/p/v3/index.m3u8');
+  assert.match(o.q('.p-fmt').textContent, /HLS 1080p/);
+  assert.equal(ag.istek.length, 1, 'ana liste bir kez alındı');
+  o.bitir();
+});
+
+test('kalite: “Otomatik” ayarında ana liste çözülmez, özgün adres verilir', async () => {
+  const ag = kaliteAgi(ANA_LISTE);
+  const o = kur({ kalite: 'auto' }, kanalK(2), ag);
+  assert.match(o.q('#vid').src, /\/live\/u\/p\/902\.m3u8$/);
+  assert.equal(ag.istek.length, 0);
+  o.bitir();
+});
+
+test('kalite: liste alınamazsa ya da tek sürümlüyse özgün adresle devam edilir', async () => {
+  const hataAg = kaliteAgi('', true);
+  const a = kur({ kalite: 'max' }, kanalK(3), hataAg);
+  await bekleKadar(() => !!a.q('#vid').src, 'oynatma (hata)');
+  assert.match(a.q('#vid').src, /\/live\/u\/p\/903\.m3u8$/);
+  a.bitir();
+  const medya = kaliteAgi('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nseg1.ts\n');
+  const b = kur({ kalite: 'max' }, kanalK(4), medya);
+  await bekleKadar(() => !!b.q('#vid').src, 'oynatma (medya listesi)');
+  assert.match(b.q('#vid').src, /\/live\/u\/p\/904\.m3u8$/);
+  b.bitir();
+});
+
+test('kalite: seçilen sürüm açılmazsa özgün listeyle yeniden denenir (döngüye girmez)', async () => {
+  const ag = kaliteAgi(ANA_LISTE);
+  const o = kur({ kalite: 'max' }, kanalK(5), ag);
+  const vid = o.q('#vid');
+  await bekleKadar(() => /v3\/index/.test(vid.src), 'en yüksek sürüm');
+  vid.setAttribute('src', vid.src);
+  (vid.l.error || []).forEach((f) => f());
+  assert.match(vid.src, /\/live\/u\/p\/905\.m3u8$/, 'özgün ana listeye dönüldü');
+  vid.setAttribute('src', vid.src);
+  (vid.l.error || []).forEach((f) => f());
+  assert.match(o.q('.p-msg').innerHTML, /Oynatılamadı|açılmadı|başlamadı|yeniden dene/i, 'ikinci hata normal hata olarak gösterilir');
+  o.bitir();
+});
+
+test('kalite: kanal hızla değişince eski kanalın çözümü yenisini ezmez', async () => {
+  let birak;
+  const ag = {
+    json: async () => ({ epg_listings: [] }),
+    get: async (url, opt) => {
+      if (/906\.m3u8/.test(url)) await new Promise((r) => (birak = r)); // ilk kanalın listesi geç gelir
+      if (opt && opt.sonUrl) opt.sonUrl(url);
+      return ANA_LISTE;
+    },
+  };
+  const liste = [
+    { id: 'q6', kind: 'live', name: 'Yavaş', num: 6, streamId: 906 },
+    { id: 'q7', kind: 'live', name: 'Hızlı', num: 7, streamId: 907 },
+  ];
+  const o = kur({ kalite: 'max' }, liste, ag);
+  o.tus('chdown'); // ikinci kanala geç
+  const vid = o.q('#vid');
+  await bekleKadar(() => /907|v3/.test(vid.src), 'ikinci kanal');
+  const sonuc = vid.src;
+  birak();
+  await bekle(60);
+  assert.equal(vid.src, sonuc, 'geç gelen eski çözüm kaynağı değiştirmedi');
   o.bitir();
 });

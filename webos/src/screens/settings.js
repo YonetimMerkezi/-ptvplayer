@@ -2,7 +2,7 @@
 import { ctx, open, resetTo, ustCubuk, sifirlaSaglayici } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { createProvider } from '../data.js';
-import { ORAN } from './player.js';
+import { ORAN, ORAN_AYAR } from './player.js';
 import { varlik } from '../luna.js';
 import { SURUM } from '../version.js';
 import { el, esc, px, toast, boyutla } from '../ui.js';
@@ -35,10 +35,11 @@ export function settingsScreen() {
     return [
       { id: 'source', ad: 'Etkin kaynak', deger: () => (src ? src.name : '—'), yardim: 'OK: kaynakları yönet' },
       { id: 'add', ad: 'Kaynak ekle', deger: () => '', yardim: 'Xtream ya da M3U bağlantısı ekler' },
-      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Çok renkli temalar: canlı renkler, renkli kartlar, dolu renk, neon, gün batımı' },
+      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Canlı, çok renkli temalar: canlı renkler, gökkuşağı, okyanus, gün batımı, orman, şeker, aurora' },
       { id: 'keys', ad: 'Kumanda tuşları', deger: () => '', yardim: 'Kırmızı / yeşil / sarı / mavi tuşlara oynatıcıda ve ana sayfada yapılacak eylemi atayın' },
       { id: 'fontScale', ad: 'Yazı boyutu', deger: () => ad(YAZI, ctx.store.setting('fontScale', '1')), yardim: 'Tüm ekranlardaki yazı ve düğme boyutunu büyütür ya da küçültür' },
-      { id: 'aspect', ad: 'Görüntü oranı', deger: () => ad(ORAN, ctx.store.setting('aspect', 'contain')), yardim: 'Videonun ekrana yerleşimi: sığdır, doldur (kenarları kırp) ya da uzat. Oynatıcıda renkli tuşla da değişir' },
+      { id: 'aspectLive', ad: 'Kanallarda görüntü oranı', deger: () => ad(ORAN, ctx.store.setting(ORAN_AYAR.canli[0], ORAN_AYAR.canli[1])), yardim: 'Canlı kanalların ekrana yerleşimi. Varsayılan: Uzat (ekranı tam doldurur); sığdır özgün oranı korur, doldur kenarları kırpar' },
+      { id: 'aspect', ad: 'Film/dizi görüntü oranı', deger: () => ad(ORAN, ctx.store.setting(ORAN_AYAR.vod[0], ORAN_AYAR.vod[1])), yardim: 'Film ve dizilerin ekrana yerleşimi: sığdır, doldur (kenarları kırp) ya da uzat. Oynatıcıda renkli tuşla da değişir' },
       { id: 'arrowZap', ad: 'Oynatıcıda ▲▼ tuşları', deger: () => (ctx.store.setting('arrowZap', false) ? 'Kanal değiştir' : 'Menü'), yardim: 'Menü: ▲ Geri düğmesine, ▼ düğme çubuğuna geçer (kanal için P+ / P− ya da numara tuşları). Kanal değiştir: eski davranış' },
       { id: 'autoNext', ad: 'Sıradaki bölüm', deger: () => (ctx.store.setting('autoNext', true) ? 'Açık' : 'Kapalı'), yardim: 'Bölüm bitince sıradaki bölüm kendiliğinden açılır' },
       { id: 'autoplay', ad: 'Açılışta son kanal', deger: () => (ctx.store.setting('autoplay', false) ? 'Açık' : 'Kapalı'), yardim: 'Uygulama açılınca en son izlenen canlı kanalı doğrudan oynatır' },
@@ -94,7 +95,8 @@ export function settingsScreen() {
       resetTo('home');
       open('settings');
       return;
-    } else if (r.id === 'aspect') ctx.store.setSetting('aspect', sonraki(ORAN, ctx.store.setting('aspect', 'contain'), yon));
+    } else if (r.id === 'aspect') ctx.store.setSetting(ORAN_AYAR.vod[0], sonraki(ORAN, ctx.store.setting(ORAN_AYAR.vod[0], ORAN_AYAR.vod[1]), yon));
+    else if (r.id === 'aspectLive') ctx.store.setSetting(ORAN_AYAR.canli[0], sonraki(ORAN, ctx.store.setting(ORAN_AYAR.canli[0], ORAN_AYAR.canli[1]), yon));
     else if (r.id === 'arrowZap') ctx.store.setSetting('arrowZap', !ctx.store.setting('arrowZap', false));
     else if (r.id === 'autoNext') ctx.store.setSetting('autoNext', !ctx.store.setting('autoNext', true));
     else if (r.id === 'autoplay') ctx.store.setSetting('autoplay', !ctx.store.setting('autoplay', false));
@@ -122,7 +124,7 @@ export function settingsScreen() {
     onKey(a) {
       if (a === 'left' || a === 'right') {
         const r = list.cur;
-        if (r && /^(liveFmt|netMode|fontScale|aspect|arrowZap|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
+        if (r && /^(liveFmt|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
         return true;
       }
       return list.key(a);

@@ -8,6 +8,7 @@ import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
 import * as kayitIs from '../kayit.js';
 import * as arsiv from '../arsiv.js';
+import { hlsMi, kaliteCoz, kaliteVazgec } from '../kalite.js';
 import { videoKimligi, imdbCoz, imdbAdaylari, imdbHatirla, imdbBilgi, imdbAdi, kaliciHafiza, altyaziListesi, altyaziAyristir, aktifMetin } from '../altyazi.js';
 
 const HATA = {
@@ -35,6 +36,10 @@ export const ORAN = [
   ['z110', 'Yakınlaştır %10', 'contain', 'scale(1.1)'],
   ['z125', 'Yakınlaştır %25', 'contain', 'scale(1.25)'],
 ];
+
+// Görüntü oranı ayarı canlı kanallar ve film/dizi için ayrıdır: kanallar varsayılan olarak ekranı tam doldurur (Uzat),
+// film/dizi özgün oranda kalır. [ayar anahtarı, varsayılan]
+export const ORAN_AYAR = { canli: ['aspectLive', 'fill'], vod: ['aspect', 'contain'] };
 
 export function playerScreen({ list, index, fresh }) {
   const kok = el('div', 'screen player');
@@ -89,6 +94,8 @@ export function playerScreen({ list, index, fresh }) {
   let uykuDk = 0;
   let secim = null; // açık seçim paneli: { baslik, satirlar:[{ad,sag,on}], idx, calis(i), yan(d), not, bilgi }
   let kaynakUrl = '';
+  let kaliteNo = 0; // en yüksek kalite çözümlemesi için istek numarası (eski sonuçlar atılır)
+  let cozulenUrl = ''; // seçilen en yüksek sürümün adresi (özgün ana liste yerine oynatılıyorsa)
   let geri = null; // sağlayıcı arşivinden oynatılıyor: { start (ms) } — canlıya dönünce null
   let geriBeklT = 0;
   let geriHedef = null; // ◀▶ ile biriken, henüz uygulanmamış geri kalma (ms)
@@ -101,9 +108,10 @@ export function playerScreen({ list, index, fresh }) {
   const canli = () => it.kind === 'live';
   const fmt = () => ctx.store.setting('liveFmt', 'm3u8');
 
+  const oranAyar = () => (canli() ? ORAN_AYAR.canli : ORAN_AYAR.vod);
   const oranBul = () => {
-    const k = ctx.store.setting('aspect', 'contain');
-    return ORAN.filter((x) => x[0] === k)[0] || ORAN[0];
+    const k = ctx.store.setting(oranAyar()[0], oranAyar()[1]);
+    return ORAN.filter((x) => x[0] === k)[0] || ORAN.filter((x) => x[0] === oranAyar()[1])[0];
   };
   const oranUygula = () => {
     const o = oranBul();
@@ -135,6 +143,11 @@ export function playerScreen({ list, index, fresh }) {
     if (geri) geri.className = 'top-back' + (odak === 'ust' ? ' on' : '');
     barCiz();
     listEl.className = 'p-list' + (odak === 'liste' ? ' on' : '');
+    panelSinifi();
+  }
+  // Sağda panel (ayar paneli ya da kanal listesi) açıkken alt çubuk panelin altına girmez, uyarı iletisi yana çekilir
+  function panelSinifi() {
+    kok.className = 'screen player' + (secim || odak === 'liste' ? ' pn' : '');
   }
   // Odak bölgesini değiştirir
   function odakAyarla(o) {
@@ -331,11 +344,26 @@ export function playerScreen({ list, index, fresh }) {
     }
     K.bilgi('Oynat: ' + it.name + ' [' + (it.kind || '?') + '] ' + hostOf(url));
     if (sid && canli()) ctx.store.touch(sid, it, 0, 0);
+    // En yüksek kalite: HLS ana listesinden en iyi sürüm seçilir (liste kısa sürede gelmezse özgün adresle devam edilir)
+    if (it.kind !== 'local' && hlsMi(url) && ctx.store.setting('kalite', 'max') === 'max' && ctx.net) {
+      const no = ++kaliteNo;
+      kaliteCoz(ctx.net, url).then((vr) => {
+        if (kapali || no !== kaliteNo) return; // bu arada başka kanala geçildi
+        if (vr) {
+          cozulenUrl = vr.url;
+          if (vr.h && fmtEl.textContent) fmtEl.textContent += ' ' + vr.h + 'p';
+          oynat(vr.url);
+        } else oynat(url);
+      });
+      return;
+    }
+    kaliteNo++;
     oynat(url);
   }
 
   // Kaynağı verir ve oynatır; yayın hiç başlamazsa kullanıcıya haber verir.
   function oynat(url) {
+    cozulenUrl = url !== kaynakUrl ? url : '';
     v.src = url;
     try {
       v.play();
@@ -401,6 +429,13 @@ export function playerScreen({ list, index, fresh }) {
   v.addEventListener('error', () => {
     if (kapali || !v.getAttribute('src')) return;
     clearTimeout(beklT);
+    if (cozulenUrl && !geri) {
+      // Seçilen en yüksek sürüm açılmadı: bu adres için seçim bırakılır, özgün listeyle yeniden denenir
+      K.uyar('Seçilen kalite açılmadı, özgün listeyle deneniyor');
+      kaliteVazgec(kaynakUrl);
+      oynat(kaynakUrl);
+      return;
+    }
     if (geri) {
       toast('Arşiv oynatılamadı, canlıya dönülüyor', 4000);
       geriGit(0);
@@ -486,6 +521,7 @@ export function playerScreen({ list, index, fresh }) {
     if (s.not) h += '<div class="pk-n">' + esc(s.not) + '</div>';
     pickEl.innerHTML = h;
     pickEl.className = 'p-pick on';
+    panelSinifi();
   }
   // Panel kendiliğinden kapanır: Geri tuşu bir TV'de ulaşmasa bile ekranda takılı kalmasın
   let secimT = 0;
@@ -508,6 +544,7 @@ export function playerScreen({ list, index, fresh }) {
     const kapan = secim && secim.kapan;
     secim = null;
     pickEl.className = 'p-pick';
+    panelSinifi();
     odakAyarla('alt');
     if (kapan) kapan();
   }
@@ -927,6 +964,7 @@ export function playerScreen({ list, index, fresh }) {
     msg.className = 'p-msg';
     spin.className = 'p-spin on';
     durdurKaynak();
+    kaliteNo++;
     kaynakUrl = url;
     K.bilgi('Arşiv: ' + it.name + ' ' + arsiv.etiket(Date.now() - pl.start) + ' ' + hostOf(url));
     oynat(url);
@@ -1121,11 +1159,11 @@ export function playerScreen({ list, index, fresh }) {
   function ekranAc() {
     const yap = () => ORAN.map((x) => ({ ad: x[1], on: x[0] === oranBul()[0] }));
     secimAc({
-      baslik: 'Ekran boyutu',
+      baslik: canli() ? 'Ekran boyutu · kanallar' : 'Ekran boyutu',
       satirlar: yap(),
       idx: ORAN.map((x) => x[0]).indexOf(oranBul()[0]),
       calis(i) {
-        ctx.store.setSetting('aspect', ORAN[i][0]);
+        ctx.store.setSetting(oranAyar()[0], ORAN[i][0]);
         oranUygula();
         secimKapat();
       },
@@ -1205,9 +1243,9 @@ export function playerScreen({ list, index, fresh }) {
       const f = ctx.store.toggleFav(sid, it);
       toast(f ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı');
     } else if (e === 'aspect') {
-      const i = ORAN.map((x) => x[0]).indexOf(ctx.store.setting('aspect', 'contain'));
+      const i = ORAN.map((x) => x[0]).indexOf(oranBul()[0]);
       const y = ORAN[(i + 1) % ORAN.length];
-      ctx.store.setSetting('aspect', y[0]);
+      ctx.store.setSetting(oranAyar()[0], y[0]);
       oranUygula();
       toast('Görüntü oranı: ' + y[1]);
     } else if (e === 'fmt') {

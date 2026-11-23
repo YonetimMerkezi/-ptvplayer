@@ -154,7 +154,7 @@ function getir(p, cb) {
       return cb(null, yanit);
     }
     var id = 'r' + ++sayac;
-    depo[id] = { metin: metin, t: Date.now() };
+    depo[id] = { metin: metin, t: Date.now(), ilk: parca, okunan: 0 };
     yanit.data = metin.slice(0, parca);
     yanit.id = id;
     yanit.done = false;
@@ -211,7 +211,9 @@ function oku(p) {
   var uz = p.length > 0 ? p.length : 262144;
   var data = kayit.metin.slice(bas, bas + uz);
   var bitti = bas + uz >= kayit.metin.length;
-  if (bitti) delete depo[p.id];
+  // Parçalar paralel ve sırasız istenebilir: kayıt, ilk yanıtın dışında kalan tüm karakterler okunduktan sonra silinir
+  kayit.okunan += data.length;
+  if (kayit.okunan >= kayit.metin.length - kayit.ilk) delete depo[p.id];
   return { returnValue: true, data: data, done: bitti };
 }
 

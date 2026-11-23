@@ -91,3 +91,72 @@ test('gözatma: detaydan Geri ile dönünce liste kaldığı satırda kalır, ka
   for (let i = 0; i < 7; i++) assert.equal(scr.onKey('up'), true, i + 1 + '. ▲ satırda kaldı');
   assert.equal(scr.onKey('up'), false, 'ilk satırdayız');
 });
+
+// Kategori hızı: komşu kategoriler (canlı TV dahil) arka planda önceden yüklenir; bellekte hazır kategori bekletmeden açılır
+function kurHizli(kind) {
+  ctx.stack.length = 0;
+  ctx.root = new F('root');
+  ctx.store = createStore(bellekDepo());
+  const s = ctx.store.addSource({ type: 'xtream', name: 'H', server: 'http://hiz:80', user: 'u', pass: 'p' });
+  const cagri = []; // [kategori, ön plan mı]
+  const hazir = {};
+  ctx._prov = {
+    type: 'xtream',
+    hasEpg: false,
+    categories: async () => Array.from({ length: 12 }, (_, i) => ({ id: 'k' + i, name: 'Kat ' + i })),
+    hazir: (t, id) => !!hazir[id],
+    items: async (t, id, grup) => {
+      cagri.push([id, grup !== null]);
+      await bekle(5);
+      hazir[id] = true;
+      return kanallar;
+    },
+  };
+  ctx._provId = s.id;
+  push({ el: new F('alt'), name: 'alt', onKey: () => false });
+  const scr = browseScreen({ kind });
+  push(scr);
+  return { scr, cagri };
+}
+
+test('kategori hızı: canlı TV için de komşu kategoriler arka planda yüklenir, hepsi bir kez', async () => {
+  const { cagri } = kurHizli('live');
+  await bekle(900);
+  const yuklenen = cagri.map((c) => c[0]);
+  assert.equal(yuklenen[0], 'k0', 'önce seçili kategori ön planda');
+  assert.deepEqual(cagri[0], ['k0', true]);
+  for (const k of ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']) assert.ok(yuklenen.indexOf(k) > 0, k + ' önceden yüklendi');
+  assert.ok(cagri.slice(1).every((c) => c[1] === false), 'önyükleme ön plan isteğini kesmeyen gruptan gider');
+  assert.equal(new Set(yuklenen).size, yuklenen.length, 'aynı kategori iki kez istenmedi');
+});
+
+test('kategori hızı: bellekte hazır kategoriye geçince 160 ms beklenmez', async () => {
+  const { scr, cagri } = kurHizli('live');
+  await bekle(900); // k1.. önceden yüklendi
+  const once = cagri.length;
+  assert.equal(scr.onKey('down'), true); // k1'e odak
+  await bekle(40);
+  const yeni = cagri.slice(once);
+  assert.ok(yeni.some((c) => c[0] === 'k1' && c[1] === true), 'k1 ön planda hemen istendi (kısa bekleme yok)');
+});
+
+test('yazı boyutu: kök boyut ve [data-fs] kademesi birlikte ayarlanır (sabit yükseklikli kutular en büyük boyutta sıkılaşır)', async () => {
+  const { boyutla } = await import('../webos/src/ui.js');
+  const kok = document.documentElement;
+  const sakla = kok.setAttribute;
+  const ozellik = {};
+  kok.setAttribute = (k, v) => (ozellik[k] = v);
+  try {
+    const kademe = (o) => (boyutla(o), ozellik['data-fs']);
+    assert.equal(kademe(0.9), 's');
+    assert.equal(kademe(1), 'n');
+    assert.equal(kademe(1.15), 'l');
+    assert.equal(kademe(1.3), 'xl');
+    assert.equal(kademe(0), 'n', 'geçersiz değer normal sayılır');
+    boyutla(1.3);
+    assert.equal(parseFloat(kok.style.fontSize), (720 / 54) * 1.3);
+  } finally {
+    kok.setAttribute = sakla;
+    boyutla(1);
+  }
+});

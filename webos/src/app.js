@@ -23,6 +23,7 @@ import { sporScreen } from './screens/spor.js';
 import { macScreen } from './screens/mac.js';
 import { tusTestiScreen } from './screens/tustesti.js';
 import { fragmanTestiScreen } from './screens/fragmantesti.js';
+import { adScreen } from './screens/ad.js';
 import { ayarKaynagi, VARSAYILAN_BICIM } from './fragman.js';
 
 const UZUN_BASMA_MS = 650;
@@ -184,6 +185,7 @@ export function kaydet() {
     mac: macScreen,
     tustesti: tusTestiScreen,
     fragmantesti: fragmanTestiScreen,
+    ad: adScreen,
     browse: browseScreen,
     detail: detailScreen,
     vizyon: vizyonDetayScreen,

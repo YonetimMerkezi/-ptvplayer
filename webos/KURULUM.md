@@ -41,6 +41,14 @@ Kumanda: oklar gezinir, **OK** seçer, **Geri** döner. Listelerde **Sarı** tu�
 
 **Canlı yayın kaydı (deneme):** Canlı yayında **Kayıt** düğmesi yayını MPEG-TS olarak yazılabilir bir diske yazar (≈ 7–8 Mbps, saatte yaklaşık 3 GB). Panel disklerin yazılabilirliğini ve boş alanı gösterir. LG'nin kısıtları nedeniyle uygulamanın servisi kök yetkisiz çalışır: harici USB disklere (kök sahibi, izin 755) yazamaz, bu yüzden kayıt dahili belleğe gider. Dahili bellekte çoğu zaman yalnızca birkaç yüz MB boş yer olur; kayıt diskte 150 MB boş yer bırakarak kendiliğinden biter.
 
+**Görünüm:** **Ayarlar › Tema merkezi** yedi canlı, çok renkli tema sunar (tek renkli tema yoktur; eski seçimler en yakın yeni temaya taşınır). **Yazı boyutu** dört kademedir; büyüdükçe kartlar, düğmeler ve kumanda çubuğu taşmayacak biçimde yeniden yerleşir. **Kanallarda görüntü oranı** varsayılan olarak ekranı tam doldurur (Uzat); **Film/dizi görüntü oranı** ayrıca seçilir (Sığdır / Doldur / Uzat). Filmler ve Diziler vitrin yapısındadır: seçili yapımın görseli tüm ekranı yumuşak kenarlı bir arka plan olarak kaplar, ◀ ile kategoriler açılır.
+
+**Düzenleme (Yeşil tuş):** Canlı TV, Filmler ve Diziler'de **Yeşil** tuş “Düzenle” menüsünü açar. *Liste sıralaması*: varsayılan, A→Z, Z→A, eklenme tarihi (yeni/eski) ve puan (kanallarda yalnız ad sıraları); seçim tür başına hatırlanır. *Kategori sırası*: seçili kategoriyi yukarı/aşağı taşı, en üste al, ada göre diz ya da varsayılana sıfırla. *Klasörler*: istediğin adla klasör oluştur; bir kanalın/filmin üzerindeyken Yeşil › **Klasöre ekle / çıkar** ile içine koy. Klasörler kategori listesinin başında görünür, içeriği ağ gerektirmeden açılır; klasörü silmek içindekileri kaynaktan silmez. Düzen kaynak ve tür başına ayrı saklanır.
+
+**Yayın kalitesi:** **Ayarlar › Yayın kalitesi** varsayılan olarak **En yüksek**tir: kaynak birden çok kaliteli bir HLS yayını verirse en yüksek uygun sürüm (H.264, en çok 1080p; HEVC/4K eski modellerde açılmayabildiği için elenir) doğrudan seçilir ve oynatıcıda “HLS 1080p” gibi görünür. Liste alınamazsa ya da seçilen sürüm açılmazsa özgün adresle devam edilir. Ses ayrı listeden gelen yayınlarda seçim yapılmaz. İnternet yavaşsa ve görüntü takılıyorsa **Otomatik**e alın. TS ve film/dizi dosyaları (MP4/MKV) zaten tek kaliteli olduğundan seçilecek bir şey yoktur.
+
+**Fragman:** Kırmızı tuş fragmanı TV'nin YouTube uygulamasında açmayı dener. Yalnız YouTube ana sayfası geliyorsa **Ayarlar › Fragman testi** farklı açma biçimlerini ve son denemenin ayrıntısını gösterir; videoyu açan biçimi seçin.
+
 ## 4. Liste yüklenmiyorsa
 
 Paketlenmiş uygulamalar için tarayıcı kuralları (CORS) bazı sunucuları engelleyebilir. Bu durumda uygulama otomatik olarak **televizyonun içindeki servis** üzerinden bağlanır. Elle seçmek için: **Ayarlar › Ağ yolu › TV servisi**. **Bağlantıyı sına** hangi yolla bağlandığını gösterir.

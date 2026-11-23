@@ -2,7 +2,7 @@
 // Videoyu açan biçim seçilir ve kırmızı tuşla fragman açılırken kullanılır (TV sürümüne göre biçim değişir).
 import { ctx, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
-import { BICIMLER, VARSAYILAN_BICIM, TEST_VIDEO, youtubeAc } from '../fragman.js';
+import { BICIMLER, VARSAYILAN_BICIM, TEST_VIDEO, youtubeAc, sonDeneme } from '../fragman.js';
 import { el, esc, px, toast } from '../ui.js';
 import * as K from '../log.js';
 
@@ -19,17 +19,21 @@ export function fragmanTestiScreen() {
   let mesgul = false;
   const satirlar = () => BICIMLER.map((b) => ({ id: b[0], ad: b[1], tur: 'bicim' })).concat([{ id: 'kapat', ad: 'Açmadan önce YouTube’u kapat', tur: 'kapat' }]);
 
+  // Sağ panel: seçili satırın açıklaması ve (varsa) son denemede TV'nin verdiği ham yanıtlar
+  const panelYaz = (r) => {
+    const t = sonDeneme();
+    panel.innerHTML =
+      '<div class="pn-t">' + esc(r.ad) + '</div><div class="pn-d">' +
+      (r.tur === 'kapat'
+        ? 'Açık: YouTube arka planda açıksa önce kapatılır, böylece video parametresi kaçmaz. OK ile aç/kapat.'
+        : 'OK: YouTube bir deneme videosuyla açılır. Video oynuyorsa bu biçim doğrudur ve seçili kalır. Ana sayfa açılırsa uygulamaya dönüp başka biçimi deneyin.') +
+      '</div>' +
+      (t ? '<div class="pn-d sm">Son deneme (' + esc(t.bicim) + '):<br>' + t.adimlar.map(esc).join('<br>') + (t.hata ? '<br>Hata: ' + esc(t.hata) : '') + '</div>' : '');
+  };
   const list = new VList(kok.querySelector('.l-list'), {
     rowH: Math.round(px() * 3.8),
     render: (r) => '<span class="nm">' + esc(r.ad) + '</span><span class="rk">' + (r.tur === 'kapat' ? (kapat() ? 'Açık' : 'Kapalı') : r.id === secili() ? '● seçili' : '') + '</span>',
-    onFocus: (r) => {
-      panel.innerHTML =
-        '<div class="pn-t">' + esc(r.ad) + '</div><div class="pn-d">' +
-        (r.tur === 'kapat'
-          ? 'Açık: YouTube arka planda açıksa önce kapatılır, böylece video parametresi kaçmaz. OK ile aç/kapat.'
-          : 'OK: YouTube bir deneme videosuyla açılır. Video oynuyorsa bu biçim doğrudur ve seçili kalır. Ana sayfa açılırsa uygulamaya dönüp başka biçimi deneyin.') +
-        '</div>';
-    },
+    onFocus: (r) => panelYaz(r),
     onActivate: async (r) => {
       if (mesgul) return;
       if (r.tur === 'kapat') {
@@ -48,6 +52,7 @@ export function fragmanTestiScreen() {
         toast('YouTube açılamadı: ' + (e && e.message ? e.message : e), 4500);
       } finally {
         mesgul = false;
+        panelYaz(r);
       }
     },
   });

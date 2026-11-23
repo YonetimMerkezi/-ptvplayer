@@ -20,6 +20,7 @@ const iptalHatasi = () => {
 const aktifXhr = {}; // grup → bekleyen XMLHttpRequest (aynı gruptaki yeni istek öncekini keser)
 
 const CHUNK = 262144; // servis yanıtları bu kadar karakterlik parçalarla okunur
+const PARALEL = 4; // aynı anda istenen parça sayısı
 
 const hostOf = (u) => {
   const m = /^[a-z]+:\/\/([^/?#]+)/i.exec(String(u));
@@ -27,7 +28,7 @@ const hostOf = (u) => {
 };
 
 // Doğrudan XHR. status 0 → ağ/CORS hatası (yedeğe geçilebilir).
-export function xhrGet(url, { timeoutMs = 30000, headers, onProgress, grup } = {}) {
+export function xhrGet(url, { timeoutMs = 30000, headers, onProgress, grup, sonUrl } = {}) {
   return new Promise((coz, red) => {
     const x = new XMLHttpRequest();
     if (grup) {
@@ -45,7 +46,10 @@ export function xhrGet(url, { timeoutMs = 30000, headers, onProgress, grup } = {
     };
     x.onload = () => {
       bitir();
-      if (x.status >= 200 && x.status < 300) coz(x.responseText);
+      if (x.status >= 200 && x.status < 300) {
+        if (sonUrl) sonUrl(x.responseURL || url); // yönlendirme sonrası adres (göreli adresleri çözmek için)
+        coz(x.responseText);
+      }
       else red(new AgHatasi('Sunucu ' + x.status + ' döndürdü', x.status));
     };
     x.onerror = () => {
@@ -71,6 +75,34 @@ export async function servisGet(url, { timeoutMs = 30000, headers, onProgress, i
   if (!r.returnValue) throw new AgHatasi(r.errorText || 'Servis hatası', 0);
   if (r.status >= 400) throw new AgHatasi('Sunucu ' + r.status + ' döndürdü', r.status);
   let metin = r.data || '';
+  if (r.done) return metin;
+  const toplam = r.total > 0 ? r.total : 0;
+  // Toplam uzunluk biliniyorsa kalan parçalar aynı anda (en çok PARALEL tane) istenir: sıralı okumada her parça bir gidiş-dönüş bekletiyordu
+  if (toplam > metin.length) {
+    const id = r.id;
+    const bas = metin.length;
+    const adet = Math.ceil((toplam - bas) / CHUNK);
+    const parcalar = new Array(adet);
+    let siradaki = 0;
+    let yuklenen = bas;
+    const isci = async () => {
+      while (siradaki < adet) {
+        const i = siradaki++;
+        if (iptalMi && iptalMi()) throw iptalHatasi();
+        const y = await luna(SERVIS + 'read', { id, offset: bas + i * CHUNK, length: CHUNK }, 30000);
+        if (!y.returnValue) throw new AgHatasi(y.errorText || 'Servis okuma hatası', 0);
+        parcalar[i] = y.data || '';
+        yuklenen += parcalar[i].length;
+        if (onProgress) onProgress(yuklenen);
+      }
+    };
+    const isciler = [];
+    for (let k = 0; k < Math.min(PARALEL, adet); k++) isciler.push(isci());
+    await Promise.all(isciler);
+    metin += parcalar.join('');
+    if (metin.length !== toplam) throw new AgHatasi('Servis yanıtı eksik geldi', 0);
+    return metin;
+  }
   while (!r.done) {
     if (iptalMi && iptalMi()) throw iptalHatasi();
     r = await luna(SERVIS + 'read', { id: r.id, offset: metin.length, length: CHUNK }, 30000);

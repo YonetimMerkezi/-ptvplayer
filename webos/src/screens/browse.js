@@ -6,10 +6,15 @@ import * as K from '../log.js';
 import { createVitrin } from '../vitrin.js';
 import { heroName } from '../../../www/js/hero.js';
 import { fragmanOynat } from '../fragman.js';
+import { createMenu } from '../menu.js';
+import * as D from '../duzen.js';
 
 const BASLIK = { live: 'Canlı TV', guide: 'TV Rehberi', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
 const TUR_AD = { live: 'Canlı', movie: 'Filmler', series: 'Diziler' };
 const SUTUN = 5;
+const ONYUKLE_ILERI = 6; // seçili kategorinin altındaki, arka planda önceden yüklenen kategori sayısı
+const ONYUKLE_GERI = 2; // üstündeki
+const ONYUKLE_ZINCIR = 2; // aynı anda çalışan önyükleme sayısı
 const SUTUN_VITRIN = 8; // kategoriler gizli olduğundan afişler tüm genişliğe dizilir; altta ikinci satırın başı görünür kalır
 
 const logoHtml = (u) => (u ? '<img src="' + esc(u) + '" alt="">' : '');
@@ -24,6 +29,7 @@ export function browseScreen({ kind }) {
   const solVar = kind !== 'recents';
   const vitrinli = kind === 'movie' || kind === 'series';
   kok.innerHTML =
+    (vitrinli ? '<div class="v-zm"></div>' : '') +
     ustCubuk(BASLIK[kind], src ? esc(src.name) : '') +
     '<div class="br">' +
     (solVar ? '<div class="cats' + (vitrinli ? ' gizli' : '') + '"></div>' : '') +
@@ -32,16 +38,29 @@ export function browseScreen({ kind }) {
     '</div>' +
     '<div class="hint" id="hint"></div>';
 
-  const catsEl = kok.querySelector('.cats');
+  let catsEl = kok.querySelector('.cats');
   const baslikEl = kok.querySelector('.top h1');
   const katAnahtar = 'kat:' + kind + ':' + sid; // Filmler/Diziler'de son açılan kategori hatırlanır
+  // Düzen (kategori sırası, liste sıralaması, klasörler): kaynak ve tür başına saklanır; yalnız canlı/film/dizi gözatmasında
+  const duzenli = kind === 'live' || kind === 'movie' || kind === 'series';
+  const duzAnahtar = 'duzen:' + sid + ':' + kind;
+  let duzen = D.duzenOku(duzenli ? ctx.store.setting(duzAnahtar, null) : null);
+  const duzenYaz = (d) => {
+    duzen = d;
+    ctx.store.setSetting(duzAnahtar, d);
+  };
+  const duzenle = (l) => (duzenli ? D.kategorileriDuzenle(l, duzen) : l); // sağlayıcı kategorileri → klasörler + kayıtlı sıra
+  const sirala = (l) => (duzenli ? D.listeSirala(l, duzen) : l);
+  let hamKats = []; // sağlayıcının kategorileri (düzenlenmemiş)
+  let bekleyenYenile = false; // ad girişi ekranından dönünce kategori listesi yenilenir
   const baslikYaz = (kat) => {
-    if (baslikEl) baslikEl.textContent = BASLIK[kind] + (kat ? ' · ' + kat : '');
+    if (baslikEl) baslikEl.textContent = BASLIK[kind] + (kat ? ' · ' + kat : '') + (duzenli && duzen.sira !== 'default' ? ' · ' + D.siraKisa(duzen.sira) : '');
   };
   let contEl = kok.querySelector('.content');
   const infoEl = kok.querySelector('.info');
   const hint = kok.querySelector('#hint');
-  const vitrin = vitrinli ? createVitrin(kok.querySelector('.vit'), { saglayici: provider }) : null;
+  const vitrin = vitrinli ? createVitrin(kok.querySelector('.vit'), { zemin: kok.querySelector('.v-zm'), saglayici: provider }) : null;
+  const menu = createMenu(kok);
   let bolge = solVar && !vitrinli ? 'cats' : 'list'; // Filmler/Diziler'de kategoriler gizli başlar, odak afişlerde
   let cats = null; // VList
   let list = null; // VList
@@ -62,11 +81,11 @@ export function browseScreen({ kind }) {
   const ipucu = () => {
     const o = canliTur ? 'OK: izle' : kind === 'recents' ? 'OK: devam et' : 'OK: aç';
     const f = kind === 'recents' ? 'Sarı: geçmişi temizle' : 'Sarı / OK basılı tut: favori';
-    hint.innerHTML = (vitrinli ? '▲▼◀▶ gezin · ◀ soldaki sütunda: kategoriler · ' : '▲▼◀▶ gezin · ') + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + ' · Geri';
+    hint.innerHTML = (vitrinli ? '▲▼◀▶ gezin · ◀ soldaki sütunda: kategoriler · ' : '▲▼◀▶ gezin · ') + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + (duzenli ? ' · Yeşil: düzenle' : '') + ' · Geri';
   };
 
   // --- sol: kategoriler
-  const katRender = (c) => '<span class="cn">' + esc(c.name) + '</span>' + (c.count != null ? '<span class="cc">' + c.count + '</span>' : '');
+  const katRender = (c) => '<span class="cn">' + (c.klasor ? '<i class="kf">' + ikon.klasor + '</i>' : '') + esc(c.name) + '</span>' + (c.count != null ? '<span class="cc">' + c.count + '</span>' : '');
   const katKur = (liste) => {
     cats = new VList(catsEl, {
       rowH: Math.round(px() * 3.1),
@@ -75,7 +94,10 @@ export function browseScreen({ kind }) {
       onFocus: (c) => {
         if (sessiz) return;
         clearTimeout(katT);
-        katT = setTimeout(() => katYukle(c), 160);
+        // Bellekte hazır kategori beklemeden açılır; ağdan gelecek olan, hızlı gezinirken istek yağmasın diye kısa süre bekletilir
+        const hazir = c.klasor || (provider() && provider().hazir && provider().hazir(gercekTur, c.id));
+        if (hazir) katYukle(c);
+        else katT = setTimeout(() => katYukle(c), 160);
       },
       onActivate: () => odak('list'),
     });
@@ -168,14 +190,20 @@ export function browseScreen({ kind }) {
   async function katYukle(c, koru) {
     if (!c) return;
     secilenKat = c;
-    if (vitrinli) {
-      baslikYaz(c.name);
-      if (ctx.store.setting(katAnahtar, '') !== String(c.id)) ctx.store.setSetting(katAnahtar, String(c.id));
-    }
+    baslikYaz(vitrinli ? c.name : '');
+    if (vitrinli && ctx.store.setting(katAnahtar, '') !== String(c.id)) ctx.store.setSetting(katAnahtar, String(c.id));
     const n = ++yukSayac;
     const izgara = (kind === 'favs' ? c.id : gercekTur) !== 'live';
     if (vitrin) vitrin.temizle();
     if (!list || (list.o.cols > 1) !== izgara) listeKur(izgara);
+    list.retry = null;
+    if (c.klasor) {
+      // Kullanıcı klasörü: içindekiler kayıtlı özetlerden gelir (ağ gerekmez), liste sıralaması uygulanır
+      const k = sirala(D.klasorOgeleri(duzen, c.fid));
+      list.setItems(k, !!koru);
+      if (!k.length) list.setMessage('Bu klasör boş — bir öğenin üzerinde Yeşil tuşa basıp “Klasöre ekle / çıkar” seçin');
+      return;
+    }
     if (kind === 'favs') {
       list.setItems(ctx.store.favs(sid).filter((x) => x.kind === c.id), !!koru);
       return;
@@ -193,11 +221,11 @@ export function browseScreen({ kind }) {
           .then((e) => {
             if (!e || !e.length || taze || n !== yukSayac) return;
             eskiGoruldu = true;
-            list.setItems(e);
+            list.setItems(sirala(e));
           })
           .catch(() => {});
       }
-      const l = await tazeSoz;
+      const l = sirala(await tazeSoz);
       taze = true;
       if (n !== yukSayac) return;
       if (!(eskiGoruldu && ayniListe(list.items, l))) list.setItems(l, eskiGoruldu); // kayıtlı liste güncelle aynıysa yeniden çizilmez; farklıysa odak yeri korunur
@@ -215,24 +243,28 @@ export function browseScreen({ kind }) {
   // kategoriler arasında gezerken içerik hazır gelir. Aynı anda tek istek; kategori değişince zincir durur.
   let onNo = 0;
   function komsuOnYukle(c) {
-    if (kind === 'favs' || kind === 'recents' || kind === 'live' || kind === 'guide' || !cats || !provider() || provider().type !== 'xtream') return;
+    if (kind === 'favs' || kind === 'recents' || kind === 'guide' || !cats || !provider() || provider().type !== 'xtream' || c.klasor) return;
     const no = ++onNo;
     const i = cats.items.findIndex((x) => x.id === c.id);
     if (i < 0) return;
-    const sira = [cats.items[i + 1], cats.items[i + 2], cats.items[i - 1], cats.items[i + 3], cats.items[i + 4], cats.items[i - 2]].filter(Boolean);
+    // Önce aşağıdakiler (en çok gezilen yön), sonra yukarıdakiler; iki zincir birlikte çalışır, her biri bitince sıradakini alır
+    const sira = [];
+    for (let k = 1; k <= ONYUKLE_ILERI; k++) if (cats.items[i + k]) sira.push(cats.items[i + k]);
+    for (let k = 1; k <= ONYUKLE_GERI; k++) if (cats.items[i - k]) sira.splice(k * 2 - 1, 0, cats.items[i - k]);
     const adim = () => {
       if (kapali || no !== onNo || !sira.length) return;
       const x = sira.shift();
+      if (x.klasor || (provider().hazir && provider().hazir(gercekTur, x.id))) return adim();
       provider()
         .items(gercekTur, x.id, null)
         .then(
-          () => setTimeout(adim, 150),
+          () => setTimeout(adim, 100),
           () => {
             /* önyükleme başarısız: kategori seçilince normal yoldan yüklenir */
           },
         );
     };
-    setTimeout(adim, 150);
+    for (let z = 0; z < ONYUKLE_ZINCIR; z++) setTimeout(adim, 150 + z * 60);
   }
 
   // --- canlı TV: şimdi / sonra
@@ -344,6 +376,180 @@ export function browseScreen({ kind }) {
 
   const ayniKategoriler = (a, b) => a.length === b.length && a.every((x, i) => String(x.id) === String(b[i].id));
 
+  // --- düzenleme (Yeşil tuş): kategori sırası, liste sıralaması, klasörler
+  // Kategori sütununu kayıtlı düzene göre yeniden kurar; odak aynı kategoride kalır, içerik yeniden yüklenmez (odaktaki kategori yoksa yenisi yüklenir)
+  function katYenile(odakId) {
+    if (!cats) return;
+    const liste = duzenle(hamKats);
+    const hedef = String(odakId != null ? odakId : cats.cur ? cats.cur.id : '');
+    const yeni = el('div', 'cats' + (vitrinli && bolge !== 'cats' ? ' gizli' : ''));
+    catsEl.parentNode.replaceChild(yeni, catsEl); // VList dinleyicileri kapsayıcıda durur: eskisini bırakıp yenisini kur
+    catsEl = yeni;
+    const i = liste.findIndex((x) => String(x.id) === hedef);
+    sessiz = true;
+    try {
+      katKur(liste);
+      if (i > 0) cats.setIndex(i);
+    } finally {
+      sessiz = false;
+    }
+    if (i >= 0) secilenKat = cats.items[i];
+    else if (cats.cur) katYukle(cats.cur);
+  }
+  // Klasör satırlarının sayıları (öğe eklenip çıkarılınca) — sütunu yeniden kurmadan
+  const sayilariTazele = () => {
+    if (!cats) return;
+    for (let i = 0; i < cats.items.length; i++) {
+      const r = cats.items[i];
+      if (!r.klasor) continue;
+      const f = D.klasorBul(duzen, r.fid);
+      if (f) {
+        r.count = f.items.length;
+        cats.redraw(i);
+      }
+    }
+  };
+  const kategoriIslem = (fn, ...arg) => {
+    if (!cats || !secilenKat) return;
+    duzenYaz(fn(duzen, cats.items, secilenKat, ...arg));
+    katYenile(secilenKat.id);
+  };
+  const siraUygula = (k) => {
+    duzenYaz(D.siraDegistir(duzen, k));
+    baslikYaz(vitrinli && secilenKat ? secilenKat.name : '');
+    if (secilenKat) katYukle(secilenKat);
+    toast('Sıralama: ' + D.siraAdi(k));
+  };
+  const ogeKlasorde = (fid, it) => {
+    const r = D.klasorDegistir(duzen, fid, it);
+    duzenYaz(r.d);
+    const f = D.klasorBul(duzen, fid);
+    toast(r.acik ? '“' + (f ? f.name : '') + '” klasörüne eklendi' : 'Klasörden çıkarıldı');
+    sayilariTazele();
+    if (secilenKat && secilenKat.klasor && secilenKat.fid === fid) katYukle(secilenKat, true);
+  };
+  // Ad girişi ekranı açılır (menü kapanır); kayıt yapılınca bu ekrana dönülünce sütun yenilenir
+  const yeniKlasor = (it) => {
+    open('ad', {
+      baslik: 'Yeni klasör',
+      ipucu: 'Klasör adını yazın; OK ile kaydedin.',
+      tamam(ad) {
+        const r = D.klasorEkle(duzen, ad);
+        if (!r.klasor) return;
+        duzenYaz(r.d);
+        if (it) {
+          const x = D.klasorDegistir(duzen, r.klasor.id, it);
+          duzenYaz(x.d);
+        }
+        bekleyenYenile = true;
+        toast(it ? '“' + r.klasor.name + '” oluşturuldu, öğe eklendi' : '“' + r.klasor.name + '” oluşturuldu');
+      },
+    });
+  };
+  const klasorAdlandir = () => {
+    const c = secilenKat;
+    if (!c || !c.klasor) return;
+    open('ad', {
+      baslik: 'Klasör adı',
+      deger: c.name,
+      ipucu: 'Yeni adı yazın; OK ile kaydedin.',
+      tamam(ad) {
+        duzenYaz(D.klasorAdlandir(duzen, c.fid, ad));
+        bekleyenYenile = true;
+      },
+    });
+  };
+  const klasorSil = () => {
+    const c = secilenKat;
+    if (!c || !c.klasor) return;
+    duzenYaz(D.klasorSil(duzen, c.fid));
+    toast('Klasör silindi');
+    katYenile(null);
+  };
+
+  const siraMenusu = () => {
+    const izinli = kind === 'live' ? ['default', 'az', 'za'] : D.SORTS.map((x) => x[0]);
+    const liste = D.SORTS.filter((x) => izinli.indexOf(x[0]) >= 0);
+    return {
+      baslik: 'Liste sıralaması',
+      idx: Math.max(0, liste.findIndex((x) => x[0] === duzen.sira)),
+      satirlar: () =>
+        liste.map((x) => ({
+          ad: x[1],
+          sag: duzen.sira === x[0] ? '✓' : '',
+          calis: () => siraUygula(x[0]),
+        })),
+    };
+  };
+  const kategoriMenusu = () => {
+    if (vitrinli) odak('cats'); // Filmler/Diziler'de kategori sütunu gizli: taşırken görünsün
+    const tasi = (nereye) => () => {
+      kategoriIslem(D.kategoriTasi, nereye);
+      return 'kal'; // art arda taşınabilsin
+    };
+    return {
+      baslik: 'Kategori sırası',
+      not: secilenKat ? 'Seçili: ' + secilenKat.name : '',
+      satirlar: [
+        { ad: 'Yukarı taşı', calis: tasi('up') },
+        { ad: 'Aşağı taşı', calis: tasi('down') },
+        { ad: 'En üste al', calis: tasi('top') },
+        { ad: 'Ada göre diz (A → Z)', calis: () => kategoriIslem(D.kategoriAzSirala, false) },
+        { ad: 'Ada göre diz (Z → A)', calis: () => kategoriIslem(D.kategoriAzSirala, true) },
+        { ad: 'Sırayı sıfırla', calis: () => kategoriIslem(D.kategoriSifirla) },
+      ],
+    };
+  };
+  const klasorMenusu = () => {
+    const l = [{ ad: 'Yeni klasör…', calis: () => yeniKlasor(null) }];
+    if (secilenKat && secilenKat.klasor) {
+      l.push({ ad: 'Yeniden adlandır…', calis: () => klasorAdlandir() });
+      l.push({
+        ad: 'Bu klasörü sil',
+        calis: () => ({
+          baslik: '“' + secilenKat.name + '” silinsin mi?',
+          not: 'İçindeki öğeler yalnız klasörden kalkar, kaynağınızdan silinmez.',
+          satirlar: [
+            { ad: 'Evet, sil', calis: () => klasorSil() },
+            { ad: 'Vazgeç', calis: () => undefined },
+          ],
+        }),
+      });
+    }
+    return { baslik: 'Klasörler', satirlar: l };
+  };
+  const klasoreEkleMenusu = (it) => ({
+    baslik: 'Klasöre ekle / çıkar',
+    not: 'OK: ekle ya da çıkar',
+    satirlar: () =>
+      duzen.klasorler
+        .map((f) => ({
+          ad: f.name,
+          sag: D.klasordeMi(duzen, f.id, it.id) ? '✓ içinde' : '',
+          calis: () => {
+            ogeKlasorde(f.id, it);
+            return 'kal';
+          },
+        }))
+        .concat([{ ad: '＋ Yeni klasör…', calis: () => yeniKlasor(it) }]),
+  });
+  const duzenMenusu = () => {
+    // Listedeyken seçili öğe işlemleri başta, kategori sütunundayken kategori işlemleri
+    const it = bolge === 'list' && list && list.items.length ? list.cur : null;
+    const ogeUygun = it && (it.kind === 'live' || it.kind === 'movie' || it.kind === 'series');
+    menu.ac({
+      baslik: 'Düzenle',
+      satirlar: () => {
+        const l = [];
+        if (ogeUygun) l.push({ ad: 'Klasöre ekle / çıkar', calis: () => klasoreEkleMenusu(it) });
+        l.push({ ad: 'Liste sıralaması', sag: D.siraAdi(duzen.sira), calis: () => siraMenusu() });
+        l.push({ ad: 'Kategori sırası', calis: () => kategoriMenusu() });
+        l.push({ ad: 'Klasörler', sag: duzen.klasorler.length ? String(duzen.klasorler.length) : '', calis: () => klasorMenusu() });
+        return l;
+      },
+    });
+  };
+
   async function ilkYukle() {
     yuklendi = true;
     if (!src) return;
@@ -367,12 +573,14 @@ export function browseScreen({ kind }) {
     if (vitrinli) {
       // Son açılan kategorinin içeriği, kategori listesi gelmeden istenir (kategori listesiyle paralel)
       const sonKat = String(ctx.store.setting(katAnahtar, ''));
-      if (sonKat) provider().items(gercekTur, sonKat).catch(() => {});
+      if (sonKat && sonKat.indexOf('f:') !== 0) provider().items(gercekTur, sonKat).catch(() => {});
     }
     try {
       // Önceki oturumdan kayıtlı kategori listesi varsa hemen gösterilir (güncel liste gelene dek kategori beklenmez)
       let gosterildi = false;
-      const kur = (liste) => {
+      const kur = (ham) => {
+        hamKats = ham;
+        const liste = duzenle(ham);
         (vitrinli ? contEl : catsEl).innerHTML = '';
         katKur(liste);
         if (vitrinli) {
@@ -393,22 +601,13 @@ export function browseScreen({ kind }) {
           })
           .catch(() => {});
       }
-      const liste = await tazeSoz;
+      const ham = await tazeSoz;
       taze = true;
-      if (!gosterildi) kur(liste);
-      else if (!ayniKategoriler(cats.items, liste)) {
+      if (!gosterildi) kur(ham);
+      else {
+        hamKats = ham;
         // Kategori listesi değişmiş: odaktaki kategoriyi koruyarak yeniden kur (içerik yeniden yüklenmesin)
-        const eskiId = cats.cur ? String(cats.cur.id) : '';
-        catsEl.innerHTML = '';
-        catsEl.className = 'cats' + (vitrinli && bolge !== 'cats' ? ' gizli' : '');
-        sessiz = true;
-        try {
-          katKur(liste);
-          const i = liste.findIndex((x) => String(x.id) === eskiId);
-          if (i > 0) cats.setIndex(i);
-        } finally {
-          sessiz = false;
-        }
+        if (!ayniKategoriler(cats.items, duzenle(ham))) katYenile(cats.cur ? cats.cur.id : null);
       }
     } catch (e) {
       K.hata(e);
@@ -425,6 +624,10 @@ export function browseScreen({ kind }) {
       ipucu();
       if (!yuklendi) ilkYukle();
       else {
+        if (bekleyenYenile) {
+          bekleyenYenile = false; // ad girişinden dönüldü: klasör eklendi/adı değişti
+          katYenile(secilenKat ? secilenKat.id : null);
+        }
         // geri dönüşte (display:none sonrası) boyutları yeniden hesapla; favori/son izlenen değişmiş olabilir
         if (kind === 'recents' && list) list.setItems(ctx.store.recents(sid), true);
         else if (kind === 'favs' && secilenKat) katYukle(secilenKat, true);
@@ -441,8 +644,16 @@ export function browseScreen({ kind }) {
         rehberOnYukle();
       }
     },
-    onLong: favDegis,
+    onLong() {
+      if (!menu.acik) favDegis();
+    },
     onKey(a) {
+      if (menu.acik) return menu.key(a);
+      if (a === 'green' && duzenli) {
+        if (cats && hamKats.length) duzenMenusu();
+        else toast('Kategoriler yüklenince düzenleyebilirsiniz');
+        return true;
+      }
       if (a === 'yellow') {
         if (kind === 'recents') {
           ctx.store.clearRecents(sid);
@@ -490,6 +701,7 @@ export function browseScreen({ kind }) {
       return false;
     },
     onHide() {
+      menu.kapat();
       clearTimeout(katT);
       clearTimeout(epgT);
       epgKuyruk = [];
