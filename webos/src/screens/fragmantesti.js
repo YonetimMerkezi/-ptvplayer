@@ -1,8 +1,11 @@
-// Fragman testi: YouTube uygulamasını farklı contentTarget biçimleriyle bir deneme videosuyla açar.
-// Videoyu açan biçim seçilir ve kırmızı tuşla fragman açılırken kullanılır (TV sürümüne göre biçim değişir).
+// Fragman testi: fragmanın hangi yolla açılacağını seçer ve bir deneme videosuyla dener.
+//  Yol 1: bu uygulamanın penceresi YouTube TV sayfasına gider (video oynarsa en iyisi; çıkınca uygulama yeniden açılır).
+//  Yol 2: TV'nin YouTube uygulaması farklı contentTarget biçimleriyle açılır (bazı TV'ler parametreyi yok sayıp ana sayfayı gösterir).
+//  Yol 3: ekranda QR kod çıkar, telefonla okutulur.
+// Çalışan yol seçili kalır ve kırmızı tuşla fragman açılırken kullanılır.
 import { ctx, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
-import { BICIMLER, VARSAYILAN_BICIM, TEST_VIDEO, youtubeAc, sonDeneme } from '../fragman.js';
+import { YOLLAR, VARSAYILAN_YOL, BICIMLER, VARSAYILAN_BICIM, TEST_VIDEO, youtubeAc, yolAc, sonDeneme } from '../fragman.js';
 import { el, esc, px, toast } from '../ui.js';
 import * as K from '../log.js';
 
@@ -12,30 +15,47 @@ export function fragmanTestiScreen() {
   kok.innerHTML =
     ustCubuk('Fragman testi', src ? esc(src.name) : '') +
     '<div class="l-body"><div class="l-list"></div><div class="l-panel"></div></div>' +
-    '<div class="hint">▲▼ gezin · OK: bu biçimle YouTube’u dene ve seç · Geri</div>';
+    '<div class="hint">▲▼ gezin · OK: dene ve seç · Geri</div>';
   const panel = kok.querySelector('.l-panel');
-  const secili = () => ctx.store.setting('ytBicim2', VARSAYILAN_BICIM);
+  const seciliYol = () => ctx.store.setting('ytYol', VARSAYILAN_YOL);
+  const seciliBicim = () => ctx.store.setting('ytBicim2', VARSAYILAN_BICIM);
   const kapat = () => ctx.store.setting('ytKapat', true);
   const ikinci = () => ctx.store.setting('ytIkinci', false);
   let mesgul = false;
-  const satirlar = () => BICIMLER.map((b) => ({ id: b[0], ad: b[1], tur: 'bicim' })).concat([{ id: 'kapat', ad: 'Açmadan önce YouTube’u kapat', tur: 'kapat' }, { id: 'ikinci', ad: 'Açma çağrısını bir kez daha yinele', tur: 'ikinci' }]);
+  const satirlar = () =>
+    YOLLAR.map((y) => ({ id: y[0], ad: y[1], tur: 'yol' }))
+      .concat(BICIMLER.map((b) => ({ id: b[0], ad: 'YouTube uygulaması · ' + b[1], tur: 'bicim' })))
+      .concat([
+        { id: 'kapat', ad: 'Açmadan önce YouTube’u kapat', tur: 'kapat' },
+        { id: 'ikinci', ad: 'Açma çağrısını bir kez daha yinele', tur: 'ikinci' },
+      ]);
+  const durum = (r) => {
+    if (r.tur === 'kapat') return kapat() ? 'Açık' : 'Kapalı';
+    if (r.tur === 'ikinci') return ikinci() ? 'Açık' : 'Kapalı';
+    if (r.tur === 'yol') return r.id === seciliYol() ? '● seçili' : '';
+    return seciliYol() === 'uygulama' && r.id === seciliBicim() ? '● seçili' : '';
+  };
+  const aciklama = (r) => {
+    if (r.tur === 'kapat') return 'Açık: YouTube arka planda açıksa önce kapatılır, böylece video parametresi kaçmaz. OK ile aç/kapat.';
+    if (r.tur === 'ikinci') return 'Kapalı (önerilen): açma çağrısı bir kez yapılır. Açık: YouTube kapatılamadıysa çağrı 2,4 sn sonra yinelenir. OK ile aç/kapat.';
+    if (r.tur === 'yol') {
+      if (r.id === 'sayfa') return 'OK: bu uygulama YouTube TV sayfasına gider ve deneme videosunu oynatır. Video oynuyorsa bu yol doğrudur. Çıkmak için Geri’ye basın; uygulama kapanırsa yeniden açın. Sayfa açılmazsa ya da hata verirse başka yolu deneyin.';
+      if (r.id === 'qr') return 'OK: ekranda QR kod çıkar. Telefonun kamerasıyla okutun; fragman telefonda açılır. Her TV’de çalışır.';
+      return 'Aşağıdaki biçimlerden birini seçin: TV’nin YouTube uygulaması o biçimle açılır.';
+    }
+    return 'OK: TV’nin YouTube uygulaması bu biçimle bir deneme videosuyla açılır. Video oynuyorsa biçim doğrudur ve seçili kalır. Ana sayfa ya da “Kim izliyor?” ekranı açılırsa OK ile profili seçin; yine video yoksa uygulamaya dönüp başka biçimi deneyin.';
+  };
 
-  // Sağ panel: seçili satırın açıklaması ve (varsa) son denemede TV'nin verdiği ham yanıtlar
+  // Sağ panel: seçili satırın açıklaması ve (varsa) son YouTube uygulaması denemesinde TV'nin verdiği ham yanıtlar
   const panelYaz = (r) => {
     const t = sonDeneme();
     panel.innerHTML =
-      '<div class="pn-t">' + esc(r.ad) + '</div><div class="pn-d">' +
-      (r.tur === 'kapat'
-        ? 'Açık: YouTube arka planda açıksa önce kapatılır, böylece video parametresi kaçmaz. OK ile aç/kapat.'
-        : r.tur === 'ikinci'
-          ? 'Kapalı (önerilen): açma çağrısı bir kez yapılır. Açık: YouTube kapatılamadıysa çağrı 2,4 sn sonra yinelenir. Bazı TV’lerde yineleme videoyu ana sayfaya düşürür, bazılarında işe yarar; ikisini de deneyin. OK ile aç/kapat.'
-          : 'OK: YouTube bir deneme videosuyla açılır. Video oynuyorsa bu biçim doğrudur ve seçili kalır. Ana sayfa ya da “Kim izliyor?” ekranı açılırsa OK ile profili seçin; yine video yoksa uygulamaya dönüp başka biçimi deneyin.') +
-      '</div>' +
+      '<div class="pn-t">' + esc(r.ad) + '</div><div class="pn-d">' + esc(aciklama(r)) + '</div>' +
       (t ? '<div class="pn-d sm">Son deneme (' + esc(t.bicim) + '):<br>' + t.adimlar.map(esc).join('<br>') + (t.hata ? '<br>Hata: ' + esc(t.hata) : '') + '</div>' : '');
   };
   const list = new VList(kok.querySelector('.l-list'), {
     rowH: Math.round(px() * 3.8),
-    render: (r) => '<span class="nm">' + esc(r.ad) + '</span><span class="rk">' + (r.tur === 'kapat' ? (kapat() ? 'Açık' : 'Kapalı') : r.tur === 'ikinci' ? (ikinci() ? 'Açık' : 'Kapalı') : r.id === secili() ? '● seçili' : '') + '</span>',
+    render: (r) => '<span class="nm">' + esc(r.ad) + '</span><span class="rk">' + durum(r) + '</span>',
     onFocus: (r) => panelYaz(r),
     onActivate: async (r) => {
       if (mesgul) return;
@@ -47,13 +67,21 @@ export function fragmanTestiScreen() {
       }
       mesgul = true;
       try {
-        ctx.store.setSetting('ytBicim2', r.id);
-        list.setItems(satirlar(), true);
-        toast('YouTube açılıyor: ' + r.ad, 3500);
-        await youtubeAc(TEST_VIDEO, undefined, { bicim: r.id, kapat: kapat(), ikinci: ikinci() });
+        if (r.tur === 'yol') {
+          ctx.store.setSetting('ytYol', r.id);
+          list.setItems(satirlar(), true);
+          if (r.id !== 'uygulama') await yolAc(r.id, TEST_VIDEO, { ad: 'Deneme videosu', bildir: (t) => toast(t, 3500) });
+          else toast('Aşağıdan bir YouTube uygulaması biçimi seçin', 3500);
+        } else {
+          ctx.store.setSetting('ytYol', 'uygulama');
+          ctx.store.setSetting('ytBicim2', r.id);
+          list.setItems(satirlar(), true);
+          toast('YouTube açılıyor: ' + r.ad, 3500);
+          await youtubeAc(TEST_VIDEO, undefined, { bicim: r.id, kapat: kapat(), ikinci: ikinci() });
+        }
       } catch (e) {
         K.hata(e);
-        toast('YouTube açılamadı: ' + (e && e.message ? e.message : e), 4500);
+        toast('Açılamadı: ' + (e && e.message ? e.message : e), 4500);
       } finally {
         mesgul = false;
         panelYaz(r);
@@ -62,7 +90,8 @@ export function fragmanTestiScreen() {
   });
   list.setActive(true);
   list.setItems(satirlar());
-  const k = BICIMLER.map((b) => b[0]).indexOf(secili());
+  const kodlar = satirlar().map((x) => (x.tur === 'bicim' || x.tur === 'yol' ? x.tur + ':' + x.id : ''));
+  const k = kodlar.indexOf(seciliYol() === 'uygulama' ? 'bicim:' + seciliBicim() : 'yol:' + seciliYol());
   if (k > 0) list.setIndex(k);
 
   return {

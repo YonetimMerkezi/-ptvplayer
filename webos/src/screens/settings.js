@@ -47,7 +47,7 @@ export function settingsScreen() {
       { id: 'netMode', ad: 'Ağ yolu', deger: () => ad(AG, ctx.store.setting('netMode', 'auto')), yardim: 'Otomatik: önce doğrudan, olmazsa TV servisi. Liste yüklenmiyorsa “TV servisi”ni deneyin' },
       { id: 'test', ad: 'Bağlantıyı sına', deger: () => '', yardim: 'Etkin kaynağa bağlanıp sonucu ve kullanılan yolu gösterir' },
       { id: 'recents', ad: 'Geçmişi temizle', deger: () => '', yardim: 'Son izlenenleri ve kaldığı yer bilgisini siler' },
-      { id: 'ytest', ad: 'Fragman testi', deger: () => '', yardim: 'Kırmızı tuşla fragman açılınca YouTube ana sayfası geliyorsa burada farklı açma biçimlerini deneyin; videoyu açan biçimi seçin' },
+      { id: 'ytest', ad: 'Fragman testi', deger: () => '', yardim: 'Kırmızı tuşla fragman açılmıyorsa burada yolu seçin: YouTube TV sayfası, TV’nin YouTube uygulaması ya da telefonda izlemek için QR kod' },
       { id: 'keytest', ad: 'Tuş testi', deger: () => '', yardim: 'Kumandada basılan tuşların TV’den hangi kodla geldiğini gösterir. Geri tuşu çalışmazsa buradan bakın' },
       { id: 'log', ad: 'Hata kaydı', deger: () => String(K.kayitlar().length) + ' satır', yardim: 'Sorun bildirirken bu ekranı gösterin' },
       { id: 'about', ad: 'Hakkında', deger: () => 'Sürüm ' + SURUM, yardim: '' },

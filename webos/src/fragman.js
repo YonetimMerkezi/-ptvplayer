@@ -1,11 +1,27 @@
-// Fragman: sağlayıcının verdiği YouTube kimliği, yoksa YouTube araması. 2016 LG'de (Chromium 38) gömülü YouTube oynatılamaz;
-// bu yüzden kimlik bulununca TV'nin kendi YouTube uygulaması doğrudan o videoyla açılır.
+// Fragman: sağlayıcının verdiği YouTube kimliği, yoksa YouTube araması. 2016 LG'de (Chromium 38) gömülü (iframe) YouTube oynatılamaz;
+// bu yüzden kimlik bulununca üç yoldan biri izlenir (Ayarlar › Fragman testi ile seçilir):
+//  sayfa     : uygulamanın kendi penceresi YouTube TV sayfasına (youtube.com/tv?v=…) yönlenir (youtube-webos'un yaptığı gibi); TV'nin YouTube uygulamasının
+//              başlatma parametresini okumasına bağlı değildir. Videodan çıkınca uygulama kapanır, yeniden açılır.
+//  uygulama  : TV'nin YouTube uygulaması contentTarget parametresiyle açılır (bazı TV sürümleri parametreyi yok sayıp ana sayfayı gösterir).
+//  qr        : ekranda bir QR kod gösterilir; telefonla okutulunca fragman telefonda açılır (her TV'de çalışır).
 import { trailerIds, trailerTitle } from '../../www/js/cinemeta.js';
 import { findTrailerOnYoutube } from '../../www/js/yt-search.js';
 import { luna } from './luna.js';
 import * as K from './log.js';
 
 export const YOUTUBE_UYGULAMA = 'youtube.leanback.v4';
+export const YOLLAR = [
+  ['sayfa', 'Bu uygulamada aç: YouTube TV sayfası'],
+  ['uygulama', 'TV’nin YouTube uygulaması'],
+  ['qr', 'Telefonda izle: QR kod'],
+];
+export const VARSAYILAN_YOL = 'sayfa';
+const yolGecerli = (y) => (YOLLAR.filter((x) => x[0] === y).length ? y : VARSAYILAN_YOL);
+// YouTube TV sayfası: ?v= parametresi videoyu açar; #/ TV arayüzünün kök yoludur (youtube-webos aynı adresi kullanır)
+export const ytTvAdresi = (id) => 'https://www.youtube.com/tv?v=' + encodeURIComponent(id) + '#/';
+// Telefona okutulan kısa bağlantı
+export const kisaAdres = (id) => 'https://youtu.be/' + encodeURIComponent(id);
+
 // YouTube uygulamasının videoyu kabul ettiği parametre biçimi TV sürümüne göre değişir. En yaygın bildirilen çalışan biçim contentTarget: "v=KİMLİK";
 // yalın kimlik uygulamayı açar ama video başlamaz (ana sayfa kalır), tam adres bazı sürümlerde küçük pencere ya da çift yükleme yapar.
 // Biçim Ayarlar › Fragman testi ile seçilir ve saklanır.
@@ -50,6 +66,18 @@ const ozet = (r) => {
 let ayarOku = () => ({});
 export const ayarKaynagi = (f) => {
   ayarOku = f;
+};
+
+// Ekran katmanı bağlanır: QR gösterici (qrKaynagi) ve sayfaya yönlendirme (gitKaynagi; varsayılan: pencereyi o adrese götürür)
+let qrGoster = () => {};
+export const qrKaynagi = (f) => {
+  qrGoster = f;
+};
+let git = (adres) => {
+  window.location.href = adres;
+};
+export const gitKaynagi = (f) => {
+  git = f;
 };
 
 // Aynı yapım için aramayı tekrarlamamak için (oturum boyunca); bulunamayan ya da hata alan silinir
@@ -141,8 +169,33 @@ export async function youtubeAc(id, luna_ = luna, secenek = {}) {
   return true;
 }
 
+// Verilen yolla bir YouTube videosu açar (fragman akışı ve Fragman testi ortak kullanır). Dönen: başlatıldı mı (hata iletisi bildir ile verilir).
+export async function yolAc(yol, id, { ad = '', luna: l, bildir = () => {} } = {}) {
+  const secilen = yolGecerli(yol);
+  K.bilgi('Fragman yolu: ' + secilen + ' (' + id + ')');
+  if (secilen === 'qr') {
+    qrGoster({ url: kisaAdres(id), ad });
+    return true;
+  }
+  if (secilen === 'sayfa') {
+    bildir('Fragman açılıyor… Çıkınca uygulamayı yeniden açın');
+    await bekle(500); // iletinin görünmesi için
+    git(ytTvAdresi(id));
+    return true;
+  }
+  try {
+    await youtubeAc(id, l);
+  } catch (e) {
+    bildir('YouTube açılamadı: ' + (e && e.message ? e.message : e));
+    return false;
+  }
+  bildir('Fragman TV’nin YouTube uygulamasında açılıyor…');
+  return true;
+}
+
 // Ekrandan çağrılan tek adım: bul → aç. bildir(metin): kullanıcıya kısa ileti. Dönen: açıldı mı.
-export async function fragmanOynat(it, info, { net, bildir = () => {}, ara, luna: l } = {}) {
+// yol: bu çağrı için yolu zorla ('qr' gibi); yoksa ayarlardaki yol.
+export async function fragmanOynat(it, info, { net, bildir = () => {}, ara, luna: l, yol } = {}) {
   if (calisiyor) return false;
   calisiyor = true;
   try {
@@ -158,14 +211,7 @@ export async function fragmanOynat(it, info, { net, bildir = () => {}, ara, luna
       bildir('Bu yapım için fragman bulunamadı');
       return false;
     }
-    try {
-      await youtubeAc(ids[0], l);
-    } catch (e) {
-      bildir('YouTube açılamadı: ' + (e && e.message ? e.message : e));
-      return false;
-    }
-    bildir('Fragman TV’nin YouTube uygulamasında açılıyor…');
-    return true;
+    return await yolAc(yol || ayarOku().yol, ids[0], { ad: (it && it.name) || '', luna: l, bildir });
   } finally {
     calisiyor = false;
   }

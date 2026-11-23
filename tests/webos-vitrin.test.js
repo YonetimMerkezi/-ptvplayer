@@ -14,7 +14,7 @@ globalThis.window = globalThis.window || {};
 globalThis.document = globalThis.document || { createElement: () => new F() };
 
 const { vitrinMetni, createArkaPlan, createVitrin } = await import('../webos/src/vitrin.js');
-const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, contentTarget, baslatParams, sonDeneme, ayarKaynagi } = await import('../webos/src/fragman.js');
+const { aramaPlani, fragmanKimlikleri, youtubeAc, fragmanOynat, yolAc, izleParam, YOUTUBE_UYGULAMA, BICIMLER, VARSAYILAN_BICIM, YOLLAR, VARSAYILAN_YOL, ytTvAdresi, kisaAdres, qrKaynagi, gitKaynagi, contentTarget, baslatParams, sonDeneme, ayarKaynagi } = await import('../webos/src/fragman.js');
 
 // Elle işletilen zamanlayıcı
 function saat() {
@@ -195,6 +195,7 @@ test('fragman: seçilebilir contentTarget biçimleri; biçim ve kapatma ayarı u
 });
 
 test('fragman: ekran akışı — iletiler, bulunamayan fragman, açılamayan YouTube, eş zamanlı ikinci istek yok sayılır', async () => {
+  ayarKaynagi(() => ({ yol: 'uygulama' }));
   const iletiler = [];
   const bildir = (t) => iletiler.push(t);
   const ok = await fragmanOynat({ id: 'a', name: 'A', trailer: 'dQw4w9WgXcQ' }, null, { bildir, luna: async () => ({ returnValue: true }) });
@@ -213,6 +214,54 @@ test('fragman: ekran akışı — iletiler, bulunamayan fragman, açılamayan Yo
   assert.equal(await fragmanOynat({ id: 'd', name: 'D', trailer: 'dQw4w9WgXcQ' }, null, {}), false, 'ilk istek sürerken ikincisi başlamaz');
   birakma();
   assert.equal(await birinci, true);
+  ayarKaynagi(() => ({}));
+});
+
+test('fragman yolları: varsayılan YouTube TV sayfası; sayfa yolu pencereyi video adresine götürür, QR yolu kısa bağlantıyla QR ekranını açar', async () => {
+  assert.deepEqual(YOLLAR.map((y) => y[0]), ['sayfa', 'uygulama', 'qr']);
+  assert.equal(VARSAYILAN_YOL, 'sayfa');
+  assert.equal(ytTvAdresi('dQw4w9WgXcQ'), 'https://www.youtube.com/tv?v=dQw4w9WgXcQ#/');
+  assert.equal(kisaAdres('dQw4w9WgXcQ'), 'https://youtu.be/dQw4w9WgXcQ');
+  const gidilen = [];
+  const qrler = [];
+  gitKaynagi((u) => gidilen.push(u));
+  qrKaynagi((p) => qrler.push(p));
+  const lunaCagri = [];
+  const luna = async (uri) => (lunaCagri.push(uri), { returnValue: true });
+  const iletiler = [];
+  const bildir = (t) => iletiler.push(t);
+  const film = { id: 'y1', name: 'TR | Bir Film', trailer: 'dQw4w9WgXcQ' };
+  // Ayar yok → varsayılan sayfa yolu; YouTube uygulaması hiç çağrılmaz
+  ayarKaynagi(() => ({}));
+  assert.equal(await fragmanOynat(film, null, { bildir, luna }), true);
+  assert.deepEqual(gidilen, ['https://www.youtube.com/tv?v=dQw4w9WgXcQ#/']);
+  assert.deepEqual(lunaCagri, []);
+  assert.ok(iletiler.some((t) => /yeniden açın/.test(t)), 'çıkınca uygulamanın kapanacağı söylenir');
+  // Ayardan QR yolu: sayfa açılmaz, QR ekranı kısa bağlantıyla ve yapım adıyla açılır
+  gidilen.length = 0;
+  ayarKaynagi(() => ({ yol: 'qr' }));
+  assert.equal(await fragmanOynat(film, null, { bildir, luna }), true);
+  assert.deepEqual(gidilen, []);
+  assert.deepEqual(qrler, [{ url: 'https://youtu.be/dQw4w9WgXcQ', ad: 'TR | Bir Film' }]);
+  // Çağrıdaki yol ayarı ezer (ayrıntı ekranındaki "telefonda izle" düğmesi)
+  ayarKaynagi(() => ({ yol: 'sayfa' }));
+  qrler.length = 0;
+  assert.equal(await fragmanOynat(film, null, { bildir, luna, yol: 'qr' }), true);
+  assert.equal(qrler.length, 1);
+  assert.deepEqual(gidilen, []);
+  // Uygulama yolu: eski akış (YouTube uygulaması luna ile açılır)
+  ayarKaynagi(() => ({ yol: 'uygulama', kapat: false }));
+  assert.equal(await fragmanOynat(film, null, { bildir, luna }), true);
+  assert.ok(lunaCagri.some((u) => /launch$/.test(u)));
+  // Geçersiz yol varsayılana döner; yolAc doğrudan da kullanılabilir (Fragman testi)
+  gidilen.length = 0;
+  assert.equal(await yolAc('yok', 'ABCDEFGHIJK', { bildir }), true);
+  assert.deepEqual(gidilen, ['https://www.youtube.com/tv?v=ABCDEFGHIJK#/']);
+  ayarKaynagi(() => ({}));
+  gitKaynagi((u) => {
+    globalThis.window.location.href = u;
+  });
+  qrKaynagi(() => {});
 });
 
 test('fragman: contentId biçimleri doğru parametre adıyla gider; TV yanıtları tanı olarak saklanır', async () => {

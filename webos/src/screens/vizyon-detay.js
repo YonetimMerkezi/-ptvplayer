@@ -13,7 +13,7 @@ export function vizyonDetayScreen(p) {
     ustCubuk('Vizyondakiler', '') +
     '<div class="vd-p"><div class="pr-ph">' + esc(String(film.title || '').charAt(0)) + '</div>' + (duzgun ? '<img class="vd-im" alt="">' : '') + '</div>' +
     '<div class="vd-i"><h2>' + esc(film.title) + '</h2><div class="vd-m">' + (tarih ? 'Vizyon: ' + esc(tarih) : '') + '</div><div class="vd-b"></div>' +
-    '<div class="vd-n">Fragman, TV’nin YouTube uygulamasında açılır. “Listemde ara” kaynağınızdaki filmlerde bu adı arar.</div></div>' +
+    '<div class="vd-n">Fragman Ayarlar › Fragman testinde seçtiğiniz yolla açılır; “telefonda izle” QR kod gösterir. “Listemde ara” kaynağınızdaki filmlerde bu adı arar.</div></div>' +
     '<div class="hint">▲▼ gezin · OK seç · Kırmızı: fragman · Geri</div>';
   const im = kok.querySelector('.vd-im');
   if (im) {
@@ -24,6 +24,7 @@ export function vizyonDetayScreen(p) {
   }
   const dugmeler = [
     { id: 'trailer', ad: '▶ Fragman' },
+    { id: 'trailerqr', ad: 'Fragman: telefonda izle (QR)' },
     { id: 'ara', ad: 'Listemde ara' },
   ];
   const kap = kok.querySelector('.vd-b');
@@ -35,6 +36,7 @@ export function vizyonDetayScreen(p) {
   };
   const calistir = (id) => {
     if (id === 'trailer') fragmanOynat({ name: film.title, year: film.year }, null, { net: ctx.net, bildir: (t) => toast(t, 3500) });
+    else if (id === 'trailerqr') fragmanOynat({ name: film.title, year: film.year }, null, { net: ctx.net, bildir: (t) => toast(t, 3500), yol: 'qr' });
     else open('search', { q: film.title });
   };
   kok.addEventListener('click', (e) => {

@@ -275,6 +275,16 @@ input.on2, .on2 input { border-color: #2dd4bf; background: #0f1a2a; }
 .vd-m { min-height: 2.6rem; margin-bottom: 2.4rem; font-size: 2rem; color: #9aa6bf; }
 .vd-n { margin-top: 2rem; max-width: 60rem; font-size: 1.5rem; line-height: 1.5; color: #7f8aa3; }
 
+/* Fragman QR ekranı */
+.qr-w { position: absolute; top: 9rem; left: 6rem; right: 6rem; bottom: 5rem; display: flex; align-items: center; }
+.qr-k { flex: 0 0 auto; width: 46rem; height: 46rem; padding: 0; background: #fff; border-radius: 1.2rem; overflow: hidden; }
+.qr-k svg { display: block; width: 100%; height: 100%; }
+.qr-h { padding: 3rem; color: #04141a; font-size: 1.8rem; }
+.qr-t { margin-left: 5rem; max-width: 56rem; }
+.qr-t h2 { margin: 0 0 2rem; font-size: 3.6rem; line-height: 1.2; }
+.qr-t p { margin: 0 0 1.6rem; font-size: 2rem; line-height: 1.5; color: #9aa6bf; }
+.qr-t .qr-u { font-size: 1.7rem; color: #2dd4bf; word-break: break-all; }
+
 /* Tuş testi */
 .tt-b { position: absolute; top: 8.4rem; left: 4rem; right: 4rem; bottom: 4rem; overflow: hidden; }
 .tt-n { font-size: 1.9rem; line-height: 1.5; color: #9aa6bf; margin-bottom: 2rem; }

@@ -24,7 +24,8 @@ import { macScreen } from './screens/mac.js';
 import { tusTestiScreen } from './screens/tustesti.js';
 import { fragmanTestiScreen } from './screens/fragmantesti.js';
 import { adScreen } from './screens/ad.js';
-import { ayarKaynagi, VARSAYILAN_BICIM } from './fragman.js';
+import { ayarKaynagi, qrKaynagi, VARSAYILAN_BICIM, VARSAYILAN_YOL } from './fragman.js';
+import { fragmanQrScreen } from './screens/fragmanqr.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -185,6 +186,7 @@ export function kaydet() {
     mac: macScreen,
     tustesti: tusTestiScreen,
     fragmantesti: fragmanTestiScreen,
+    fragmanqr: fragmanQrScreen,
     ad: adScreen,
     browse: browseScreen,
     detail: detailScreen,
@@ -207,7 +209,8 @@ export function start() {
   kaydet();
   boyutla(yaziOlcegi());
   window.addEventListener('resize', () => boyutla(yaziOlcegi()));
-  ayarKaynagi(() => ({ bicim: ctx.store.setting('ytBicim2', VARSAYILAN_BICIM), kapat: ctx.store.setting('ytKapat', true), ikinci: ctx.store.setting('ytIkinci', false) }));
+  ayarKaynagi(() => ({ bicim: ctx.store.setting('ytBicim2', VARSAYILAN_BICIM), kapat: ctx.store.setting('ytKapat', true), ikinci: ctx.store.setting('ytIkinci', false), yol: ctx.store.setting('ytYol', VARSAYILAN_YOL) }));
+  qrKaynagi((p) => open('fragmanqr', p));
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
   temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);

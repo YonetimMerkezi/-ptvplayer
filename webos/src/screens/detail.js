@@ -71,6 +71,7 @@ export function detailScreen({ item }) {
     if (devam) l.push({ id: 'resume', ad: 'Devam et (' + sure(kayit.pos) + ')' });
     l.push({ id: 'play', ad: devam ? 'Baştan oynat' : 'Oynat' });
     l.push({ id: 'trailer', ad: '▶ Fragman' });
+    l.push({ id: 'trailerqr', ad: 'Fragman: telefonda izle (QR)' });
     l.push({ id: 'fav', ad: ctx.store.isFav(sid, item.id) ? 'Favorilerden çıkar' : 'Favorilere ekle' });
     return l;
   };
@@ -89,6 +90,8 @@ export function detailScreen({ item }) {
       btnCiz();
     } else if (b.id === 'trailer') {
       fragman();
+    } else if (b.id === 'trailerqr') {
+      fragmanOynat(item, info, { net: ctx.net, bildir: (t) => toast(t, 3500), yol: 'qr' });
     } else {
       open('player', { list: [item], index: 0, fresh: b.id === 'play' });
     }
