@@ -2,6 +2,7 @@
 import { ctx, open, pop, top, cikis, geri, geriOdakla, provider } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
+import { varlik } from './luna.js';
 import { actionOfEvent } from './keys.js';
 import { saatleriYaz, toast, enYakin, boyutla } from './ui.js';
 import { temaUygula, VARSAYILAN_TEMA } from './tema.js';
@@ -29,6 +30,8 @@ import { donusHazirla, donusUygula, bekciyiDurdur } from './donus.js';
 import { fragmanQrScreen } from './screens/fragmanqr.js';
 import { telefonKumandaScreen } from './screens/telefonkumanda.js';
 import { telefonuBaslat } from './telefon.js';
+import { guncelleScreen } from './screens/guncelle.js';
+import { otomatikDenetle, guncellemeSonrasi } from './guncelle.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -191,6 +194,7 @@ export function kaydet() {
     fragmantesti: fragmanTestiScreen,
     fragmanqr: fragmanQrScreen,
     telefonkumanda: telefonKumandaScreen,
+    guncelle: guncelleScreen,
     ad: adScreen,
     browse: browseScreen,
     detail: detailScreen,
@@ -240,6 +244,10 @@ export function start() {
   saatleriYaz();
   const b = document.getElementById('boot');
   if (b && b.parentNode) b.parentNode.removeChild(b);
+  guncellemeSonrasi({ store: ctx.store, bildir: (t) => setTimeout(() => toast(t, 4000), 800) });
+  setTimeout(() => {
+    if (varlik()) otomatikDenetle({ net: ctx.net, store: ctx.store, bildir: (t) => toast(t, 5000) }).catch((e) => K.hata(e)); // arka planda, en çok 12 saatte bir
+  }, 25000);
   setTimeout(telefonuBaslat, 1500); // telefon kumandası açık bırakıldıysa sunucu ve yoklama başlar
   setTimeout(isit, 3000); // ana sayfa çizildikten sonra Filmler/Diziler'in açılacağı kategori arka planda önbelleğe alınır
 }

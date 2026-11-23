@@ -5,6 +5,7 @@ import { createProvider } from '../data.js';
 import { ORAN, ORAN_AYAR } from './player.js';
 import { varlik } from '../luna.js';
 import { SURUM } from '../version.js';
+import { bekleyenSurum } from '../guncelle.js';
 import { el, esc, px, toast, boyutla } from '../ui.js';
 import { temaBul, VARSAYILAN_TEMA } from '../tema.js';
 import * as K from '../log.js';
@@ -47,6 +48,7 @@ export function settingsScreen() {
       { id: 'netMode', ad: 'Ağ yolu', deger: () => ad(AG, ctx.store.setting('netMode', 'auto')), yardim: 'Otomatik: önce doğrudan, olmazsa TV servisi. Liste yüklenmiyorsa “TV servisi”ni deneyin' },
       { id: 'test', ad: 'Bağlantıyı sına', deger: () => '', yardim: 'Etkin kaynağa bağlanıp sonucu ve kullanılan yolu gösterir' },
       { id: 'recents', ad: 'Geçmişi temizle', deger: () => '', yardim: 'Son izlenenleri ve kaldığı yer bilgisini siler' },
+      { id: 'guncelle', ad: 'Güncelleme', deger: () => (bekleyenSurum(ctx.store) ? 'Yeni sürüm var' : 'Sürüm ' + SURUM), yardim: 'Yeni sürüm olup olmadığını denetler; TV izin veriyorsa yeni paketi indirip kurdurmayı dener' },
       { id: 'telefon', ad: 'Telefon kumandası', deger: () => (ctx.store.setting('telefonKumanda', false) ? 'Açık' : 'Kapalı'), yardim: 'Telefonu kumanda yapar: tuşlar, arama yazısı ve “TV’de oynat” (yayın ya da YouTube bağlantısı). QR kodu telefonla okutun' },
       { id: 'ytest', ad: 'Fragman testi', deger: () => '', yardim: 'Kırmızı tuşla fragman açılmıyorsa burada yolu seçin: YouTube TV sayfası, TV’nin YouTube uygulaması ya da telefonda izlemek için QR kod' },
       { id: 'keytest', ad: 'Tuş testi', deger: () => '', yardim: 'Kumandada basılan tuşların TV’den hangi kodla geldiğini gösterir. Geri tuşu çalışmazsa buradan bakın' },
@@ -109,6 +111,7 @@ export function settingsScreen() {
       if (src) ctx.store.clearRecents(src.id);
       toast('Geçmiş temizlendi');
     } else if (r.id === 'log') open('log');
+    else if (r.id === 'guncelle') open('guncelle');
     else if (r.id === 'telefon') open('telefonkumanda');
     else if (r.id === 'ytest') open('fragmantesti');
     else if (r.id === 'keytest') open('tustesti');

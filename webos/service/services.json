@@ -93,6 +93,14 @@
         {
           "name": "kumandaDurdur",
           "description": "Telefon kumandası sunucusunu durdurur"
+        },
+        {
+          "name": "guncelleBaslat",
+          "description": "Yayındaki IPK'yı indirip doğrulayarak TV kurulum servisine verir (deneme)"
+        },
+        {
+          "name": "guncelleDurum",
+          "description": "Güncelleme indirme/kurulum durumunu ve TV'nin ham yanıtlarını verir"
         }
       ]
     }

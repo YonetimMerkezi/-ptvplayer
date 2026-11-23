@@ -24,6 +24,10 @@
 //   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
 //   kumandaDurdur {}                        → {returnValue}
 //
+// Güncelleme (GitHub sürümündeki IPK'yı indirir, doğrular, TV kurulum servisine verir; adres serviste sabittir):
+//   guncelleBaslat {sha256}                 → {returnValue, durum}   (hemen döner; arka planda sürer)
+//   guncelleDurum  {}                       → {returnValue, durum: yok|indiriyor|kuruluyor|tamam|hata|belirsiz, bayt, toplam, mesaj, tani[]}
+//
 // Fragman dönüşü: fragman sayfası uygulamanın kendi penceresinde açılır; YouTube Geri ile pencereyi kapatınca uygulama da kapanır.
 // Bekçi uygulamanın kapandığını görünce onu yeniden açar (launch parametresi: {donus: 1, tani}).
 //   donusKur   {uyg, params, sureMs}        → {returnValue}      (uygulama çalışıyorken çağrılır; kapanırsa yeniden açılır)
@@ -253,7 +257,7 @@ var DONUS_EN_COK_MS = 3 * 3600 * 1000;
 var DONUS_DOSYA = pathm.join(os.tmpdir(), 'iptv-donus.json');
 var donus = null; // etkin bekçi
 var donusSon = null; // son bekçinin özeti (bitince de kalır)
-var donusCagri = null; // servis katmanı: (uri, params, cb(yanit|null)) — yoksa bekçi kurulamaz
+var lunaCagri = null; // servis katmanı: (uri, params, cb(yanit|null)) — dönüş bekçisi ve güncelleme kurulumu kullanır; yoksa kurulamaz
 var DONUS_YOLLARI = [
   ['running', 'luna://com.webos.applicationManager/running'],
   ['running', 'luna://com.webos.service.applicationmanager/running'],
@@ -315,7 +319,7 @@ function donusSorgu(uri, cb) {
     }
   }, 3000);
   try {
-    donusCagri(uri, {}, function (r) {
+    lunaCagri(uri, {}, function (r) {
       if (bitti) return;
       bitti = true;
       clearTimeout(t);
@@ -381,7 +385,7 @@ function donusAc(d, deneme) {
     }, 1500);
   };
   try {
-    donusCagri('luna://com.webos.applicationManager/launch', { id: d.uyg, params: d.params }, function (r) {
+    lunaCagri('luna://com.webos.applicationManager/launch', { id: d.uyg, params: d.params }, function (r) {
       if (bitti) return;
       bitti = true;
       clearTimeout(t);
@@ -428,7 +432,7 @@ function donusKur(p) {
   p = p || {};
   var uyg = String(p.uyg || '');
   if (!/^[A-Za-z0-9._-]{3,80}$/.test(uyg)) return { returnValue: false, errorText: 'Geçersiz uygulama kimliği' };
-  if (!donusCagri) return { returnValue: false, errorText: 'Servis köprüsü yok' };
+  if (!lunaCagri) return { returnValue: false, errorText: 'Servis köprüsü yok' };
   if (donus) donusBitir(donus, 'yenisiyle değişti');
   var ms = Number(p.sureMs) || 3600000;
   if (ms < DONUS_EN_AZ_MS) ms = DONUS_EN_AZ_MS;
@@ -446,6 +450,209 @@ function donusKur(p) {
   donusSor(d);
   if (kapaninca) kapaninca();
   return { returnValue: true, durum: d.durum };
+}
+
+
+// ---- Güncelleme: IPK GitHub sürümünden indirilir, doğrulanır ve TV'nin kurulum servisine verilir ----
+// Adres sabittir (uygulamadan alınmaz): başka bir kaynaktan paket kurdurulamaz. Dosya IPK (ar arşivi) değilse ya da
+// yayının özeti (sha256) verilmişse tutmuyorsa kurulmaz. TV kurulum servisinin buna izin verip vermediği TV'ye bağlıdır;
+// sonuç ve TV'nin ham yanıtları tanı olarak saklanır (uygulama yeniden açıldığında da okunabilir).
+var GUNCELLE_ADRES = 'https://github.com/YonetimMerkezi/-ptvplayer/releases/download/webos/iptv-player-webos.ipk';
+var GUNCELLE_UYGULAMA = 'com.koruk.iptv.webos';
+var GUNCELLE_EN_COK_BAYT = 40 * 1024 * 1024;
+var GUNCELLE_YONLENDIRME = 5;
+var GUNCELLE_KURULUM_MS = 120000;
+var GUNCELLE_SORU_MS = 60000;
+var GUNCELLE_DOSYA = pathm.join(os.tmpdir(), 'iptv-guncelle.json');
+var GUNCELLE_KLASORLER = ['/media/internal/downloads', '/media/developer/temp'];
+var guncelle = null;
+var guncelleAyar = {
+  adres: GUNCELLE_ADRES,
+  modul: https,
+  protokol: 'https:',
+  klasorler: GUNCELLE_KLASORLER,
+  kurulumMs: GUNCELLE_KURULUM_MS,
+  izin: function (konak) {
+    return /(^|\.)github\.com$/.test(konak) || /\.githubusercontent\.com$/.test(konak);
+  }
+};
+
+function guncelleAktif() {
+  return !!guncelle && (guncelle.durum === 'indiriyor' || guncelle.durum === 'dogruluyor' || guncelle.durum === 'kuruluyor');
+}
+
+function guncelleOzet(g) {
+  return { returnValue: true, durum: g.durum, bayt: g.bayt, toplam: g.toplam, mesaj: g.mesaj, tani: g.tani.slice(0, 30) };
+}
+
+function guncelleNot(g, metin) {
+  g.tani.push(metin);
+  if (g.tani.length > 30) g.tani.splice(1, g.tani.length - 30);
+}
+
+function guncelleDegis(g, durum, mesaj) {
+  g.durum = durum;
+  g.mesaj = mesaj || '';
+  guncelleNot(g, durum + (mesaj ? ': ' + mesaj : ''));
+  try {
+    fs.writeFileSync(GUNCELLE_DOSYA, JSON.stringify(guncelleOzet(g)));
+  } catch (e) {
+    /* /tmp yazılamıyorsa yalnız bellekte kalır */
+  }
+  if (!guncelleAktif() && kapaninca) kapaninca();
+}
+
+function guncelleDurum() {
+  if (guncelle) return guncelleOzet(guncelle);
+  try {
+    var o = JSON.parse(fs.readFileSync(GUNCELLE_DOSYA, 'utf8'));
+    if (o && o.durum) return o;
+  } catch (e) {
+    /* kayıt yok */
+  }
+  return { returnValue: true, durum: 'yok', bayt: 0, toplam: 0, mesaj: '', tani: [] };
+}
+
+function guncelleKlasor() {
+  var l = guncelleAyar.klasorler.concat([os.tmpdir()]);
+  for (var i = 0; i < l.length; i++) {
+    try {
+      fs.accessSync(l[i], fs.W_OK);
+      return l[i];
+    } catch (e) {
+      /* yazılamıyor: sıradaki */
+    }
+  }
+  return os.tmpdir();
+}
+
+// Adresi indirir (yalnız izinli konaklar, yönlendirmeler izlenir); g.bayt/g.toplam ilerler. cb(hata, sha256)
+function guncelleIndir(g, adres, derinlik, cb) {
+  var bitti = false;
+  var son = function (e, v) {
+    if (bitti) return;
+    bitti = true;
+    cb(e, v);
+  };
+  var u = urlm.parse(adres);
+  if (u.protocol !== guncelleAyar.protokol || !guncelleAyar.izin(u.hostname)) return son(new Error('İzin verilmeyen adres: ' + u.hostname));
+  var req = guncelleAyar.modul.get(
+    { hostname: u.hostname, port: u.port, path: u.path, headers: { 'User-Agent': UA, Accept: 'application/octet-stream' } },
+    function (res) {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        if (derinlik >= GUNCELLE_YONLENDIRME) return son(new Error('Çok fazla yönlendirme'));
+        bitti = true;
+        return guncelleIndir(g, urlm.resolve(adres, res.headers.location), derinlik + 1, cb);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return son(new Error('Sunucu ' + res.statusCode + ' yanıtı verdi'));
+      }
+      var toplam = parseInt(res.headers['content-length'], 10) || 0;
+      if (toplam > GUNCELLE_EN_COK_BAYT) {
+        res.resume();
+        return son(new Error('Dosya beklenenden büyük'));
+      }
+      g.toplam = toplam;
+      g.bayt = 0;
+      var ozet = crypto.createHash('sha256');
+      var yaz = fs.createWriteStream(g.dosya);
+      var hata = null;
+      yaz.on('error', function (e) {
+        hata = hata || e;
+        res.resume();
+      });
+      yaz.on('finish', function () {
+        son(hata, hata ? null : ozet.digest('hex'));
+      });
+      res.on('data', function (c) {
+        g.bayt += c.length;
+        if (g.bayt > GUNCELLE_EN_COK_BAYT) {
+          hata = hata || new Error('Dosya beklenenden büyük');
+          req.abort();
+          return yaz.end();
+        }
+        ozet.update(c);
+        yaz.write(c);
+      });
+      res.on('end', function () {
+        yaz.end();
+      });
+      res.on('error', function (e) {
+        hata = hata || e;
+        yaz.end();
+      });
+    }
+  );
+  req.setTimeout(GUNCELLE_SORU_MS, function () {
+    req.abort();
+    son(new Error('İndirme zaman aşımına uğradı'));
+  });
+  req.on('error', function (e) {
+    son(e);
+  });
+}
+
+// IPK, ar arşividir: dosya "!<arch>\n" ile başlar (HTML hata sayfası kurulmasın)
+function guncelleIpkMi(dosya) {
+  try {
+    var fd = fs.openSync(dosya, 'r');
+    var b = Buffer.alloc ? Buffer.alloc(8) : new Buffer(8);
+    fs.readSync(fd, b, 0, 8, 0);
+    fs.closeSync(fd);
+    return b.toString('binary') === '!<arch>\n';
+  } catch (e) {
+    return false;
+  }
+}
+
+function guncelleKur(g) {
+  if (!lunaCagri) return guncelleDegis(g, 'hata', 'Servis köprüsü yok');
+  guncelleDegis(g, 'kuruluyor', 'Kurulum servisine verildi');
+  var bitti = false;
+  var zaman = setTimeout(function () {
+    if (bitti) return;
+    bitti = true;
+    guncelleDegis(g, 'belirsiz', 'Kurulum yanıtı gelmedi; uygulamayı yeniden açıp sürümü kontrol edin');
+  }, guncelleAyar.kurulumMs);
+  lunaCagri('luna://com.webos.appInstallService/dev/install', { id: GUNCELLE_UYGULAMA, ipkUrl: g.dosya, subscribe: true }, function (r) {
+    if (bitti) return;
+    guncelleNot(g, 'kurulum yanıtı: ' + JSON.stringify(r).slice(0, 220));
+    if (!r || r.returnValue === false) {
+      bitti = true;
+      clearTimeout(zaman);
+      return guncelleDegis(g, 'hata', r && (r.errorText || r.errorCode) ? String(r.errorText || r.errorCode) : 'Kurulum servisi yanıt vermedi');
+    }
+    if (r.statusValue === 17) {
+      bitti = true;
+      clearTimeout(zaman);
+      try {
+        fs.unlinkSync(g.dosya);
+      } catch (e) {
+        /* silinemezse kalır */
+      }
+      guncelleDegis(g, 'tamam', 'Kuruldu; uygulamayı yeniden açın');
+    }
+  });
+}
+
+// p: {sha256: beklenen özet (isteğe bağlı)}. Hemen döner; ilerleme guncelleDurum ile okunur.
+function guncelleBaslat(p) {
+  if (guncelleAktif()) return guncelleOzet(guncelle);
+  var beklenen = p && /^[0-9a-f]{64}$/i.test(String(p.sha256 || '')) ? String(p.sha256).toLowerCase() : '';
+  var g = { durum: 'indiriyor', bayt: 0, toplam: 0, mesaj: '', tani: ['başladı'], dosya: pathm.join(guncelleKlasor(), 'iptv-player-webos.ipk') };
+  guncelle = g;
+  guncelleDegis(g, 'indiriyor', 'İndiriliyor');
+  guncelleIndir(g, guncelleAyar.adres, 0, function (e, ozet) {
+    if (e) return guncelleDegis(g, 'hata', 'İndirilemedi: ' + String((e && e.message) || e));
+    guncelleNot(g, 'indirildi: ' + g.bayt + ' bayt');
+    if (!guncelleIpkMi(g.dosya)) return guncelleDegis(g, 'hata', 'İndirilen dosya bir IPK paketi değil');
+    if (beklenen && beklenen !== ozet) return guncelleDegis(g, 'hata', 'Dosya özeti yayındakiyle tutmuyor; kurulmadı');
+    guncelleNot(g, beklenen ? 'özet doğrulandı' : 'özet doğrulanamadı (yayında özet yok)');
+    guncelleKur(g);
+  });
+  return guncelleOzet(g);
 }
 
 var SAYFA =
@@ -1568,11 +1775,23 @@ module.exports = {
   },
   _kumandaKontrol: kumandaKontrol,
   _kumandaSayfa: KUMANDA_SAYFA,
+  guncelleBaslat: guncelleBaslat,
+  guncelleDurum: guncelleDurum,
+  _guncelleAyarla: function (a) {
+    for (var k in a) if (Object.prototype.hasOwnProperty.call(a, k)) guncelleAyar[k] = a[k];
+  },
+  _guncelleDosya: function (y) {
+    GUNCELLE_DOSYA = y;
+  },
+  _guncelleSifirla: function () {
+    guncelle = null;
+  },
+  _guncelleAdres: GUNCELLE_ADRES,
   donusKur: donusKur,
   donusDurum: donusDurum,
   donusIptal: donusIptal,
-  _donusCagri: function (f) {
-    donusCagri = f;
+  _lunaCagri: function (f) {
+    lunaCagri = f;
   },
   _donus: function () {
     return donus;
@@ -1619,7 +1838,7 @@ if (Service) {
   var etkinlik = null;
   var canliTut = function () {
     try {
-      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar() && !donus && !kumanda;
+      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar() && !donus && !kumanda && !guncelleAktif();
       if (!bos && !etkinlik && servis.activityManager) {
         servis.activityManager.create('iptv-canli', function (a) {
           etkinlik = a;
@@ -1694,7 +1913,7 @@ if (Service) {
       canliTut();
     });
   });
-  donusCagri = function (uri, par, cb) {
+  lunaCagri = function (uri, par, cb) {
     servis.call(uri, par || {}, function (m) {
       cb(m && m.payload ? m.payload : null);
     });
@@ -1712,6 +1931,13 @@ if (Service) {
   });
   servis.register('kumandaDurdur', function (m) {
     m.respond(kumandaDurdur());
+  });
+  servis.register('guncelleBaslat', function (m) {
+    m.respond(guncelleBaslat(m.payload || {}));
+    canliTut();
+  });
+  servis.register('guncelleDurum', function (m) {
+    m.respond(guncelleDurum());
   });
   servis.register('donusKur', function (m) {
     m.respond(donusKur(m.payload || {}));

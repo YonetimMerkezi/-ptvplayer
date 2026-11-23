@@ -44,7 +44,7 @@ const sor = () => svc._donusSor();
 
 test('bekçi: uygulama kapanınca (iki sorgu üst üste yok) donus parametresiyle yeniden açılır', () => {
   const s = sahte({ calisan: [UYG, 'com.webos.app.home'] });
-  svc._donusCagri(s.cagri);
+  svc._lunaCagri(s.cagri);
   assert.equal(svc.donusKur({ uyg: UYG, params: { tani: 'x' } }).returnValue, true);
   sor();
   assert.deepEqual(s.launchlar, [], 'çalışırken açılmaz');
@@ -63,7 +63,7 @@ test('bekçi: uygulama kapanınca (iki sorgu üst üste yok) donus parametresiyl
 
 test('bekçi: kısa süreli yokluk (tek sorgu) açma yapmaz; uygulama hiç görülmediyse hiç açmaz', () => {
   let s = sahte({ calisan: [UYG] });
-  svc._donusCagri(s.cagri);
+  svc._lunaCagri(s.cagri);
   svc.donusKur({ uyg: UYG });
   sor();
   s.calisan = [];
@@ -77,7 +77,7 @@ test('bekçi: kısa süreli yokluk (tek sorgu) açma yapmaz; uygulama hiç gör�
   assert.equal(svc.donusDurum().durum, 'iptal');
 
   s = sahte({ calisan: ['baska.uygulama'] });
-  svc._donusCagri(s.cagri);
+  svc._lunaCagri(s.cagri);
   svc.donusKur({ uyg: UYG });
   for (let i = 0; i < 6; i++) sor();
   assert.deepEqual(s.launchlar, [], 'kimlik eşleşmiyorsa (hiç görülmedi) yanlışlıkla açılmaz');
@@ -86,7 +86,7 @@ test('bekçi: kısa süreli yokluk (tek sorgu) açma yapmaz; uygulama hiç gör�
 
 test('bekçi: running yoksa ön plandaki uygulamaya bakılır; ikisi de yoksa açmaz', () => {
   let s = sahte({ runningVar: false, onde: UYG });
-  svc._donusCagri(s.cagri);
+  svc._lunaCagri(s.cagri);
   svc.donusKur({ uyg: UYG });
   sor();
   s.onde = 'com.webos.app.home';
@@ -96,7 +96,7 @@ test('bekçi: running yoksa ön plandaki uygulamaya bakılır; ikisi de yoksa a�
   assert.ok(svc.donusDurum().tani.some((t) => /getForegroundAppInfo/.test(t)), 'çalışan yol notlanır');
 
   s = sahte({ runningVar: false, onde: null });
-  svc._donusCagri(s.cagri);
+  svc._lunaCagri(s.cagri);
   svc.donusKur({ uyg: UYG });
   for (let i = 0; i < 4; i++) sor();
   assert.deepEqual(s.launchlar, []);
@@ -106,7 +106,7 @@ test('bekçi: running yoksa ön plandaki uygulamaya bakılır; ikisi de yoksa a�
 
 test('bekçi: açma başarısızsa yeniden dener; geçersiz kimlik ve köprüsüz kurulum reddedilir', async () => {
   const s = sahte({ calisan: [UYG], launchTamam: false });
-  svc._donusCagri(s.cagri);
+  svc._lunaCagri(s.cagri);
   svc.donusKur({ uyg: UYG });
   sor();
   s.calisan = [];
@@ -120,7 +120,7 @@ test('bekçi: açma başarısızsa yeniden dener; geçersiz kimlik ve köprüsü
 
   assert.equal(svc.donusKur({ uyg: '../kotu id' }).returnValue, false);
   assert.equal(svc.donusKur({}).returnValue, false);
-  svc._donusCagri(null);
+  svc._lunaCagri(null);
   const r = svc.donusKur({ uyg: UYG });
   assert.equal(r.returnValue, false);
   assert.match(r.errorText, /köprü/);
