@@ -30,6 +30,11 @@ export function fold(s) {
     .trim();
 }
 
+// Genç / yaş grubu takımı ya da yarışması mı: "Fenerbahce U19", "Turkey U-21", "Under 19", "UEFA Youth League".
+// Spor sayfasında bunların maçı gösterilmez ve hatırlatıcısı kurulmaz.
+const YOUTH_RE = /(^|[^a-z0-9])(u ?-?(1[4-9]|2[0-3])|under ?-?(1[4-9]|2[0-3])|youth)([^a-z0-9]|$)/;
+export const isYouthText = (s) => YOUTH_RE.test(fold(s));
+
 export function hashId(s) {
   let h = 0x811c9dc5;
   const str = String(s ?? '');

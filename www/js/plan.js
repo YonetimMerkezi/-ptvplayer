@@ -1,7 +1,7 @@
 // Planlananlar: program hatırlatıcıları ve zamanlı kayıtlar. Saf mantık; saklama ve yerel zamanlayıcı app.js'te.
 // Plan: { id, kind: 'rem' | 'rec', chId, chName, title, s, e, at, url?, headers? }
 //   at: tetiklenme zamanı (ms). rem → program başlamadan LEAD dk önce; rec → başlamadan 1 dk önce kayıt açılır.
-import { fold } from './util.js';
+import { fold, isYouthText } from './util.js';
 import { loc } from './i18n.js';
 
 export const REMIND_LEAD_MIN = 5;
@@ -38,6 +38,9 @@ export function makeMatchPlan(m, { lead = MATCH_LEAD_DEFAULT, chId = '', chName 
     s: m.t, e: m.t + MATCH_LEN_MS, at: m.t - min * 60000,
   };
 }
+
+// Genç/yaş grubu maçına kurulmuş hatırlatıcı (eskiden otomatik kurulmuş olabilir): listede gösterilmez, alarmı da kurulmaz
+export const isYouthPlan = (x) => !!x && !!x.match && isYouthText(x.title);
 
 // Süresi dolmamış planlar, zamana göre sıralı (rec bitişine, rem başlangıcına kadar geçerli)
 export function activePlans(list, now = Date.now()) {

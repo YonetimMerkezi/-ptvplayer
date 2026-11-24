@@ -10,7 +10,7 @@ import {
   playTargets, buildAltIndex, altsOf, loadSeriesInfo, loadVodInfo, peekVodInfo, loadShortEpg, loadEpg, epgSourceUrls, EpgView,
   loadArchiveEpg, archiveTargets, recordTarget,
 } from './catalog.js';
-import { makePlan, activePlans, addPlan, removePlan, hasPlan, recConflict, planId, planWhen } from './plan.js';
+import { makePlan, activePlans, addPlan, removePlan, hasPlan, recConflict, planId, planWhen, isYouthPlan } from './plan.js';
 import { parseXtreamLink, normalizeServer } from './xtream.js';
 import { createNativeEngine, createWebEngine } from './engine.js';
 import { createPlayer } from './player.js';
@@ -2096,7 +2096,7 @@ function startPlay(item, { ep = null, ctx = null, startAt, local = '' } = {}) {
 // Liste cihazda saklanır; Android'de alarmlar ve kayıt hizmeti uygulama kapalıyken de çalışır, tarayıcıda hatırlatıcılar sayfa açıkken.
 
 const PLANS_KEY = 'plans';
-const readPlans = () => activePlans(store.pref(PLANS_KEY, []));
+const readPlans = () => activePlans(store.pref(PLANS_KEY, [])).filter((x) => !isYouthPlan(x)); // genç takım (U19…) maç hatırlatıcıları listelenmez
 let webTimers = [];
 
 function webRemind(pl) {
@@ -2140,6 +2140,8 @@ function watchExpiry(now = Date.now()) {
 function syncPlans() {
   const now = Date.now();
   const list = readPlans();
+  const saved = store.pref(PLANS_KEY, []);
+  if (Array.isArray(saved) && saved.some(isYouthPlan)) store.setPref(PLANS_KEY, list); // eskiden kurulmuş genç maç hatırlatıcıları kayıttan da silinir; alarmları aşağıdaki eşitlemeyle kalkar
   if (nativePlugin) {
     nativePlugin.planSync({ plans: list.filter((x) => x.at > now) }).catch(() => {});
     return;

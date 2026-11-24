@@ -2,6 +2,7 @@
 // Resmî olmayan, belgesiz bir API'dir: her alan eksik/değişmiş olabilir kabul edilir, bozuk kayıt atlanır, hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
 import { teamLabel, teamKeys, norm, withTimeout, trRound } from './sports.js';
+import { isYouthText } from './util.js';
 
 export const LS_HOSTS = ['https://prod-public-api.livescore.com', 'https://prod-cdn-public-api.livescore.com'];
 const PATH = '/v1/api/app/date/soccer/';
@@ -112,7 +113,7 @@ const WOMEN_TEAM = /(^| )(w|women|womens|ladies)$/;
 export const isWomenComp = (text) => WOMEN_COMP.test(norm(text));
 export const isWomenTeam = (name) => WOMEN_TEAM.test(norm(name));
 export function inScope(country, compText = '') {
-  if (isWomenComp(compText)) return false;
+  if (isWomenComp(compText) || isYouthText(compText)) return false;
   const g = groupOf(country);
   return g === 'tr' || g === 'int' || isEuropean(country);
 }
@@ -154,7 +155,7 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
           const n1 = str(a && a.Nm);
           const n2 = str(b && b.Nm);
           const t = parseEsd(ev && ev.Esd);
-          if (!n1 || !n2 || t == null || isWomenTeam(n1) || isWomenTeam(n2)) continue;
+          if (!n1 || !n2 || t == null || isWomenTeam(n1) || isWomenTeam(n2) || isYouthText(n1) || isYouthText(n2)) continue;
           const scored = intOrNull(ev.Tr1) != null && intOrNull(ev.Tr2) != null;
           const status = lsStatus(ev.Eps, { t, now, scored });
           const played = status.state !== 'pre';

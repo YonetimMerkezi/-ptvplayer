@@ -3,7 +3,7 @@
 // LiveSoccerTV. Resmî API değil, herkese açık HTML sayfalarıdır; sayfa yapısı değişebilir. Bu yüzden ayrıştırıcılar esnektir (satırın yapılandırılmış
 // parçaları ya da düz metni ile çalışır) ve ne okuduklarını gösteren bir teşhis (diag) döndürür. Hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
-import { fold, allMatches } from './util.js';
+import { fold, allMatches, isYouthText } from './util.js';
 import { norm, hasAny, teamPhrases, teamLabel, withTimeout } from './sports.js';
 
 export const SE_BASE = 'https://www.sporekrani.com';
@@ -468,6 +468,7 @@ export function seMatches(rows) {
     if (!r || !r.teams) continue;
     const comp = fixTr(r.comp);
     if ([comp, r.teams[0], r.teams[1]].some((x) => women(norm(x)))) continue; // kapsam: kadın maçları listeye girmez
+    if ([comp, r.teams[0], r.teams[1]].some((x) => isYouthText(x))) continue; // kapsam: genç takım (U19…) maçları listeye girmez
     const grp = compGroup(comp);
     out.push({
       id: `se:${r.id}`,

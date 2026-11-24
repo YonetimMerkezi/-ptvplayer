@@ -4,6 +4,7 @@
 // 16 saat, 35 tarih, 36 yarışma [ülkeNo, ülke, ligNo, lig, aşamaNo, sezon, …].
 // Saatler Türkiye saatidir. Maç olayı/kadro bu listede yoktur: yalnız skor ve durum.
 import { teamLabel, norm, withTimeout } from './sports.js';
+import { isYouthText } from './util.js';
 import { isWomenTeam } from './sports-ls.js';
 
 export const MK_BASE = 'https://vd.mackolik.com/livedata';
@@ -67,7 +68,7 @@ export function parseMackolik(json, { now = Date.now() } = {}) {
       if (norm(country) !== 'turkiye' || !TR_LEAGUE.test(ln) || women(ln)) continue;
       const home = String(r[2] || '').trim();
       const away = String(r[4] || '').trim();
-      if (!home || !away || /\(k\)\s*$/i.test(home) || /\(k\)\s*$/i.test(away) || isWomenTeam(home) || isWomenTeam(away)) continue;
+      if (!home || !away || /\(k\)\s*$/i.test(home) || /\(k\)\s*$/i.test(away) || isWomenTeam(home) || isWomenTeam(away) || isYouthText(home) || isYouthText(away) || isYouthText(league)) continue;
       const t = parseMkTime(r[35], r[16]);
       if (t == null) continue;
       const id = `mk:${r[0]}`;

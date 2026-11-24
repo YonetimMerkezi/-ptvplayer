@@ -1,6 +1,6 @@
 // Favori takımlar: takip listesi, maç eşleştirme ve takip edilen takımların maçları için otomatik hatırlatıcı seçimi.
 // Saf mantık (ağ ve ekran yok). Takımlar kaynaklar arasında farklı yazılabildiği için (Galatasaray / Galatasaray SK) eşleştirme teamKeys ile yapılır.
-import { teamKeys, norm } from './sports.js';
+import { teamKeys, norm, isYouthMatch } from './sports.js';
 import { canRemind, matchPlanId, makeMatchPlan, MATCH_LEAD_DEFAULT } from './plan.js';
 
 export const FAV_MAX = 30;
@@ -65,7 +65,7 @@ export function autoRemindTargets(matches, favs, { now = Date.now(), done = [], 
   const seenId = new Set();
   const out = [];
   for (const m of [...matches].sort((a, b) => a.t - b.t)) {
-    if (!canRemind(m, now) || m.t - now > horizon || !hasFavMatch(favs, m)) continue;
+    if (!canRemind(m, now) || m.t - now > horizon || isYouthMatch(m) || !hasFavMatch(favs, m)) continue;
     const id = matchPlanId(m);
     if (skip.has(id) || seenId.has(id)) continue; // aynı maç iki kaynaktan gelebilir
     seenId.add(id);

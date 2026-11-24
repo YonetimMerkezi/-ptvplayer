@@ -1,6 +1,6 @@
 // Futbol: maç takvimi, skorlar ve maçın hangi kanalda olduğu.
 // Veri: ESPN'in herkese açık skor tablosu (anahtarsız). Bu dosya saf mantıktır (ağ ve TV rehberi dışarıdan verilir); ekran sports-ui.js'te.
-import { fold } from './util.js';
+import { fold, isYouthText } from './util.js';
 import { lang } from './i18n.js';
 
 export const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
@@ -100,6 +100,9 @@ const NATIONS = [
   ['Brazil', 'Brezilya'], ['Argentina', 'Arjantin'], ['United States', 'ABD', 'abd'], ['USA', 'ABD', 'abd'],
   ['Mexico', 'Meksika'], ['Japan', 'Japonya'], ['South Korea', 'Güney Kore'], ['Morocco', 'Fas'], ['Uruguay', 'Uruguay'],
 ];
+
+// Genç/yaş grubu maçı mı (takım adında U19 gibi işaret ya da yarışma adında Youth League): listeye girmez
+export const isYouthMatch = (m) => !!m && [m.home && m.home.name, m.home && m.home.label, m.away && m.away.name, m.away && m.away.label, m.lgName, m.round].some((x) => !!x && isYouthText(x));
 
 export const norm = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
 const GENERIC = new Set(['fc', 'cf', 'sc', 'afc', 'ac', 'as', 'ssc', 'fk', 'sk', 'bk', 'sv', 'vfb', 'vfl', 'tsg', 'ud', 'cd', 'rcd', 'ca', 'us', 'og', 'club', 'de', 'the', 'calcio', 'bsc', 'cfc', 'kv', 'sl', 'if', 'ik']);
@@ -396,7 +399,7 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
     throw err;
   }
   const seen = new Set();
-  const uniq = matches.filter((m) => !seen.has(m.id) && seen.add(m.id));
+  const uniq = matches.filter((m) => !isYouthMatch(m) && !seen.has(m.id) && seen.add(m.id));
   uniq.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
   return { matches: uniq, okCount, failed, errors, level };
 }

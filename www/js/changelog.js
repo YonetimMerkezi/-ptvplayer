@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 179,
+    title: 'Spor sayfasında genç takım maçları gösterilmez',
+    items: [
+      'Takımların U19, U21 gibi genç takım maçları (UEFA Youth League dahil) maç listesinde görünmez ve takip ettiğiniz takımlar için bunlara hatırlatıcı kurulmaz',
+      'Daha önce kurulmuş genç takım maç hatırlatıcıları Planlananlar’dan ve alarm listesinden kaldırılır',
+    ],
+  },
+  {
     id: 178,
     title: 'Vitrinde fragman tam genişlikte (Netflix düzeni)',
     items: [
