@@ -1,31 +1,82 @@
-// Arama: yazı alanı TV'nin ekran klavyesini açar; Enter ile katalogda aranır.
+// Arama: yazdıkça (kısa bir bekleyişten sonra) seçili kapsamda aranır ve sonuçlar altta listelenir.
+// Kapsam sekmeleri: Tümü / Canlı TV / Filmler / Diziler — yalnız seçili kapsamın listesi indirilir, arama hızlı kalır.
+// Kumanda: OK yazı alanını açar · ▶ "Ara" düğmesi · ▼ sekmeler, sonra sonuçlar · sonuçlarda ◀▶ sekme değiştirir.
 import { ctx, provider, open, ustCubuk, geriOdakla } from '../ctx.js';
 import { VList } from '../vlist.js';
-import { ara } from '../data.js';
-import { el, esc, px, toast } from '../ui.js';
+import { araTur, aramayaHazirla, sonuclariSuz } from '../data.js';
+import { el, esc, px, toast, enYakin } from '../ui.js';
 import * as K from '../log.js';
 
 const TUR = { live: 'Canlı', movie: 'Film', series: 'Dizi' };
-const SIRA = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
-
-const KAPSAM_YER = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
+const YER = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
 const KAPSAM_AD = { live: 'Kanal adı', movie: 'Film adı', series: 'Dizi adı' };
+const TURLER = ['live', 'movie', 'series'];
+const SEKMELER = [
+  { id: '', ad: 'Tümü' },
+  { id: 'live', ad: YER.live },
+  { id: 'movie', ad: YER.movie },
+  { id: 'series', ad: YER.series },
+];
+export const CANLI_MIN = 2; // yazdıkça aramanın başladığı en az harf sayısı (OK / Ara düğmesi tek harfle de arar)
+export const CANLI_MS = 300; // son tuştan sonra bu kadar beklenip aranır
+export const TUR_LIMIT = 300; // her türden en çok bu kadar sonuç
+const ILK_METIN = 'Yazmak için OK’a basın; yazdıkça sonuçlar altta listelenir.';
+
+// Bölgeler arası kumanda geçişi (saf işlev, test edilir). Bölgeler: input (yazı alanı) · go (Ara düğmesi) · tabs (sekmeler) · list (sonuçlar).
+// git: odaklanacak bölge ('' = aynı kalır) · yut: tuş burada tüketildi (üst çubuğa/Geri'ye düşmez) · sekme: ±1 sekme değiştir.
+// liste0: sonuç listesinde ilk satırdayız (▲ ile sekmelere çıkılır).
+export function gecis(bolge, a, sonucVar, liste0) {
+  const yok = { git: '', yut: false, sekme: 0 };
+  if (bolge === 'input') {
+    if (a === 'right') return { git: 'go', yut: true, sekme: 0 };
+    if (a === 'down') return { git: 'tabs', yut: true, sekme: 0 };
+    return a === 'left' ? { git: '', yut: true, sekme: 0 } : yok;
+  }
+  if (bolge === 'go') {
+    if (a === 'left') return { git: 'input', yut: true, sekme: 0 };
+    if (a === 'down') return { git: 'tabs', yut: true, sekme: 0 };
+    return a === 'right' ? { git: '', yut: true, sekme: 0 } : yok;
+  }
+  if (bolge === 'tabs') {
+    if (a === 'left' || a === 'right') return { git: '', yut: true, sekme: a === 'right' ? 1 : -1 };
+    if (a === 'up') return { git: 'input', yut: true, sekme: 0 };
+    if (a === 'down' || a === 'ok') return { git: sonucVar ? 'list' : '', yut: true, sekme: 0 };
+    return yok;
+  }
+  if (bolge === 'list') {
+    if (a === 'left' || a === 'right') return { git: '', yut: true, sekme: a === 'right' ? 1 : -1 };
+    if (a === 'up' && liste0) return { git: 'tabs', yut: true, sekme: 0 };
+  }
+  return yok;
+}
 
 export function searchScreen(p) {
   const kok = el('div', 'screen search');
   const src = ctx.store.active();
-  const tur = p && KAPSAM_YER[p.tur] ? p.tur : ''; // bölümden açıldıysa yalnız o türde aranır
+  const gecerliKapsam = (k) => (k === '' || TURLER.indexOf(k) >= 0 ? k : null);
+  // Bölümden açıldıysa (Filmler → Ara) o sekme seçili gelir; yoksa son seçilen sekme
+  let kapsam = gecerliKapsam(p && p.tur) || gecerliKapsam(ctx.store.setting('aramaKapsam', '')) || '';
+  const kapsamTurleri = () => (kapsam ? [kapsam] : TURLER);
   kok.innerHTML =
-    ustCubuk(tur ? 'Ara · ' + KAPSAM_YER[tur] : 'Ara', src ? esc(src.name) : '') +
-    '<div class="s-in"><input id="q" type="text" placeholder="' + (tur ? KAPSAM_AD[tur] : 'Kanal, film ya da dizi adı') + '" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="f-btn" id="s-go">Ara</div></div>' +
-    '<div class="s-st" id="s-st">Yazmak için OK’a basın.' + (tur ? ' Yalnız ' + KAPSAM_YER[tur] + ' içinde aranır; tümü için Ana sayfa › Ara.' : '') + '</div>' +
-    '<div class="s-res"></div><div class="hint" id="hint">OK: yaz / aç · ▲▼ gezin · Geri</div>';
+    ustCubuk('Ara', src ? esc(src.name) : '') +
+    '<div class="s-in"><input id="q" type="text" placeholder="' + (KAPSAM_AD[kapsam] || 'Kanal, film ya da dizi adı') + '" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="f-btn" id="s-go">Ara</div></div>' +
+    '<div class="s-tabs" id="s-tabs"></div>' +
+    '<div class="s-st" id="s-st">' + ILK_METIN + '</div>' +
+    '<div class="s-res"></div><div class="hint" id="hint">OK: yaz / aç · ▶ Ara · ◀▶ sekme · ▲▼ gezin · Geri</div>';
   const inp = kok.querySelector('#q');
+  const goEl = kok.querySelector('#s-go');
+  const sekmeEl = kok.querySelector('#s-tabs');
   const st = kok.querySelector('#s-st');
   const resEl = kok.querySelector('.s-res');
-  let bolge = 'input'; // input | list
-  let sayac = 0;
+  let bolge = 'input'; // input | go | tabs | list
+  let sayac = 0; // her arama turunda artar: eski turun sonucu yok sayılır
+  let zaman = 0;
   let list = null;
+  let sorgu = ''; // sonuçların ait olduğu sorgu
+  let bul = {}; // tür → bu sorgunun sonucu (yüklendikçe dolar)
+  let bekle = {}; // tür → liste hâlâ indiriliyor / taranıyor
+  let hata = {}; // tür → hata iletisi
+  let hazirlandi = false;
   let otomatik = !!(p && p.q); // başka ekrandan hazır sorguyla açıldıysa ilk gösterimde aranır
   if (otomatik) inp.value = String(p.q);
 
@@ -44,80 +95,199 @@ export function searchScreen(p) {
   };
   kur();
 
-  async function calistir() {
-    const q = inp.value.trim();
-    if (!q) return toast('Aranacak bir şey yazın');
-    const n = ++sayac;
-    if (!provider()) return;
-    list.setMessage('Aranıyor…');
-    st.textContent = '“' + q + '” aranıyor…';
-    try {
-      const r = await ara(
-        provider(),
-        q,
-        300,
-        (t) => {
-          if (n === sayac) st.textContent = SIRA[t] + ' taranıyor… (ilk aramada katalog indirilir, uzun sürebilir)';
-        },
-        tur ? [tur] : null,
-      );
-      if (n !== sayac) return;
-      list.setItems(r);
-      st.textContent = r.length ? r.length + ' sonuç' + (r.length >= 300 ? ' (ilk 300)' : '') : '“' + q + '” için sonuç yok';
-      if (r.length) odak('list');
-    } catch (e) {
-      if (n !== sayac) return;
-      K.hata(e);
-      list.setMessage('Arama başarısız');
-      st.textContent = 'Arama başarısız: ' + (e && e.message ? e.message : e);
+  function sekmeCiz() {
+    const yuklu = TURLER.filter((k) => bul[k]);
+    let h = '';
+    SEKMELER.forEach((s) => {
+      let n = -1;
+      if (s.id) n = bul[s.id] ? bul[s.id].length : -1;
+      else if (yuklu.length === TURLER.length) n = yuklu.reduce((t, k) => t + bul[k].length, 0);
+      const sayi = n >= 0 ? '<b>' + n + '</b>' : '';
+      const sec = s.id === kapsam;
+      h += '<span class="s-tab' + (sec ? ' sel' : '') + (sec && bolge === 'tabs' ? ' on' : '') + '" data-k="' + s.id + '">' + esc(s.ad) + sayi + '</span>';
+    });
+    sekmeEl.innerHTML = h;
+  }
+
+  // Seçili kapsamın sonuçları (tür sırasıyla) listeye yazılır; yeni sonuç gelince satır konumu korunur
+  let gosterilen = '';
+  function goster() {
+    const items = [];
+    kapsamTurleri().forEach((k) => {
+      const r = bul[k];
+      for (let i = 0; r && i < r.length; i++) items.push(r[i]);
+    });
+    const imza = sorgu + '|' + kapsam;
+    if (items.length) list.setItems(items, imza === gosterilen);
+    else list.setMessage(!sorgu ? '' : Object.keys(bekle).length ? 'Aranıyor…' : 'Sonuç yok');
+    gosterilen = imza;
+  }
+
+  function durumYaz() {
+    if (!sorgu) {
+      st.textContent = ILK_METIN;
+      return;
     }
+    const sec = kapsamTurleri();
+    const yuk = sec.filter((k) => bekle[k]);
+    const toplam = sec.reduce((t, k) => t + (bul[k] ? bul[k].length : 0), 0);
+    const bos = sec.filter((k) => hata[k]);
+    let m = '';
+    if (toplam) m = toplam + ' sonuç' + (sec.some((k) => bul[k] && bul[k].length >= TUR_LIMIT) ? ' (türde ilk ' + TUR_LIMIT + ')' : '');
+    else if (!yuk.length && !bos.length) m = '“' + sorgu + '” için sonuç yok';
+    if (yuk.length) m += (m ? ' · ' : '') + yuk.map((k) => YER[k]).join(', ') + ' yükleniyor… (ilk aramada liste indirilir)';
+    if (bos.length) m += (m ? ' · ' : '') + bos.map((k) => YER[k] + ' yüklenemedi: ' + hata[k]).join(' · ');
+    st.textContent = m;
+  }
+
+  // Aramayı çalıştırır. zorla: OK / Giriş / Ara düğmesi (ilk sonuç gelince sonuçlara geçer); değilse yazarken arka planda (odağı çalmaz).
+  async function calistir(zorla) {
+    clearTimeout(zaman);
+    const q = inp.value.trim();
+    if (!q) {
+      if (zorla) toast('Aranacak bir şey yazın');
+      return;
+    }
+    const pr = provider();
+    if (!pr) return;
+    const n = ++sayac;
+    if (q !== sorgu) {
+      // Yeni sorgu öncekinin devamıysa ve önceki sonuç eksiksizse yeniden aranmaz, anında süzülür
+      const onceki = bul;
+      const oncekiSorgu = sorgu;
+      sorgu = q;
+      bul = {};
+      hata = {};
+      kapsamTurleri().forEach((k) => {
+        const s = sonuclariSuz(onceki[k], oncekiSorgu, q, TUR_LIMIT);
+        if (s) bul[k] = s;
+      });
+    }
+    const turler = kapsamTurleri().filter((k) => !bul[k]);
+    bekle = {};
+    turler.forEach((k) => {
+      bekle[k] = true;
+      delete hata[k];
+    });
+    goster();
+    durumYaz();
+    sekmeCiz();
+    let atladi = false;
+    const atla = () => {
+      if (zorla && !atladi && list.items.length && bolge !== 'list') {
+        atladi = true;
+        odak('list');
+      }
+    };
+    atla();
+    await Promise.all(
+      turler.map(async (k) => {
+        try {
+          const r = await araTur(pr, q, k, TUR_LIMIT);
+          if (n !== sayac) return;
+          bul[k] = r;
+        } catch (e) {
+          if (n !== sayac) return;
+          K.hata(e);
+          hata[k] = e && e.message ? e.message : 'hata';
+        }
+        delete bekle[k];
+        goster();
+        durumYaz();
+        sekmeCiz();
+        atla();
+      }),
+    );
+  }
+
+  function sekmeSec(id) {
+    if (id === kapsam) return;
+    kapsam = id;
+    ctx.store.setSetting('aramaKapsam', id);
+    inp.placeholder = KAPSAM_AD[kapsam] || 'Kanal, film ya da dizi adı';
+    sekmeCiz();
+    const pr = provider();
+    if (pr) aramayaHazirla(pr, kapsamTurleri());
+    if (sorgu) calistir(false); // yüklü türler anında gelir, eksik tür arkadan yüklenir
+  }
+  function sekmeKaydir(d) {
+    let i = 0;
+    for (let k = 0; k < SEKMELER.length; k++) if (SEKMELER[k].id === kapsam) i = k; // findIndex Chromium 38'de yok
+    const j = Math.max(0, Math.min(SEKMELER.length - 1, i + d));
+    sekmeSec(SEKMELER[j].id);
   }
 
   function odak(b) {
     bolge = b;
     list.setActive(b === 'list');
     inp.parentNode.className = 's-in' + (b === 'input' ? ' on2' : '');
+    goEl.className = 'f-btn' + (b === 'go' ? ' on2' : '');
+    sekmeCiz();
   }
-  kok.querySelector('#s-go').addEventListener('click', calistir);
+
+  inp.addEventListener('input', () => {
+    clearTimeout(zaman);
+    const q = inp.value.trim();
+    if (q.length < CANLI_MIN) {
+      sayac++; // sürmekte olan aramanın sonucu gelirse yok sayılır
+      sorgu = '';
+      bul = {};
+      bekle = {};
+      hata = {};
+      goster();
+      st.textContent = q ? 'En az ' + CANLI_MIN + ' harf yazın' : ILK_METIN;
+      sekmeCiz();
+      return;
+    }
+    zaman = setTimeout(() => calistir(false), CANLI_MS);
+  });
+  goEl.addEventListener('click', () => calistir(true));
   inp.addEventListener('click', () => inp.focus());
+  sekmeEl.addEventListener('click', (e) => {
+    const t = enYakin(e.target, '[data-k]', sekmeEl);
+    if (t) sekmeSec(t.getAttribute('data-k'));
+  });
+  sekmeCiz();
 
   return {
     el: kok,
     name: 'search',
     onShow() {
       odak(bolge);
+      if (!hazirlandi) {
+        hazirlandi = true;
+        const pr = provider();
+        if (pr) aramayaHazirla(pr, kapsamTurleri()); // listeler kullanıcı yazarken arka planda iner
+      }
       if (otomatik) {
         otomatik = false;
-        calistir();
+        calistir(true);
       }
       if (list.items.length) list.setItems(list.items, true);
     },
     onKey(a) {
-      if (bolge === 'input') {
-        if (a === 'ok') {
-          inp.focus();
-          return true;
-        }
-        if (a === 'down' && list.items.length) {
-          odak('list');
-          return true;
-        }
-        return a === 'left' || a === 'right'; // ▲ ayrılır: Geri düğmesine çıkılır
-      }
-      if (a === 'up' && list.index === 0) {
-        odak('input');
+      const g = gecis(bolge, a, list.items.length > 0, list.index === 0);
+      if (g.sekme) sekmeKaydir(g.sekme);
+      if (g.git) odak(g.git);
+      if (g.yut) return true;
+      if (bolge === 'list') return list.key(a);
+      if (a === 'ok' && (bolge === 'input' || bolge === 'go')) {
+        if (bolge === 'go') calistir(true);
+        else inp.focus();
         return true;
       }
-      return list.key(a);
+      return false; // ▲ üst çubuğa, Geri çıkışa düşer
     },
+    // Ekran klavyesi açıkken: Giriş aramayı başlatır; Geri klavyeyi kapatır ve sonuç varsa sonuçlara geçer
     onInputKey(a, e, giris) {
       if (a === 'ok') {
         giris.blur();
-        calistir();
+        calistir(true);
         return true;
       }
       if (a === 'back' || a === 'down') {
         giris.blur();
+        odak(list.items.length ? 'list' : a === 'down' ? 'tabs' : 'input');
         return true;
       }
       if (a === 'up') {
@@ -129,6 +299,7 @@ export function searchScreen(p) {
     },
     destroy() {
       sayac++;
+      clearTimeout(zaman);
     },
   };
 }

@@ -183,17 +183,74 @@ export function createProvider(src, net) {
 // Arama: katalogdaki tüm türlerde, Türkçe duyarsız alt dize eşleşmesi.
 // ilerleme(tür, şimdiyeKadarBulunanlar): her tür taranmadan önce çağrılır (ilk aramada katalog indirilir, uzun sürebilir).
 // turler: yalnız bu türlerde ara (örn. ['movie']); verilmezse üçünde de.
-export async function ara(provider, sorgu, limit, ilerleme, turler) {
+// Katalogdaki adların küçültülmüş (fold) hâli listeye bağlı bir kez hesaplanır: yazdıkça arama her tuşta yüz binlerce adı yeniden
+// çevirseydi 2016 model TV'de saniyeler sürerdi. İlk hesap süre dilimlerine bölünür (en çok ~12 ms'de bir ekrana nefes verilir):
+// uzun listede de kumanda tuşları (Geri dahil) donmadan çalışır.
+const katlanmis = new WeakMap();
+const DILIM_MS = 12;
+const nefes = () => new Promise((r) => setTimeout(r, 0));
+function adlariKatla(liste) {
+  const c = katlanmis.get(liste);
+  if (c && c.n === liste.length) return c.p;
+  const n = liste.length;
+  const f = new Array(n);
+  const p = (async () => {
+    let t0 = Date.now();
+    for (let i = 0; i < n; i++) {
+      f[i] = fold(liste[i].name);
+      if ((i & 127) === 127 && Date.now() - t0 > DILIM_MS) {
+        await nefes();
+        t0 = Date.now();
+      }
+    }
+    return f;
+  })();
+  katlanmis.set(liste, { n, p });
+  p.catch(() => katlanmis.delete(liste));
+  return p;
+}
+
+// Tek türde arama: liste yüklenmemişse indirilir (aynı anda gelen istekler tek indirmeyi paylaşır).
+export async function araTur(provider, sorgu, tur, limit) {
   const q = fold(sorgu);
   if (!q) return [];
+  const liste = await provider.all(tur);
+  const f = await adlariKatla(liste);
+  const out = [];
+  const en = limit || 200;
+  for (let i = 0; i < f.length && out.length < en; i++) {
+    if (f[i].indexOf(q) >= 0) out.push(liste[i]);
+  }
+  return out;
+}
+
+// Yeni sorgu öncekinin devamıysa ("gor" → "gora") ve önceki sonuç eksiksizse (üst sınıra varmadıysa) listeyi yeniden aramadan süzer; değilse null.
+export function sonuclariSuz(onceki, oncekiSorgu, sorgu, limit) {
+  const a = fold(oncekiSorgu);
+  const b = fold(sorgu);
+  if (!a || !b || !Array.isArray(onceki) || onceki.length >= limit || b.indexOf(a) !== 0) return null;
+  return onceki.filter((x) => fold(x.name).indexOf(b) >= 0);
+}
+
+// Arama ekranı açılır açılmaz çağrılır: seçili kapsamdaki listeler (indirme + ad küçültme) arka planda hazırlanır; kullanıcı yazarken hazır olur.
+export function aramayaHazirla(provider, turler) {
+  (turler || []).forEach((t) => {
+    Promise.resolve()
+      .then(() => provider.all(t))
+      .then(adlariKatla)
+      .catch(() => {});
+  });
+}
+
+export async function ara(provider, sorgu, limit, ilerleme, turler) {
+  if (!fold(sorgu)) return [];
   const out = [];
   const kinds = ['live', 'movie', 'series'].filter((k) => !turler || !turler.length || turler.indexOf(k) >= 0);
-  for (let k = 0; k < kinds.length; k++) {
+  const en = limit || 200;
+  for (let k = 0; k < kinds.length && out.length < en; k++) {
     if (ilerleme) ilerleme(kinds[k], out);
-    const liste = await provider.all(kinds[k]);
-    for (let i = 0; i < liste.length && out.length < (limit || 200); i++) {
-      if (fold(liste[i].name).indexOf(q) >= 0) out.push(liste[i]);
-    }
+    const r = await araTur(provider, sorgu, kinds[k], en - out.length);
+    for (let i = 0; i < r.length; i++) out.push(r[i]);
   }
   return out;
 }

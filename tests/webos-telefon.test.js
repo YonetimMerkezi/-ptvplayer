@@ -387,5 +387,7 @@ test('kablolama: Kaynak ekle ekranı telefon panelini açar ve telefondan gelen 
   assert.match(br, /araAc\(\) \{\s*open\('search', gercekTur \? \{ tur: gercekTur \} : undefined\)/);
   assert.match(br, /this\.araAc\(\)/, 'Mavi tuş da aynı kapsamla arar');
   const ara = oku('src', 'screens', 'search.js');
-  assert.match(ara, /tur \? \[tur\] : null/, 'arama ekranı kapsamı veri katmanına geçirir');
+  assert.match(ara, /gecerliKapsam\(p && p\.tur\)/, 'bölümden açılınca o sekme seçili gelir');
+  assert.match(ara, /kapsamTurleri = \(\) => \(kapsam \? \[kapsam\] : TURLER\)/, 'arama ekranı kapsamı veri katmanına geçirir');
+  assert.match(ara, /araTur\(pr, q, k, TUR_LIMIT\)/, 'yalnız kapsamdaki türler aranır');
 });

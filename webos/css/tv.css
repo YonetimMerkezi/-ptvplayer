@@ -229,6 +229,14 @@ input.on2, .on2 input { border-color: #2dd4bf; background: #0f1a2a; }
 .s-in .f-btn { margin: 0 0 0 1.2rem; }
 .s-st { position: absolute; top: 14rem; left: 4rem; right: 4rem; font-size: 1.6rem; color: #9aa6bf; height: 2.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s-res { position: absolute; top: 17.6rem; bottom: 4rem; left: 4rem; right: 4rem; }
+.s-tabs { position: absolute; top: 13rem; left: 4rem; right: 4rem; height: 3.8rem; white-space: nowrap; }
+.s-tab { display: inline-block; font-size: 1.7rem; padding: .35rem 1.5rem; margin-right: .8rem; border-radius: 2rem; background: #1b2437; color: #aab5cc; border: .2rem solid transparent; }
+.s-tab b { font-weight: 600; color: #2dd4bf; margin-left: .6rem; }
+.s-tab.sel { background: #26324b; color: #fff; border-color: #3b4a6b; }
+.s-tab.on { background: #2dd4bf; color: #04141a; border-color: #2dd4bf; }
+.s-tab.on b { color: #04141a; }
+.search .s-st { top: 17.2rem; }
+.search .s-res { top: 20.2rem; }
 
 /* Ayrıntı */
 .dt { position: absolute; top: 7rem; left: 4rem; right: 4rem; bottom: 4rem; }
