@@ -380,7 +380,7 @@ test('kablolama: Kaynak ekle ekranı telefon panelini açar ve telefondan gelen 
   assert.match(oku('css', 'tv.css'), /\.top-ara\.on \{/);
   // Ara düğmesi: üst çubuk çizimi, gözatma ekranı (Son izlenenler hariç) ve kapsamlı arama
   const ctxSrc = oku('src', 'ctx.js');
-  assert.match(ctxSrc, /export function ustCubuk\(baslik, alt, kok, ara\)/);
+  assert.match(ctxSrc, /export function ustCubuk\(baslik, alt, kok, ara, kumanda\)/);
   assert.match(ctxSrc, /data-ara="1"/);
   const br = oku('src', 'screens', 'browse.js');
   assert.match(br, /ustCubuk\(BASLIK\[kind\], src \? esc\(src\.name\) : '', false, kind !== 'recents'\)/);
@@ -391,4 +391,230 @@ test('kablolama: Kaynak ekle ekranı telefon panelini açar ve telefondan gelen 
   assert.match(ara, /kapsamTurleri = \(\) => \(kapsam \? \[kapsam\] : TURLER\)/, 'arama ekranı kapsamı veri katmanına geçirir');
   assert.match(ara, /turler = kapsamTurleri\(\)\.filter/, 'yalnız kapsamdaki türler aranır');
   assert.match(ara, /araTur\(\s*pr,\s*q,\s*k,\s*TUR_LIMIT/, 'her tür kendi kapsamında taranır');
+});
+
+// ---- Fare alanı, hızlı geçiş, ses, sanal imleç, ana sayfa düğmesi ----
+const { imlecKur } = await import('../webos/src/imlec.js');
+const { fareIsle, ekranAc } = await import('../webos/src/telefon.js');
+
+test('kumanda: /fare hareketleri toplar ve sınırlar; tık ve kaydırma ayrı komut olur; /ekran yalnız bilinen bölümleri kabul eder', async (t) => {
+  t.after(() => svc.kumandaDurdur());
+  const a = await baslat({ pin: '1234' });
+  const gonder = (yol, g) => istek(a.port, yol, { method: 'POST', govde: { pin: '1234', ...g } });
+  await sor({ bekleMs: 0 });
+  assert.equal((await gonder('/fare', { dx: 10, dy: -4 })).kod, 200);
+  assert.equal((await gonder('/fare', { dx: 5, dy: 1.6 })).kod, 200);
+  assert.equal((await gonder('/fare', { dx: 99999, dy: -99999 })).kod, 200);
+  assert.equal((await gonder('/fare', { dx: 0, dy: 0 })).kod, 200, 'sıfır hareket kuyruğu şişirmez');
+  assert.equal((await gonder('/fare', { dx: 'x', dy: NaN })).kod, 200);
+  assert.equal((await gonder('/fare', { tik: true })).kod, 200);
+  assert.equal((await gonder('/fare', { kaydir: 5000 })).kod, 200);
+  assert.equal((await gonder('/fare', { kaydir: -40 })).kod, 200);
+  let r = await sor({ bekleMs: 0 });
+  assert.deepEqual(r.komutlar[0], { t: 'fare', dx: 615, dy: -602 }, 'art arda hareket tek komutta toplanır (10+5+600, -4+2-600), tek istek 600 px ile sınırlı');
+  assert.deepEqual(r.komutlar.slice(1), [{ t: 'fare', tik: true }, { t: 'fare', kaydir: 600 }, { t: 'fare', kaydir: -40 }]);
+  // Toplam sınırı: sırada çok hareket birikse de imleç komutu ±2400'ü aşmaz
+  for (let i = 0; i < 8; i++) await gonder('/fare', { dx: 600, dy: 0 });
+  r = await sor({ bekleMs: 0 });
+  assert.equal(r.komutlar.length, 1);
+  assert.equal(r.komutlar[0].dx, 2400);
+  // /ekran
+  for (const ad of ['home', 'live', 'movie', 'series', 'guide', 'spor', 'favs', 'recents', 'search', 'settings']) {
+    assert.equal((await gonder('/ekran', { ad })).kod, 200, ad);
+  }
+  for (const kotu of ['', 'constructor', '__proto__', 'player', 'addsource', undefined]) {
+    assert.equal((await gonder('/ekran', { ad: kotu })).kod, 400, String(kotu));
+  }
+  r = await sor({ bekleMs: 0 });
+  assert.equal(r.komutlar.length, 10);
+  assert.deepEqual(r.komutlar[0], { t: 'ekran', ad: 'home' });
+  // Kodsuz istek kuyruğa girmez
+  assert.equal((await istek(a.port, '/fare', { method: 'POST', govde: { dx: 1, dy: 1 } })).kod === 200, false);
+  assert.deepEqual((await sor({ bekleMs: 0 })).komutlar, []);
+});
+
+test('kumanda: /ses TV ses servisini çağırır; ilk adres yoksa ikincisi denenir; sessiz durumu tersine çevirir; hata 502 olur', async (t) => {
+  t.after(() => { svc._lunaCagri(null); svc.kumandaDurdur(); });
+  const a = await baslat({ pin: '1234' });
+  const gonder = (g) => istek(a.port, '/ses', { method: 'POST', govde: { pin: '1234', ...g } });
+  const cagrilar = [];
+  let sessizMi = false;
+  svc._lunaCagri((uri, par, cb) => {
+    cagrilar.push([uri, par]);
+    if (/com\.webos\.service\.audio/.test(uri)) return cb({ returnValue: false, errorText: 'yok' }); // 1. adres bu TV'de yok
+    if (/getVolume/.test(uri)) return cb({ returnValue: true, muted: sessizMi });
+    if (/setMuted/.test(uri)) sessizMi = par.muted;
+    cb({ returnValue: true });
+  });
+  assert.equal((await gonder({ islem: 'artir' })).kod, 200);
+  assert.deepEqual(cagrilar.map((c) => c[0]), ['luna://com.webos.service.audio/master/volumeUp', 'luna://com.webos.audio/volumeUp'], 'ilk adres olmayınca ikinciye geçilir');
+  cagrilar.length = 0;
+  assert.equal((await gonder({ islem: 'azalt' })).kod, 200);
+  assert.match(cagrilar[1][0], /volumeDown$/);
+  cagrilar.length = 0;
+  assert.equal((await gonder({ islem: 'sessiz' })).kod, 200);
+  assert.equal(sessizMi, true, 'sessiz değildi → sessize alındı');
+  assert.equal((await gonder({ islem: 'sessiz' })).kod, 200);
+  assert.equal(sessizMi, false, 'sessizdi → açıldı');
+  for (const kotu of ['', 'yukselt', 'constructor', undefined]) assert.equal((await gonder({ islem: kotu })).kod, 400, String(kotu));
+  svc._lunaCagri((uri, par, cb) => cb(null));
+  const h = await gonder({ islem: 'artir' });
+  assert.equal(h.kod, 502);
+  assert.equal(h.json.ok, false);
+  assert.match(h.json.mesaj, /TV sesi/);
+  svc._lunaCagri(null);
+  assert.equal((await gonder({ islem: 'artir' })).kod, 502, 'köprü yoksa da çökmez');
+});
+
+test('kumanda sayfası: tek ekrana sığan sekmeler, fare alanı, hızlı geçiş ve ses düğmeleri var; tüm tuşlar ve ekran adları sayfada', () => {
+  const s = svc._kumandaSayfa;
+  for (const sekme of ['p-k', 'p-f', 'p-y', 'p-d']) {
+    assert.ok(s.includes('id="' + sekme + '"') && s.includes('data-s="' + sekme + '"'), sekme);
+  }
+  for (const tus of Object.keys(TUS_KODLARI)) assert.ok(s.includes('data-t="' + tus + '"'), tus);
+  for (const ad of ['home', 'live', 'movie', 'series', 'guide', 'spor', 'favs', 'recents', 'search', 'settings']) assert.ok(s.includes('data-e="' + ad + '"'), ad);
+  for (const v of ['azalt', 'sessiz', 'artir']) assert.ok(s.includes('data-v="' + v + '"'), v);
+  assert.match(s, /id="tp"/, 'fare alanı');
+  assert.match(s, /'\/fare'/);
+  assert.match(s, /'\/ekran'/);
+  assert.match(s, /'\/ses'/);
+  assert.match(s, /overflow:hidden/, 'ana düzen kaydırma gerektirmez');
+  assert.ok(!/user-scalable=yes/.test(s));
+  // Betik her sekmeden bağımsız çalışır: söz dizimi geçerli
+  const betik = /<script>([\s\S]*)<\/script>/.exec(s)[1];
+  assert.doesNotThrow(() => new vm.Script(betik));
+});
+
+// Sahte belge: imleç dugumu, elementFromPoint ve MouseEvents
+function imlecDunyasi({ gen = 1920, yuk = 1080 } = {}) {
+  const olaylar = [];
+  const hedef = { tagName: 'DIV', dispatchEvent: (e) => olaylar.push(e.type + ':' + e.clientX + ',' + e.clientY) };
+  const girdi = { tagName: 'INPUT', odak: 0, focus() { this.odak++; }, dispatchEvent: (e) => olaylar.push('girdi-' + e.type) };
+  let altinda = hedef;
+  const dugumler = [];
+  const doc = {
+    body: { appendChild: (d) => dugumler.push(d) },
+    createElement: () => ({ style: {}, className: '', innerHTML: '' }),
+    createEvent: () => ({ initMouseEvent(tur, a, b, w, d, sx, sy, cx, cy) { this.type = tur; this.clientX = cx; this.clientY = cy; } }),
+    elementFromPoint: () => altinda,
+  };
+  const zamanlar = [];
+  return {
+    doc, olaylar, hedef, girdi, dugumler, zamanlar,
+    altinda: (n) => { altinda = n; },
+    kur: (tus = () => {}) => imlecKur({ doc, win: { innerWidth: gen, innerHeight: yuk }, bekle: (f, ms) => (zamanlar.push([f, ms]), zamanlar.length), iptal: () => {}, tus }),
+  };
+}
+
+test('imlecKur: ortada başlar, ekran sınırında kalır, hareket mousemove üretir, tıklama altındaki öğeye gider; yazı alanına odak verir; kendiliğinden gizlenir', () => {
+  const d = imlecDunyasi();
+  const im = d.kur();
+  assert.deepEqual(im.hareket(100, -50), { x: 960 + 100, y: 540 - 50 });
+  assert.equal(d.dugumler.length, 1);
+  assert.equal(d.dugumler[0].className, 'sanal-imlec');
+  assert.equal(d.dugumler[0].style.display, 'block');
+  assert.deepEqual(d.olaylar, ['mousemove:1060,490']);
+  assert.deepEqual(im.hareket(-99999, 99999), { x: 0, y: 1079 }, 'ekran dışına çıkmaz');
+  assert.deepEqual(im.hareket('a', undefined), { x: 0, y: 1079 }, 'sayı olmayan hareket sıfır sayılır');
+  d.olaylar.length = 0;
+  assert.equal(im.tikla(), true);
+  assert.deepEqual(d.olaylar, ['mousedown:0,1079', 'mouseup:0,1079', 'click:0,1079']);
+  d.altinda(d.girdi);
+  d.olaylar.length = 0;
+  assert.equal(im.tikla(), true);
+  assert.equal(d.girdi.odak, 1, 'yazı alanına tıklayınca TV klavyesi için odak verilir');
+  d.altinda(null);
+  assert.equal(im.tikla(), false, 'altında öğe yoksa tıklanmaz');
+  // Gizleme: son hareketten 5 sn sonra
+  const son = d.zamanlar[d.zamanlar.length - 1];
+  assert.equal(son[1], 5000);
+  son[0]();
+  assert.equal(d.dugumler[0].style.display, 'none');
+  im.hareket(1, 1);
+  assert.equal(d.dugumler[0].style.display, 'block', 'yeniden hareket edince görünür');
+  assert.equal(d.dugumler.length, 1, 'düğüm bir kez oluşturulur');
+});
+
+test('imlecKur.kaydir: 30 birim bir ▲/▼ tuşu; küçük kaydırmalar birikir; tek komutta en çok 8 tuş; parmak aşağı = liste yukarı', () => {
+  const d = imlecDunyasi();
+  const tuslar = [];
+  const im = d.kur((a) => tuslar.push(a));
+  assert.equal(im.kaydir(20), 0);
+  assert.equal(im.kaydir(20), 1, 'birikim 40 → bir adım, 10 artar');
+  assert.deepEqual(tuslar, ['up']);
+  assert.equal(im.kaydir(-100), 3, '10-100 = -90 → 3 adım aşağı');
+  assert.deepEqual(tuslar, ['up', 'down', 'down', 'down']);
+  tuslar.length = 0;
+  assert.equal(im.kaydir(5000), 8, 'tek komutta 8 tuş');
+  assert.equal(tuslar.length, 8);
+  assert.equal(im.kaydir(NaN), 0);
+});
+
+test('fareIsle ve komutIsle: hareket imleci oynatır, tik tıklar, kaydir tuş basar; kanca yoksa fare/ekran yok sayılır', () => {
+  const cagri = [];
+  const sahte = { hareket: (x, y) => cagri.push(['h', x, y]), tikla: () => (cagri.push(['t']), true), kaydir: (n) => (cagri.push(['k', n]), n > 0 ? 2 : 0) };
+  assert.equal(fareIsle({ t: 'fare', dx: 5, dy: -3 }, sahte), true);
+  assert.equal(fareIsle({ t: 'fare', tik: true }, sahte), true);
+  assert.equal(fareIsle({ t: 'fare', kaydir: 60 }, sahte), true);
+  assert.equal(fareIsle({ t: 'fare', kaydir: 0 }, sahte), false);
+  assert.equal(fareIsle(null, sahte), false);
+  assert.deepEqual(cagri, [['h', 5, -3], ['t'], ['k', 60], ['k', 0]]);
+  const alinan = [];
+  assert.equal(komutIsle({ t: 'fare', dx: 1, dy: 2 }, { fare: (k) => (alinan.push(k), true) }), true);
+  assert.equal(komutIsle({ t: 'ekran', ad: 'live' }, { ekran: (ad) => (alinan.push(ad), true) }), true);
+  assert.deepEqual(alinan, [{ t: 'fare', dx: 1, dy: 2 }, 'live']);
+  assert.equal(komutIsle({ t: 'fare', dx: 1, dy: 2 }, {}), false);
+  assert.equal(komutIsle({ t: 'ekran', ad: 'live' }, {}), false);
+});
+
+test('ekranAc: açık ekranları kapatıp ana sayfaya döner, sonra istenen bölümü açar; home yalnız döner; bilinmeyen ad reddedilir', () => {
+  const yigin = [{ name: 'home' }, { name: 'browse' }, { name: 'player' }];
+  const acilan = [];
+  const ek = {
+    ust: () => yigin[yigin.length - 1],
+    geri: () => yigin.pop(),
+    ac: (ad, arg) => { acilan.push([ad, arg]); yigin.push({ name: ad }); },
+    derinlik: () => yigin.length,
+  };
+  assert.equal(ekranAc('movie', ek), true);
+  assert.deepEqual(yigin.map((e) => e.name), ['home', 'browse'], 'oynatıcı ve eski liste kapandı, yeni liste açıldı');
+  assert.deepEqual(acilan, [['browse', { kind: 'movie' }]]);
+  acilan.length = 0;
+  assert.equal(ekranAc('home', ek), true);
+  assert.deepEqual(yigin.map((e) => e.name), ['home']);
+  assert.deepEqual(acilan, []);
+  assert.equal(ekranAc('settings', ek), true);
+  assert.deepEqual(acilan, [['settings', undefined]]);
+  assert.equal(ekranAc('player', ek), false);
+  assert.equal(ekranAc('constructor', ek), false);
+  // Sınırsız döngüye girmez: ust hep başka ekran döndürse de en çok 30 geri
+  let geri = 0;
+  assert.equal(ekranAc('search', { ust: () => ({ name: 'x' }), geri: () => geri++, ac: () => {}, derinlik: () => 5 }), true);
+  assert.equal(geri, 30);
+});
+
+test('kablolama: ana sayfada kumanda düğmesi (üst çubuk, odak, tıklama) ve fare/ekran komutları uygulamaya bağlı', () => {
+  const kok = join(dirname(fileURLToPath(import.meta.url)), '..', 'webos');
+  const oku = (...y) => readFileSync(join(kok, ...y), 'utf8');
+  const ana = oku('src', 'screens', 'home.js');
+  assert.match(ana, /ustCubuk\('Iptv Player Pro', src \? esc\(src\.name\) : '', true, false, true\)/, 'yalnız ana sayfada kumanda düğmesi');
+  assert.match(ana, /open\('telefonkumanda'\)/);
+  assert.match(ana, /let ustte = false/);
+  assert.match(ana, /a === 'up' && r === 0/, 'kart satırından ▲ ile düğmeye çıkılır');
+  assert.match(ana, /!ustte && r === 0/, 'düğmedeyken kartlar işaretli kalmaz');
+  const c = oku('src', 'ctx.js');
+  assert.match(c, /data-kum="1"/);
+  assert.match(c, /telefon: '<svg/);
+  const tel = oku('src', 'telefon.js');
+  assert.match(tel, /fare: \(k\) => fareIsle\(k, imlecAl\(\)\)/);
+  assert.match(tel, /ekran: \(ad\) =>/);
+  assert.match(tel, /imlecKur\(\{ tus: \(a\) => tusGonder\(a\) \}\)/);
+  const css = oku('css', 'tv.css');
+  assert.match(css, /\.top-kum \{/);
+  assert.match(css, /\.top-kum\.on \{/);
+  assert.match(css, /\.sanal-imlec \{[^}]*pointer-events: none/, 'imleç tıklamayı yakalamaz');
+  // ES5: imleç modülü Chromium 38'de olmayan işlevleri kullanmaz
+  const im = oku('src', 'imlec.js');
+  assert.ok(!/new MouseEvent|\.includes\(|\.findIndex\(|Array\.from\(/.test(im));
+  assert.match(im, /createEvent\('MouseEvents'\)/);
 });

@@ -3,6 +3,8 @@
 import { ctx, open, pop, top } from './ctx.js';
 import { luna, varlik, SERVIS } from './luna.js';
 import { yolAc } from './fragman.js';
+import { imlecKur } from './imlec.js';
+import { KAROLAR } from './screens/home.js';
 import { toast } from './ui.js';
 import * as K from './log.js';
 
@@ -110,7 +112,28 @@ export function komutIsle(k, b = {}) {
   }
   if (k.t === 'oynat') return oynatIsle(k.url, k.ad, b);
   if (k.t === 'kaynak') return b.kaynak ? b.kaynak(k) : false;
+  if (k.t === 'fare') return b.fare ? b.fare(k) : false;
+  if (k.t === 'ekran') return b.ekran ? b.ekran(k.ad) : false;
   return false;
+}
+
+// Telefondaki hızlı geçiş düğmeleri: açık ekranlar kapatılıp ana sayfaya dönülür, sonra istenen bölüm açılır (home: yalnız ana sayfa).
+// Dönen: ad tanındı mı.
+export function ekranAc(ad, { ust = top, geri = pop, ac = open, derinlik = () => ctx.stack.length } = {}) {
+  const k = ad === 'home' ? null : KAROLAR.filter((x) => x.id === ad)[0];
+  if (ad !== 'home' && !k) return false;
+  for (let n = 0; n < 30 && derinlik() > 1 && ust() && ust().name !== 'home'; n++) geri();
+  if (k) ac(k.ekran[0], k.ekran[1]);
+  return true;
+}
+
+// Fare alanı komutu: { dx, dy } imleci oynatır, { tik: true } tıklar, { kaydir } listeyi ▲▼ ile gezdirir
+export function fareIsle(k, im) {
+  if (!k) return false;
+  if (k.tik === true) return im.tikla();
+  if (k.kaydir !== undefined) return im.kaydir(k.kaydir) > 0;
+  im.hareket(k.dx, k.dy);
+  return true;
 }
 
 // Yoklayıcı: servisteki sunucuyu başlatır ve komutları sürekli alır. Bağımlılıklar dışarıdan verilebilir (test).
@@ -227,6 +250,9 @@ export function kaynakFormuDoldur(k, { ust = top, ac = open, bildir = (t) => toa
   return 'yazildi';
 }
 
+let imlec = null;
+const imlecAl = () => imlec || (imlec = imlecKur({ tus: (a) => tusGonder(a) }));
+
 export const telefon = telefonYoklayici({
   pin: () => kodAl(ctx.store),
   uygula: (k) =>
@@ -241,6 +267,14 @@ export const telefon = telefonYoklayici({
       youtube: (id, ad) => yolAc('sayfa', id, { ad, bildir: (t) => toast(t, 3500) }),
       bildir: (t) => toast(t, 3000),
       kaynak: kaynakFormuDoldur,
+      fare: (k) => fareIsle(k, imlecAl()),
+      ekran: (ad) => {
+        if (!ctx.store.active()) {
+          toast('Önce bir kaynak ekleyin', 3000);
+          return false;
+        }
+        return ekranAc(ad);
+      },
     }),
 });
 telefon.abone(() => {

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d1320">
+<title>Iptv Player Pro · Kumanda</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{display:flex;flex-direction:column;height:100vh;height:100dvh;max-width:480px;margin:0 auto;background:#0d1320;color:#e8ecf4;font-family:system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+#ust{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:8px 14px 2px}
+#ust b{font-size:16px}#st{font-size:13px;color:#9aa6bf;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#st.ok{color:#5eead4}#st.err{color:#ff8a8a}
+#pw{padding:4px 14px}
+main{flex:1;min-height:0;position:relative}
+.pg{display:none;position:absolute;left:0;right:0;top:0;bottom:0;padding:6px 12px;gap:7px}
+.pg.on{display:grid}
+.pg.kay{overflow-y:auto;display:none}.pg.kay.on{display:block}
+.r{display:grid;gap:7px;min-height:0}
+.c4{grid-template-columns:repeat(4,1fr)}.c3{grid-template-columns:repeat(3,1fr)}.c2{grid-template-columns:1fr 1fr}
+button{min-height:0;min-width:0;padding:0 4px;font-size:clamp(15px,2.6vh,20px);border:0;border-radius:12px;background:#1b2437;color:#e8ecf4;touch-action:manipulation}
+button:active{background:#2dd4bf;color:#04141a}
+.dp{display:grid;grid-template:1fr 1fr 1fr/1fr 1fr 1fr;gap:7px;min-height:0}
+.dp button{font-size:clamp(20px,3.6vh,28px)}
+.dp .ok{background:#26324b;font-weight:700}
+.ren button.k1{background:#e5484d}.ren button.k2{background:#30a46c}.ren button.k3{background:#f5d90a}.ren button.k4{background:#3e63dd}
+.g{background:#2dd4bf;color:#04141a;font-weight:600}
+#sek{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:6px 10px calc(8px + env(safe-area-inset-bottom));background:#0a0f1a}
+#sek button{height:44px;font-size:15px;background:#151c2c;color:#9aa6bf}
+#sek button.on{background:#2dd4bf;color:#04141a;font-weight:700}
+input[type=text],input[type=tel],input[type=url],input:not([type]){width:100%;font-size:17px;padding:11px 12px;background:#111827;color:#e8ecf4;border:2px solid #26324b;border-radius:10px;margin:5px 0;-webkit-user-select:text;user-select:text}
+input:focus{outline:none;border-color:#2dd4bf}
+#tp{position:relative;border-radius:16px;background:#111a2c;border:2px dashed #2a3a5c;touch-action:none;display:flex;align-items:center;justify-content:center;text-align:center;color:#5c6b8c;font-size:14px;padding:16px;line-height:1.5;min-height:0}
+#tp.dok{background:#16233d;border-color:#2dd4bf}
+.sg{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.sg button{height:38px;font-size:14px}.sg button.on{background:#26324b;color:#5eead4;font-weight:600}
+h2{font-size:14px;margin:12px 0 4px;color:#9aa6bf;font-weight:600}
+label.k{display:block;font-size:13px;color:#9aa6bf;margin-top:8px}
+details{margin:8px 0}summary{color:#9aa6bf;padding:8px 0;font-size:15px}
+.ks{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.ks button{height:46px;font-size:15px}
+.nm{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;min-height:0}.nm button{font-size:clamp(20px,3.4vh,26px)}
+</style>
+</head>
+<body>
+<div id="ust"><b>TV kumandası</b><span id="st">Bağlanıyor…</span></div>
+<div id="pw" style="display:none"><input id="pin" inputmode="numeric" maxlength="4" placeholder="TV kodu (4 hane)" autocomplete="off"></div>
+<main>
+  <section id="p-k" class="pg on" style="grid-template-rows:.9fr 3.6fr .9fr .55fr .9fr .9fr">
+    <div class="r c4"><button data-t="back">⟵ Geri</button><button data-e="home">⌂ Ana</button><button data-t="info">ⓘ Bilgi</button><button data-t="stop">■</button></div>
+    <div class="dp"><i></i><button data-t="up" data-r="1">▲</button><i></i><button data-t="left" data-r="1">◀</button><button class="ok" data-t="ok" data-l="1">OK</button><button data-t="right" data-r="1">▶</button><i></i><button data-t="down" data-r="1">▼</button><i></i></div>
+    <div class="r c4"><button data-t="rw" data-r="1">⏪</button><button data-t="play">▶</button><button data-t="pause">⏸</button><button data-t="ff" data-r="1">⏩</button></div>
+    <div class="r c4 ren"><button class="k1" data-t="red">&nbsp;</button><button class="k2" data-t="green">&nbsp;</button><button class="k3" data-t="yellow">&nbsp;</button><button class="k4" data-t="blue">&nbsp;</button></div>
+    <div class="r c3"><button data-v="azalt" data-r="1">🔉 Ses −</button><button data-v="sessiz">🔇 Sessiz</button><button data-v="artir" data-r="1">🔊 Ses +</button></div>
+    <div class="r c2"><button data-t="chdown" data-r="1">Kanal −</button><button data-t="chup" data-r="1">Kanal +</button></div>
+  </section>
+
+  <section id="p-f" class="pg" style="grid-template-rows:1fr auto auto">
+    <div id="tp">Parmağınızı kaydırarak TV’deki imleci oynatın<br>Dokun: tıkla · İki parmakla kaydır: listeyi kaydır</div>
+    <div class="r c3" style="height:52px"><button data-t="back">⟵ Geri</button><button class="g" id="tk">Tıkla</button><button data-e="home">⌂ Ana</button></div>
+    <div class="sg"><button data-h="2.2">Yavaş</button><button data-h="3.6" class="on">Normal</button><button data-h="5.6">Hızlı</button></div>
+  </section>
+
+  <section id="p-y" class="pg" style="grid-template-rows:auto auto 1fr">
+    <div><input id="tx" placeholder="TV’deki arama kutusuna yazılır (yazdıkça)" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
+    <div class="r c3" style="height:46px"><button id="tt">Temizle</button><button id="tg">Yaz</button><button id="ta" class="g">Yaz ve ara</button></div>
+    <div class="nm"><button data-t="num1">1</button><button data-t="num2">2</button><button data-t="num3">3</button><button data-t="num4">4</button><button data-t="num5">5</button><button data-t="num6">6</button><button data-t="num7">7</button><button data-t="num8">8</button><button data-t="num9">9</button><button data-t="back">⟵</button><button data-t="num0">0</button><button data-t="ok">OK</button></div>
+  </section>
+
+  <section id="p-d" class="pg kay">
+    <h2 style="margin-top:4px">Hızlı geçiş</h2>
+    <div class="ks"><button data-e="home">Ana sayfa</button><button data-e="live">Canlı TV</button><button data-e="movie">Filmler</button><button data-e="series">Diziler</button><button data-e="guide">Rehber</button><button data-e="spor">Spor</button><button data-e="favs">Favoriler</button><button data-e="recents">Geçmiş</button><button data-e="search">Ara</button><button data-e="settings">Ayarlar</button></div>
+    <h2>TV’de oynat</h2>
+    <input id="ul" placeholder="Yayın bağlantısı (m3u8, mp4) ya da YouTube" autocapitalize="none" autocorrect="off" spellcheck="false"><input id="un" placeholder="Ad (isteğe bağlı)">
+    <button class="g" id="og" style="width:100%;height:46px;margin-top:4px">TV’de oynat</button>
+    <details id="ld"><summary>Liste bilgilerini yaz (Kaynak ekle)</summary>
+      <div class="sg" style="grid-template-columns:1fr 1fr"><button id="lx" class="on">Xtream</button><button id="lm">M3U bağlantısı</button></div>
+      <label class="k">Ad (isteğe bağlı)</label><input id="la" autocomplete="off" autocapitalize="words" placeholder="Evim">
+      <div id="gx"><label class="k">Sunucu adresi</label><input id="ls" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://sunucu:port">
+      <label class="k">Kullanıcı adı</label><input id="lu" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <label class="k">Şifre</label><input id="lp" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
+      <div id="gm" style="display:none"><label class="k">M3U bağlantısı</label><input id="lb" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://…/liste.m3u"></div>
+      <div class="r c2" style="height:46px;margin-top:8px"><button id="ly">TV’ye yaz</button><button id="le" class="g">Yaz ve ekle</button></div>
+    </details>
+  </section>
+</main>
+<nav id="sek"><button data-s="p-k" class="on">Kumanda</button><button data-s="p-f">Fare</button><button data-s="p-y">Yaz</button><button data-s="p-d">Daha</button></nav>
+<script>(function () {
+var $ = function (i) { return document.getElementById(i); };
+var pin = (/[?&]k=(\d{4})/.exec(location.search) || [])[1] || '';
+try { if (pin) localStorage.setItem('tvk', pin); else pin = localStorage.getItem('tvk') || ''; } catch (e) {}
+if (!pin) $('pw').style.display = '';
+function pn() { return pin || $('pin').value.trim(); }
+function yaz(t, k) { var s = $('st'); s.textContent = t; s.className = k || ''; }
+
+// Tek istek: yol + govde; cb(basarili). Sessiz: durum satırını yalnız hatada günceller (imleç hareketi gibi sık istekler).
+function gonder(yol, g, cb, sessiz) {
+  g.pin = pn();
+  if (!/^\d{4}$/.test(g.pin)) { yaz('TV ekranındaki 4 haneli kodu yazın.', 'err'); if (cb) cb(false); return; }
+  var x = new XMLHttpRequest();
+  x.open('POST', yol); x.setRequestHeader('Content-Type', 'application/json'); x.timeout = 8000;
+  x.onload = function () {
+    var r = {}; try { r = JSON.parse(x.responseText); } catch (e) {}
+    if (r.ok) { if (!sessiz) yaz('TV’ye bağlı ✓', 'ok'); if (cb) cb(true); }
+    else { yaz(r.mesaj || 'Gönderilemedi (kod ' + x.status + ')', 'err'); if (cb) cb(false); }
+  };
+  x.onerror = x.ontimeout = function () { yaz('TV’ye ulaşılamadı. Aynı Wi-Fi’de misiniz, TV’de uygulama açık mı?', 'err'); if (cb) cb(false); };
+  x.send(JSON.stringify(g));
+}
+function titret() { try { if (navigator.vibrate) navigator.vibrate(10); } catch (e) {} }
+function tus(t, ms) { gonder('/tus', { tus: t, ms: ms || 0 }); titret(); }
+
+// Sekmeler: her sekme tek ekrana sığar (Daha sekmesi kaydırılabilir)
+var sekmeler = document.querySelectorAll('#sek button');
+function sekmeAc(id) {
+  var s = document.querySelectorAll('.pg');
+  for (var i = 0; i < s.length; i++) s[i].className = s[i].className.replace(/\bon\b/, '').replace(/\s+$/, '') + (s[i].id === id ? ' on' : '');
+  for (var j = 0; j < sekmeler.length; j++) sekmeler[j].className = sekmeler[j].getAttribute('data-s') === id ? 'on' : '';
+  try { localStorage.setItem('tvs', id); } catch (e) {}
+}
+for (var q = 0; q < sekmeler.length; q++) (function (b) { b.onclick = function () { sekmeAc(b.getAttribute('data-s')); }; })(sekmeler[q]);
+try { var son = localStorage.getItem('tvs'); if (son && $(son)) sekmeAc(son); } catch (e) {}
+
+// Basılı tutmayla tekrar eden düğmeler: tuş (data-t), ses (data-v); OK uzun basma (data-l); ekran kısayolu (data-e)
+function bagla(b, tikla, yinele) {
+  var bek = null, yi = null;
+  function dur() { clearTimeout(bek); clearInterval(yi); bek = yi = null; }
+  b.addEventListener('pointerdown', function (e) { e.preventDefault(); tikla(); if (yinele) bek = setTimeout(function () { yi = setInterval(tikla, 150); }, 380); });
+  b.addEventListener('pointerup', dur); b.addEventListener('pointercancel', dur); b.addEventListener('pointerleave', function () { if (yi || bek) dur(); });
+  b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+}
+var dugmeler = document.querySelectorAll('button[data-t]');
+for (var i = 0; i < dugmeler.length; i++) (function (b) {
+  var t = b.getAttribute('data-t'), yin = b.getAttribute('data-r'), uzun = b.getAttribute('data-l'), bas = 0;
+  if (uzun) {
+    b.addEventListener('pointerdown', function (e) { e.preventDefault(); bas = Date.now(); });
+    var birak = function () { if (bas) { var u = Date.now() - bas > 600; bas = 0; tus(t, u ? 900 : 0); } };
+    b.addEventListener('pointerup', birak); b.addEventListener('pointercancel', function () { bas = 0; });
+    b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  } else bagla(b, function () { tus(t); }, !!yin);
+})(dugmeler[i]);
+var kisayollar = document.querySelectorAll('button[data-e]');
+for (var k = 0; k < kisayollar.length; k++) (function (b) {
+  b.addEventListener('click', function () { gonder('/ekran', { ad: b.getAttribute('data-e') }); titret(); });
+})(kisayollar[k]);
+var sesler = document.querySelectorAll('button[data-v]');
+for (var v = 0; v < sesler.length; v++) (function (b) {
+  bagla(b, function () { gonder('/ses', { islem: b.getAttribute('data-v') }); titret(); }, !!b.getAttribute('data-r'));
+})(sesler[v]);
+
+// Yazı: yazdıkça (kısa bir bekleyişle) TV'deki arama kutusuna gider; TV'de arama da yazdıkça sonuç gösterir
+var yazT = null;
+function metin(enter) { clearTimeout(yazT); gonder('/metin', { metin: $('tx').value, enter: !!enter }); }
+$('tx').addEventListener('input', function () { clearTimeout(yazT); yazT = setTimeout(function () { metin(false); }, 250); });
+$('tx').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); metin(true); $('tx').blur(); } });
+$('tg').onclick = function () { metin(false); };
+$('ta').onclick = function () { metin(true); };
+$('tt').onclick = function () { $('tx').value = ''; metin(false); $('tx').focus(); };
+
+// Fare alanı: bir parmak imleci oynatır (hareketler toplanıp en çok ~25/sn gönderilir), dokunma tıklar, iki parmak kaydırır
+var tp = $('tp'), hiz = 3.6;
+try { var h0 = parseFloat(localStorage.getItem('tvh')); if (h0 > 0) hiz = h0; } catch (e) {}
+var hb = document.querySelectorAll('.sg button[data-h]');
+function hizSec(h) { hiz = h; for (var i = 0; i < hb.length; i++) hb[i].className = parseFloat(hb[i].getAttribute('data-h')) === h ? 'on' : ''; try { localStorage.setItem('tvh', String(h)); } catch (e) {} }
+for (var z = 0; z < hb.length; z++) (function (b) { b.onclick = function () { hizSec(parseFloat(b.getAttribute('data-h'))); }; })(hb[z]);
+hizSec(hiz);
+var bx = 0, by = 0, ky = 0, uc = false, tutuyor = false, sx = 0, sy = 0, st0 = 0, gez = 0, iki = false;
+function bosalt() {
+  if (uc || (!bx && !by && !ky)) return;
+  var g = ky ? { kaydir: Math.round(ky) } : { dx: Math.round(bx), dy: Math.round(by) };
+  if (!ky && !g.dx && !g.dy) return;
+  if (ky) ky = 0; else { bx -= g.dx; by -= g.dy; }
+  uc = true;
+  gonder('/fare', g, function (ok) { uc = false; if (!ok) { bx = by = ky = 0; return; } if (bx || by || ky) setTimeout(bosalt, 0); }, true);
+}
+setInterval(bosalt, 40);
+tp.addEventListener('touchstart', function (e) {
+  e.preventDefault(); tp.className = 'dok';
+  if (e.touches.length === 1) { var t = e.touches[0]; sx = t.clientX; sy = t.clientY; st0 = Date.now(); gez = 0; iki = false; }
+  else iki = true;
+  tutuyor = true;
+}, { passive: false });
+tp.addEventListener('touchmove', function (e) {
+  e.preventDefault(); if (!tutuyor) return;
+  var t = e.touches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+  sx = t.clientX; sy = t.clientY; gez += Math.abs(dx) + Math.abs(dy);
+  if (e.touches.length >= 2) { iki = true; ky += dy * 3; } else if (!iki) { var ivme = 1 + Math.min(1.2, Math.sqrt(dx * dx + dy * dy) / 18); bx += dx * hiz * ivme / 2; by += dy * hiz * ivme / 2; }
+}, { passive: false });
+function bitir(e) {
+  e.preventDefault(); if (!e.touches.length) { tp.className = ''; if (tutuyor && !iki && gez < 10 && Date.now() - st0 < 350) { gonder('/fare', { tik: true }); titret(); } tutuyor = false; iki = false; }
+}
+tp.addEventListener('touchend', bitir, { passive: false }); tp.addEventListener('touchcancel', function () { tp.className = ''; tutuyor = false; iki = false; });
+$('tk').onclick = function () { gonder('/fare', { tik: true }); titret(); };
+
+// TV'de oynat ve kaynak formu
+$('og').onclick = function () {
+  var u = $('ul').value.trim();
+  if (!/^https?:\/\/\S+$/i.test(u)) { yaz('http:// ya da https:// ile başlayan bir bağlantı yazın.', 'err'); return; }
+  gonder('/oynat', { url: u, ad: $('un').value.trim() }, function (ok) { if (ok) yaz('TV’ye gönderildi ✓', 'ok'); });
+};
+var lt = 'xtream';
+function lk(t) { lt = t; $('lx').className = t == 'xtream' ? 'on' : ''; $('lm').className = t == 'm3u' ? 'on' : ''; $('gx').style.display = t == 'xtream' ? '' : 'none'; $('gm').style.display = t == 'm3u' ? '' : 'none'; }
+$('lx').onclick = function () { lk('xtream'); }; $('lm').onclick = function () { lk('m3u'); };
+function lg(ekle) {
+  var g = { tip: lt, ad: $('la').value.trim(), ekle: ekle };
+  if (lt == 'xtream') { g.server = $('ls').value.trim(); g.user = $('lu').value.trim(); g.pass = $('lp').value; if (ekle && !g.server) { yaz('Sunucu adresini yazın.', 'err'); return; } }
+  else { g.url = $('lb').value.trim(); if (ekle && !/^https?:\/\/\S+$/i.test(g.url)) { yaz('http:// ya da https:// ile başlayan liste bağlantısını yazın.', 'err'); return; } }
+  gonder('/kaynak', g, function (ok) { if (ok) yaz(ekle ? 'TV’ye gönderildi; TV bağlanıyor ✓' : 'TV’deki forma yazıldı ✓', 'ok'); });
+}
+$('ly').onclick = function () { lg(false); }; $('le').onclick = function () { lg(true); };
+if (/[?&]s=liste/.test(location.search)) { sekmeAc('p-d'); $('ld').open = true; }
+if (pin) gonder('/tus', { tus: 'ping' }); else yaz('TV ekranındaki kodu aşağıya yazın.');
+})()</script>
+</body>
+</html>

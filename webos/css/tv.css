@@ -16,6 +16,11 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .top-ara { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; margin-right: 2rem; padding: .5rem 1.6rem .5rem 1.2rem; font-size: 1.9rem; color: #c9d2e6; background: #151b2b; border-radius: .8rem; white-space: nowrap; }
 .top-ara svg { width: 2.4rem; height: 2.4rem; margin-right: .6rem; fill: currentColor; }
 .top-ara.on { background: #2dd4bf; color: #04141a; }
+.top-kum { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; margin-right: 2rem; padding: .5rem 1rem; color: #c9d2e6; background: #151b2b; border-radius: .8rem; }
+.top-kum svg { width: 2.4rem; height: 2.4rem; fill: currentColor; }
+.top-kum.on { background: #2dd4bf; color: #04141a; }
+.sanal-imlec { position: fixed; left: 0; top: 0; width: 3.4rem; height: 3.4rem; margin: -.2rem 0 0 -.2rem; z-index: 99999; pointer-events: none; display: none; }
+.sanal-imlec svg { width: 100%; height: 100%; -webkit-filter: drop-shadow(0 .2rem .3rem rgba(0, 0, 0, .7)); filter: drop-shadow(0 .2rem .3rem rgba(0, 0, 0, .7)); }
 .top-r { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; color: #9aa6bf; font-size: 1.7rem; }
 .top-src { margin-right: 2rem; max-width: 36rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clock { font-size: 1.9rem; color: #c9d2e6; min-width: 4.4rem; text-align: right; }

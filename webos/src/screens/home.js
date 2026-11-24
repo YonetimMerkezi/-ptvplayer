@@ -37,7 +37,7 @@ export function homeScreen() {
   const kok = el('div', 'screen home');
   const src = ctx.store.active();
   kok.innerHTML =
-    ustCubuk('Iptv Player Pro', src ? esc(src.name) : '', true) +
+    ustCubuk('Iptv Player Pro', src ? esc(src.name) : '', true, false, true) +
     '<div class="hm">' +
     '<div class="hm-c">' +
     BUYUK.map((id, i) => {
@@ -55,6 +55,7 @@ export function homeScreen() {
 
   const kartlar = kok.querySelectorAll('.hc');
   const butonlar = kok.querySelectorAll('.hb');
+  const kumEl = kok.querySelector('.top-kum');
   const serit = kok.querySelector('#hm-pi');
   const ileti = kok.querySelector('#hm-m');
   const tarihEl = kok.querySelector('#hm-d');
@@ -63,6 +64,7 @@ export function homeScreen() {
   let yukleniyor = false;
   let olu = false;
   let r = 0; // odaktaki satır: 0 kartlar, 1 butonlar, 2 afişler
+  let ustte = false; // odak üst çubuktaki küçük Telefon kumandası düğmesinde (▲ ile kartlardan çıkılır)
   const c = [0, 0, 0]; // her satırda son odak sütunu
 
   const adet = (satir) => (satir === 0 ? BUYUK.length : satir === 1 ? KUCUK.length : filmler.length);
@@ -98,13 +100,14 @@ export function homeScreen() {
   };
 
   const isaretle = () => {
-    for (let i = 0; i < kartlar.length; i++) kartlar[i].className = 'tile hc ' + renkSinifi(i) + (r === 0 && c[0] === i ? ' on' : '');
-    for (let i = 0; i < butonlar.length; i++) butonlar[i].className = 'tile hb ' + renkSinifi(i + 3) + (r === 1 && c[1] === i ? ' on' : '');
+    kumEl.className = 'top-kum' + (ustte ? ' on' : '');
+    for (let i = 0; i < kartlar.length; i++) kartlar[i].className = 'tile hc ' + renkSinifi(i) + (!ustte && r === 0 && c[0] === i ? ' on' : '');
+    for (let i = 0; i < butonlar.length; i++) butonlar[i].className = 'tile hb ' + renkSinifi(i + 3) + (!ustte && r === 1 && c[1] === i ? ' on' : '');
     for (let i = 0; i < afisler.length; i++) {
       const a = afisler[i];
-      a.dugum.className = 'pr' + (a.dugum.className.indexOf(' ok') >= 0 ? ' ok' : '') + (r === 2 && c[2] === i ? ' on' : '');
+      a.dugum.className = 'pr' + (a.dugum.className.indexOf(' ok') >= 0 ? ' ok' : '') + (!ustte && r === 2 && c[2] === i ? ' on' : '');
     }
-    const f = r === 2 ? filmler[c[2]] : null;
+    const f = !ustte && r === 2 ? filmler[c[2]] : null;
     tarihEl.textContent = f ? [tarihYaz(f)].filter(Boolean).join('') : '';
     if (afisler.length) {
       kaydir();
@@ -163,6 +166,10 @@ export function homeScreen() {
   };
 
   kok.addEventListener('click', (e) => {
+    if (enYakin(e.target, '.top-kum', kok)) {
+      open('telefonkumanda');
+      return;
+    }
     const n = enYakin(e.target, '[data-r]', kok);
     if (!n) return;
     r = Number(n.getAttribute('data-r'));
@@ -182,6 +189,14 @@ export function homeScreen() {
       olu = true;
     },
     onKey(a) {
+      if (ustte && (a === 'ok' || a === 'down' || a === 'up' || a === 'left' || a === 'right')) {
+        if (a === 'ok') open('telefonkumanda');
+        else if (a === 'down') {
+          ustte = false;
+          isaretle();
+        }
+        return true;
+      }
       if (a === 'ok') {
         ac(r, c[r]);
         return true;
@@ -199,6 +214,11 @@ export function homeScreen() {
           c[r] = n;
           isaretle();
         }
+        return true;
+      }
+      if (a === 'up' && r === 0) {
+        ustte = true;
+        isaretle();
         return true;
       }
       if (a === 'up' || a === 'down') {

@@ -21,7 +21,7 @@
 //
 // Telefon kumandası (kaynak aktarma alıcısından ayrı sunucu; telefon tarayıcısı http://TV-IP:port/k?k=KOD açar):
 //   kumandaBaslat {pin, sifirla}            → {returnValue, port, pin, adresler[]}   (pin 4 hane verilirse sabit kalır)
-//   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat'|'kaynak', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
+//   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat'|'kaynak'|'fare'|'ekran', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
 //   kumandaDurdur {}                        → {returnValue}
 //
 // Güncelleme (GitHub sürümündeki IPK'yı indirir, doğrular, TV kurulum servisine verir; adres serviste sabittir):
@@ -1245,84 +1245,8 @@ function aliciKontrol(simdi) {
   return false;
 }
 
-var KUMANDA_SAYFA =
-  '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">' +
-  '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">' +
-  '<meta name="theme-color" content="#0d1320"><title>Iptv Player Pro · Kumanda</title>' +
-  '<style>' +
-  '*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
-  'body{margin:0 auto;background:#0d1320;color:#e8ecf4;font-family:system-ui,sans-serif;padding:12px 14px 28px;max-width:440px}' +
-  'h1{font-size:19px;margin:6px 0 2px}h2{font-size:16px;margin:22px 0 4px;color:#9aa6bf;font-weight:600}' +
-  '#st{font-size:14px;color:#9aa6bf;min-height:20px;margin-bottom:8px}#st.ok{color:#5eead4}#st.err{color:#ff8a8a}' +
-  '.row{display:flex;gap:8px;margin:8px 0}.row button{flex:1}' +
-  'button{font-size:19px;padding:14px 0;border:0;border-radius:14px;background:#1b2437;color:#e8ecf4;-webkit-user-select:none;user-select:none}' +
-  'button:active{background:#2dd4bf;color:#04141a}' +
-  '.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.pad button{height:70px;font-size:26px}' +
-  '.pad .ok{background:#26324b;font-size:20px;font-weight:700}' +
-  '.c1{background:#e5484d}.c2{background:#30a46c}.c3{background:#f5d90a}.c4{background:#3e63dd}' +
-  'details{margin:14px 0}summary{color:#9aa6bf;padding:6px 0;font-size:15px}' +
-  'input{width:100%;font-size:17px;padding:11px 12px;background:#111827;color:#e8ecf4;border:2px solid #26324b;border-radius:10px;margin:6px 0}' +
-  'input:focus{outline:none;border-color:#2dd4bf}.g{background:#2dd4bf;color:#04141a;font-weight:600;font-size:17px}' +
-  '.sg{display:flex;gap:8px;margin:6px 0}.sg button{flex:1;padding:11px 0;font-size:16px}.sg button.on{background:#2dd4bf;color:#04141a;font-weight:600}' +
-  'label.k{display:block;font-size:13px;color:#9aa6bf;margin-top:8px}' +
-  '</style></head><body>' +
-  '<h1>TV kumandası</h1><div id="st">Bağlanıyor…</div>' +
-  '<div id="pw" style="display:none"><input id="pin" inputmode="numeric" maxlength="4" placeholder="TV kodu (4 hane)" autocomplete="off"></div>' +
-  '<details id="ld"><summary>Liste bilgilerini yaz (Kaynak ekle)</summary>' +
-  '<div class="sg"><button id="lx" class="on">Xtream</button><button id="lm">M3U bağlantısı</button></div>' +
-  '<label class="k">Ad (isteğe bağlı)</label><input id="la" autocomplete="off" autocapitalize="words" placeholder="Evim">' +
-  '<div id="gx"><label class="k">Sunucu adresi</label><input id="ls" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://sunucu:port">' +
-  '<label class="k">Kullanıcı adı</label><input id="lu" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">' +
-  '<label class="k">Şifre</label><input id="lp" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></div>' +
-  '<div id="gm" style="display:none"><label class="k">M3U bağlantısı</label><input id="lb" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://…/liste.m3u"></div>' +
-  '<div class="row"><button id="ly">TV’ye yaz</button><button id="le" class="g">Yaz ve ekle</button></div></details>' +
-  '<div class="row"><button data-t="back">⟵ Geri</button><button data-t="info">ⓘ Bilgi</button><button data-t="stop">■</button></div>' +
-  '<div class="pad"><i></i><button data-t="up" data-r="1">▲</button><i></i><button data-t="left" data-r="1">◀</button><button class="ok" data-t="ok" data-l="1">OK</button><button data-t="right" data-r="1">▶</button><i></i><button data-t="down" data-r="1">▼</button><i></i></div>' +
-  '<div class="row"><button data-t="rw" data-r="1">⏪</button><button data-t="play">▶</button><button data-t="pause">⏸</button><button data-t="ff" data-r="1">⏩</button></div>' +
-  '<div class="row"><button class="c1" data-t="red">&nbsp;</button><button class="c2" data-t="green">&nbsp;</button><button class="c3" data-t="yellow">&nbsp;</button><button class="c4" data-t="blue">&nbsp;</button></div>' +
-  '<div class="row"><button data-t="chdown">Kanal −</button><button data-t="chup">Kanal +</button></div>' +
-  '<details><summary>Rakamlar</summary><div class="pad"><button data-t="num1">1</button><button data-t="num2">2</button><button data-t="num3">3</button><button data-t="num4">4</button><button data-t="num5">5</button><button data-t="num6">6</button><button data-t="num7">7</button><button data-t="num8">8</button><button data-t="num9">9</button><i></i><button data-t="num0">0</button><i></i></div></details>' +
-  '<h2>Yazı gönder</h2><input id="tx" placeholder="TV’deki arama kutusuna yazılacak" autocomplete="off">' +
-  '<div class="row"><button id="tg">Yaz</button><button id="ta" class="g">Yaz ve ara</button></div>' +
-  '<h2>TV’de oynat</h2><input id="ul" placeholder="Yayın bağlantısı (m3u8, mp4) ya da YouTube" autocapitalize="none" autocorrect="off" spellcheck="false"><input id="un" placeholder="Ad (isteğe bağlı)">' +
-  '<button class="g" id="og" style="width:100%;margin-top:6px">TV’de oynat</button>' +
-  '<script>(function(){var $=function(i){return document.getElementById(i)};' +
-  'var pin=(/[?&]k=(\\d{4})/.exec(location.search)||[])[1]||"";' +
-  'try{if(pin)localStorage.setItem("tvk",pin);else pin=localStorage.getItem("tvk")||""}catch(e){}' +
-  'if(!pin)$("pw").style.display="";' +
-  'function pn(){return pin||$("pin").value.trim()}' +
-  'function yaz(t,k){var s=$("st");s.textContent=t;s.className=k||""}' +
-  'function gonder(yol,g,cb){g.pin=pn();' +
-  'if(!/^\\d{4}$/.test(g.pin)){yaz("TV ekranındaki 4 haneli kodu yazın.","err");return}' +
-  'var x=new XMLHttpRequest();x.open("POST",yol);x.setRequestHeader("Content-Type","application/json");x.timeout=8000;' +
-  'x.onload=function(){var r={};try{r=JSON.parse(x.responseText)}catch(e){}' +
-  'if(r.ok){yaz("TV’ye bağlı ✓","ok");if(cb)cb(true)}else{yaz(r.mesaj||"Gönderilemedi (kod "+x.status+")","err");if(cb)cb(false)}};' +
-  'x.onerror=x.ontimeout=function(){yaz("TV’ye ulaşılamadı. Aynı Wi-Fi’de misiniz, TV’de uygulama açık mı?","err")};' +
-  'x.send(JSON.stringify(g))}' +
-  'function tus(t,ms){gonder("/tus",{tus:t,ms:ms||0});try{if(navigator.vibrate)navigator.vibrate(10)}catch(e){}}' +
-  'var dugmeler=document.querySelectorAll("button[data-t]");' +
-  'for(var i=0;i<dugmeler.length;i++)(function(b){var t=b.getAttribute("data-t"),yin=b.getAttribute("data-r"),uzun=b.getAttribute("data-l"),bek=null,yi=null,bas=0;' +
-  'function dur(){clearTimeout(bek);clearInterval(yi);bek=yi=null}' +
-  'b.addEventListener("pointerdown",function(e){e.preventDefault();bas=Date.now();if(uzun)return;tus(t);' +
-  'if(yin)bek=setTimeout(function(){yi=setInterval(function(){tus(t)},140)},380)});' +
-  'var birak=function(){if(uzun&&bas){var u=Date.now()-bas>600;bas=0;tus(t,u?900:0)}dur()};' +
-  'b.addEventListener("pointerup",birak);b.addEventListener("pointercancel",function(){bas=0;dur()});' +
-  'b.addEventListener("pointerleave",function(){if(yi||bek)dur()});' +
-  'b.addEventListener("contextmenu",function(e){e.preventDefault()})})(dugmeler[i]);' +
-  '$("tg").onclick=function(){gonder("/metin",{metin:$("tx").value,enter:false})};' +
-  '$("ta").onclick=function(){gonder("/metin",{metin:$("tx").value,enter:true})};' +
-  '$("og").onclick=function(){var u=$("ul").value.trim();' +
-  'if(!/^https?:\\/\\/\\S+$/i.test(u)){yaz("http:// ya da https:// ile başlayan bir bağlantı yazın.","err");return}' +
-  'gonder("/oynat",{url:u,ad:$("un").value.trim()},function(ok){if(ok)yaz("TV’ye gönderildi ✓","ok")})};' +
-  'var lt="xtream";function lk(t){lt=t;$("lx").className=t=="xtream"?"on":"";$("lm").className=t=="m3u"?"on":"";$("gx").style.display=t=="xtream"?"":"none";$("gm").style.display=t=="m3u"?"":"none"}' +
-  '$("lx").onclick=function(){lk("xtream")};$("lm").onclick=function(){lk("m3u")};' +
-  'function lg(ekle){var g={tip:lt,ad:$("la").value.trim(),ekle:ekle};' +
-  'if(lt=="xtream"){g.server=$("ls").value.trim();g.user=$("lu").value.trim();g.pass=$("lp").value;if(ekle&&!g.server){yaz("Sunucu adresini yazın.","err");return}}' +
-  'else{g.url=$("lb").value.trim();if(ekle&&!/^https?:\\/\\/\\S+$/i.test(g.url)){yaz("http:// ya da https:// ile başlayan liste bağlantısını yazın.","err");return}}' +
-  'gonder("/kaynak",g,function(ok){if(ok)yaz(ekle?"TV’ye gönderildi; TV bağlanıyor ✓":"TV’deki forma yazıldı ✓","ok")})}' +
-  '$("ly").onclick=function(){lg(false)};$("le").onclick=function(){lg(true)};' +
-  'if(/[?&]s=liste/.test(location.search)){$("ld").open=true}' +
-  'if(pin)gonder("/tus",{tus:"ping"});else yaz("TV ekranındaki kodu aşağıya yazın.")})()</script></body></html>';
+// Telefon kumandası sayfası (sekmeli, tek ekrana sığar): kumanda.html servis klasöründe durur ve açılışta bir kez okunur.
+var KUMANDA_SAYFA = fs.readFileSync(pathm.join(__dirname, 'kumanda.html'), 'utf8');
 
 // Telefon kumandası: aynı ağdaki telefon tarayıcısı TV uygulamasına tuş, yazı ve oynatma bağlantısı gönderir.
 // Kaynak aktarma alıcısından ayrı bir sunucudur (aktarma ekranı kapanınca kumanda kapanmasın). Uygulama kumandaSor ile uzun
@@ -1340,7 +1264,41 @@ var KUMANDA_TUSLARI = {
   play: 1, pause: 1, stop: 1, rw: 1, ff: 1, chup: 1, chdown: 1, info: 1,
   num0: 1, num1: 1, num2: 1, num3: 1, num4: 1, num5: 1, num6: 1, num7: 1, num8: 1, num9: 1
 };
+// Telefondaki hızlı geçiş düğmeleri: uygulama ana sayfaya dönüp ilgili bölümü açar (home = yalnız ana sayfa)
+var KUMANDA_EKRANLARI = { home: 1, live: 1, movie: 1, series: 1, guide: 1, spor: 1, favs: 1, recents: 1, search: 1, settings: 1 };
+var KUMANDA_FARE_EN_COK = 600; // tek istekte imleç/kaydırma sınırı (px)
+var KUMANDA_FARE_TOPLAM = 2400; // sırada birikmiş imleç hareketi sınırı
 var kumanda = null;
+
+function sayiSinir(v, en) {
+  var n = Math.round(Number(v));
+  return isFinite(n) ? (n < -en ? -en : n > en ? en : n) : 0;
+}
+
+// TV sesi: telefondan Ses −/+/Sessiz. Uygulama değil TV'nin ses servisi çağrılır; hangi adresin var olduğu TV'ye göre değişir (ilk çalışan kullanılır).
+var SES_ADRESLERI = ['luna://com.webos.service.audio/master/', 'luna://com.webos.audio/'];
+var SES_ISLEMLERI = { artir: 'volumeUp', azalt: 'volumeDown', sessiz: 'setMuted' };
+function sesYap(islem, cb) {
+  if (!lunaCagri) return cb({ ok: false, mesaj: 'TV ses servisine ulaşılamıyor.' });
+  function cagir(ad, yuk, bitti) {
+    (function dene(i) {
+      lunaCagri(SES_ADRESLERI[i] + ad, yuk, function (r) {
+        if (r && r.returnValue !== false) return bitti(null, r);
+        if (i + 1 < SES_ADRESLERI.length) return dene(i + 1);
+        bitti((r && (r.errorText || r.errorCode)) || 'yanıt yok');
+      });
+    })(0);
+  }
+  function son(e) {
+    cb(e ? { ok: false, mesaj: 'TV sesi uygulamadan değiştirilemedi (' + String(e).slice(0, 80) + ').' } : { ok: true });
+  }
+  if (islem !== 'sessiz') return cagir(SES_ISLEMLERI[islem], {}, son);
+  // Sessiz: şimdiki durum okunup tersine çevrilir
+  cagir('getVolume', {}, function (e, r) {
+    var su = e ? false : r.muted !== undefined ? !!r.muted : !!(r.volumeStatus && r.volumeStatus.muteStatus);
+    cagir('setMuted', { muted: !su }, son);
+  });
+}
 
 function kumandaBilgi() {
   return { returnValue: true, port: kumanda.port, pin: kumanda.pin, adresler: yerelAdresler() };
@@ -1399,6 +1357,31 @@ function kumandaKomut(res, yol, g) {
     kumandaKomutEkle({ t: 'tus', tus: ad, ms: ms < 0 ? 0 : ms > 1500 ? 1500 : ms });
   } else if (yol === '/metin') {
     kumandaKomutEkle({ t: 'metin', metin: metinAlani(g.metin, 300), enter: g.enter === true });
+  } else if (yol === '/fare') {
+    // Fare alanı: imleç hareketi (dx, dy), dokunma (tik) ya da kaydırma (kaydir). Art arda gelen hareketler tek komutta toplanır.
+    if (g.tik === true) kumandaKomutEkle({ t: 'fare', tik: true });
+    else if (g.kaydir !== undefined) kumandaKomutEkle({ t: 'fare', kaydir: sayiSinir(g.kaydir, KUMANDA_FARE_EN_COK) });
+    else {
+      var dx = sayiSinir(g.dx, KUMANDA_FARE_EN_COK);
+      var dy = sayiSinir(g.dy, KUMANDA_FARE_EN_COK);
+      if (dx || dy) {
+        var sonK = k.komutlar[k.komutlar.length - 1];
+        if (sonK && sonK.t === 'fare' && sonK.dx !== undefined) {
+          sonK.dx = sayiSinir(sonK.dx + dx, KUMANDA_FARE_TOPLAM);
+          sonK.dy = sayiSinir(sonK.dy + dy, KUMANDA_FARE_TOPLAM);
+        } else kumandaKomutEkle({ t: 'fare', dx: dx, dy: dy });
+      }
+    }
+  } else if (yol === '/ekran') {
+    var ekranAd = String(g.ad || '');
+    if (!Object.prototype.hasOwnProperty.call(KUMANDA_EKRANLARI, ekranAd)) return aliciYanit(res, 400, { ok: false, mesaj: 'Bilinmeyen ekran.' });
+    kumandaKomutEkle({ t: 'ekran', ad: ekranAd });
+  } else if (yol === '/ses') {
+    var islem = String(g.islem || '');
+    if (!Object.prototype.hasOwnProperty.call(SES_ISLEMLERI, islem)) return aliciYanit(res, 400, { ok: false, mesaj: 'Bilinmeyen ses işlemi.' });
+    return sesYap(islem, function (r) {
+      aliciYanit(res, r.ok ? 200 : 502, r);
+    });
   } else if (yol === '/kaynak') {
     // Kaynak ekleme formu: telefonda yazılanlar TV'deki "Kaynak ekle" ekranının alanlarına yazılır (ekle: true ise bağlanıp eklenir)
     var tip = g.tip === 'm3u' ? 'm3u' : 'xtream';
@@ -1425,7 +1408,7 @@ function kumandaKomut(res, yol, g) {
 function kumandaIstek(req, res) {
   var yol = String(req.url || '/').split('?')[0];
   if (req.method === 'GET' && (yol === '/' || yol === '/k' || yol === '/index.html')) return kumandaSayfa(res);
-  if (req.method === 'POST' && (yol === '/tus' || yol === '/metin' || yol === '/oynat' || yol === '/kaynak')) {
+  if (req.method === 'POST' && (yol === '/tus' || yol === '/metin' || yol === '/oynat' || yol === '/kaynak' || yol === '/fare' || yol === '/ekran' || yol === '/ses')) {
     return govdeOku(req, res, KUMANDA_MAX_GOVDE, function (g) {
       kumandaKomut(res, yol, g);
     });

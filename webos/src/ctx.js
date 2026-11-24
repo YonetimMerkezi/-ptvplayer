@@ -144,6 +144,7 @@ export function cikis() {
 }
 
 export const ikon = {
+  telefon: '<svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>',
   tv: '<svg viewBox="0 0 24 24"><path d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18v12z"/></svg>',
   film: '<svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4h-4z"/></svg>',
   dizi: '<svg viewBox="0 0 24 24"><path d="M4 6H2v14a2 2 0 0 0 2 2h14v-2H4V6zm16-4H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-8 12.5v-9l6 4.5-6 4.5z"/></svg>',
@@ -173,6 +174,6 @@ export const ikon = {
 };
 
 // Üst çubuk: solda "‹ Geri" düğmesi ve başlık (kök ekranda düğme yok), sağda (isteğe bağlı) "Ara" düğmesi, kaynak adı ve saat
-export function ustCubuk(baslik, alt, kok, ara) {
-  return '<div class="top"><div class="top-l">' + (kok ? '' : '<div class="top-back" data-geri="1">‹ Geri</div>') + '<h1>' + baslik + '</h1></div><div class="top-r">' + (ara ? '<div class="top-ara" data-ara="1">' + ikon.ara + '<span>Ara</span></div>' : '') + (alt ? '<span class="top-src">' + alt + '</span>' : '') + '<span class="clock"></span></div></div>';
+export function ustCubuk(baslik, alt, kok, ara, kumanda) {
+  return '<div class="top"><div class="top-l">' + (kok ? '' : '<div class="top-back" data-geri="1">‹ Geri</div>') + '<h1>' + baslik + '</h1></div><div class="top-r">' + (kumanda ? '<div class="top-kum" data-kum="1" title="Telefon kumandası">' + ikon.telefon + '</div>' : '') + (ara ? '<div class="top-ara" data-ara="1">' + ikon.ara + '<span>Ara</span></div>' : '') + (alt ? '<span class="top-src">' + alt + '</span>' : '') + '<span class="clock"></span></div></div>';
 }

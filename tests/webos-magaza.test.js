@@ -2,12 +2,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const { magazaKes, magazaKomutlari, IZ } = await import('../webos/scripts/magaza.mjs');
 const require = createRequire(import.meta.url);
+const servisKlasoru = new URL('../webos/service/', import.meta.url).pathname;
 const kaynak = readFileSync(new URL('../webos/service/service.js', import.meta.url), 'utf8');
 const servisler = readFileSync(new URL('../webos/service/services.json', import.meta.url), 'utf8');
 
@@ -32,6 +33,7 @@ test('mağaza servisinde güncelleme izi kalmaz ve dosya yine yüklenir', () => 
     mkdirSync(join(kok, 'service'));
     const yol = join(kok, 'service', 'service.js');
     writeFileSync(yol, kes);
+    copyFileSync(join(servisKlasoru, 'kumanda.html'), join(kok, 'service', 'kumanda.html')); // servis telefon sayfasını yanından okur
     const s = require(yol);
     for (const ad of Object.keys(s)) assert.equal(/guncelle/i.test(ad), false, ad);
     assert.equal(typeof s.donusKur, 'function', 'fragman dönüş bekçisi korunur');
