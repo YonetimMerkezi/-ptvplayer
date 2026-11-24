@@ -7,6 +7,9 @@ export const MAX_CHARS = 1500;
 const TR_WORDS = new Set(['ve', 'bir', 'bu', 'için', 'ile', 'olan', 'çok', 'gibi', 'daha', 'ama', 'her', 'sonra', 'kadar', 'de', 'da', 'ki', 'mi', 'ne', 'şu', 'var', 'yok', 'olarak', 'değil', 'onun', 'bütün', 'önce', 'sırasında', 'ancak', 'fakat', 'yeni', 'tüm']);
 const EN_WORDS = new Set(['the', 'and', 'of', 'to', 'a', 'in', 'is', 'that', 'for', 'with', 'as', 'his', 'her', 'their', 'he', 'she', 'they', 'it', 'on', 'by', 'an', 'are', 'who', 'when', 'after', 'from', 'into', 'while', 'but', 'at', 'be', 'this', 'has', 'have', 'was', 'were', 'its', 'must', 'before', 'one']);
 
+// Özet Türkçeye yalnız uygulama dili Türkçeyken çevrilir; İngilizce seçiliyken Cinemeta'nın İngilizce özeti olduğu gibi kalır.
+export const wantsTurkishPlot = (appLang) => appLang !== 'en';
+
 // Metin zaten Türkçe mi? Sık sözcüklerin sayımı + yalnız Türkçede olan harfler (ı, ş, ğ); İngilizce metindeki "ü/ö" (Müller) yanıltmaz.
 export function looksTurkish(text) {
   const words = String(text || '').toLowerCase().match(/[a-zçğıöşü]+/g) || [];

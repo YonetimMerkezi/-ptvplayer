@@ -2,7 +2,7 @@
 import { esc, fmtDuration, fmtClock, debounce, fold, maskUrl } from './util.js';
 import { guideBlocks, guideNameParts, guideCatIconName } from './guide.js';
 import { createStore } from './store.js';
-import { startI18n, loc, LANG_CHOICES, normalizeLang } from './i18n.js';
+import { startI18n, loc, lang, LANG_CHOICES, normalizeLang } from './i18n.js';
 import { createNet } from './net.js';
 import { loadFreeData, matchFree, mergeEpgData } from './epg-free.js';
 import {
@@ -76,7 +76,7 @@ import { genreChips, pickMovies, SURPRISE_ID } from './genre-picks.js';
 import { catArtId, catArtImg } from './cat-art.js';
 import { loadMovieMetadata, parseMovieCatalogTitle, resolveTitleOrigin } from './movie-metadata.js';
 import { loadSeriesMetadata } from './media-scan.js';
-import { translateToTr } from './translate.js';
+import { translateToTr, wantsTurkishPlot } from './translate.js';
 import { createFilmResolver } from './film-lookup.js';
 import { findTrailerOnYoutube, describeFind } from './yt-search.js';
 import { loadVizyon, sourcesNote, fillPosters } from './vizyon.js';
@@ -2677,7 +2677,7 @@ function openNewReleases() {
 // Cinemeta özeti İngilizce gelir: önce özgün metin görünür, çeviri gelince yerini alır; "Özgün metni göster" ile geri dönülür. Çeviri alınamazsa özgün metin kalır.
 function translatePlot(body, text) {
   const p = $('.dt-plot', body);
-  if (!p || !text) return;
+  if (!p || !text || !wantsTurkishPlot(lang())) return; // İngilizce modda özet çevrilmez
   translateToTr({ net, cache: store.cache, text }).then((tr) => {
     if (!body.isConnected || !p.isConnected || !tr || tr === text) return;
     p.dataset.en = text;

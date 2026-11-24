@@ -93,7 +93,7 @@ test('DOM çevirici: metin ve placeholder/title/aria-label çevrilir; translate=
 
 test('uygulamaya bağlantı: açılışta startI18n, ayarlarda dil satırı (dil adları çevrilmez), tarihler loc() ile', () => {
   const app = kaynak('www/js/app.js');
-  assert.match(app, /import \{ startI18n, loc, LANG_CHOICES, normalizeLang \} from '\.\/i18n\.js';/);
+  assert.match(app, /import \{ startI18n, loc, lang, LANG_CHOICES, normalizeLang \} from '\.\/i18n\.js';/);
   assert.match(app, /startI18n\(\{ pref: store\.pref\('set\.lang', 'auto'\)/);
   assert.match(app, /selRow\('g-lang', 'Dil \/ Language'/);
   assert.match(app, /v === 'auto' \? '' : ' translate=\\"no\\"'|v === 'auto' \? '' : ' translate="no"'/, 'Türkçe / English seçenekleri çevrilmez');

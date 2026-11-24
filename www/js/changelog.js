@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 180,
+    title: 'İngilizce modda film özeti Türkçeye çevrilmez',
+    items: [
+      'Uygulama dili İngilizceyken listenizde olmayan filmlerin bilgi sayfasındaki özet artık Türkçeye çevrilmez, özgün İngilizce haliyle gösterilir',
+    ],
+  },
+  {
     id: 179,
     title: 'Spor sayfasında genç takım maçları gösterilmez',
     items: [

@@ -271,7 +271,8 @@ test('fragman bloğu: 2+ YouTube sonucu yatay şeritte; dokunulan kart oynatıc�
 
 test('bağlantı: bilgi ekranı özeti Türkçeye çevrilir; çeviri gelene kadar özgün metin, "Özgün metni göster" ile geri dönülür', () => {
   const app = kaynak('www/js/app.js');
-  assert.match(app, /import \{ translateToTr \} from '\.\/translate\.js'/);
+  assert.match(app, /import \{ translateToTr, wantsTurkishPlot \} from '\.\/translate\.js'/);
+  assert.match(app, /if \(!p \|\| !text \|\| !wantsTurkishPlot\(lang\(\)\)\) return;/, 'İngilizce modda özet çevrilmez');
   assert.match(app, /translatePlot\(body, detail && detail\.description\);/);
   assert.match(app, /if \(!body\.isConnected \|\| !p\.isConnected \|\| !tr \|\| tr === text\) return;/, 'çeviri yoksa özgün metin kalır');
   assert.match(app, /const o = e\.target\.closest\('\[data-orig\]'\);\n\s+if \(o\) togglePlot\(body\);/);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { looksTurkish, clipText, parseTranslation, translateToTr, TRANSLATE_URL, TRANSLATE_TTL, MAX_CHARS } from '../www/js/translate.js';
+import { looksTurkish, clipText, parseTranslation, translateToTr, wantsTurkishPlot, TRANSLATE_URL, TRANSLATE_TTL, MAX_CHARS } from '../www/js/translate.js';
 
 const EN = 'Hundreds of years before Pennywise, three youngsters venture into the Western Wood where they encounter a terrifying ancient spirit.';
 const TR = 'Güçlü bir siyasetçi olan James’in eşi Sophie’nin ayrıcalıklı hayatı, skandal yaratacak sırların ortaya çıkması ve James’e yöneltilen suçlamayla altüst olur.';
@@ -52,4 +52,9 @@ test('translateToTr: Türkçe metin ağa gitmez; ağ hatası ya da boş yanıt n
   assert.equal(await translateToTr({ net: { json: async () => [[]] }, cache, text: EN }), null);
   assert.equal(cache.m.size, 0);
   assert.equal(await translateToTr({ net, text: '   ' }), null);
+});
+
+test('wantsTurkishPlot: özet yalnız uygulama dili Türkçeyken Türkçeye çevrilir', () => {
+  assert.equal(wantsTurkishPlot('tr'), true);
+  assert.equal(wantsTurkishPlot('en'), false);
 });
