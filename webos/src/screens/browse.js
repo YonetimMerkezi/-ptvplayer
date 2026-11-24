@@ -30,7 +30,7 @@ export function browseScreen({ kind }) {
   const vitrinli = kind === 'movie' || kind === 'series';
   kok.innerHTML =
     (vitrinli ? '<div class="v-zm"></div>' : '') +
-    ustCubuk(BASLIK[kind], src ? esc(src.name) : '') +
+    ustCubuk(BASLIK[kind], src ? esc(src.name) : '', false, kind !== 'recents') +
     '<div class="br">' +
     (solVar ? '<div class="cats' + (vitrinli ? ' gizli' : '') + '"></div>' : '') +
     (vitrinli ? '<div class="rt"><div class="vit"></div><div class="content"></div></div>' : '<div class="content' + (solVar ? '' : ' wide') + '"></div>') +
@@ -647,6 +647,10 @@ export function browseScreen({ kind }) {
     onLong() {
       if (!menu.acik) favDegis();
     },
+    // Ara düğmesi / Mavi tuş: bulunulan bölümde (Filmler, Diziler, Canlı TV) aranır; Favoriler'de tüm katalogda
+    araAc() {
+      open('search', gercekTur ? { tur: gercekTur } : undefined);
+    },
     onKey(a) {
       if (menu.acik) return menu.key(a);
       if (a === 'green' && duzenli) {
@@ -668,7 +672,7 @@ export function browseScreen({ kind }) {
         return true;
       }
       if (a === 'blue' && kind !== 'recents') {
-        open('search');
+        this.araAc();
         return true;
       }
       if (!yuklendi && a === 'ok') {

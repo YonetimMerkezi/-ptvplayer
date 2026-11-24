@@ -194,6 +194,15 @@ test('data/m3u: liste bir kez indirilir; gruplar, adres ve arama çalışır', a
   assert.equal(p.urlFor(h[0]), 'http://h/live/1.m3u8');
   assert.equal((await ara(p, 'kanal iki', 10))[0].name, 'Kanal İki', 'Türkçe büyük/küçük harf duyarsız');
   assert.equal(indirme, 1);
+  // Kapsam: yalnız verilen türlerde aranır (Filmler ekranından yapılan arama canlı kataloğu taramaz)
+  const turler = [];
+  const sadeceFilm = await ara(p, 'film', 10, (tur) => turler.push(tur), ['movie']);
+  assert.deepEqual(turler, ['movie']);
+  assert.deepEqual(sadeceFilm.map((x) => x.name), ['Büyük Film']);
+  assert.deepEqual((await ara(p, 'kanal', 10, null, ['live'])).map((x) => x.kind), ['live', 'live']);
+  const hepsi = [];
+  await ara(p, 'kanal', 10, (tur) => hepsi.push(tur), []);
+  assert.deepEqual(hepsi, ['live', 'movie', 'series'], 'boş kapsam = tümü');
   const bos = createProvider({ type: 'm3u', name: 'B', url: 'http://h/b' }, { get: async () => '#EXTM3U\n' });
   assert.equal((await bos.auth()).ok, false);
 });

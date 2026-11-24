@@ -1,7 +1,11 @@
-// Kaynak ekleme: Xtream (sunucu, kullanıcı, şifre) ya da M3U bağlantısı. Yazı girişi TV'nin ekran klavyesiyle yapılır.
-import { resetTo, open, pop, ustCubuk, kaynakEkle, geriOdakla } from '../ctx.js';
+// Kaynak ekleme: Xtream (sunucu, kullanıcı, şifre) ya da M3U bağlantısı. Yazı girişi TV'nin ekran klavyesiyle ya da (TV'de ise)
+// sağdaki panelin QR koduyla açılan telefon sayfasından, telefonun klavyesiyle yapılır; ilk kurulumda da böyledir.
+import { ctx, resetTo, open, pop, ustCubuk, kaynakEkle, geriOdakla } from '../ctx.js';
 import { el, esc, toast } from '../ui.js';
 import { kaynakHazirla } from '../kaynak.js';
+import { varlik } from '../luna.js';
+import { telefon } from '../telefon.js';
+import { qrSvg } from '../../../www/js/qr.js';
 import * as K from '../log.js';
 
 export function addSourceScreen(arg) {
@@ -18,7 +22,8 @@ export function addSourceScreen(arg) {
     '<div class="grp gm" style="display:none">' + alan('url', 'M3U bağlantısı', 'http://…/liste.m3u') + '</div>' +
     '<div class="f-row"><div class="f-btn pri" data-f="go">Bağlan ve ekle</div>' + (ilk ? '' : '<div class="f-btn" data-f="cancel">Vazgeç</div>') + '</div>' +
     '<div class="f-msg" id="f-msg"></div></div>' +
-    '<div class="hint">OK: yaz / seç · ▲▼: alan değiştir' + (ilk ? '' : ' · Geri: vazgeç') + '</div>';
+    '<div class="tel-pn" id="tel-pn"></div>' +
+    '<div class="hint">OK: yaz / seç · ▲▼: alan değiştir' + (ilk ? '' : ' · Geri: vazgeç') + ' · Telefondan da yazabilirsiniz (sağdaki kod)</div>';
 
   const $ = (id) => kok.querySelector(id);
   const msg = (t, hata) => {
@@ -26,6 +31,46 @@ export function addSourceScreen(arg) {
     m.textContent = t || '';
     m.className = 'f-msg' + (hata ? ' err' : '');
   };
+
+  // Sağdaki telefon paneli: QR kod + 4 haneli kod. Telefon sayfası "Liste bilgilerini yaz" bölümü açık gelir (s=liste).
+  // Kumanda ilk kez burada açılır (hiç karar verilmediyse); kullanıcı Ayarlar'dan kapattıysa panel yalnızca "aç" düğmesi gösterir.
+  const panel = $('#tel-pn');
+  const kapaliAd = () => ctx.store.setting('telefonKumanda', null) === false;
+  const panelCiz = () => {
+    if (!varlik()) {
+      panel.innerHTML = '<div class="tp-t">Telefondan yazma</div><div class="tp-d">Yalnızca TV’de çalışır.</div>';
+      return;
+    }
+    const b = telefon.bilgi();
+    let h = '<div class="tp-t">Telefondan yazın</div>';
+    if (kapaliAd()) {
+      h += '<div class="tp-d">Telefon kumandası kapalı.</div><div class="f-btn" data-f="tel">Telefon kumandasını aç</div>';
+    } else if (b && b.ip) {
+      h += '<div class="tp-qr">' + qrSvg(b.adres + '&s=liste', { margin: 2 }) + '</div>' +
+        '<div class="tp-d">Telefon kamerasıyla okutun, açılan sayfada bilgileri yazın.</div>' +
+        '<div class="tp-pin">Kod <b>' + esc(b.pin) + '</b></div>' +
+        '<div class="tp-d' + (telefon.hata() ? ' err' : '') + '">' + (telefon.hata() ? 'Bağlantı sorunu: ' + esc(telefon.hata()) : telefon.telefon() ? 'Telefon bağlı ✓' : 'Telefondan bekleniyor…') + '</div>';
+    } else if (b) {
+      h += '<div class="tp-d err">TV’nin ağ adresi bulunamadı; ağ bağlantısını kontrol edin.</div>';
+    } else {
+      h += '<div class="tp-d' + (telefon.hata() ? ' err' : '') + '">' + (telefon.hata() ? 'Başlatılamadı: ' + esc(telefon.hata()) : 'Hazırlanıyor…') + '</div>';
+    }
+    panel.innerHTML = h;
+  };
+  async function telefonAc() {
+    if (!varlik()) return panelCiz();
+    ctx.store.setSetting('telefonKumanda', true);
+    panelCiz();
+    if (!telefon.bilgi()) {
+      try {
+        await telefon.baslat({ sifirla: true });
+      } catch (e) {
+        K.hata(e);
+      }
+    }
+    panelCiz();
+  }
+  let birak = null;
 
   const odaklar = () => {
     const out = [];
@@ -86,6 +131,7 @@ export function addSourceScreen(arg) {
     if (f === 'tx') return tipDegis('xtream');
     if (f === 'tm') return tipDegis('m3u');
     if (f === 'phone') return open('transfer');
+    if (f === 'tel') return telefonAc();
     if (f === 'go') return baglan();
     if (f === 'cancel') return pop();
     const inp = e.querySelector('input');
@@ -105,7 +151,36 @@ export function addSourceScreen(arg) {
   return {
     el: kok,
     name: 'addsource',
-    onShow: isaretle,
+    onShow() {
+      isaretle();
+      if (!birak) birak = telefon.abone(panelCiz);
+      panelCiz();
+      if (varlik() && !kapaliAd()) telefonAc(); // ilk kurulumda ve kullanıcı kapatmadıkça kumanda burada açılır
+    },
+    // Telefondan gelen form (service.js /kaynak): alanlar doldurulur; ekle ise bağlanılır, değilse "Bağlan ve ekle"ye gelinir
+    kaynakDoldur(k) {
+      tipDegis(k.tip === 'm3u' ? 'm3u' : 'xtream');
+      $('#f-ad').value = k.ad || '';
+      if (tip === 'xtream') {
+        $('#f-server').value = k.server || '';
+        $('#f-user').value = k.user || '';
+        $('#f-pass').value = k.pass || '';
+      } else $('#f-url').value = k.url || '';
+      const inp = kok.querySelector('input:focus');
+      if (inp) inp.blur();
+      if (k.ekle) {
+        msg('Telefondan alındı — bağlanılıyor…');
+        return baglan();
+      }
+      const l = odaklar();
+      for (let i = 0; i < l.length; i++) if (l[i].getAttribute('data-f') === 'go') sec = i;
+      isaretle();
+      msg('Telefondan yazıldı. Kontrol edip “Bağlan ve ekle”ye basın.');
+    },
+    destroy() {
+      if (birak) birak();
+      birak = null;
+    },
     onKey(a) {
       const l = odaklar();
       if (a === 'down') sec = Math.min(l.length - 1, sec + 1);

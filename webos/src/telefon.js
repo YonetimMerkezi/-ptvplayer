@@ -109,6 +109,7 @@ export function komutIsle(k, b = {}) {
     return s;
   }
   if (k.t === 'oynat') return oynatIsle(k.url, k.ad, b);
+  if (k.t === 'kaynak') return b.kaynak ? b.kaynak(k) : false;
   return false;
 }
 
@@ -209,6 +210,23 @@ export function kodAl(store, rastgele = Math.random) {
   return k;
 }
 
+// Telefondaki "Liste bilgilerini yaz" formu: "Kaynak ekle" ekranının alanlarına yazılır; ekran açık değilse (oynatıcı dışında) açılır.
+// Alanlar günlüğe yazılmaz (şifre içerir). Dönen: 'yazildi' | 'yok'
+export function kaynakFormuDoldur(k, { ust = top, ac = open, bildir = (t) => toast(t, 3500) } = {}) {
+  let t = ust();
+  if (t && t.name === 'player') {
+    bildir('Önce oynatıcıdan çıkın, sonra telefondan liste bilgisi gönderin');
+    return 'yok';
+  }
+  if (!t || t.name !== 'addsource') {
+    ac('addsource');
+    t = ust();
+  }
+  if (!t || !t.kaynakDoldur) return 'yok';
+  t.kaynakDoldur(k);
+  return 'yazildi';
+}
+
 export const telefon = telefonYoklayici({
   pin: () => kodAl(ctx.store),
   uygula: (k) =>
@@ -222,6 +240,7 @@ export const telefon = telefonYoklayici({
       },
       youtube: (id, ad) => yolAc('sayfa', id, { ad, bildir: (t) => toast(t, 3500) }),
       bildir: (t) => toast(t, 3000),
+      kaynak: kaynakFormuDoldur,
     }),
 });
 telefon.abone(() => {
@@ -230,7 +249,7 @@ telefon.abone(() => {
 
 // Açılışta: kullanıcı açtıysa ve TV'deyse yoklamayı başlatır
 export function telefonuBaslat() {
-  if (!varlik() || !ctx.store.setting('telefonKumanda', false)) return Promise.resolve(null);
+  if (!varlik() || !ctx.store.setting('telefonKumanda', false) || telefon.bilgi()) return Promise.resolve(null); // bilgi varsa bir ekran zaten başlattı
   return telefon.baslat().catch((e) => {
     K.hata(e);
     return null;

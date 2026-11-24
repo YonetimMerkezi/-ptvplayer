@@ -4,6 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 globalThis.window = globalThis.window || {};
@@ -12,7 +15,7 @@ globalThis.getComputedStyle = globalThis.getComputedStyle || (() => ({ fontSize:
 
 const require = createRequire(import.meta.url);
 const svc = require('../webos/service/service.js');
-const { TUS_KODLARI, tusGonder, metinGonder, youtubeKimligi, oynatmaOgesi, oynatIsle, komutIsle, telefonYoklayici, kodAl } = await import('../webos/src/telefon.js');
+const { TUS_KODLARI, tusGonder, metinGonder, youtubeKimligi, oynatmaOgesi, oynatIsle, komutIsle, telefonYoklayici, kodAl, kaynakFormuDoldur } = await import('../webos/src/telefon.js');
 const { actionOf } = await import('../webos/src/keys.js');
 
 const baslat = (p = {}) => new Promise((coz, red) => svc.kumandaBaslat({ ilkPort: 0, portAdedi: 1, ...p }, (e, r) => (e ? red(e) : coz(r))));
@@ -299,4 +302,90 @@ test('kodAl: 4 haneli kod bir kez üretilir ve saklanır; bozuk kayıt yenilenir
   assert.equal(kodAl(store, () => 0.9), '0042', 'ikinci çağrı aynı kodu verir');
   d.telefonKod = 'abc';
   assert.match(kodAl(store, () => 0.5), /^5000$/);
+});
+
+// ---- Telefondan liste bilgisi (Kaynak ekle formu) ----
+test('kumanda: /kaynak formu temizlenip sıraya girer; ekle için adres zorunlu; yanlış kodda ve ölçüsüz gövdede reddedilir; sayfa formu içerir', async (t) => {
+  t.after(() => svc.kumandaDurdur());
+  const a = await baslat({ pin: '1234' });
+  const gonder = (g, pin = '1234') => istek(a.port, '/kaynak', { method: 'POST', govde: { pin, ...g } });
+  assert.equal((await gonder({ tip: 'xtream', server: 'http://s:8080', user: 'ali', pass: 'g\u0000izli\n', ad: 'Evim', ekle: true })).kod, 200);
+  assert.equal((await gonder({ tip: 'm3u', url: 'http://h/l.m3u', ekle: false })).kod, 200);
+  assert.equal((await gonder({ tip: 'xtream', server: '', ekle: false })).kod, 200, 'yalnız yazmak için boş alan sorun değil');
+  assert.equal((await gonder({ tip: 'xtream', server: '', ekle: true })).kod, 400, 'ekle: sunucu adresi gerekli');
+  assert.equal((await gonder({ tip: 'm3u', url: '', ekle: true })).kod, 400, 'ekle: liste bağlantısı gerekli');
+  assert.equal((await gonder({ tip: 'xtream', server: 'http://s' }, '9999')).kod, 403, 'yanlış kod');
+  assert.equal((await istek(a.port, '/kaynak', { method: 'POST', govde: 'bozuk{' })).kod, 400);
+  assert.equal((await gonder({ tip: 'xtream', server: 'x'.repeat(9000) })).kod, 413, 'çok büyük gövde');
+  const r = await sor({ bekleMs: 0 });
+  assert.deepEqual(r.komutlar[0], { t: 'kaynak', tip: 'xtream', ad: 'Evim', server: 'http://s:8080', user: 'ali', pass: 'gizli', url: '', ekle: true });
+  assert.deepEqual(r.komutlar[1], { t: 'kaynak', tip: 'm3u', ad: '', server: '', user: '', pass: '', url: 'http://h/l.m3u', ekle: false });
+  assert.equal(r.komutlar[2].tip, 'xtream');
+  assert.equal(r.komutlar.length, 3, 'reddedilenler kuyruğa girmez');
+  // Telefon sayfası: form alanları, ?s=liste ile açık gelme ve geçerli betik
+  const sayfa = await istek(a.port, '/k?k=1234&s=liste');
+  assert.equal(sayfa.kod, 200);
+  for (const id of ['id="ld"', 'id="ls"', 'id="lu"', 'id="lp"', 'id="lb"', 'id="la"', 'id="ly"', 'id="le"']) assert.ok(sayfa.metin.includes(id), id);
+  assert.match(sayfa.metin, /\/kaynak/);
+  assert.ok(!sayfa.metin.includes('1234'), 'sayfa kodu içermez');
+  const betik = /<script>([\s\S]*)<\/script>/.exec(sayfa.metin)[1];
+  new vm.Script(betik); // sözdizimi geçerli
+});
+
+test('komutIsle: kaynak komutu kancaya iletilir; kanca yoksa yok sayılır', () => {
+  const alinan = [];
+  const k = { t: 'kaynak', tip: 'm3u', url: 'http://h/l.m3u', ekle: false };
+  assert.equal(komutIsle(k, { kaynak: (x) => (alinan.push(x), 'yazildi') }), 'yazildi');
+  assert.deepEqual(alinan, [k]);
+  assert.equal(komutIsle(k, {}), false);
+});
+
+test('kaynakFormuDoldur: Kaynak ekle ekranı açıksa doldurur; değilse önce açar; oynatıcıdayken açmaz', () => {
+  const doldurulan = [];
+  const ekran = (ad) => ({ name: ad, kaynakDoldur: (k) => doldurulan.push([ad, k.tip]) });
+  const k = { t: 'kaynak', tip: 'xtream', server: 'http://s' };
+  // Ekran zaten açık
+  let ust = ekran('addsource');
+  assert.equal(kaynakFormuDoldur(k, { ust: () => ust, ac: () => assert.fail('açık ekran yeniden açılmaz') }), 'yazildi');
+  // Başka ekranda: addsource açılır, sonra doldurulur
+  ust = ekran('home');
+  const acilan = [];
+  assert.equal(kaynakFormuDoldur(k, { ust: () => ust, ac: (ad, arg) => { acilan.push([ad, arg]); ust = ekran(ad); } }), 'yazildi');
+  assert.deepEqual(acilan, [['addsource', undefined]]);
+  assert.deepEqual(doldurulan, [['addsource', 'xtream'], ['addsource', 'xtream']]);
+  // Oynatıcı: açılmaz, bildirilir
+  ust = ekran('player');
+  const bil = [];
+  assert.equal(kaynakFormuDoldur(k, { ust: () => ust, ac: () => assert.fail('oynatıcıda açılmaz'), bildir: (t) => bil.push(t) }), 'yok');
+  assert.match(bil[0], /oynatıcıdan çıkın/);
+  // Açılan ekran doldurmayı bilmiyorsa
+  assert.equal(kaynakFormuDoldur(k, { ust: () => ({ name: 'x' }), ac: () => {} }), 'yok');
+});
+
+test('kablolama: Kaynak ekle ekranı telefon panelini açar ve telefondan gelen formu alır; film/dizi/kanal ekranlarında Ara düğmesi var', () => {
+  const kok = join(dirname(fileURLToPath(import.meta.url)), '..', 'webos');
+  const oku = (...y) => readFileSync(join(kok, ...y), 'utf8');
+  const ekle = oku('src', 'screens', 'addsource.js');
+  assert.match(ekle, /id="tel-pn"/, 'panel ekranda');
+  assert.match(ekle, /qrSvg\(b\.adres \+ '&s=liste'/, 'QR telefon sayfasını liste formu açık getirir');
+  assert.match(ekle, /telefon\.abone\(panelCiz\)/, 'panel telefon bağlanınca güncellenir');
+  assert.match(ekle, /if \(varlik\(\) && !kapaliAd\(\)\) telefonAc\(\)/, 'ilk kurulumda (karar verilmediyse) kumanda açılır; kullanıcı kapattıysa açılmaz');
+  assert.match(ekle, /kaynakDoldur\(k\)/);
+  assert.match(ekle, /destroy\(\) \{\s*if \(birak\) birak\(\)/, 'ekran kapanınca abonelik bırakılır');
+  assert.ok(!/K\.(bilgi|hata)\([^)]*pass/.test(ekle), 'şifre günlüğe yazılmaz');
+  const tel = oku('src', 'telefon.js');
+  assert.match(tel, /kaynak: kaynakFormuDoldur/);
+  assert.match(oku('src', 'app.js'), /setTimeout\(telefonuBaslat/);
+  assert.match(oku('css', 'tv.css'), /\.tel-pn \{/);
+  assert.match(oku('css', 'tv.css'), /\.top-ara\.on \{/);
+  // Ara düğmesi: üst çubuk çizimi, gözatma ekranı (Son izlenenler hariç) ve kapsamlı arama
+  const ctxSrc = oku('src', 'ctx.js');
+  assert.match(ctxSrc, /export function ustCubuk\(baslik, alt, kok, ara\)/);
+  assert.match(ctxSrc, /data-ara="1"/);
+  const br = oku('src', 'screens', 'browse.js');
+  assert.match(br, /ustCubuk\(BASLIK\[kind\], src \? esc\(src\.name\) : '', false, kind !== 'recents'\)/);
+  assert.match(br, /araAc\(\) \{\s*open\('search', gercekTur \? \{ tur: gercekTur \} : undefined\)/);
+  assert.match(br, /this\.araAc\(\)/, 'Mavi tuş da aynı kapsamla arar');
+  const ara = oku('src', 'screens', 'search.js');
+  assert.match(ara, /tur \? \[tur\] : null/, 'arama ekranı kapsamı veri katmanına geçirir');
 });

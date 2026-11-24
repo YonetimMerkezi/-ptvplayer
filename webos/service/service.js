@@ -21,7 +21,7 @@
 //
 // Telefon kumandası (kaynak aktarma alıcısından ayrı sunucu; telefon tarayıcısı http://TV-IP:port/k?k=KOD açar):
 //   kumandaBaslat {pin, sifirla}            → {returnValue, port, pin, adresler[]}   (pin 4 hane verilirse sabit kalır)
-//   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
+//   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat'|'kaynak', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
 //   kumandaDurdur {}                        → {returnValue}
 //
 // Güncelleme (GitHub sürümündeki IPK'yı indirir, doğrular, TV kurulum servisine verir; adres serviste sabittir):
@@ -947,9 +947,19 @@ var KUMANDA_SAYFA =
   'details{margin:14px 0}summary{color:#9aa6bf;padding:6px 0;font-size:15px}' +
   'input{width:100%;font-size:17px;padding:11px 12px;background:#111827;color:#e8ecf4;border:2px solid #26324b;border-radius:10px;margin:6px 0}' +
   'input:focus{outline:none;border-color:#2dd4bf}.g{background:#2dd4bf;color:#04141a;font-weight:600;font-size:17px}' +
+  '.sg{display:flex;gap:8px;margin:6px 0}.sg button{flex:1;padding:11px 0;font-size:16px}.sg button.on{background:#2dd4bf;color:#04141a;font-weight:600}' +
+  'label.k{display:block;font-size:13px;color:#9aa6bf;margin-top:8px}' +
   '</style></head><body>' +
   '<h1>TV kumandası</h1><div id="st">Bağlanıyor…</div>' +
   '<div id="pw" style="display:none"><input id="pin" inputmode="numeric" maxlength="4" placeholder="TV kodu (4 hane)" autocomplete="off"></div>' +
+  '<details id="ld"><summary>Liste bilgilerini yaz (Kaynak ekle)</summary>' +
+  '<div class="sg"><button id="lx" class="on">Xtream</button><button id="lm">M3U bağlantısı</button></div>' +
+  '<label class="k">Ad (isteğe bağlı)</label><input id="la" autocomplete="off" autocapitalize="words" placeholder="Evim">' +
+  '<div id="gx"><label class="k">Sunucu adresi</label><input id="ls" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://sunucu:port">' +
+  '<label class="k">Kullanıcı adı</label><input id="lu" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">' +
+  '<label class="k">Şifre</label><input id="lp" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></div>' +
+  '<div id="gm" style="display:none"><label class="k">M3U bağlantısı</label><input id="lb" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://…/liste.m3u"></div>' +
+  '<div class="row"><button id="ly">TV’ye yaz</button><button id="le" class="g">Yaz ve ekle</button></div></details>' +
   '<div class="row"><button data-t="back">⟵ Geri</button><button data-t="info">ⓘ Bilgi</button><button data-t="stop">■</button></div>' +
   '<div class="pad"><i></i><button data-t="up" data-r="1">▲</button><i></i><button data-t="left" data-r="1">◀</button><button class="ok" data-t="ok" data-l="1">OK</button><button data-t="right" data-r="1">▶</button><i></i><button data-t="down" data-r="1">▼</button><i></i></div>' +
   '<div class="row"><button data-t="rw" data-r="1">⏪</button><button data-t="play">▶</button><button data-t="pause">⏸</button><button data-t="ff" data-r="1">⏩</button></div>' +
@@ -988,6 +998,14 @@ var KUMANDA_SAYFA =
   '$("og").onclick=function(){var u=$("ul").value.trim();' +
   'if(!/^https?:\\/\\/\\S+$/i.test(u)){yaz("http:// ya da https:// ile başlayan bir bağlantı yazın.","err");return}' +
   'gonder("/oynat",{url:u,ad:$("un").value.trim()},function(ok){if(ok)yaz("TV’ye gönderildi ✓","ok")})};' +
+  'var lt="xtream";function lk(t){lt=t;$("lx").className=t=="xtream"?"on":"";$("lm").className=t=="m3u"?"on":"";$("gx").style.display=t=="xtream"?"":"none";$("gm").style.display=t=="m3u"?"":"none"}' +
+  '$("lx").onclick=function(){lk("xtream")};$("lm").onclick=function(){lk("m3u")};' +
+  'function lg(ekle){var g={tip:lt,ad:$("la").value.trim(),ekle:ekle};' +
+  'if(lt=="xtream"){g.server=$("ls").value.trim();g.user=$("lu").value.trim();g.pass=$("lp").value;if(ekle&&!g.server){yaz("Sunucu adresini yazın.","err");return}}' +
+  'else{g.url=$("lb").value.trim();if(ekle&&!/^https?:\\/\\/\\S+$/i.test(g.url)){yaz("http:// ya da https:// ile başlayan liste bağlantısını yazın.","err");return}}' +
+  'gonder("/kaynak",g,function(ok){if(ok)yaz(ekle?"TV’ye gönderildi; TV bağlanıyor ✓":"TV’deki forma yazıldı ✓","ok")})}' +
+  '$("ly").onclick=function(){lg(false)};$("le").onclick=function(){lg(true)};' +
+  'if(/[?&]s=liste/.test(location.search)){$("ld").open=true}' +
   'if(pin)gonder("/tus",{tus:"ping"});else yaz("TV ekranındaki kodu aşağıya yazın.")})()</script></body></html>';
 
 // Telefon kumandası: aynı ağdaki telefon tarayıcısı TV uygulamasına tuş, yazı ve oynatma bağlantısı gönderir.
@@ -999,7 +1017,7 @@ var KUMANDA_SORU_MS = 20000;
 var KUMANDA_BEKLE_MS = 1500;
 var KUMANDA_EN_COK_BEKLE_MS = 5000;
 var KUMANDA_EN_COK_KOMUT = 50;
-var KUMANDA_MAX_GOVDE = 4096;
+var KUMANDA_MAX_GOVDE = 8192; // Kaynak formu: adres 2000 + sunucu 400 + kullanıcı/şifre/ad (JSON kaçışlarıyla)
 var KUMANDA_MAX_YANLIS = 8;
 var KUMANDA_TUSLARI = {
   up: 1, down: 1, left: 1, right: 1, ok: 1, back: 1, red: 1, green: 1, yellow: 1, blue: 1,
@@ -1065,6 +1083,21 @@ function kumandaKomut(res, yol, g) {
     kumandaKomutEkle({ t: 'tus', tus: ad, ms: ms < 0 ? 0 : ms > 1500 ? 1500 : ms });
   } else if (yol === '/metin') {
     kumandaKomutEkle({ t: 'metin', metin: metinAlani(g.metin, 300), enter: g.enter === true });
+  } else if (yol === '/kaynak') {
+    // Kaynak ekleme formu: telefonda yazılanlar TV'deki "Kaynak ekle" ekranının alanlarına yazılır (ekle: true ise bağlanıp eklenir)
+    var tip = g.tip === 'm3u' ? 'm3u' : 'xtream';
+    var kayit = {
+      t: 'kaynak',
+      tip: tip,
+      ad: metinAlani(g.ad, 80),
+      server: metinAlani(g.server, 400),
+      user: metinAlani(g.user, 200),
+      pass: metinAlani(g.pass, 200),
+      url: metinAlani(g.url, 2000),
+      ekle: g.ekle === true
+    };
+    if (kayit.ekle && (tip === 'xtream' ? !kayit.server : !kayit.url)) return aliciYanit(res, 400, { ok: false, mesaj: tip === 'xtream' ? 'Sunucu adresi gerekli.' : 'Liste bağlantısı gerekli.' });
+    kumandaKomutEkle(kayit);
   } else {
     var url = metinAlani(g.url, 2000).replace(/^\s+|\s+$/g, '');
     if (!/^https?:\/\/\S+$/i.test(url)) return aliciYanit(res, 400, { ok: false, mesaj: 'http:// ya da https:// ile başlayan bir bağlantı yazın.' });
@@ -1076,7 +1109,7 @@ function kumandaKomut(res, yol, g) {
 function kumandaIstek(req, res) {
   var yol = String(req.url || '/').split('?')[0];
   if (req.method === 'GET' && (yol === '/' || yol === '/k' || yol === '/index.html')) return kumandaSayfa(res);
-  if (req.method === 'POST' && (yol === '/tus' || yol === '/metin' || yol === '/oynat')) {
+  if (req.method === 'POST' && (yol === '/tus' || yol === '/metin' || yol === '/oynat' || yol === '/kaynak')) {
     return govdeOku(req, res, KUMANDA_MAX_GOVDE, function (g) {
       kumandaKomut(res, yol, g);
     });

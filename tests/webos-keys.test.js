@@ -200,3 +200,63 @@ test('keys: oynatıcıda ▲ Geri düğmesine çıkmaz (kanal/ses işlevleri ekr
   t.down(38);
   assert.equal(geri.odak, false);
 });
+
+// Üst çubukta Geri ve Ara düğmesi olan sahte ekran
+function ekranAraliDugme(ad, onKey, araAc) {
+  const geriD = { className: 'top-back' };
+  const araD = { className: 'top-ara' };
+  const e = ekran(ad, onKey, araAc ? { araAc } : {});
+  e.el.querySelector = (sel) => (sel === '.top-back' ? geriD : sel === '.top-ara' ? araD : null);
+  e.geriD = geriD;
+  e.araD = araD;
+  return e;
+}
+
+test('keys: Ara düğmesi — ▲ Geri\'ye çıkar, ▶ Ara\'ya geçer, ◀ Geri\'ye döner, OK ekranın araAc\'ını çağırır ve odak kapanır', () => {
+  sifirla();
+  geri.odak = false;
+  const t = sahte();
+  tuslariBagla(t.doc);
+  push(ekran('home', () => false));
+  let aranan = 0;
+  const b = ekranAraliDugme('film', () => false, () => aranan++);
+  push(b);
+  t.down(38); // ▲ → Geri
+  assert.deepEqual([geri.odak, geri.dugme, b.geriD.className, b.araD.className], [true, 'geri', 'top-back on', 'top-ara']);
+  t.down(39); // ▶ → Ara
+  assert.deepEqual([geri.dugme, b.geriD.className, b.araD.className], ['ara', 'top-back', 'top-ara on']);
+  t.down(39); // sağda başka düğme yok: yerinde
+  assert.equal(geri.dugme, 'ara');
+  t.down(37); // ◀ → Geri
+  assert.deepEqual([geri.dugme, b.geriD.className, b.araD.className], ['geri', 'top-back on', 'top-ara']);
+  t.down(39);
+  t.down(13); // OK: Ara
+  assert.equal(aranan, 1);
+  assert.equal(geri.odak, false);
+  assert.equal(b.araD.className, 'top-ara');
+  assert.equal(top().name, 'film', 'Ara düğmesi ekranı kapatmaz');
+  t.down(38);
+  t.down(39);
+  t.down(40); // ▼ içeriğe indirir
+  assert.deepEqual([geri.odak, b.araD.className], [false, 'top-ara']);
+  assert.equal(aranan, 1);
+});
+
+test('keys: Ara düğmesi odaktayken Geri tuşu geri döner; araAc tanımsızsa tüm katalog Ara ekranı açılır; Ara yoksa ▶ yerinde kalır', () => {
+  sifirla();
+  geri.odak = false;
+  const t = sahte();
+  tuslariBagla(t.doc);
+  push(ekran('home', () => false));
+  push(ekranAraliDugme('film', () => false));
+  t.down(38);
+  t.down(39);
+  t.down(461); // Geri
+  assert.equal(top().name, 'home');
+  assert.equal(geri.odak, false);
+  // Ara düğmesi olmayan ekran: ▶ Geri'de kalır
+  push(ekranGeriliDugme('liste', () => false));
+  t.down(38);
+  t.down(39);
+  assert.deepEqual([geri.odak, geri.dugme], [true, 'geri']);
+});

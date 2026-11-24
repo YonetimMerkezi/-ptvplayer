@@ -182,11 +182,12 @@ export function createProvider(src, net) {
 
 // Arama: katalogdaki tüm türlerde, Türkçe duyarsız alt dize eşleşmesi.
 // ilerleme(tür, şimdiyeKadarBulunanlar): her tür taranmadan önce çağrılır (ilk aramada katalog indirilir, uzun sürebilir).
-export async function ara(provider, sorgu, limit, ilerleme) {
+// turler: yalnız bu türlerde ara (örn. ['movie']); verilmezse üçünde de.
+export async function ara(provider, sorgu, limit, ilerleme, turler) {
   const q = fold(sorgu);
   if (!q) return [];
   const out = [];
-  const kinds = ['live', 'movie', 'series'];
+  const kinds = ['live', 'movie', 'series'].filter((k) => !turler || !turler.length || turler.indexOf(k) >= 0);
   for (let k = 0; k < kinds.length; k++) {
     if (ilerleme) ilerleme(kinds[k], out);
     const liste = await provider.all(kinds[k]);

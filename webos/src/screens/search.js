@@ -8,13 +8,17 @@ import * as K from '../log.js';
 const TUR = { live: 'Canlı', movie: 'Film', series: 'Dizi' };
 const SIRA = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
 
+const KAPSAM_YER = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
+const KAPSAM_AD = { live: 'Kanal adı', movie: 'Film adı', series: 'Dizi adı' };
+
 export function searchScreen(p) {
   const kok = el('div', 'screen search');
   const src = ctx.store.active();
+  const tur = p && KAPSAM_YER[p.tur] ? p.tur : ''; // bölümden açıldıysa yalnız o türde aranır
   kok.innerHTML =
-    ustCubuk('Ara', src ? esc(src.name) : '') +
-    '<div class="s-in"><input id="q" type="text" placeholder="Kanal, film ya da dizi adı" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="f-btn" id="s-go">Ara</div></div>' +
-    '<div class="s-st" id="s-st">Yazmak için OK’a basın.</div>' +
+    ustCubuk(tur ? 'Ara · ' + KAPSAM_YER[tur] : 'Ara', src ? esc(src.name) : '') +
+    '<div class="s-in"><input id="q" type="text" placeholder="' + (tur ? KAPSAM_AD[tur] : 'Kanal, film ya da dizi adı') + '" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="f-btn" id="s-go">Ara</div></div>' +
+    '<div class="s-st" id="s-st">Yazmak için OK’a basın.' + (tur ? ' Yalnız ' + KAPSAM_YER[tur] + ' içinde aranır; tümü için Ana sayfa › Ara.' : '') + '</div>' +
     '<div class="s-res"></div><div class="hint" id="hint">OK: yaz / aç · ▲▼ gezin · Geri</div>';
   const inp = kok.querySelector('#q');
   const st = kok.querySelector('#s-st');
@@ -52,9 +56,10 @@ export function searchScreen(p) {
         provider(),
         q,
         300,
-        (tur) => {
-          if (n === sayac) st.textContent = SIRA[tur] + ' taranıyor… (ilk aramada katalog indirilir, uzun sürebilir)';
+        (t) => {
+          if (n === sayac) st.textContent = SIRA[t] + ' taranıyor… (ilk aramada katalog indirilir, uzun sürebilir)';
         },
+        tur ? [tur] : null,
       );
       if (n !== sayac) return;
       list.setItems(r);

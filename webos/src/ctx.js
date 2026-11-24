@@ -43,16 +43,28 @@ export async function kaynakEkle(src) {
 
 const ust = () => ctx.stack[ctx.stack.length - 1];
 
-// Üst çubuktaki "‹ Geri" düğmesinin odak durumu: ekranın üst kenarında ▲ ile oraya çıkılır, ▼ ile içeriğe dönülür.
-export const geri = { odak: false };
-export function geriOdakla(ac) {
+// Üst çubuktaki düğmelerin ("‹ Geri", varsa "Ara") odak durumu: ekranın üst kenarında ▲ ile oraya çıkılır, ▼ ile içeriğe dönülür,
+// ◀▶ iki düğme arasında gezer. geri.dugme: odaktaki düğme ('geri' | 'ara').
+export const geri = { odak: false, dugme: 'geri' };
+export function geriOdakla(ac, dugme) {
   const t = ust();
-  const b = t && t.el && t.el.querySelector ? t.el.querySelector('.top-back') : null;
+  const q = (s) => (t && t.el && t.el.querySelector ? t.el.querySelector(s) : null);
+  const g = q('.top-back');
+  const a = q('.top-ara');
   geri.odak = false;
-  if (!b) return false;
+  geri.dugme = 'geri';
+  if (!g) return false;
+  const arada = !!ac && dugme === 'ara' && !!a;
   geri.odak = !!ac;
-  b.className = 'top-back' + (ac ? ' on' : '');
+  geri.dugme = arada ? 'ara' : 'geri';
+  g.className = 'top-back' + (ac && !arada ? ' on' : '');
+  if (a) a.className = 'top-ara' + (arada ? ' on' : '');
   return true;
+}
+// Üst çubukta Ara düğmesi var mı (ekran adına bakmadan, çizime göre)
+export function araVar() {
+  const t = ust();
+  return !!(t && t.el && t.el.querySelector && t.el.querySelector('.top-ara'));
 }
 
 export function push(ekran) {
@@ -160,7 +172,7 @@ export const ikon = {
   geriOk: '<svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>',
 };
 
-// Üst çubuk: solda "‹ Geri" düğmesi ve başlık (kök ekranda düğme yok), sağda kaynak adı ve saat
-export function ustCubuk(baslik, alt, kok) {
-  return '<div class="top"><div class="top-l">' + (kok ? '' : '<div class="top-back" data-geri="1">‹ Geri</div>') + '<h1>' + baslik + '</h1></div><div class="top-r">' + (alt ? '<span class="top-src">' + alt + '</span>' : '') + '<span class="clock"></span></div></div>';
+// Üst çubuk: solda "‹ Geri" düğmesi ve başlık (kök ekranda düğme yok), sağda (isteğe bağlı) "Ara" düğmesi, kaynak adı ve saat
+export function ustCubuk(baslik, alt, kok, ara) {
+  return '<div class="top"><div class="top-l">' + (kok ? '' : '<div class="top-back" data-geri="1">‹ Geri</div>') + '<h1>' + baslik + '</h1></div><div class="top-r">' + (ara ? '<div class="top-ara" data-ara="1">' + ikon.ara + '<span>Ara</span></div>' : '') + (alt ? '<span class="top-src">' + alt + '</span>' : '') + '<span class="clock"></span></div></div>';
 }

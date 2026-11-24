@@ -1,5 +1,5 @@
 // Açılış, ekran kaydı, tuş dağıtıcı (uzaktan kumanda) ve saat.
-import { ctx, open, pop, top, cikis, geri, geriOdakla, provider } from './ctx.js';
+import { ctx, open, pop, top, cikis, geri, geriOdakla, araVar, provider } from './ctx.js';
 import { createStore, bellekDepo } from './store.js';
 import { createNet } from './net.js';
 import { varlik } from './luna.js';
@@ -83,10 +83,20 @@ export function tuslariBagla(doc) {
   const geriGit = () => {
     if (!pop()) kokGeri();
   };
+  // Üst çubuktaki Ara düğmesi: ekran kapsamı biliyorsa (Filmler → yalnız filmler) ona göre, yoksa tüm katalogda arar
+  const araAc = (t) => {
+    if (t && t.araAc) t.araAc();
+    else open('search');
+  };
   const gonder = (t, a) => {
     if (!t) return;
     if (geri.odak) {
       // Odak üst çubuktaki Geri düğmesinde: OK/Geri geri döner, ▼ içeriğe iner, yön tuşları yerinde kalır
+      if (a === 'ok' && geri.dugme === 'ara') {
+        geriOdakla(false);
+        araAc(t);
+        return;
+      }
       if (a === 'ok' || a === 'back') {
         geriOdakla(false);
         geriGit();
@@ -96,6 +106,9 @@ export function tuslariBagla(doc) {
         geriOdakla(false);
         return;
       }
+      // ◀▶ Geri ile Ara arasında gezer (Ara yoksa yerinde kalır)
+      if (a === 'right' && geri.dugme === 'geri' && araVar()) geriOdakla(true, 'ara');
+      else if (a === 'left' && geri.dugme === 'ara') geriOdakla(true, 'geri');
       if (a === 'up' || a === 'left' || a === 'right') return;
       geriOdakla(false);
     }
@@ -156,6 +169,11 @@ export function tuslariBagla(doc) {
   }, true);
   // Magic Remote imleci / fare: Geri düğmesine tıklama
   doc.addEventListener('click', (e) => {
+    if (enYakin(e.target, '.top-ara', doc.documentElement || null)) {
+      geriOdakla(false);
+      araAc(top());
+      return;
+    }
     if (!enYakin(e.target, '.top-back', doc.documentElement || null)) return;
     geriOdakla(false);
     gonder(top(), 'back');
