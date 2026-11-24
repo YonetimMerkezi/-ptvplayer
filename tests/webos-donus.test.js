@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -126,6 +126,153 @@ test('bekçi: açma başarısızsa yeniden dener; geçersiz kimlik ve köprüsü
   assert.match(r.errorText, /köprü/);
 });
 
+test('bekçi: ilk açma adresi reddedilirse sıradaki adres denenir; her adresin nedeni notlanır', async () => {
+  const s = sahte({ calisan: [UYG] });
+  const denenen = [];
+  s.cagri = ((eski) => (uri, par, cb) => {
+    if (/\/launch$/.test(uri)) {
+      denenen.push(uri);
+      if (!/service\.applicationmanager/.test(uri)) return cb({ returnValue: false, errorText: 'Denied method call "launch" for category "/"' });
+      return cb({ returnValue: true });
+    }
+    return eski(uri, par, cb);
+  })(s.cagri);
+  svc._lunaCagri(s.cagri);
+  svc.donusKur({ uyg: UYG });
+  sor();
+  s.calisan = [];
+  sor();
+  sor();
+  assert.deepEqual(denenen, ['luna://com.webos.applicationManager/launch'], 'ilk deneme');
+  await new Promise((r) => setTimeout(r, 1700));
+  assert.deepEqual(denenen[1], 'luna://com.webos.service.applicationmanager/launch', 'ikinci deneme farklı adres');
+  const d = svc.donusDurum();
+  assert.equal(d.durum, 'açıldı');
+  assert.ok(d.tani.some((t) => /açma 1 başarısız \(luna:\/\/com\.webos\.applicationManager\/launch\): Denied method call/.test(t)), d.tani.join(' | '));
+  assert.ok(d.tani.some((t) => /yeniden açıldı \(2\. deneme: luna:\/\/com\.webos\.service\.applicationmanager\/launch\)/.test(t)));
+});
+
+test('bekçi: çalışanlar arasında uygulama görünmüyorsa görülen kimlikler notlanır; nabız ve süreç değişimi tanıda belirir', () => {
+  svc._donusSifirla();
+  const s = sahte({ calisan: ['com.webos.app.home', 'com.baska.uyg'] });
+  svc._lunaCagri(s.cagri);
+  svc.donusKur({ uyg: UYG });
+  for (let i = 0; i < 4; i++) sor();
+  let d = svc.donusDurum();
+  assert.ok(d.tani.some((t) => /dikkat: com\.koruk\.iptv\.webos çalışanlar arasında görünmüyor \(görülenler: com\.webos\.app\.home, com\.baska\.uyg\)/.test(t)), d.tani.join(' | '));
+  assert.ok(d.tani.some((t) => /bekçi \d+ sn sorguladı; son sorgu \d+ sn önce/.test(t)), 'nabız satırı');
+  assert.ok(!d.tani.some((t) => /UYARI/.test(t)), 'aynı süreçte uyarı yok');
+  svc.donusIptal();
+  // Servis yeniden başlamış gibi: dosyada başka süreç numarası
+  svc._donusSifirla();
+  const dosya = join(kok, 'eski.json');
+  svc._donusDosya(dosya);
+  writeFileSync(dosya, JSON.stringify({ durum: 'bekliyor', uyg: UYG, tani: ['kuruldu: ' + UYG], zaman: 1, basla: 1000, nabiz: 6000, pid: process.pid + 1 }));
+  d = svc.donusDurum();
+  assert.equal(d.durum, 'bekliyor');
+  assert.ok(d.tani.some((t) => /UYARI: servis bekçiden sonra yeniden başlamış/.test(t) && /bekçi kaybolmuş/.test(t)), d.tani.join(' | '));
+  assert.ok(d.tani.some((t) => /bekçi 5 sn sorguladı/.test(t)), 'servisin ne kadar yaşadığı görünür');
+  svc._donusDosya(join(kok, 'donus.json'));
+});
+
+test('bekçi: palm adresiyle running çalışırsa o yol kullanılır', () => {
+  svc._donusSifirla();
+  const s = sahte({ calisan: [UYG] });
+  const eski = s.cagri;
+  s.cagri = (uri, par, cb) => (/com\.palm\.applicationManager\/running$/.test(uri) ? eski('x/running', par, cb) : /\/running$|getForegroundAppInfo$/.test(uri) ? cb({ returnValue: false, errorText: 'Denied' }) : eski(uri, par, cb));
+  svc._lunaCagri(s.cagri);
+  svc.donusKur({ uyg: UYG });
+  sor();
+  s.calisan = [];
+  sor();
+  sor();
+  assert.equal(s.launchlar.length, 1);
+  assert.ok(svc.donusDurum().tani.some((t) => /yol: luna:\/\/com\.palm\.applicationManager\/running/.test(t)));
+});
+
+test('bekçi: açıldıktan sonra ön planda başka uygulama varsa (TV canlı yayını öne aldı) yeniden açar; ön planda doğrulanınca biter', () => {
+  svc._donusSifirla();
+  const s = sahte({ calisan: [UYG, 'com.webos.app.home'], onde: UYG });
+  svc._lunaCagri(s.cagri);
+  svc.donusKur({ uyg: UYG });
+  sor(); // uygulama çalışıyor ve ön planda
+  s.calisan = ['com.webos.app.livetv'];
+  s.onde = 'com.webos.app.livetv';
+  sor();
+  sor(); // iki sorgu yok → açılır
+  assert.equal(s.launchlar.length, 1);
+  assert.equal(svc.donusDurum().durum, 'doğruluyor', 'açma sonrası ön plan doğrulanır');
+  assert.equal(svc._donus() !== null, true);
+  // TV canlı yayını açma sonrası öne aldı: ön planda hâlâ başkası; 3 sorgu + 3 sn bekleme sonrası yeniden açılır
+  const gercekSimdi = Date.now;
+  let t = gercekSimdi();
+  Date.now = () => t;
+  try {
+    for (let i = 0; i < 3; i++) {
+      t += 1000;
+      sor();
+    }
+    assert.equal(s.launchlar.length, 2, 'ön planda başkası varken yeniden açıldı');
+    assert.ok(svc.donusDurum().tani.some((x) => /ön planda com\.webos\.app\.livetv var; yeniden açılıyor \(2\. açılış\)/.test(x)), svc.donusDurum().tani.join(' | '));
+    // Bu kez uygulama ön planda: iki ardışık sorguda doğrulanır ve bekçi biter
+    s.onde = UYG;
+    s.calisan = [UYG];
+    t += 1000;
+    sor();
+    assert.equal(svc._donus() !== null, true, 'tek sorgu yetmez');
+    t += 1000;
+    sor();
+    assert.equal(svc._donus(), null);
+    const d = svc.donusDurum();
+    assert.equal(d.durum, 'açıldı');
+    assert.ok(d.tani.some((x) => /ön planda \(doğrulandı\)/.test(x)));
+    assert.equal(s.launchlar.length, 2, 'doğrulandıktan sonra tekrar açılmaz');
+  } finally {
+    Date.now = gercekSimdi;
+  }
+});
+
+test('bekçi: ön plana geçilemezse 40 sn sonra vazgeçer ve nedeni yazar; ön plan hiç sorgulanamazsa açmadan sonra biter', () => {
+  svc._donusSifirla();
+  let s = sahte({ calisan: [UYG], onde: UYG });
+  svc._lunaCagri(s.cagri);
+  svc.donusKur({ uyg: UYG });
+  sor();
+  s.calisan = [];
+  s.onde = 'com.webos.app.livetv';
+  sor();
+  sor();
+  assert.equal(s.launchlar.length, 1);
+  const gercekSimdi = Date.now;
+  let t = gercekSimdi();
+  Date.now = () => t;
+  try {
+    for (let i = 0; i < 45; i++) {
+      t += 1000;
+      sor();
+      if (!svc._donus()) break;
+    }
+    const d = svc.donusDurum();
+    assert.equal(d.durum, 'ön planda değil');
+    assert.ok(s.launchlar.length >= 2 && s.launchlar.length <= 5, 'sınırlı sayıda yeniden açma: ' + s.launchlar.length);
+    assert.ok(d.tani.some((x) => /ön plana geçilemedi \(ön planda: com\.webos\.app\.livetv\)/.test(x)));
+  } finally {
+    Date.now = gercekSimdi;
+  }
+  // Ön plan API'si yok: açma sonrası doğrulanamaz, eski davranış (bitir)
+  svc._donusSifirla();
+  s = sahte({ calisan: [UYG], onde: null });
+  svc._lunaCagri(s.cagri);
+  svc.donusKur({ uyg: UYG });
+  sor();
+  s.calisan = [];
+  sor();
+  sor();
+  assert.equal(svc._donus(), null);
+  assert.equal(svc.donusDurum().durum, 'açıldı');
+  assert.ok(svc.donusDurum().tani.some((x) => /ön plan sorgulanamadı/.test(x)));
+});
+
 // ---- Uygulama tarafı ----
 const ekran = (ad, arg) => ({ el: {}, name: ad, acilis: { ad, arg } });
 function depo() {
@@ -178,9 +325,23 @@ test('donusUygula: dönüş parametresiyle kayıtlı ekranlar açılır; kayıt 
   let r = donusUygula({ params: { donus: 1, tani: 'running ok' }, simdi: () => 20000, ac });
   assert.deepEqual(r, { donus: true, tani: 'running ok', acilan: 2, kayit: true });
   assert.deepEqual(acilan, [['browse', { type: 'movie' }], ['detail', { item: { id: 9 } }]]);
-  assert.equal(ctx.store.d.donus, null, 'kayıt tek kullanımlık');
-  // İkinci açılışta kayıt yok → hiçbir şey olmaz
-  assert.deepEqual(donusUygula({ params: { donus: 1 }, simdi: () => 21000, ac }), { donus: false, tani: '', acilan: 0, kayit: false });
+  assert.equal(ctx.store.d.donus.kullanildi, 20000, 'kayıt kullanıldı diye işaretlenir (silinmez: servis ikinci kez açabilir)');
+  // Servis TV başka uygulamayı öne aldığı için uygulamayı yeniden açtı: 1 dk içinde ikinci dönüş açılışı da ekranları kurar
+  acilan.length = 0;
+  r = donusUygula({ params: { donus: 1 }, simdi: () => 30000, ac });
+  assert.deepEqual([r.donus, r.acilan], [true, 2], 'ikinci dönüş açılışı');
+  assert.equal(ctx.store.d.donus.kullanildi, 30000);
+  // Dönüş parametresiz (elle) açılışta kullanılmış kayıt silinir ve ekran kurulmaz
+  acilan.length = 0;
+  r = donusUygula({ params: {}, simdi: () => 40000, ac });
+  assert.deepEqual([r.donus, r.kayit, acilan.length], [false, true, 0]);
+  assert.equal(ctx.store.d.donus, null);
+  // Kayıt yoksa hiçbir şey olmaz
+  assert.deepEqual(donusUygula({ params: { donus: 1 }, simdi: () => 41000, ac }), { donus: false, tani: '', acilan: 0, kayit: false });
+  // Kullanılmış kayıt 1 dakikadan eskiyse dönüş parametresi olsa da kurulmaz
+  ctx.store.setSetting('donus', { t: 1000, yigin, kullanildi: 20000 });
+  assert.equal(donusUygula({ params: { donus: 1 }, simdi: () => 20000 + 61000, ac }).donus, false);
+  assert.equal(ctx.store.d.donus, null);
 
   // Parametre okunamadıysa: kayıt yeniyse (2 dk içinde) dönüş sayılır, eskiyse sayılmaz
   acilan.length = 0;

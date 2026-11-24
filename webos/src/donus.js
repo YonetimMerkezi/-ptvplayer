@@ -8,6 +8,7 @@ import * as K from './log.js';
 export const UYGULAMA_ID = 'com.koruk.iptv.webos';
 const KAYIT = 'donus';
 const KAYIT_OMRU_MS = 3 * 3600 * 1000; // bekçi en çok bu kadar bekler
+const TEKRAR_MS = 60000; // dönüş açılışından sonra kayıt bu kadar süre ikinci açılış için geçerli kalır
 const MANUEL_ACILIS_MS = 120000; // açılış parametresi okunamazsa: kayıt bu kadar tazeyse dönüş sayılır
 const EN_BUYUK_KAYIT = 200000; // karakter
 const KAYDEDILMEYEN = { player: 1, fragmanqr: 1, fragmantesti: 1, addsource: 1 };
@@ -79,13 +80,18 @@ export function donusUygula({ params = acilisParametreleri(), simdi = Date.now, 
   }
   if (!kayit) return sonuc;
   sonuc.kayit = true;
-  try {
-    ctx.store.setSetting(KAYIT, null);
-  } catch (e) {
-    /* silinemezse bir sonraki açılışta zaman denetimi eler */
-  }
   const yas = simdi() - (Number(kayit.t) || 0);
-  const donusMu = yas >= 0 && yas < KAYIT_OMRU_MS && (!!(params && params.donus) || yas < MANUEL_ACILIS_MS);
+  const kullanildi = Number(kayit.kullanildi) || 0;
+  const sonra = simdi() - kullanildi;
+  // Servis, TV başka uygulamayı öne aldıysa uygulamayı yeniden açabilir (ikinci açılış): kullanılmış kayıt kısa süre geçerli kalır
+  const tekrar = kullanildi > 0 && !!(params && params.donus) && sonra >= 0 && sonra < TEKRAR_MS;
+  const ilk = kullanildi === 0 && yas >= 0 && yas < KAYIT_OMRU_MS && (!!(params && params.donus) || yas < MANUEL_ACILIS_MS);
+  const donusMu = tekrar || ilk;
+  try {
+    ctx.store.setSetting(KAYIT, donusMu ? { t: kayit.t, yigin: kayit.yigin, kullanildi: simdi() } : null);
+  } catch (e) {
+    /* yazılamazsa bir sonraki açılışta zaman denetimi eler */
+  }
   if (params && params.tani) sonuc.tani = String(params.tani);
   if (!donusMu) return sonuc;
   sonuc.donus = true;
