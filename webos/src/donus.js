@@ -108,28 +108,6 @@ export function donusUygula({ params = acilisParametreleri(), simdi = Date.now, 
   return sonuc;
 }
 
-// Bekçinin notlarından, uygulamanın neden kendiliğinden açılmadığını gösteren tek satır: önce servis yeniden başlamışsa (bekçi kaybolmuş),
-// sonra uyarılar ve açma/etkinlik hataları, yoksa son not. Toast'a sığacak kadar kısa tutulur.
-export function raporMetni(d) {
-  if (!d || !d.durum || d.durum === 'yok') return '';
-  const tani = (d.tani || []).map(String);
-  const onem = [/^UYARI/, /^dikkat/, /canlı tutma/, /başarısız|açılamadı|geçilemedi|sorgulanamadı/];
-  let satir = '';
-  for (let i = 0; i < onem.length && !satir; i++) satir = tani.filter((t) => onem[i].test(t))[0] || '';
-  if (!satir) satir = tani[tani.length - 1] || '';
-  const m = 'Dönüş bekçisi: ' + d.durum + (satir ? ' · ' + satir : '');
-  return m.length > 170 ? m.slice(0, 169) + '…' : m;
-}
-
-// Uygulama bekçi tarafından değil elle açıldıysa: bekçinin durumunu okuyup metne çevirir (dönüşün neden olmadığını gösterir); hata fırlatmaz
-export async function donusRaporu({ cagri = luna } = {}) {
-  try {
-    return raporMetni(await cagri(SERVIS + 'donusDurum', {}, 3000));
-  } catch (e) {
-    return '';
-  }
-}
-
 // Uygulama kayıtsız (elle) açıldıysa bekçiyi durdur: ikinci kez açmasın
 export function bekciyiDurdur({ cagri = luna } = {}) {
   return Promise.resolve(cagri(SERVIS + 'donusIptal', {}, 3000)).catch(() => {});

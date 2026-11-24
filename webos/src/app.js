@@ -26,7 +26,7 @@ import { tusTestiScreen } from './screens/tustesti.js';
 import { fragmanTestiScreen } from './screens/fragmantesti.js';
 import { adScreen } from './screens/ad.js';
 import { ayarKaynagi, donusKaynagi, qrKaynagi, VARSAYILAN_BICIM, VARSAYILAN_YOL } from './fragman.js';
-import { donusHazirla, donusUygula, bekciyiDurdur, donusRaporu, acilisParametreleri } from './donus.js';
+import { donusHazirla, donusUygula, bekciyiDurdur, acilisParametreleri } from './donus.js';
 import { fragmanQrScreen } from './screens/fragmanqr.js';
 import { telefonKumandaScreen } from './screens/telefonkumanda.js';
 import { telefonuBaslat } from './telefon.js';
@@ -247,20 +247,10 @@ export function start() {
   K.bilgi('Açıldı: ' + window.innerWidth + '×' + window.innerHeight);
   if (ctx.store.active()) {
     open('home');
-    // Fragman sayfasından dönüş: kapanmadan önceki ekranlar geri kurulur (kayıt varsa; elle açıldıysa bekçi durdurulur)
+    // Fragman sayfasından dönüş: kapanmadan önceki ekranlar geri kurulur (kayıt varsa; elle açıldıysa bekçi sessizce durdurulur)
     const dn = donusUygula();
     const bekciAcmadi = dn.kayit && !acilisParametreleri().donus; // fragmandan çıkıldı ama TV servisindeki bekçi uygulamayı açmadı (elle açıldı)
-    if (bekciAcmadi) {
-      // Neden açmadığı (servis kapanmış, açma reddedilmiş…) ekranda yazılır; sonra bekçi durdurulur
-      donusRaporu()
-        .then((m) => {
-          if (m) {
-            K.bilgi(m);
-            toast(m, 15000);
-          }
-        })
-        .then(() => bekciyiDurdur());
-    }
+    if (bekciAcmadi) bekciyiDurdur(); // ikinci kez açmasın
     if (dn.donus) {
       K.bilgi('Fragmandan dönüldü: ' + dn.acilan + ' ekran açıldı' + (dn.tani ? ' · ' + dn.tani : ''));
       if (!bekciAcmadi) setTimeout(() => toast('Fragmandan döndünüz', 2500), 600);

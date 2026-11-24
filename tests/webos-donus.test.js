@@ -363,27 +363,3 @@ test('donusUygula: dönüş parametresiyle kayıtlı ekranlar açılır; kayıt 
 });
 
 test.after(() => rmSync(kok, { recursive: true, force: true }));
-
-// ---- Elle açılışta dönüş raporu (bekçi uygulamayı açmadıysa nedeni ekranda yazılır) ----
-const { raporMetni, donusRaporu } = await import('../webos/src/donus.js');
-
-test('raporMetni: servis yeniden başlamışsa onu, yoksa uyarı/hata satırını, o da yoksa son notu söyler', () => {
-  assert.equal(raporMetni(null), '');
-  assert.equal(raporMetni({ durum: 'yok', tani: [] }), '');
-  const tani = ['kuruldu: x', 'yol: luna://a/running (3 uygulama)', 'uygulama çalışıyor', 'canlı tutma etkinliği kurulamadı: yanıt yok', 'UYARI: servis bekçiden sonra yeniden başlamış (süreç 1 → 2): bekçi kaybolmuş', 'bekçi 4 sn sorguladı'];
-  assert.match(raporMetni({ durum: 'bekliyor', tani }), /^Dönüş bekçisi: bekliyor · UYARI: servis bekçiden sonra yeniden başlamış/);
-  assert.match(raporMetni({ durum: 'bekliyor', tani: tani.slice(0, 4) }), /· canlı tutma etkinliği kurulamadı: yanıt yok$/);
-  assert.match(raporMetni({ durum: 'açılamadı', tani: ['kuruldu: x', 'açma 6 başarısız (luna://a/launch): reddedildi'] }), /· açma 6 başarısız/);
-  assert.equal(raporMetni({ durum: 'iptal', tani: ['kuruldu: x', 'uygulama çalışıyor'] }), 'Dönüş bekçisi: iptal · uygulama çalışıyor');
-  assert.equal(raporMetni({ durum: 'iptal', tani: [] }), 'Dönüş bekçisi: iptal');
-  assert.ok(raporMetni({ durum: 'x', tani: ['UYARI ' + 'a'.repeat(400)] }).length <= 170, 'toast için kısaltılır');
-});
-
-test('donusRaporu: servis durumunu okur; servis yoksa/hata verirse boş döner (açılışı bozmaz)', async () => {
-  const gelen = [];
-  const m = await donusRaporu({ cagri: async (uri) => (gelen.push(uri), { returnValue: true, durum: 'bekliyor', tani: ['kuruldu: x'] }) });
-  assert.equal(m, 'Dönüş bekçisi: bekliyor · kuruldu: x');
-  assert.match(gelen[0], /donusDurum$/);
-  assert.equal(await donusRaporu({ cagri: async () => { throw new Error('servis yok'); } }), '');
-  assert.equal(await donusRaporu({ cagri: async () => null }), '');
-});
