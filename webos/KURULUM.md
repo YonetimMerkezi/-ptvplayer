@@ -74,6 +74,18 @@ Mağaza yayını LG'nin kendi inceleme sürecidir ve bu paketin otomatik yapabil
 
 Uygulama hiçbir içerik sunmaz ve içerik adresi içermez; yalnızca kullanıcının eklediği kaynakları oynatır. Bu, incelemede açıkça belirtilmelidir.
 
+**Mağaza paketi.**
+
+Mağaza kendi güncellemesini yaptığı için mağazaya gönderilen pakette kendi kendine güncelleme bulunmaz (Ayarlar › Güncelleme satırı, açılıştaki otomatik denetim ve servisteki indirme/kurulum komutları çıkarılır). Yan yükleme sürümü (CI'nin yayınladığı) aynen kalır.
+
+```
+cd webos
+WEBOS_MAGAZA=1 npm run build && npm run check
+npx ares-package --no-minify dist/app dist/service -o dist/ipk
+```
+
+Kesilen bölgeler `service/service.js` içinde `<magaza-kes>` işaretleriyle sınırlıdır; derleme sonrası güncelleme izi (`appInstallService`, `releases/download` …) kalırsa derleme durur (`scripts/magaza.mjs`).
+
 ## Geliştirme
 
 ```
@@ -85,15 +97,3 @@ npx ares-package --no-minify dist/app dist/service -o dist/ipk
 ```
 
 Testler: depo kökünde `node --test tests/webos.test.js`.
-
-## LG Content Store sürümü
-
-Mağaza kendi güncellemesini yaptığı için mağazaya gönderilen pakette kendi kendine güncelleme bulunmaz (Ayarlar › Güncelleme satırı, açılıştaki otomatik denetim ve servisteki indirme/kurulum komutları çıkarılır). Yan yükleme sürümü (CI'nin yayınladığı) aynen kalır.
-
-```
-cd webos
-WEBOS_MAGAZA=1 npm run build && npm run check
-npx ares-package --no-minify dist/app dist/service -o dist/ipk
-```
-
-Kesilen bölgeler `service/service.js` içinde `<magaza-kes>` işaretleriyle sınırlıdır; derleme sonrası güncelleme izi (`appInstallService`, `releases/download` …) kalırsa derleme durur (`scripts/magaza.mjs`).
