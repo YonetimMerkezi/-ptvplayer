@@ -389,5 +389,6 @@ test('kablolama: Kaynak ekle ekranı telefon panelini açar ve telefondan gelen 
   const ara = oku('src', 'screens', 'search.js');
   assert.match(ara, /gecerliKapsam\(p && p\.tur\)/, 'bölümden açılınca o sekme seçili gelir');
   assert.match(ara, /kapsamTurleri = \(\) => \(kapsam \? \[kapsam\] : TURLER\)/, 'arama ekranı kapsamı veri katmanına geçirir');
-  assert.match(ara, /araTur\(pr, q, k, TUR_LIMIT\)/, 'yalnız kapsamdaki türler aranır');
+  assert.match(ara, /turler = kapsamTurleri\(\)\.filter/, 'yalnız kapsamdaki türler aranır');
+  assert.match(ara, /araTur\(\s*pr,\s*q,\s*k,\s*TUR_LIMIT/, 'her tür kendi kapsamında taranır');
 });

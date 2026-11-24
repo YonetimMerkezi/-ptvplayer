@@ -66,6 +66,24 @@ export function createXtream(src, net, kalici = varsayilanOnbellek) {
   };
   const rawCats = (kind) => bir(cache, 'rc:' + kind, async () => kaydet('rc:' + kind, gecerli(await J(KIND_AKSIYON[kind][0]))));
   const adlandir = (l) => l.map((c) => ({ id: String(c.category_id), name: String(c.category_name || '').trim() || 'Diğer' }));
+  // Arama için tüm kategoriler küçük istekler hâlinde yüklenir (tek dev "tüm liste" isteği 2016 TV'de dakikalarca sürüyor ve ekranı kilitliyordu).
+  // En çok ESZAMAN istek aynı anda sürer (türler arasında ortak); sonuçlar kalıcı önbelleğe yazılmaz (yüzlerce kategori yazımı TV'yi yorardı).
+  const ESZAMAN = 4;
+  let aktif = 0;
+  const sira = [];
+  const yer = () =>
+    new Promise((coz) => {
+      if (aktif < ESZAMAN) {
+        aktif++;
+        coz();
+      } else sira.push(coz);
+    });
+  const birak = () => {
+    const s = sira.shift();
+    if (s) s();
+    else aktif--;
+  };
+  const katYukle = (kind, id) => bir(cache, 'it:' + kind + ':' + id, () => liste(kind, { category_id: id }, rawCats(kind), null));
   const epgOnbellek = {}; // kanal:adet → { at, p }; 2 dakika taze sayılır
   let farkOnbellek = null; // sunucu saatinin UTC'den farkı (ms): bir kez sorulur; alınamazsa cihaz saati
   const sunucuFarki = () =>
@@ -94,6 +112,53 @@ export function createXtream(src, net, kalici = varsayilanOnbellek) {
     items: (kind, catId, grup) =>
       bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' : grup).then((l) => kaydet('it:' + kind + ':' + catId, l))),
     all: (kind) => bir(cache, 'all:' + kind, () => liste(kind, undefined, rawCats(kind))),
+    // Bir türün tüm öğelerini kategori kategori gezer: her kategori yüklenince cb(öğeler, biten, toplam, hataSayisi) çağrılır (başarısız kategori boş liste verir).
+    // iptal() doğruysa yeni istek başlatılmaz. Tüm kategoriler başarısızsa hata fırlatır. Kategori yoksa tüm liste tek parça gelir.
+    async gez(kind, cb, iptal) {
+      const durdu = () => !!(iptal && iptal());
+      const tam = cache['all:' + kind];
+      if (tam && tam.hazir) return cb(await tam, 1, 1, 0);
+      const idler = [];
+      const gorulen = {};
+      (await rawCats(kind)).forEach((c) => {
+        const id = String(c.category_id);
+        if (!gorulen[id]) {
+          gorulen[id] = 1;
+          idler.push(id);
+        }
+      });
+      if (!idler.length) return cb(await bir(cache, 'all:' + kind, () => liste(kind, undefined, rawCats(kind))), 1, 1, 0);
+      let siradaki = 0;
+      let biten = 0;
+      let hata = 0;
+      const isci = async () => {
+        while (siradaki < idler.length && !durdu()) {
+          const id = idler[siradaki++];
+          let l = null;
+          try {
+            const ortak = cache['it:' + kind + ':' + id];
+            if (ortak) l = await ortak; // zaten yükleniyor/yüklü: ortak söz, istek hakkı harcanmaz
+            else {
+              await yer();
+              try {
+                if (!durdu()) l = await katYukle(kind, id);
+              } finally {
+                birak();
+              }
+            }
+          } catch (e) {
+            hata++;
+          }
+          biten++;
+          if (durdu()) return;
+          await cb(l || [], biten, idler.length, hata);
+        }
+      };
+      const iscler = [];
+      for (let i = 0; i < Math.min(3, idler.length); i++) iscler.push(isci());
+      await Promise.all(iscler);
+      if (hata >= idler.length) throw new AgHatasi('Kategoriler yüklenemedi', 0);
+    },
     seriesInfo: (item) => bir(cache, 'si:' + item.seriesId, async () => X.mapSeriesInfo(await J('get_series_info', { series_id: item.seriesId }))),
     vodInfo: (item) => bir(cache, 'vi:' + item.streamId, async () => X.mapVodInfo(await J('get_vod_info', { vod_id: item.streamId }))),
     // Kanalın şimdiki ve sonraki programları (adet: kaç program; varsayılan 3)
@@ -164,6 +229,7 @@ export function createM3u(src, net) {
     },
     items: async (kind, catId) => (await yukle())[kind].filter((x) => grupAdi(x) === catId),
     all: async (kind) => (await yukle())[kind],
+    gez: async (kind, cb) => cb((await yukle())[kind], 1, 1, 0), // liste zaten tek parça yüklenir
     seriesInfo: async (item) => ({ plot: '', seasons: item.seasons || [] }),
     vodInfo: async () => ({}),
     shortEpg: async () => [],
@@ -210,16 +276,36 @@ function adlariKatla(liste) {
   return p;
 }
 
-// Tek türde arama: liste yüklenmemişse indirilir (aynı anda gelen istekler tek indirmeyi paylaşır).
-export async function araTur(provider, sorgu, tur, limit) {
+// Tek türde arama. Sağlayıcı kategori kategori geziyorsa (gez) sonuçlar yüklendikçe ilerleme(sonuçlar, biten, toplam, hata) ile bildirilir;
+// iptal() doğruysa ya da üst sınıra varılınca yeni kategori istenmez. Aynı anda gelen aramalar ortak yüklemeyi paylaşır.
+export async function araTur(provider, sorgu, tur, limit, ilerleme, iptal) {
   const q = fold(sorgu);
   if (!q) return [];
-  const liste = await provider.all(tur);
-  const f = await adlariKatla(liste);
-  const out = [];
   const en = limit || 200;
-  for (let i = 0; i < f.length && out.length < en; i++) {
-    if (f[i].indexOf(q) >= 0) out.push(liste[i]);
+  const out = [];
+  const goruldu = {};
+  const isle = async (liste) => {
+    const f = await adlariKatla(liste);
+    for (let i = 0; i < f.length && out.length < en; i++) {
+      if (f[i].indexOf(q) < 0) continue;
+      const anahtar = String(liste[i].id != null ? liste[i].id : liste[i].name);
+      if (goruldu[anahtar]) continue;
+      goruldu[anahtar] = 1;
+      out.push(liste[i]);
+    }
+  };
+  if (typeof provider.gez === 'function') {
+    await provider.gez(
+      tur,
+      async (l, biten, toplam, hata) => {
+        await isle(l);
+        if (ilerleme) ilerleme(out, biten, toplam, hata);
+      },
+      () => out.length >= en || !!(iptal && iptal()),
+    );
+  } else {
+    await isle(await provider.all(tur));
+    if (ilerleme) ilerleme(out, 1, 1, 0);
   }
   return out;
 }
@@ -232,12 +318,11 @@ export function sonuclariSuz(onceki, oncekiSorgu, sorgu, limit) {
   return onceki.filter((x) => fold(x.name).indexOf(b) >= 0);
 }
 
-// Arama ekranı açılır açılmaz çağrılır: seçili kapsamdaki listeler (indirme + ad küçültme) arka planda hazırlanır; kullanıcı yazarken hazır olur.
+// Arama ekranı açılır açılmaz çağrılır: seçili kapsamdaki türler arka planda yüklenir/hazırlanır; kullanıcı yazarken hazır olur.
 export function aramayaHazirla(provider, turler) {
   (turler || []).forEach((t) => {
     Promise.resolve()
-      .then(() => provider.all(t))
-      .then(adlariKatla)
+      .then(() => (typeof provider.gez === 'function' ? provider.gez(t, (l) => adlariKatla(l)) : provider.all(t).then(adlariKatla)))
       .catch(() => {});
   });
 }

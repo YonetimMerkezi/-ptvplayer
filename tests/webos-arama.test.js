@@ -138,3 +138,99 @@ test('arama ekranı: yazdıkça arama, sekmeler ve Chromium 38 uyumu (kaynak den
   assert.match(css, /\.s-tab\.on \{/);
   assert.match(css, /\.search \.s-res \{ top: 20\.2rem/);
 });
+
+// ---- Xtream: kategori kategori tarama (tek dev "tüm liste" isteği yerine) ----
+const { createProvider } = await import('../webos/src/data.js');
+const CFG = { type: 'xtream', name: 'T', server: 'http://srv:8000', user: 'u', pass: 'p', id: 'k1' };
+
+function sahteSunucu({ kategori = 12, film = 5, bozuk = [], gecikme = 8 } = {}) {
+  const s = { istekler: [], eszamanli: 0, enCok: 0 };
+  s.get = async (url) => {
+    s.istekler.push(url);
+    s.eszamanli++;
+    s.enCok = Math.max(s.enCok, s.eszamanli);
+    await new Promise((r) => setTimeout(r, gecikme));
+    s.eszamanli--;
+    const id = (url.match(/category_id=([^&]+)/) || [])[1];
+    if (bozuk.indexOf(id) >= 0) throw new Error('kategori hatası ' + id);
+    if (url.includes('action=get_vod_categories')) {
+      const c = [];
+      for (let i = 1; i <= kategori; i++) c.push({ category_id: String(i), category_name: 'Kat ' + i });
+      return JSON.stringify(c);
+    }
+    if (url.includes('action=get_vod_streams')) {
+      const l = [];
+      for (let i = 0; i < film; i++) l.push({ name: id === '3' && i === 0 ? 'Gora Özel' : 'Film K' + id + ' ' + i, stream_id: Number(id) * 100 + i, category_id: id });
+      return JSON.stringify(l);
+    }
+    return '[]';
+  };
+  s.json = async (url) => JSON.parse(await s.get(url));
+  return s;
+}
+const kaliciSahte = () => ({ yazildi: [], oku: async () => null, yaz: async function (k) { this.yazildi.push(k); return true; } });
+
+test('Xtream gez: kategoriler küçük isteklerle ve en çok 4 eşzamanlı yüklenir, sonuçlar yüklendikçe bildirilir', async () => {
+  const sunucu = sahteSunucu({ kategori: 12 });
+  const kalici = kaliciSahte();
+  const p = createProvider(CFG, sunucu, kalici);
+  const ilerlemeler = [];
+  const r = await araTur(p, 'gora', 'movie', 50, (o, b, t) => ilerlemeler.push([o.length, b, t]));
+  assert.deepEqual(r.map((x) => x.name), ['Gora Özel']);
+  assert.equal(ilerlemeler.length, 12, 'her kategori yüklenince bildirim');
+  assert.deepEqual(ilerlemeler[ilerlemeler.length - 1], [1, 12, 12]);
+  assert.ok(sunucu.enCok <= 4, 'eşzamanlı istek sınırı: ' + sunucu.enCok);
+  assert.ok(sunucu.enCok >= 2, 'istekler art arda değil paralel');
+  assert.ok(!sunucu.istekler.some((u) => /get_vod_streams(?!.*category_id)/.test(u)), 'tüm liste isteği yapılmadı');
+  await new Promise((r2) => setTimeout(r2, 1700));
+  assert.deepEqual(kalici.yazildi, [], 'arama kategorileri kalıcı önbelleğe yazmaz');
+});
+
+test('Xtream gez: ikinci arama yeniden istek yapmaz; üst sınıra varınca kalan kategoriler istenmez', async () => {
+  const sunucu = sahteSunucu({ kategori: 30, film: 4 });
+  const p = createProvider(CFG, sunucu, kaliciSahte());
+  const r = await araTur(p, 'film k', 'movie', 6);
+  assert.equal(r.length, 6);
+  const sonra = sunucu.istekler.length;
+  assert.ok(sonra < 1 + 30, 'sınıra varınca tarama durdu: ' + sonra + ' istek');
+  const sunucu2 = sahteSunucu({ kategori: 8 });
+  const p2 = createProvider(CFG, sunucu2, kaliciSahte());
+  await araTur(p2, 'film', 'movie', 1000);
+  const ilk = sunucu2.istekler.length;
+  assert.equal(ilk, 1 + 8);
+  await araTur(p2, 'film k3', 'movie', 1000);
+  assert.equal(sunucu2.istekler.length, ilk, 'bellek önbelleğinden: yeni istek yok');
+});
+
+test('Xtream gez: iptal edilince yeni kategori istenmez; arkadan sürmesi gerekmez', async () => {
+  const sunucu = sahteSunucu({ kategori: 40, gecikme: 15 });
+  const p = createProvider(CFG, sunucu, kaliciSahte());
+  let iptal = false;
+  const g = araTur(p, 'film', 'movie', 1000, (o, b) => { if (b >= 3) iptal = true; }, () => iptal);
+  await g;
+  assert.ok(sunucu.istekler.length < 15, 'iptalden sonra yeni istek başlamadı: ' + sunucu.istekler.length);
+});
+
+test('Xtream gez: bazı kategoriler başarısızsa sayılır, hepsi başarısızsa hata verir', async () => {
+  const p = createProvider(CFG, sahteSunucu({ kategori: 6, bozuk: ['2', '4'] }), kaliciSahte());
+  let son = null;
+  const r = await araTur(p, 'film', 'movie', 1000, (o, b, t, h) => { son = { b, t, h }; });
+  assert.deepEqual(son, { b: 6, t: 6, h: 2 });
+  assert.equal(r.length, 4 * 5 - 1, 'başarılı 4 kategori × 5 film; 3. kategorinin ilki "Gora Özel" olduğundan eşleşmez');
+  const hepsi = createProvider(CFG, sahteSunucu({ kategori: 3, bozuk: ['1', '2', '3'] }), kaliciSahte());
+  await assert.rejects(() => araTur(hepsi, 'film', 'movie', 10), /Kategoriler yüklenemedi/);
+});
+
+test('Xtream gez: aramayaHazirla kategorileri arka planda yükler (sonraki arama anında)', async () => {
+  const sunucu = sahteSunucu({ kategori: 6 });
+  const p = createProvider(CFG, sunucu, kaliciSahte());
+  aramayaHazirla(p, ['movie']);
+  await new Promise((r) => setTimeout(r, 120));
+  const hazirIstek = sunucu.istekler.length;
+  assert.equal(hazirIstek, 1 + 6);
+  const t0 = Date.now();
+  const r = await araTur(p, 'gora', 'movie', 10);
+  assert.equal(r.length, 1);
+  assert.equal(sunucu.istekler.length, hazirIstek);
+  assert.ok(Date.now() - t0 < 100);
+});

@@ -73,9 +73,11 @@ export function searchScreen(p) {
   let zaman = 0;
   let list = null;
   let sorgu = ''; // sonuçların ait olduğu sorgu
-  let bul = {}; // tür → bu sorgunun sonucu (yüklendikçe dolar)
-  let bekle = {}; // tür → liste hâlâ indiriliyor / taranıyor
-  let hata = {}; // tür → hata iletisi
+  let bul = {}; // tür → bu sorgunun sonucu (kategoriler yüklendikçe dolar)
+  let tamam = {}; // tür → tarama bitti (bul[tür] eksiksiz)
+  let ilerle = {}; // tür → { b: biten kategori, t: toplam, h: başarısız kategori }
+  let hata = {}; // tür → hata iletisi (tür hiç yüklenemedi)
+  let cizimT = 0;
   let hazirlandi = false;
   let otomatik = !!(p && p.q); // başka ekrandan hazır sorguyla açıldıysa ilk gösterimde aranır
   if (otomatik) inp.value = String(p.q);
@@ -96,12 +98,12 @@ export function searchScreen(p) {
   kur();
 
   function sekmeCiz() {
-    const yuklu = TURLER.filter((k) => bul[k]);
+    const bitti = TURLER.filter((k) => tamam[k]);
     let h = '';
     SEKMELER.forEach((s) => {
-      let n = -1;
-      if (s.id) n = bul[s.id] ? bul[s.id].length : -1;
-      else if (yuklu.length === TURLER.length) n = yuklu.reduce((t, k) => t + bul[k].length, 0);
+      let n = -1; // sayı: tür taranırken en az bulunan, bitince kesin
+      if (s.id) n = bul[s.id] && (tamam[s.id] || bul[s.id].length) ? bul[s.id].length : -1;
+      else if (bitti.length === TURLER.length) n = bitti.reduce((t, k) => t + bul[k].length, 0);
       const sayi = n >= 0 ? '<b>' + n + '</b>' : '';
       const sec = s.id === kapsam;
       h += '<span class="s-tab' + (sec ? ' sel' : '') + (sec && bolge === 'tabs' ? ' on' : '') + '" data-k="' + s.id + '">' + esc(s.ad) + sayi + '</span>';
@@ -119,7 +121,7 @@ export function searchScreen(p) {
     });
     const imza = sorgu + '|' + kapsam;
     if (items.length) list.setItems(items, imza === gosterilen);
-    else list.setMessage(!sorgu ? '' : Object.keys(bekle).length ? 'Aranıyor…' : 'Sonuç yok');
+    else list.setMessage(!sorgu ? '' : kapsamTurleri().some((k) => !tamam[k] && !hata[k]) ? 'Aranıyor…' : 'Sonuç yok');
     gosterilen = imza;
   }
 
@@ -129,14 +131,17 @@ export function searchScreen(p) {
       return;
     }
     const sec = kapsamTurleri();
-    const yuk = sec.filter((k) => bekle[k]);
+    const yuk = sec.filter((k) => !tamam[k] && !hata[k]);
     const toplam = sec.reduce((t, k) => t + (bul[k] ? bul[k].length : 0), 0);
     const bos = sec.filter((k) => hata[k]);
     let m = '';
     if (toplam) m = toplam + ' sonuç' + (sec.some((k) => bul[k] && bul[k].length >= TUR_LIMIT) ? ' (türde ilk ' + TUR_LIMIT + ')' : '');
     else if (!yuk.length && !bos.length) m = '“' + sorgu + '” için sonuç yok';
-    if (yuk.length) m += (m ? ' · ' : '') + yuk.map((k) => YER[k]).join(', ') + ' yükleniyor… (ilk aramada liste indirilir)';
+    // Tarama ilerlemesi görünür: kaç kategori tarandı (ilk aramada kategoriler yüklenir, sonra anında)
+    if (yuk.length) m += (m ? ' · ' : '') + yuk.map((k) => YER[k] + (ilerle[k] ? ' ' + ilerle[k].b + '/' + ilerle[k].t : ' kategoriler yükleniyor')).join(', ') + ' taranıyor…';
     if (bos.length) m += (m ? ' · ' : '') + bos.map((k) => YER[k] + ' yüklenemedi: ' + hata[k]).join(' · ');
+    const eksik = sec.reduce((t, k) => t + (ilerle[k] ? ilerle[k].h || 0 : 0), 0);
+    if (eksik && !yuk.length) m += ' · ' + eksik + ' kategori yüklenemedi';
     st.textContent = m;
   }
 
@@ -154,48 +159,69 @@ export function searchScreen(p) {
     if (q !== sorgu) {
       // Yeni sorgu öncekinin devamıysa ve önceki sonuç eksiksizse yeniden aranmaz, anında süzülür
       const onceki = bul;
+      const oncekiTam = tamam;
       const oncekiSorgu = sorgu;
       sorgu = q;
       bul = {};
+      tamam = {};
+      ilerle = {};
       hata = {};
       kapsamTurleri().forEach((k) => {
-        const s = sonuclariSuz(onceki[k], oncekiSorgu, q, TUR_LIMIT);
-        if (s) bul[k] = s;
+        const s = oncekiTam[k] ? sonuclariSuz(onceki[k], oncekiSorgu, q, TUR_LIMIT) : null;
+        if (s) {
+          bul[k] = s;
+          tamam[k] = true;
+        }
       });
     }
-    const turler = kapsamTurleri().filter((k) => !bul[k]);
-    bekle = {};
+    const turler = kapsamTurleri().filter((k) => !tamam[k]);
     turler.forEach((k) => {
-      bekle[k] = true;
       delete hata[k];
+      delete ilerle[k];
     });
-    goster();
-    durumYaz();
-    sekmeCiz();
     let atladi = false;
-    const atla = () => {
+    const ciz = () => {
+      clearTimeout(cizimT);
+      cizimT = 0;
+      if (n !== sayac) return;
+      goster();
+      durumYaz();
+      sekmeCiz();
       if (zorla && !atladi && list.items.length && bolge !== 'list') {
         atladi = true;
         odak('list');
       }
     };
-    atla();
+    ciz();
+    // Kategori yüklendikçe gelen güncellemeler birleştirilir (yüzlerce kategoride her birinde yeniden çizmek TV'yi yorardı)
+    const planla = () => {
+      if (!cizimT) cizimT = setTimeout(ciz, 120);
+    };
     await Promise.all(
       turler.map(async (k) => {
         try {
-          const r = await araTur(pr, q, k, TUR_LIMIT);
+          const r = await araTur(
+            pr,
+            q,
+            k,
+            TUR_LIMIT,
+            (o, b, t, h) => {
+              if (n !== sayac) return;
+              bul[k] = o.slice();
+              ilerle[k] = { b, t, h };
+              planla();
+            },
+            () => n !== sayac,
+          );
           if (n !== sayac) return;
           bul[k] = r;
+          tamam[k] = true;
         } catch (e) {
           if (n !== sayac) return;
           K.hata(e);
           hata[k] = e && e.message ? e.message : 'hata';
         }
-        delete bekle[k];
-        goster();
-        durumYaz();
-        sekmeCiz();
-        atla();
+        ciz();
       }),
     );
   }
@@ -232,7 +258,8 @@ export function searchScreen(p) {
       sayac++; // sürmekte olan aramanın sonucu gelirse yok sayılır
       sorgu = '';
       bul = {};
-      bekle = {};
+      tamam = {};
+      ilerle = {};
       hata = {};
       goster();
       st.textContent = q ? 'En az ' + CANLI_MIN + ' harf yazın' : ILK_METIN;
@@ -300,6 +327,7 @@ export function searchScreen(p) {
     destroy() {
       sayac++;
       clearTimeout(zaman);
+      clearTimeout(cizimT);
     },
   };
 }
