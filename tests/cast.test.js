@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, viewOf, createRemote, parseJson, parseRemoteCmd, extOf, REMOTE_KEYS } from '../www/js/cast.js';
+import { buildCast, parseCast, createDevices, mergeDevices, pairResult, sendResult, syncResult, viewOf, createRemote, parseJson, parseRemoteCmd, extOf, REMOTE_KEYS, REMOTE_SCREENS, MOUSE_MAX, TYPE_MAX } from '../www/js/cast.js';
 
 const T = [{ url: 'http://a/x.m3u8', mime: 'hls' }, { url: 'http://b/x.m3u8', alt: 'Yedek', headers: { 'User-Agent': 'U' } }];
 
@@ -312,4 +312,44 @@ test('uzaktan kumanda (yalnız kumanda): TV’de oynayan olmasa da ya da oynayan
   assert.equal(f.pending().length, 1); // yoklama sürüyor
   rm.stop();
   assert.equal(f.pending().length, 0);
+});
+
+test('parseRemoteCmd: fare alanı komutları (mouse, click, scroll) sınırlanır; sıfır hareket ve sayı olmayan değer reddedilir', () => {
+  assert.deepEqual(parseRemoteCmd({ a: 'mouse', dx: 5.4, dy: -3.6 }), { a: 'mouse', dx: 5, dy: -4 });
+  assert.deepEqual(parseRemoteCmd({ a: 'mouse', dx: 99999, dy: -99999 }), { a: 'mouse', dx: MOUSE_MAX, dy: -MOUSE_MAX });
+  assert.deepEqual(parseRemoteCmd({ a: 'mouse', dx: 7 }), { a: 'mouse', dx: 7, dy: 0 });
+  assert.equal(parseRemoteCmd({ a: 'mouse', dx: 0, dy: 0 }), null, 'hareketsiz komut kuyruğu şişirmez');
+  assert.equal(parseRemoteCmd({ a: 'mouse', dx: 'x', dy: NaN }), null);
+  assert.equal(parseRemoteCmd({ a: 'mouse' }), null);
+  assert.deepEqual(parseRemoteCmd({ a: 'click', fazla: 1 }), { a: 'click' });
+  assert.deepEqual(parseRemoteCmd({ a: 'scroll', v: 40 }), { a: 'scroll', v: 40 });
+  assert.deepEqual(parseRemoteCmd({ a: 'scroll', v: -5000 }), { a: 'scroll', v: -MOUSE_MAX });
+  assert.equal(parseRemoteCmd({ a: 'scroll', v: 0 }), null);
+  assert.equal(parseRemoteCmd({ a: 'scroll', v: 'a' }), null);
+});
+
+test('parseRemoteCmd: type denetim karakterlerini atar ve kısaltır; screen yalnız bilinen bölümleri kabul eder', () => {
+  assert.deepEqual(parseRemoteCmd({ a: 'type', v: 'ab\nc\u0000d', enter: true }), { a: 'type', v: 'abcd', enter: true });
+  assert.deepEqual(parseRemoteCmd({ a: 'type', v: 'x', enter: 'evet' }), { a: 'type', v: 'x', enter: false }, 'enter yalnız true ise');
+  assert.equal(parseRemoteCmd({ a: 'type', v: '' }).v, '', 'boş yazı (kutuyu temizleme) geçerli');
+  assert.equal(parseRemoteCmd({ a: 'type', v: 'x'.repeat(TYPE_MAX + 50) }).v.length, TYPE_MAX);
+  assert.equal(parseRemoteCmd({ a: 'type', v: 5 }), null);
+  for (const v of REMOTE_SCREENS) assert.deepEqual(parseRemoteCmd({ a: 'screen', v }), { a: 'screen', v }, v);
+  for (const v of ['', 'constructor', '__proto__', 'player', 'toString', undefined, 5]) assert.equal(parseRemoteCmd({ a: 'screen', v }), null, String(v));
+});
+
+test('uzaktan kumanda: quiet gönderim durum yoklamasını sıklaştırmaz, normal gönderim sıklaştırır', async () => {
+  const f = fake();
+  const sent = [];
+  const rm = createRemote({ request: async (p, m, b) => (m === 'POST' ? (sent.push(b), { status: 200, body: '{"ok":true}' }) : st({ active: true, state: 'playing', pos: 1, dur: 9 })), setT: f.setT, clearT: f.clearT, now: () => 0 });
+  rm.start();
+  await flush();
+  const bekleyen = () => f.pending().map((p) => p.ms);
+  const once = bekleyen();
+  assert.deepEqual(await rm.send({ a: 'mouse', dx: 3, dy: 1 }, { quiet: true }), { ok: true });
+  assert.deepEqual(bekleyen(), once, 'quiet: zamanlayıcı değişmez');
+  assert.deepEqual(await rm.send({ a: 'toggle' }), { ok: true });
+  assert.ok(bekleyen().includes(280), 'normal komuttan sonra durum 280 ms içinde yoklanır');
+  assert.deepEqual(sent.map((b) => JSON.parse(b).a), ['mouse', 'toggle']);
+  rm.stop();
 });

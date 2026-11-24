@@ -247,7 +247,7 @@ test('yayın kaydı yöntemleri köprüde de var', () => {
 test('telefon kumandası: Java’nın JS’e ilettiği komutlar JS’in kabul ettikleriyle birebir aynı, durum yanıtı ext taşır', () => {
   const govde = kaynak.slice(kaynak.indexOf('private String castCommand('), kaynak.indexOf('private String castStateJson('));
   const iletilen = [...govde.slice(govde.indexOf('case "mute"')).matchAll(/case "(\w+)":/g)].map((m) => m[1]).filter((a) => a !== 'mute');
-  const ornek = { next: {}, prev: {}, last: {}, golive: {}, fav: {}, stats: {}, aspect: {}, night: { v: 'low' }, sleep: { v: 30 }, audio: { v: '1' }, text: { v: '' }, key: { v: 'ok' } };
+  const ornek = { next: {}, prev: {}, last: {}, golive: {}, fav: {}, stats: {}, aspect: {}, night: { v: 'low' }, sleep: { v: 30 }, audio: { v: '1' }, text: { v: '' }, key: { v: 'ok' }, mouse: { dx: 5, dy: 5 }, click: {}, scroll: { v: 30 }, type: { v: 'abc' }, screen: { v: 'live' } };
   assert.deepEqual([...iletilen].sort(), Object.keys(ornek).sort(), 'Java ile JS komut listesi ayrışmış');
   for (const [a, ek] of Object.entries(ornek)) assert.equal(parseRemoteCmd({ a, ...ek })?.a, a, `${a} JS’te kabul edilmiyor`);
   assert.match(kaynak, /public void castExt\(/);

@@ -2631,7 +2631,12 @@ public class IptvPlayerPlugin extends Plugin {
             case "audio":
             case "text":
             case "key":
-                // oynatıcı denetimleri uygulamanın (JS) elinde: komut doğrulanıp orada uygulanır
+            case "mouse":
+            case "click":
+            case "scroll":
+            case "type":
+            case "screen":
+                // oynatıcı denetimleri, fare alanı, yazı ve bölüm kısayolları uygulamanın (JS) elinde: komut doğrulanıp orada uygulanır
                 try {
                     final JSObject cmd = new JSObject(body);
                     main.post(() -> notifyListeners("castCmd", cmd));

@@ -191,7 +191,14 @@ export function syncResult(r) {
 // Telefon → TV komutları (ses ve sarma dışındakiler TV'deki uygulamaya iletilir); v: komutun değeri.
 export const REMOTE_KEYS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', ok: 'Enter', back: 'Escape' };
 export const SLEEP_MINUTES = [0, 15, 30, 45, 60, 90, 120];
-const PLAIN_CMDS = new Set(['next', 'prev', 'last', 'golive', 'fav', 'stats']);
+const PLAIN_CMDS = new Set(['next', 'prev', 'last', 'golive', 'fav', 'stats', 'click']);
+// Telefondaki hızlı geçiş düğmeleri → TV'de açılacak bölüm (app.js goTo adları)
+export const REMOTE_SCREENS = ['home', 'live', 'movies', 'series', 'favs', 'guide', 'sport', 'recent', 'search', 'sources'];
+export const MOUSE_MAX = 600; // tek komutta imleç/kaydırma sınırı (px)
+export const TYPE_MAX = 300;
+
+// Sayı → [-en, en] aralığında tam sayı (sayı değilse 0)
+const span = (v, en) => Math.max(-en, Math.min(en, Math.round(num(v))));
 
 // TV tarafı: gelen komutu doğrular → { a, v? } | null
 export function parseRemoteCmd(c) {
@@ -204,6 +211,18 @@ export function parseRemoteCmd(c) {
   if (a === 'night') return typeof c.v === 'string' && c.v.length > 0 && c.v.length <= 20 ? { a, v: c.v } : null;
   if (a === 'audio') return typeof c.v === 'string' && c.v.length > 0 && c.v.length <= 64 ? { a, v: c.v } : null;
   if (a === 'text') return typeof c.v === 'string' && c.v.length <= 64 ? { a, v: c.v } : null; // '' = altyazı kapalı
+  // Fare alanı: imleç hareketi, kaydırma; yazı (TV'deki arama kutusuna) ve bölüm kısayolu
+  if (a === 'mouse') {
+    const dx = span(c.dx, MOUSE_MAX);
+    const dy = span(c.dy, MOUSE_MAX);
+    return dx || dy ? { a, dx, dy } : null;
+  }
+  if (a === 'scroll') {
+    const v = span(c.v, MOUSE_MAX);
+    return v ? { a, v } : null;
+  }
+  if (a === 'type') return typeof c.v === 'string' ? { a, v: c.v.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, TYPE_MAX), enter: c.enter === true } : null;
+  if (a === 'screen') return typeof c.v === 'string' && REMOTE_SCREENS.includes(c.v) ? { a, v: c.v } : null;
   return null;
 }
 
@@ -342,7 +361,8 @@ export function createRemote({ request, sent = null, keep = false, onView, onEnd
     },
     stop,
     // Komut gönderir (örn. { a: 'seekBy', v: 10000 }); kısa süre sonra durum yeniden okunur.
-    async send(cmd) {
+    // quiet: sık gönderilen komutlar (imleç hareketi) için durum yoklaması hızlandırılmaz.
+    async send(cmd, { quiet = false } = {}) {
       let r;
       try {
         r = await request('/cmd', 'POST', JSON.stringify(cmd));
@@ -350,7 +370,7 @@ export function createRemote({ request, sent = null, keep = false, onView, onEnd
         r = { status: 0 };
       }
       const res = sendResult(r);
-      if (!stopped) schedule(280);
+      if (!stopped && !quiet) schedule(280);
       return res;
     },
   };

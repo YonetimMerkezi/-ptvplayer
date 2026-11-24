@@ -10,6 +10,11 @@ import { makeSnapshot, parseSnapshot, applySnapshot, emptyAdded, addedTotal, des
 const AUTO_SYNC_MS = 3 * 60 * 1000; // kendiliğinden eşitleme denemeleri arası
 
 // deps: { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration, isTv(), playCast({item,targets,startAt}), stopCast(), remoteExt()?, remoteCmd(cmd)?, guard()?, busy()?, onSynced() }
+// Kumanda ekranının sekmeleri, hızlı geçiş düğmeleri ve fare hızları
+const REMOTE_TABS = [['k', 'Kumanda'], ['f', 'Fare'], ['y', 'Yaz'], ['d', 'Daha']];
+const REMOTE_SHORTCUTS = [['home', 'Ana sayfa'], ['live', 'Canlı TV'], ['movies', 'Filmler'], ['series', 'Diziler'], ['guide', 'Rehber'], ['sport', 'Spor'], ['favs', 'Favoriler'], ['recent', 'Geçmiş'], ['search', 'Ara'], ['sources', 'Ayarlar']];
+const MOUSE_SPEEDS = [[2.2, 'Yavaş'], [3.6, 'Normal'], [5.6, 'Hızlı']];
+
 export function createCastUI(deps) {
   const { plugin, store, pad, toast, icon, esc, openSheet, openPage, fmtDuration } = deps;
   const devices = createDevices(store);
@@ -317,7 +322,6 @@ export function createCastUI(deps) {
     let cur = sent;
     let seeking = false;
     let dragVol = false;
-    let padOn = false;
     let lastView = null;
     let lastSave = 0;
     const keep = !!args.keep;
@@ -328,16 +332,35 @@ export function createCastUI(deps) {
       cls: 'cast-pg',
       title: dev.name,
       html:
-        `<div class="cast"><div class="cast-now"><div class="cast-ic">${icon('tv')}</div><b id="cs-title"></b><span id="cs-state">Gönderildi…</span><small id="cs-epg" hidden></small><small>${esc(dev.name)} üzerinde</small></div>` +
+        `<div class="cast"><div class="cast-now"><div class="cast-ic">${icon('tv')}</div><div class="cast-nt"><b id="cs-title"></b><span id="cs-state">Gönderildi…</span><small id="cs-epg" hidden></small><small>${esc(dev.name)} üzerinde</small></div></div>` +
+        `<div class="cast-tabs" role="tablist">${REMOTE_TABS.map(([k, label], i) => `<button class="tool${i ? '' : ' on'}" role="tab" data-ct="${k}" aria-selected="${i ? 'false' : 'true'}">${label}</button>`).join('')}</div>` +
+        // Kumanda: oynatma, ses ve yön tuşları tek ekranda
+        `<div class="cast-panel" data-cp="k">` +
         `<div class="cast-media" id="cs-media">` +
         `<div class="cast-prog" id="cs-prog"><span id="cs-pos">0:00</span><input id="cs-seek" type="range" min="0" max="1000" value="0" aria-label="Konum"><span id="cs-dur">0:00</span></div>` +
         `<div class="cast-btns"><button class="big-btn" id="cs-prev" aria-label="Önceki" hidden>${icon('prev')}</button><button class="big-btn sm" id="cs-rew" aria-label="10 sn geri">${icon('rew10')}</button><button class="big-btn lg" id="cs-play" aria-label="Oynat/Duraklat">${icon('pause')}</button><button class="big-btn sm" id="cs-fwd" aria-label="10 sn ileri">${icon('fwd10')}</button><button class="big-btn" id="cs-next" aria-label="Sonraki" hidden>${icon('next')}</button></div>` +
         `</div>` +
+        `<div class="cast-pad" id="cs-pad">${dkey('back', 'Geri', icon('back'))}${dkey('up', 'Yukarı', icon('up'))}<button class="big-btn sm" data-s="home" aria-label="Ana sayfa">${icon('home')}</button>${dkey('left', 'Sol', icon('chev-l'))}${dkey('ok', 'Tamam', '<b>OK</b>')}${dkey('right', 'Sağ', icon('chev-r'))}<span></span>${dkey('down', 'Aşağı', icon('down'))}<span></span></div>` +
         `<div class="cast-vol" id="cs-volrow"><button class="tool" id="cs-vdn" aria-label="Sesi kıs">${icon('audio')}<span>−</span></button><button class="tool" id="cs-mute" aria-label="Sessiz" aria-pressed="false">${icon('mute')}</button><input id="cs-vol" type="range" min="0" max="100" value="0" aria-label="Ses"><button class="tool" id="cs-vup" aria-label="Sesi aç">${icon('audio')}<span>+</span></button></div>` +
+        `</div>` +
+        // Fare: parmakla TV'deki imleci gezdirir
+        `<div class="cast-panel" data-cp="f" hidden>` +
+        `<div class="cast-tp" id="cs-tp" role="application" aria-label="Fare alanı"><span>Parmağınızı kaydırarak TV’deki imleci oynatın<br>Dokun: tıkla · İki parmakla kaydır: listeyi kaydır</span></div>` +
+        `<div class="cast-row3"><button class="tool" data-k="back">${icon('back')}<span>Geri</span></button><button class="btn g" id="cs-click">Tıkla</button><button class="tool" data-s="home">${icon('home')}<span>Ana</span></button></div>` +
+        `<div class="cast-speed" id="cs-speed">${MOUSE_SPEEDS.map(([v, label]) => `<button class="tool" data-sp="${v}">${label}</button>`).join('')}</div>` +
+        `</div>` +
+        // Yaz: TV'deki arama kutusuna yazdıkça gider
+        `<div class="cast-panel" data-cp="y" hidden>` +
+        `<input class="cast-tx" id="cs-tx" placeholder="TV’deki arama kutusuna yazılır" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search">` +
+        `<div class="cast-row3"><button class="tool" id="cs-txc"><span>Temizle</span></button><button class="tool" id="cs-txs"><span>Yaz</span></button><button class="btn g" id="cs-txg">Yaz ve ara</button></div>` +
+        `<p class="hint">Yazdıkça TV’deki arama kutusuna gider; arama açık değilse TV’de Ara açılır.</p>` +
+        `</div>` +
+        // Daha: hızlı geçiş, oynatıcı araçları ve durdurma
+        `<div class="cast-panel" data-cp="d" hidden>` +
+        `<div class="cast-short">${REMOTE_SHORTCUTS.map(([v, label]) => `<button class="tool" data-s="${v}"><span>${label}</span></button>`).join('')}</div>` +
         `<div class="cast-tools" id="cs-tools">${btn('cs-audio', 'audio', 'Ses dili')}${btn('cs-text', 'cc', 'Altyazı')}${btn('cs-night', 'moon', 'Gece modu')}${btn('cs-sleep', 'timer', 'Uyku')}${btn('cs-aspect', 'aspect', 'Sığdır')}${btn('cs-stats', 'activity', 'Bilgi')}${btn('cs-fav', 'star', 'Favori')}${btn('cs-last', 'swap', 'Son kanal')}${btn('cs-golive', 'tv', 'Canlıya dön')}</div>` +
-        `<button class="tool cast-padt" id="cs-padt" aria-pressed="false">${icon('grid')}<span>Yön tuşları</span></button>` +
-        `<div class="cast-pad" id="cs-pad" hidden><span></span>${dkey('up', 'Yukarı', icon('up'))}<span></span>${dkey('left', 'Sol', icon('chev-l'))}${dkey('ok', 'Tamam', '<b>OK</b>')}${dkey('right', 'Sağ', icon('chev-r'))}<span></span>${dkey('down', 'Aşağı', icon('down'))}${dkey('back', 'Geri', icon('back'))}</div>` +
-        `<button class="btn g cast-stop" id="cs-stop">${icon('close')}TV’de durdur</button></div>`,
+        `<button class="btn g cast-stop" id="cs-stop">${icon('close')}TV’de durdur</button>` +
+        `</div></div>`,
       mount: (body) => {
         const $ = (sel) => body.querySelector(sel);
         const setTitle = () => ($('#cs-title').textContent = (lastView && lastView.title) || cur.title || '');
@@ -394,10 +417,6 @@ export function createCastUI(deps) {
             }
             setTool('#cs-last', { show: x.can.last && live });
             setTool('#cs-golive', { show: x.can.golive });
-            // TV'de oynayan yokken (yalnız kumanda) yön tuşları hep açık; kapatma düğmesi de gerekmez
-            const idle = keep && !v.active;
-            $('#cs-pad').hidden = !(padOn || idle);
-            $('#cs-padt').hidden = idle;
             $('#cs-stop').hidden = !v.active;
             if (v.active && args.onProgress && !v.live && v.canSeek && Date.now() - lastSave > 5000) {
               lastSave = Date.now();
@@ -418,8 +437,8 @@ export function createCastUI(deps) {
             page.close();
           },
         });
-        const cmd = async (c) => {
-          const r = await remote.send(c);
+        const cmd = async (c, opts) => {
+          const r = await remote.send(c, opts);
           if (!r.ok) toast(r.msg);
           return r;
         };
@@ -471,15 +490,148 @@ export function createCastUI(deps) {
         $('#cs-fav').addEventListener('click', () => cmd({ a: 'fav' }));
         $('#cs-last').addEventListener('click', () => cmd({ a: 'last' }));
         $('#cs-golive').addEventListener('click', () => cmd({ a: 'golive' }));
-        $('#cs-padt').addEventListener('click', () => {
-          padOn = !padOn;
-          $('#cs-pad').hidden = !padOn;
-          $('#cs-padt').classList.toggle('on', padOn);
-          $('#cs-padt').setAttribute('aria-pressed', String(padOn));
+        // Sekmeler: Kumanda / Fare / Yaz / Daha
+        body.querySelector('.cast-tabs').addEventListener('click', (e) => {
+          const t = e.target.closest('[data-ct]');
+          if (!t) return;
+          for (const b of body.querySelectorAll('[data-ct]')) {
+            const on = b === t;
+            b.classList.toggle('on', on);
+            b.setAttribute('aria-selected', String(on));
+          }
+          for (const p of body.querySelectorAll('[data-cp]')) p.hidden = p.dataset.cp !== t.dataset.ct;
+          if (t.dataset.ct === 'y') $('#cs-tx').focus();
         });
-        $('#cs-pad').addEventListener('click', (e) => {
+        // Yön tuşları ve geri; bölüm kısayolları (Ana, Canlı TV, Filmler…)
+        body.addEventListener('click', (e) => {
           const k = e.target.closest('[data-k]');
-          if (k) cmd({ a: 'key', v: k.dataset.k });
+          if (k) return cmd({ a: 'key', v: k.dataset.k });
+          const sc = e.target.closest('[data-s]');
+          if (sc) return cmd({ a: 'screen', v: sc.dataset.s });
+        });
+        // Fare alanı
+        const speed = () => Number(store.pref('cast.mouse', 3.6)) || 3.6;
+        const markSpeed = () => {
+          for (const b of body.querySelectorAll('[data-sp]')) b.classList.toggle('on', Number(b.dataset.sp) === speed());
+        };
+        markSpeed();
+        $('#cs-speed').addEventListener('click', (e) => {
+          const b = e.target.closest('[data-sp]');
+          if (!b) return;
+          store.setPref('cast.mouse', Number(b.dataset.sp));
+          markSpeed();
+        });
+        let bx = 0;
+        let by = 0;
+        let sy = 0;
+        let flying = false;
+        let lastErr = 0;
+        const mouseFail = (r) => {
+          if (Date.now() - lastErr < 3000) return;
+          lastErr = Date.now();
+          toast(/Bilinmeyen komut/i.test(r.msg) ? 'TV’deki uygulama eski; fare için TV uygulamasını güncelleyin' : r.msg, 3500);
+        };
+        const flush = async () => {
+          if (flying || (!bx && !by && !sy)) return;
+          const c = sy ? { a: 'scroll', v: Math.round(sy) } : { a: 'mouse', dx: Math.round(bx), dy: Math.round(by) };
+          if (sy) sy = 0;
+          else {
+            bx -= c.dx;
+            by -= c.dy;
+          }
+          if (c.a === 'mouse' ? !c.dx && !c.dy : !c.v) return;
+          flying = true;
+          const r = await remote.send(c, { quiet: true });
+          flying = false;
+          if (!r.ok) {
+            bx = by = sy = 0;
+            return mouseFail(r);
+          }
+          if (bx || by || sy) flush();
+        };
+        const flusher = setInterval(() => (page.el.isConnected ? flush() : clearInterval(flusher)), 40);
+        const tp = $('#cs-tp');
+        let touching = false;
+        let two = false;
+        let tx = 0;
+        let ty = 0;
+        let t0 = 0;
+        let moved = 0;
+        tp.addEventListener(
+          'touchstart',
+          (e) => {
+            e.preventDefault();
+            tp.classList.add('on');
+            if (e.touches.length === 1) {
+              tx = e.touches[0].clientX;
+              ty = e.touches[0].clientY;
+              t0 = Date.now();
+              moved = 0;
+              two = false;
+            } else two = true;
+            touching = true;
+          },
+          { passive: false },
+        );
+        tp.addEventListener(
+          'touchmove',
+          (e) => {
+            e.preventDefault();
+            if (!touching) return;
+            const t = e.touches[0];
+            const dx = t.clientX - tx;
+            const dy = t.clientY - ty;
+            tx = t.clientX;
+            ty = t.clientY;
+            moved += Math.abs(dx) + Math.abs(dy);
+            if (e.touches.length >= 2) {
+              two = true;
+              sy += dy * 3;
+            } else if (!two) {
+              const accel = 1 + Math.min(1.2, Math.hypot(dx, dy) / 18); // hızlı kaydırma imleci daha uzağa götürür
+              bx += (dx * speed() * accel) / 2;
+              by += (dy * speed() * accel) / 2;
+            }
+          },
+          { passive: false },
+        );
+        const touchEnd = (e) => {
+          e.preventDefault();
+          if (e.touches.length) return;
+          tp.classList.remove('on');
+          if (touching && !two && moved < 10 && Date.now() - t0 < 350) cmd({ a: 'click' }, { quiet: true });
+          touching = false;
+          two = false;
+        };
+        tp.addEventListener('touchend', touchEnd, { passive: false });
+        tp.addEventListener('touchcancel', () => {
+          tp.classList.remove('on');
+          touching = two = false;
+        });
+        $('#cs-click').addEventListener('click', () => cmd({ a: 'click' }, { quiet: true }));
+        // Yazı: yazdıkça (kısa bekleyişle) TV'deki arama kutusuna gider
+        const tx0 = $('#cs-tx');
+        let typeTimer = 0;
+        const typeNow = (enter) => {
+          clearTimeout(typeTimer);
+          return cmd({ a: 'type', v: tx0.value, enter: !!enter }, { quiet: true });
+        };
+        tx0.addEventListener('input', () => {
+          clearTimeout(typeTimer);
+          typeTimer = setTimeout(() => typeNow(false), 250);
+        });
+        tx0.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          typeNow(true);
+          tx0.blur();
+        });
+        $('#cs-txs').addEventListener('click', () => typeNow(false));
+        $('#cs-txg').addEventListener('click', () => typeNow(true));
+        $('#cs-txc').addEventListener('click', () => {
+          tx0.value = '';
+          typeNow(false);
+          tx0.focus();
         });
         $('#cs-stop').addEventListener('click', async () => {
           await cmd({ a: 'stop' });
@@ -707,5 +859,16 @@ export function createCastUI(deps) {
     });
   }
 
-  return { sendToTv, syncWithTv, autoSync, receiverSheet, startReceiver, listen, nowPlaying, pushExt, devices };
+  // Ana sayfadaki kumanda düğmesi (telefon): TV'yi seç, yalnız kumandayı aç (TV'de bir şey oynamasa da açık kalır).
+  async function openRemote() {
+    if (!plugin) return toast('Bu özellik yalnız Android uygulamasında çalışır');
+    const dev = await chooseTv('TV kumandası');
+    if (!dev) return;
+    remoteScreen(dev, dev.remoteOnly ? { kind: dev.remoteOnly.kind, title: dev.remoteOnly.title } : {}, { keep: true });
+  }
+
+  // Aynı düğme TV'de eşleştirme kodunu (QR) gösterir; telefonda kumandayı açar.
+  const remoteEntry = () => (deps.isTv() ? receiverSheet() : openRemote());
+
+  return { sendToTv, syncWithTv, autoSync, receiverSheet, openRemote, remoteEntry, startReceiver, listen, nowPlaying, pushExt, devices };
 }

@@ -47,6 +47,7 @@ import { LIVE_FORMATS, DEFAULT_LIVE_FMT, normalizeLiveFmt, cleanFmtMap, remember
 import { createPinPad } from './lockui.js';
 import { createCastUI } from './cast-ui.js';
 import { REMOTE_KEYS } from './cast.js';
+import { createPointer, typeInto } from './pointer.js';
 import { clampDelay } from './avsync.js';
 import { normalizeNight, DEFAULT_NIGHT } from './night.js';
 import { DEFAULT_INTRO, normalizeIntro, pickNextMovie } from './nextup.js';
@@ -3679,7 +3680,7 @@ function renderHome(v) {
     radio: `<div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>`,
   };
   v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="home-top"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button>${nativePlugin && !kidActive() ? `<button class="icon-btn" id="h-remote" aria-label="TV kumandası">${icon('remote')}</button>` : ''}<button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn ls-only" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
     <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">${linkState().text}</span><button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
     ${normalizeOrder(store.pref('set.homeOrder', [])).map((id) => sections[id] || '').join('')}
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
@@ -3693,6 +3694,7 @@ function renderHome(v) {
       return refreshCatalog();
     }
     if (e.target.closest('#h-search')) return globalSearch();
+    if (e.target.closest('#h-remote')) return needPro('cast') ? castUi.remoteEntry() : undefined; // telefonda TV kumandası, TV'de eşleştirme kodu
     const rc = e.target.closest('[data-rid]');
     if (rc) {
       const list = homeRadio(radioFavs(store), homeRadioItems());
@@ -6902,6 +6904,22 @@ const pad = createPinPad();
 
 // ------------------------------------------------------------------ telefondan TV'ye oynatma
 
+// Telefondaki fare alanı: TV'de sanal imleç (pointer.js)
+const remotePointer = createPointer();
+
+// Telefondaki hızlı geçiş düğmeleri: açık oynatıcı, sayfa ve alt listeler kapanır, sonra istenen bölüm açılır
+function remoteGo(where) {
+  if (pad.isOpen()) return;
+  if (pui.isOpen()) pui.close();
+  for (let n = 0; n < 20 && topLayer() && topLayer() !== 'tab'; n++) popLayer();
+  if (!S.source && where !== 'sources') return;
+  if (where === 'search') {
+    setTab('home');
+    return $('#btn-search').click();
+  }
+  goTo(where);
+}
+
 // Gönderen (telefon): seçilen TV'de oynatır, kumanda sayfasını açar. Alıcı (TV): gelen isteği oynatıcıda açar.
 const castUi = createCastUI({
   plugin: nativePlugin,
@@ -6920,7 +6938,15 @@ const castUi = createCastUI({
   },
   // Telefon kumandası: oynatıcı denetimleri ve yön tuşları (sayfa içinde gezinme)
   remoteExt: () => pui.remote.ext(),
-  remoteCmd: (c) => (c.a === 'key' ? dpad.sendKey(REMOTE_KEYS[c.v]) : pui.remote.cmd(c)),
+  remoteCmd: (c) => {
+    if (c.a === 'key') return dpad.sendKey(REMOTE_KEYS[c.v]);
+    if (c.a === 'mouse') return remotePointer.move(c.dx, c.dy);
+    if (c.a === 'click') return remotePointer.click();
+    if (c.a === 'scroll') return remotePointer.scroll(c.v);
+    if (c.a === 'type') return typeInto(c.v, { enter: c.enter, open: () => $('#btn-search').click() });
+    if (c.a === 'screen') return remoteGo(c.v);
+    return pui.remote.cmd(c);
+  },
   guard: () => backupGuard(),
   busy: () => pui.isOpen(),
   onSynced: () => afterSync(),

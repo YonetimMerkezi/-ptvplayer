@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 181,
+    title: 'Telefon kumandası yenilendi: fare alanı, yazı ve hızlı geçiş',
+    items: [
+      'Telefondaki TV kumandası sekmeli ve tek ekrana sığar oldu: Kumanda (oynatma, ses, yön tuşları), Fare, Yaz ve Daha',
+      'Fare sekmesinde parmağınızı kaydırarak TV’de bir imleç gezdirirsiniz; dokunmak tıklar, iki parmakla kaydırmak listeyi kaydırır; hız ayarlanabilir',
+      'Yaz sekmesinde yazdıkça TV’deki arama kutusuna gider; Daha sekmesinde Ana sayfa, Canlı TV, Filmler, Diziler, Rehber, Spor, Favoriler, Geçmiş, Ara ve Ayarlar kısayolları vardır',
+      'Ana sayfanın üstündeki küçük kumanda düğmesi telefonda kumandayı açar; TV’de eşleştirme kodunu gösterir (TV uygulamasının da güncel olması gerekir)',
+    ],
+  },
+  {
     id: 180,
     title: 'İngilizce modda film özeti Türkçeye çevrilmez',
     items: [
