@@ -572,7 +572,7 @@ function donusKur(p) {
 
 // ---- Güncelleme: IPK GitHub sürümünden indirilir, doğrulanır ve TV'nin kurulum servisine verilir ----
 // Adres sabittir (uygulamadan alınmaz): başka bir kaynaktan paket kurdurulamaz. Dosya IPK (ar arşivi) değilse ya da
-// yayının özeti (sha256) verilmişse tutmuyorsa kurulmaz. TV kurulum servisinin buna izin verip vermediği TV'ye bağlıdır;
+// yayının özeti (sha256) verilmişse tutmuyorsa kurulmaz. TLS: önce gömülü GitHub kökleriyle doğrulanır; olmazsa yalnız güvenilir özetle (aşağıya bakın). TV kurulum servisinin buna izin verip vermediği TV'ye bağlıdır;
 // sonuç ve TV'nin ham yanıtları tanı olarak saklanır (uygulama yeniden açıldığında da okunabilir).
 var GUNCELLE_ADRES = 'https://github.com/YonetimMerkezi/-ptvplayer/releases/download/webos/iptv-player-webos.ipk';
 var GUNCELLE_UYGULAMA = 'com.koruk.iptv.webos';
@@ -580,6 +580,165 @@ var GUNCELLE_EN_COK_BAYT = 40 * 1024 * 1024;
 var GUNCELLE_YONLENDIRME = 5;
 var GUNCELLE_KURULUM_MS = 120000;
 var GUNCELLE_SORU_MS = 60000;
+// GitHub'ın kullandığı kök sertifikalar (DigiCert, Sectigo/USERTrust, Let's Encrypt). Eski TV'nin kendi sertifika deposu bunlara güvenmeyebilir
+// ("certificate not trusted"); bu yüzden indirme bu köklerle doğrulanır. Yine de doğrulanamazsa, yalnız yayın özeti güvenilir yoldan (tarayıcının
+// doğruladığı TLS) alınmışsa sertifika denetimi atlanıp dosya o SHA-256 özetiyle doğrulanır; özet yoksa ya da güvenilmezse hiçbir şey kurulmaz.
+var GUNCELLE_KOKLER = [
+  // DigiCert Global Root G2
+  '-----BEGIN CERTIFICATE-----\n' +
+    'MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBhMQswCQYD\n' +
+    'VQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQu\n' +
+    'Y29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBHMjAeFw0xMzA4MDExMjAwMDBa\n' +
+    'Fw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMx\n' +
+    'GTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBS\n' +
+    'b290IEcyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/\n' +
+    'RrohCgiN9RlUyfuI2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxps\n' +
+    'MNzaHxmx1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ\n' +
+    'q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5WztCO7TG1F\n' +
+    '8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQvIOlCsRnKPZzFBQ9\n' +
+    'RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4G\n' +
+    'A1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcN\n' +
+    'AQELBQADggEBAGBnKJRvDkhj6zHd6mcY1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVn\n' +
+    'NeyIv/iPsGEMNKSuIEyExtv4NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2Z\n' +
+    'L7tcu7XUIOGZX1NGFdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUT\n' +
+    'Fy8bJZ918rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe\n' +
+    'pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTflMrY=\n' +
+    '-----END CERTIFICATE-----\n',
+  // USERTrust RSA Certification Authority
+  '-----BEGIN CERTIFICATE-----\n' +
+    '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\n' +
+    '-----END CERTIFICATE-----\n',
+  // USERTrust ECC Certification Authority
+  '-----BEGIN CERTIFICATE-----\n' +
+    'MIICjzCCAhWgAwIBAgIQXIuZxVqUxdJxVt7NiYDMJjAKBggqhkjOPQQDAzCBiDELMAkGA1UE\n' +
+    'BhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYD\n' +
+    'VQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBFQ0MgQ2Vy\n' +
+    'dGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAwMjAxMDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCB\n' +
+    'iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBD\n' +
+    'aXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVz\n' +
+    'dCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQa\n' +
+    'rFRaqfloI+d61SRvU8Za2EurxtW20eZzca7dnNYMYf3boIkDuAUU7FfO7l0/4iGzzvfUinng\n' +
+    'o4N+LZfQYcTxmdwlkWOrfzCjtHDix6EznPO/LlxTsV+zfTJ/ijTjeXmjQjBAMB0GA1UdDgQW\n' +
+    'BBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB\n' +
+    '/zAKBggqhkjOPQQDAwNoADBlAjA2Z6EWCNzklwBBHU6+4WMBzzuqQhFkoJ2UOQIReVx7Hfpk\n' +
+    'ue4WQrO/isIJxOzksU0CMQDpKmFHjFJKS04YcPbWRNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbR\n' +
+    'qZtNyWHa0V1Xahg=\n' +
+    '-----END CERTIFICATE-----\n',
+  // ISRG Root X1
+  '-----BEGIN CERTIFICATE-----\n' +
+    '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\n' +
+    '-----END CERTIFICATE-----\n',
+  // ISRG Root X2
+  '-----BEGIN CERTIFICATE-----\n' +
+    'MIICGzCCAaGgAwIBAgIQQdKd0XLq7qeAwSxs6S+HUjAKBggqhkjOPQQDAzBPMQswCQYDVQQG\n' +
+    'EwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNV\n' +
+    'BAMTDElTUkcgUm9vdCBYMjAeFw0yMDA5MDQwMDAwMDBaFw00MDA5MTcxNjAwMDBaME8xCzAJ\n' +
+    'BgNVBAYTAlVTMSkwJwYDVQQKEyBJbnRlcm5ldCBTZWN1cml0eSBSZXNlYXJjaCBHcm91cDEV\n' +
+    'MBMGA1UEAxMMSVNSRyBSb290IFgyMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEzZvVn4CDCuwJ\n' +
+    'SvMWSj5cz3es3mcFDR0HttwW+1qLFNvicWDEukWVEYmO6gbf9yoWHKS5xcUy4APgHoIYOIvX\n' +
+    'RdgKam7mAHf7AlF9ItgKbppbd9/w+kHsOdx1ymgHDB/qo0IwQDAOBgNVHQ8BAf8EBAMCAQYw\n' +
+    'DwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUfEKWrt5LSDv6kviejM9ti6lyN5UwCgYIKoZI\n' +
+    'zj0EAwMDaAAwZQIwe3lORlCEwkSHRhtFcP9Ymd70/aTSVaYgLXTWNLxBo1BfASdWtL4ndQav\n' +
+    'Ei51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1/q4AaOeMSQ+2b1tb\n' +
+    'FfLn\n' +
+    '-----END CERTIFICATE-----\n',
+  // Sectigo Public Server Authentication Root E46
+  '-----BEGIN CERTIFICATE-----\n' +
+    'MIICOjCCAcGgAwIBAgIQQvLM2htpN0RfFf51KBC49DAKBggqhkjOPQQDAzBfMQswCQYDVQQG\n' +
+    'EwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1Ymxp\n' +
+    'YyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBFNDYwHhcNMjEwMzIyMDAwMDAwWhcNNDYw\n' +
+    'MzIxMjM1OTU5WjBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYw\n' +
+    'NAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBFNDYw\n' +
+    'djAQBgcqhkjOPQIBBgUrgQQAIgNiAAR2+pmpbiDt+dd34wc7qNs9Xzjoq1WmVk/WSOrsfy2q\n' +
+    'w7LFeeyZYX8QeccCWvkEN/U0NSt3zn8gj1KjAIns1aeibVvjS5KToID1AZTc8GgHHs3u/iVS\n' +
+    'tSBDHBv+6xnOQ6OjQjBAMB0GA1UdDgQWBBTRItpMWfFLXyY4qp3W7usNw/upYTAOBgNVHQ8B\n' +
+    'Af8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNnADBkAjAn7qRaqCG76UeX\n' +
+    'lImldCBteU/IvZNeWBj7LRoAasm4PdCkT0RHlAFWovgzJQxC36oCMB3q4S6ILuH5px0CMk7y\n' +
+    'n2xVdOOurvulGu7t0vzCAxHrRVxgED1cf5kDW21USAGKcw==\n' +
+    '-----END CERTIFICATE-----\n',
+  // Sectigo Public Server Authentication Root R46
+  '-----BEGIN CERTIFICATE-----\n' +
+    'MIIFijCCA3KgAwIBAgIQdY39i658BwD6qSWn4cetFDANBgkqhkiG9w0BAQwFADBfMQswCQYD\n' +
+    'VQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1\n' +
+    'YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBSNDYwHhcNMjEwMzIyMDAwMDAwWhcN\n' +
+    'NDYwMzIxMjM1OTU5WjBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVk\n' +
+    'MTYwNAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBS\n' +
+    'NDYwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCTvtU2UnXYASOgHEdCSe5jtrch\n' +
+    '/cSV1UgrJnwUUxDaef0rty2k1Cz66jLdScK5vQ9IPXtamFSvnl0xdE8H/FAh3aTPaE8bEmNt\n' +
+    'JZlMKpnzSDBh+oF8HqcIStw+KxwfGExxqjWMrfhu6DtK2eWUAtaJhBOqbchPM8xQljeSM9xf\n' +
+    'iOefVNlI8JhD1mb9nxc4Q8UBUQvX4yMPFF1bFOdLvt30yNoDN9HWOaEhUTCDsG3XME6WW5Hw\n' +
+    'cCSrv0WBZEMNvSE6Lzzpng3LILVCJ8zab5vuZDCQOc2TZYEhMbUjUDM3IuM47fgxMMxF/mL5\n' +
+    '0V0yeUKH32rMVhlATc6qu/m1dkmU8Sf4kaWD5QazYw6A3OASVYCmO2a0OYctyPDQ0RTp5A1N\n' +
+    'DvZdV3LFOxxHVp3i1fuBYYzMTYCQNFu31xR13NgESJ/AwSiItOkcyqex8Va3e0lMWeUgFaiE\n' +
+    'Ain6OJRpmkkGj80feRQXEgyDet4fsZfu+Zd4KKTIRJLpfSYFplhym3kT2BFfrsU4YjRosoYw\n' +
+    'jviQYZ4ybPUHNs2iTG7sijbt8uaZFURww3y8nDnAtOFr94MlI1fZEoDlSfB1D++N6xybVCi0\n' +
+    'ITz8fAr/73trdf+LHaAZBav6+CuBQug4urv7qv094PPK306Xlynt8xhW6aWWrL3DkJiy4Pmi\n' +
+    '1KZHQ3xtzwIDAQABo0IwQDAdBgNVHQ4EFgQUVnNYZJX5khqwEioEYnmhQBWIIUkwDgYDVR0P\n' +
+    'AQH/BAQDAgGGMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEMBQADggIBAC9cmTz8Bl6M\n' +
+    'lC5w6tIyMY208FHVvArzZJ8HXtXBc2hkeqK5Duj5XYUtqDdFqij0lgVQYKlJfp/imTYpE0RH\n' +
+    'ap1VIDzYm/EDMrraQKFz6oOht0SmDpkBm+S8f74TlH7Kph52gDY9hAaLMyZlbcp+nv4fjFg4\n' +
+    'exqDsQ+8FxG75gbMY/qB8oFM2gsQa6H61SilzwZAFv97fRheORKkU55+MkIQpiGRqRxOF3yE\n' +
+    'vJ+M0ejf5lG5Nkc/kLnHvALcWxxPDkjBJYOcCj+esQMzEhonrPcibCTRAUH4WAP+JWgiH5pa\n' +
+    'PHxsnnVI84HxZmduTILA7rpXDhjvLpr3Etiga+kFpaHpaPi8TD8SHkXoUsCjvxInebnMMTzD\n' +
+    '9joiFgOgyY9mpFuiTdaBJQbpdqQACj7LzTWb4OE4y2BThihCQRxEV+ioratF4yUQvNs+ZUH7\n' +
+    'G6aXD+u5dHn5HrwdVw1Hr8Mvn4dGp+smWg9WY7ViYG4A++MnESLn/pmPNPW56MORcr3Ywx65\n' +
+    'LvKRRFHQV80MNNVIIb/bE/FmJUNS0nAiNs2fxBx1IK1jcmMGDw4nztJqDby1ORrp0XZ60Vzk\n' +
+    '50lJLVU3aPAaOpg+VBeHVOmmJ1CJeyAvP/+/oYtKR5j/K3tJPsMpRmAYQqszKbrAKbkTidOI\n' +
+    'ijlBO8n9pu0f9GBj39ItVQGL\n' +
+    '-----END CERTIFICATE-----\n'
+];
 var GUNCELLE_DOSYA = pathm.join(os.tmpdir(), 'iptv-guncelle.json');
 var GUNCELLE_KLASORLER = ['/media/internal/downloads', '/media/developer/temp'];
 var guncelle = null;
@@ -589,6 +748,7 @@ var guncelleAyar = {
   protokol: 'https:',
   klasorler: GUNCELLE_KLASORLER,
   kurulumMs: GUNCELLE_KURULUM_MS,
+  ca: GUNCELLE_KOKLER,
   izin: function (konak) {
     return /(^|\.)github\.com$/.test(konak) || /\.githubusercontent\.com$/.test(konak);
   }
@@ -644,7 +804,15 @@ function guncelleKlasor() {
 }
 
 // Adresi indirir (yalnız izinli konaklar, yönlendirmeler izlenir); g.bayt/g.toplam ilerler. cb(hata, sha256)
-function guncelleIndir(g, adres, derinlik, cb) {
+// TLS doğrulama hatası mı (eski TV'nin sertifika deposu GitHub'ın kökünü tanımayabilir: "certificate not trusted")
+function guncelleTlsHatasi(e) {
+  var k = String((e && e.code) || '');
+  var m = String((e && e.message) || '');
+  return /^(CERT_|UNABLE_TO_|SELF_SIGNED|DEPTH_ZERO|ERR_TLS|UNABLE)/.test(k) || /certificate|self signed|unable to verify|not trusted/i.test(m);
+}
+
+// gevsek: sertifika doğrulaması yapılmaz (yalnız yayın özeti güvenilir yoldan alınmışsa; indirilen dosya özetle doğrulanır)
+function guncelleIndir(g, adres, derinlik, cb, gevsek) {
   var bitti = false;
   var son = function (e, v) {
     if (bitti) return;
@@ -653,55 +821,65 @@ function guncelleIndir(g, adres, derinlik, cb) {
   };
   var u = urlm.parse(adres);
   if (u.protocol !== guncelleAyar.protokol || !guncelleAyar.izin(u.hostname)) return son(new Error('İzin verilmeyen adres: ' + u.hostname));
-  var req = guncelleAyar.modul.get(
-    { hostname: u.hostname, port: u.port, path: u.path, headers: { 'User-Agent': UA, Accept: 'application/octet-stream' } },
-    function (res) {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume();
-        if (derinlik >= GUNCELLE_YONLENDIRME) return son(new Error('Çok fazla yönlendirme'));
-        bitti = true;
-        return guncelleIndir(g, urlm.resolve(adres, res.headers.location), derinlik + 1, cb);
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        return son(new Error('Sunucu ' + res.statusCode + ' yanıtı verdi'));
-      }
-      var toplam = parseInt(res.headers['content-length'], 10) || 0;
-      if (toplam > GUNCELLE_EN_COK_BAYT) {
-        res.resume();
-        return son(new Error('Dosya beklenenden büyük'));
-      }
-      g.toplam = toplam;
-      g.bayt = 0;
-      var ozet = crypto.createHash('sha256');
-      var yaz = fs.createWriteStream(g.dosya);
-      var hata = null;
-      yaz.on('error', function (e) {
-        hata = hata || e;
-        res.resume();
-      });
-      yaz.on('finish', function () {
-        son(hata, hata ? null : ozet.digest('hex'));
-      });
-      res.on('data', function (c) {
-        g.bayt += c.length;
-        if (g.bayt > GUNCELLE_EN_COK_BAYT) {
-          hata = hata || new Error('Dosya beklenenden büyük');
-          req.abort();
-          return yaz.end();
+  var secenek = { hostname: u.hostname, port: u.port, path: u.path, headers: { 'User-Agent': UA, Accept: 'application/octet-stream' }, agent: false };
+  if (gevsek) secenek.rejectUnauthorized = false;
+  else if (guncelleAyar.ca) secenek.ca = guncelleAyar.ca; // eski TV'nin deposu yerine gömülü kökler
+  var req;
+  try {
+    req = guncelleAyar.modul.get(
+      secenek,
+      function (res) {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          if (derinlik >= GUNCELLE_YONLENDIRME) return son(new Error('Çok fazla yönlendirme'));
+          bitti = true;
+          return guncelleIndir(g, urlm.resolve(adres, res.headers.location), derinlik + 1, cb, gevsek);
         }
-        ozet.update(c);
-        yaz.write(c);
-      });
-      res.on('end', function () {
-        yaz.end();
-      });
-      res.on('error', function (e) {
-        hata = hata || e;
-        yaz.end();
-      });
-    }
-  );
+        if (res.statusCode !== 200) {
+          res.resume();
+          return son(new Error('Sunucu ' + res.statusCode + ' yanıtı verdi'));
+        }
+        var toplam = parseInt(res.headers['content-length'], 10) || 0;
+        if (toplam > GUNCELLE_EN_COK_BAYT) {
+          res.resume();
+          return son(new Error('Dosya beklenenden büyük'));
+        }
+        g.toplam = toplam;
+        g.bayt = 0;
+        var ozet = crypto.createHash('sha256');
+        var yaz = fs.createWriteStream(g.dosya);
+        var hata = null;
+        yaz.on('error', function (e) {
+          hata = hata || e;
+          res.resume();
+        });
+        yaz.on('finish', function () {
+          son(hata, hata ? null : ozet.digest('hex'));
+        });
+        res.on('data', function (c) {
+          g.bayt += c.length;
+          if (g.bayt > GUNCELLE_EN_COK_BAYT) {
+            hata = hata || new Error('Dosya beklenenden büyük');
+            req.abort();
+            return yaz.end();
+          }
+          ozet.update(c);
+          yaz.write(c);
+        });
+        res.on('end', function () {
+          yaz.end();
+        });
+        res.on('error', function (e) {
+          hata = hata || e;
+          yaz.end();
+        });
+      }
+    );
+  } catch (e) {
+    // Gömülü kök PEM'i bu Node/OpenSSL'de yüklenemezse eşzamanlı hata fırlar: TLS hatası sayılır (güvenilir özet varsa yedek yol denenir)
+    if (secenek.ca) e.code = 'ERR_TLS_CA';
+    return son(e);
+  }
   req.setTimeout(GUNCELLE_SORU_MS, function () {
     req.abort();
     son(new Error('İndirme zaman aşımına uğradı'));
@@ -758,17 +936,34 @@ function guncelleKur(g) {
 function guncelleBaslat(p) {
   if (guncelleAktif()) return guncelleOzet(guncelle);
   var beklenen = p && /^[0-9a-f]{64}$/i.test(String(p.sha256 || '')) ? String(p.sha256).toLowerCase() : '';
+  var guvenilir = !!(beklenen && p && p.ozetGuvenilir === true);
   var g = { durum: 'indiriyor', bayt: 0, toplam: 0, mesaj: '', tani: ['başladı'], dosya: pathm.join(guncelleKlasor(), 'iptv-player-webos.ipk') };
   guncelle = g;
   guncelleDegis(g, 'indiriyor', 'İndiriliyor');
-  guncelleIndir(g, guncelleAyar.adres, 0, function (e, ozet) {
-    if (e) return guncelleDegis(g, 'hata', 'İndirilemedi: ' + String((e && e.message) || e));
-    guncelleNot(g, 'indirildi: ' + g.bayt + ' bayt');
-    if (!guncelleIpkMi(g.dosya)) return guncelleDegis(g, 'hata', 'İndirilen dosya bir IPK paketi değil');
-    if (beklenen && beklenen !== ozet) return guncelleDegis(g, 'hata', 'Dosya özeti yayındakiyle tutmuyor; kurulmadı');
-    guncelleNot(g, beklenen ? 'özet doğrulandı' : 'özet doğrulanamadı (yayında özet yok)');
-    guncelleKur(g);
-  });
+  var dene = function (gevsek) {
+    guncelleIndir(
+      g,
+      guncelleAyar.adres,
+      0,
+      function (e, ozet) {
+        if (e && !gevsek && guncelleTlsHatasi(e)) {
+          var neden = String((e && e.message) || e);
+          guncelleNot(g, 'sertifika doğrulanamadı: ' + neden);
+          if (!guvenilir) return guncelleDegis(g, 'hata', 'TV, GitHub sertifikasına güvenmiyor (' + neden + ') ve güvenilir bir doğrulama özeti yok; kurulmadı');
+          guncelleNot(g, 'sertifika denetimi atlanıp dosya yayın özetiyle doğrulanacak');
+          return dene(true);
+        }
+        if (e) return guncelleDegis(g, 'hata', 'İndirilemedi: ' + String((e && e.message) || e));
+        guncelleNot(g, 'indirildi: ' + g.bayt + ' bayt');
+        if (!guncelleIpkMi(g.dosya)) return guncelleDegis(g, 'hata', 'İndirilen dosya bir IPK paketi değil');
+        if (beklenen && beklenen !== ozet) return guncelleDegis(g, 'hata', 'Dosya özeti yayındakiyle tutmuyor; kurulmadı');
+        guncelleNot(g, beklenen ? 'özet doğrulandı' + (gevsek ? ' (sertifika denetimsiz indirildi)' : '') : 'özet doğrulanamadı (yayında özet yok)');
+        guncelleKur(g);
+      },
+      gevsek
+    );
+  };
+  dene(false);
   return guncelleOzet(g);
 }
 
@@ -1937,6 +2132,7 @@ module.exports = {
     guncelle = null;
   },
   _guncelleAdres: GUNCELLE_ADRES,
+  _guncelleKokler: GUNCELLE_KOKLER,
   donusKur: donusKur,
   donusDurum: donusDurum,
   donusIptal: donusIptal,

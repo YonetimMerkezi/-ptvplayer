@@ -50,9 +50,12 @@ export function yayinCoz(j) {
 // Son sürümü sorar. Dönen: { durum: 'yeni' | 'guncel' | 'hata', mevcut, son, hata }
 export async function denetle({ net, mevcut = SURUM } = {}) {
   try {
-    const j = await net.json(YAYIN_ADRESI, { timeoutMs: 15000, headers: { Accept: 'application/vnd.github+json' } });
+    let yol = '';
+    const j = await net.json(YAYIN_ADRESI, { timeoutMs: 15000, headers: { Accept: 'application/vnd.github+json' }, yolBildir: (y) => (yol = y) });
     const son = yayinCoz(j);
     if (!son) throw new Error('Sürüm bilgisi tanınmadı');
+    // Özete yalnız tarayıcının TLS'i doğruladığı (doğrudan) yoldan gelmişse güvenilir: TV servisi sertifikayı denetlemeden de getirebilir
+    if (son.ipk) son.ipk.guvenilir = yol === 'direct' && !!son.ipk.ozet;
     return { durum: surumKarsilastir(mevcut, son.surum) < 0 ? 'yeni' : 'guncel', mevcut, son, hata: '' };
   } catch (e) {
     return { durum: 'hata', mevcut, son: null, hata: e && e.message ? e.message : String(e) };
@@ -101,6 +104,6 @@ export function guncellemeSonrasi({ store, bildir = () => {}, mevcut = SURUM } =
 
 // TV servisi: indirme/kurulum. Hata fırlatmaz.
 export const servisKur = {
-  baslat: (ozet) => luna(SERVIS + 'guncelleBaslat', { sha256: ozet || '' }, 10000),
+  baslat: (ozet, guvenilir) => luna(SERVIS + 'guncelleBaslat', { sha256: ozet || '', ozetGuvenilir: !!guvenilir }, 10000),
   durum: () => luna(SERVIS + 'guncelleDurum', {}, 6000),
 };

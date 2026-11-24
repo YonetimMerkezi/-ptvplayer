@@ -3,7 +3,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import tls from 'node:tls';
 import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -80,6 +82,17 @@ test('denetle: yeni / güncel / hata', async () => {
   await denetle({ net: { json: async (u, o) => (istekler.push([u, o]), YAYIN(1)) }, mevcut: '1.0.1' });
   assert.equal(istekler[0][0], YAYIN_ADRESI);
   assert.equal(istekler[0][1].headers.Accept, 'application/vnd.github+json');
+});
+
+test('denetle: yayın özeti yalnız tarayıcının TLS doğruladığı (doğrudan) yoldan gelmişse güvenilir sayılır', async () => {
+  const net = (yol) => ({ json: async (u, o) => (yol && o.yolBildir(yol), YAYIN(50)) });
+  assert.equal((await denetle({ net: net('direct'), mevcut: '1.0.47' })).son.ipk.guvenilir, true);
+  assert.equal((await denetle({ net: net('service'), mevcut: '1.0.47' })).son.ipk.guvenilir, false, 'TV servisi sertifikayı denetlemeden getirebilir');
+  assert.equal((await denetle({ net: net(''), mevcut: '1.0.47' })).son.ipk.guvenilir, false, 'yol bilinmiyorsa güvenilmez');
+  assert.equal((await denetle({ net: net('direct'), mevcut: '1.0.47' })).son.ipk.ozet, OZET);
+  const ozetsiz = YAYIN(50, { assets: [{ name: IPK_ADI, size: 5 }] });
+  const r = await denetle({ net: { json: async (u, o) => (o.yolBildir('direct'), ozetsiz) }, mevcut: '1.0.47' });
+  assert.equal(r.son.ipk.guvenilir, false, 'özet yoksa güvenilir olamaz');
 });
 
 test('otomatikDenetle: kapalıysa ve 12 saat dolmadıysa sormaz; yeni sürümü aynı sürüm için bir kez bildirir; hatada 1 saat sonra yeniden dener', async () => {
@@ -310,4 +323,132 @@ test('servis güncelleme: indirme adresi sabittir (uygulamadan alınmaz) ve uygu
   const kaynak = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'webos', 'service', 'service.js'), 'utf8');
   assert.match(kaynak, /GUNCELLE_UYGULAMA = 'com\.koruk\.iptv\.webos'/);
   assert.ok(!/p\.(url|adres)/.test(kaynak.slice(kaynak.indexOf('function guncelleBaslat'), kaynak.indexOf('var SAYFA ='))), 'guncelleBaslat uygulamadan adres almaz');
+});
+
+// ---- TLS: eski TV'nin sertifika deposu GitHub'ı tanımayabilir ("certificate not trusted") ----
+function tlsSahte(kayit, { eszamanli = false, kod = 'CERT_UNTRUSTED' } = {}) {
+  return {
+    get(secenek, cevap) {
+      kayit.push({ ca: secenek.ca, rejectUnauthorized: secenek.rejectUnauthorized, agent: secenek.agent });
+      if (secenek.rejectUnauthorized !== false) {
+        if (eszamanli && secenek.ca) throw new Error('PEM routines:PEM_read_bio:bad end line');
+        const r = new EventEmitter();
+        r.setTimeout = () => {};
+        r.abort = () => {};
+        setImmediate(() => {
+          const e = new Error('certificate not trusted');
+          e.code = kod;
+          r.emit('error', e);
+        });
+        return r;
+      }
+      return http.get(secenek, cevap);
+    },
+  };
+}
+
+test('servis güncelleme: gömülü kök sertifikalar Node/Mozilla listesindeki gerçek köklerdir ve indirmeye ca olarak verilir', async () => {
+  const kokler = svc._guncelleKokler;
+  assert.ok(kokler.length >= 5);
+  const bilinen = new Set(tls.rootCertificates.map((p) => new X509Certificate(p).fingerprint256));
+  const adlar = [];
+  for (const pem of kokler) {
+    const x = new X509Certificate(pem);
+    assert.ok(bilinen.has(x.fingerprint256), 'gömülü kök gerçek bir kök sertifika: ' + x.subject);
+    adlar.push(/CN=(.*)/.exec(x.subject)[1]);
+  }
+  for (const ad of ['DigiCert Global Root G2', 'USERTrust RSA Certification Authority', 'ISRG Root X1', 'Sectigo Public Server Authentication Root R46']) assert.ok(adlar.includes(ad), ad + ' gömülü');
+  svc._guncelleSifirla();
+  const kayit = [];
+  ayarla('/ok.ipk', { modul: tlsSahte(kayit), ca: kokler });
+  lunaSahte([]);
+  svc.guncelleBaslat({ sha256: sha(IPK) }); // özet güvenilir işaretli değil: TLS hatasında durur
+  await bitenYok();
+  assert.deepEqual(kayit[0].ca, kokler);
+  assert.equal(kayit[0].rejectUnauthorized, undefined, 'önce doğrulama açık');
+  assert.equal(kayit[0].agent, false);
+});
+
+test('servis güncelleme: TLS doğrulanamazsa yalnız güvenilir yoldan gelen özet varsa sertifika denetimi atlanıp dosya özetle doğrulanır', async () => {
+  svc._guncelleSifirla();
+  const kayit = [];
+  ayarla('/ok.ipk', { modul: tlsSahte(kayit) });
+  const c = lunaSahte([{ returnValue: true, statusValue: 17 }]);
+  svc.guncelleBaslat({ sha256: sha(IPK), ozetGuvenilir: true });
+  const d = await bitenYok();
+  assert.equal(d.durum, 'tamam', JSON.stringify(d));
+  assert.deepEqual(kayit.map((k) => k.rejectUnauthorized), [undefined, false], 'önce doğrulamalı, sonra özetle korunan yedek');
+  assert.ok(d.tani.some((t) => /sertifika doğrulanamadı: certificate not trusted/.test(t)));
+  assert.ok(d.tani.some((t) => /özet doğrulandı \(sertifika denetimsiz indirildi\)/.test(t)));
+  assert.equal(c.length, 1);
+  assert.equal(d.bayt, IPK.length, 'yeniden denemede bayt sayacı sıfırlanır');
+});
+
+test('servis güncelleme: TLS doğrulanamadığında özet yok ya da güvenilmez ise hiçbir şey indirilip kurulmaz', async () => {
+  for (const p of [{}, { sha256: sha(IPK) }, { sha256: sha(IPK), ozetGuvenilir: false }, { sha256: sha(IPK), ozetGuvenilir: 'true' }, { ozetGuvenilir: true }]) {
+    svc._guncelleSifirla();
+    const kayit = [];
+    ayarla('/ok.ipk', { modul: tlsSahte(kayit) });
+    const c = lunaSahte([{ returnValue: true, statusValue: 17 }]);
+    svc.guncelleBaslat(p);
+    const d = await bitenYok();
+    assert.equal(d.durum, 'hata', JSON.stringify(p));
+    assert.match(d.mesaj, /GitHub sertifikasına güvenmiyor .*certificate not trusted.* güvenilir bir doğrulama özeti yok/);
+    assert.equal(kayit.length, 1, 'doğrulamasız yedek hiç denenmez: ' + JSON.stringify(p));
+    assert.equal(c.length, 0);
+  }
+});
+
+test('servis güncelleme: yedek yolda özet tutmuyorsa (araya girilmiş dosya) kurulmaz', async () => {
+  svc._guncelleSifirla();
+  ayarla('/ok.ipk', { modul: tlsSahte([]) });
+  const c = lunaSahte([{ returnValue: true, statusValue: 17 }]);
+  svc.guncelleBaslat({ sha256: 'c'.repeat(64), ozetGuvenilir: true });
+  const d = await bitenYok();
+  assert.equal(d.durum, 'hata');
+  assert.match(d.mesaj, /özeti yayındakiyle tutmuyor/);
+  assert.equal(c.length, 0);
+});
+
+test('servis güncelleme: gömülü kök PEM\'i yüklenemeyip eşzamanlı hata fırlarsa servis çökmez, güvenilir özetle yedek denenir', async () => {
+  svc._guncelleSifirla();
+  const kayit = [];
+  ayarla('/ok.ipk', { modul: tlsSahte(kayit, { eszamanli: true }) });
+  lunaSahte([{ returnValue: true, statusValue: 17 }]);
+  svc.guncelleBaslat({ sha256: sha(IPK), ozetGuvenilir: true });
+  const d = await bitenYok();
+  assert.equal(d.durum, 'tamam', JSON.stringify(d));
+  assert.deepEqual(kayit.map((k) => k.rejectUnauthorized), [undefined, false]);
+
+  svc._guncelleSifirla();
+  ayarla('/ok.ipk', { modul: tlsSahte([], { eszamanli: true }) });
+  lunaSahte([{ returnValue: true, statusValue: 17 }]);
+  svc.guncelleBaslat({});
+  const d2 = await bitenYok();
+  assert.equal(d2.durum, 'hata');
+  assert.match(d2.mesaj, /güvenilir bir doğrulama özeti yok/);
+});
+
+test('servis güncelleme: ağ hatası (TLS değil) yedek yola geçmez', async () => {
+  svc._guncelleSifirla();
+  const kayit = [];
+  const modul = {
+    get(secenek) {
+      kayit.push(secenek.rejectUnauthorized);
+      const r = new EventEmitter();
+      r.setTimeout = () => {};
+      r.abort = () => {};
+      setImmediate(() => {
+        const e = new Error('getaddrinfo ENOTFOUND github.com');
+        e.code = 'ENOTFOUND';
+        r.emit('error', e);
+      });
+      return r;
+    },
+  };
+  ayarla('/ok.ipk', { modul });
+  svc.guncelleBaslat({ sha256: sha(IPK), ozetGuvenilir: true });
+  const d = await bitenYok();
+  assert.deepEqual(kayit, [undefined], 'DNS/ağ hatasında doğrulamasız deneme yok');
+  assert.match(d.mesaj, /İndirilemedi: getaddrinfo ENOTFOUND/);
 });

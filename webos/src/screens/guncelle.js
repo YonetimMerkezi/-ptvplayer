@@ -129,7 +129,7 @@ export function guncelleScreen() {
     onay = 0;
     ctx.store.setSetting('guncelleBeklenen', y.surum);
     try {
-      const r = await servisKur.baslat(y.ipk && y.ipk.ozet);
+      const r = await servisKur.baslat(y.ipk && y.ipk.ozet, y.ipk && y.ipk.guvenilir);
       if (r && r.returnValue === false) throw new Error(r.errorText || 'Servis başlatamadı');
       toast('Güncelleme başladı', 2500);
       sorgula();

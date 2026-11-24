@@ -140,6 +140,7 @@ export function createNet({ ayar, taşıyıcı } = {}) {
       const y = yollar[i];
       try {
         const t = await tas[y](url, opt || {});
+        if (opt && typeof opt.yolBildir === 'function') opt.yolBildir(y); // hangi yoldan geldi (doğrudan XHR'de TLS'i tarayıcı doğrular)
         if (mod() === 'auto' && ogrenilen[hostOf(url)] !== y) {
           ogrenilen[hostOf(url)] = y;
           K.bilgi('Ağ yolu: ' + hostOf(url) + ' → ' + (y === 'direct' ? 'doğrudan' : 'TV servisi'));
