@@ -1,6 +1,7 @@
 // Telefon kumandası (uygulama tarafı): TV servisindeki küçük sunucuya telefon tarayıcısından gelen tuş, yazı ve
 // "TV'de oynat" komutları uzun yoklamayla alınır ve burada uygulanır. Sunucu service/service.js içindedir.
 import { ctx, open, pop, top } from './ctx.js';
+import { YAPI } from './version.js';
 import { luna, varlik, SERVIS } from './luna.js';
 import { yolAc } from './fragman.js';
 import { imlecKur } from './imlec.js';
@@ -137,8 +138,9 @@ export function fareIsle(k, im) {
 }
 
 // Yoklayıcı: servisteki sunucuyu başlatır ve komutları sürekli alır. Bağımlılıklar dışarıdan verilebilir (test).
-export function telefonYoklayici({ cagri = luna, pin, uygula, bekle = (ms) => new Promise((c) => setTimeout(c, ms)) } = {}) {
+export function telefonYoklayici({ cagri = luna, pin, uygula, bekle = (ms) => new Promise((c) => setTimeout(c, ms)), yapi = YAPI } = {}) {
   let nesil = 0;
+  let yenilendi = false; // servis yenileme isteği en çok bir kez (döngüye girmesin)
   let bilgi = null;
   let telefon = false;
   let hata = '';
@@ -191,8 +193,21 @@ export function telefonYoklayici({ cagri = luna, pin, uygula, bekle = (ms) => ne
     async baslat({ sifirla = false } = {}) {
       if (!varlik()) throw new Error('Bu özellik yalnızca TV’de çalışır');
       const n = ++nesil;
-      const r = await cagri(SERVIS + 'kumandaBaslat', { pin: pin ? pin() : '', sifirla }, 10000);
+      let r = await cagri(SERVIS + 'kumandaBaslat', { pin: pin ? pin() : '', sifirla }, 10000);
       if (n !== nesil) return bilgi;
+      // Güncellemeden sonra eski servis süreci canlı kalmış olabilir (eski kumanda sayfasını sunar): bir kez kapattırıp yeniden başlatılır
+      if (yapi && !yenilendi && r && r.returnValue !== false && r.yapi !== yapi) {
+        yenilendi = true;
+        try {
+          await cagri(SERVIS + 'servisYenile', {}, 4000);
+        } catch (e) {
+          /* eski servis bu komutu bilmez: aşağıdaki yeniden başlatma onu etkilemez, TV'yi yeniden başlatmak gerekir */
+        }
+        await bekle(1500);
+        if (n !== nesil) return bilgi;
+        r = await cagri(SERVIS + 'kumandaBaslat', { pin: pin ? pin() : '', sifirla }, 10000);
+        if (n !== nesil) return bilgi;
+      }
       if (!r || r.returnValue === false) throw new Error((r && r.errorText) || 'Kumanda başlatılamadı');
       const ip = (r.adresler || [])[0] || '';
       bilgi = { ip, port: r.port, pin: r.pin, adres: ip ? 'http://' + ip + ':' + r.port + '/k?k=' + r.pin : '' };

@@ -618,3 +618,90 @@ test('kablolama: ana sayfada kumanda düğmesi (üst çubuk, odak, tıklama) ve 
   assert.ok(!/new MouseEvent|\.includes\(|\.findIndex\(|Array\.from\(/.test(im));
   assert.match(im, /createEvent\('MouseEvents'\)/);
 });
+
+// ---- Güncellemeden sonra eski servis süreci ----
+test('servis: kumandaBaslat yapı kimliğini bildirir; servisYenile yanıtı verir, kısa süre sonra süreci kapatır', async (t) => {
+  t.after(() => {
+    svc._cikis(() => {});
+    svc.kumandaDurdur();
+  });
+  const a = await baslat({ pin: '1234' });
+  assert.equal(a.yapi, svc._yapi());
+  assert.equal(typeof a.yapi, 'string');
+  let cikti = 0;
+  svc._cikis(() => cikti++);
+  const r = svc.servisYenile();
+  assert.equal(r.returnValue, true);
+  assert.equal(r.yapi, svc._yapi());
+  assert.equal(cikti, 0, 'önce yanıt gider, süreç hemen kapanmaz');
+  await bekle(550);
+  assert.equal(cikti, 1, 'yanıttan sonra süreç kapanır (webOS sonraki çağrıda güncel kodla açar)');
+});
+
+test('telefonYoklayici: servis eski yapıdaysa bir kez servisYenile istenir ve yeniden başlatılır; uyuşuyorsa dokunulmaz; yenileme başarısızsa döngüye girmez', async () => {
+  globalThis.window.PalmServiceBridge = function () {};
+  const kur = (servisYapi, { yenileHata = false } = {}) => {
+    const cagrilar = [];
+    let yapi = servisYapi;
+    const cagri = async (uri, par) => {
+      const ad = uri.replace(/^.*\//, '');
+      cagrilar.push(ad);
+      if (ad === 'kumandaBaslat') return { returnValue: true, port: 8800, pin: par.pin || '0000', adresler: ['192.168.1.20'], yapi };
+      if (ad === 'servisYenile') {
+        if (yenileHata) throw new Error('Bilinmeyen komut');
+        yapi = 'YENI'; // süreç kapandı, yenisi güncel kodla açıldı
+        return { returnValue: true };
+      }
+      if (ad === 'kumandaSor') {
+        await new Promise((c) => setTimeout(c, 20));
+        return { returnValue: true, komutlar: [], telefon: false };
+      }
+      return { returnValue: true };
+    };
+    return { cagrilar, y: telefonYoklayici({ cagri, pin: () => '4321', uygula: () => {}, bekle: () => Promise.resolve(), yapi: 'YENI' }) };
+  };
+  // eski süreç: servisYenile → yeniden başlatma
+  let k = kur('ESKI');
+  let b = await k.y.baslat();
+  assert.deepEqual(k.cagrilar.slice(0, 3), ['kumandaBaslat', 'servisYenile', 'kumandaBaslat']);
+  assert.equal(b.port, 8800);
+  k.y.durdur();
+  // ikinci başlatma aynı oturumda yeniden yenileme istemez
+  k.cagrilar.length = 0;
+  await k.y.baslat();
+  assert.equal(k.cagrilar.filter((a) => a === 'servisYenile').length, 0);
+  k.y.durdur();
+  // güncel servis: dokunulmaz
+  k = kur('YENI');
+  await k.y.baslat();
+  assert.equal(k.cagrilar.filter((a) => a === 'servisYenile').length, 0);
+  k.y.durdur();
+  // servisYenile'yi bilmeyen eski servis: hata yutulur, kumanda yine de başlar, tekrar denenmez
+  k = kur('ESKI', { yenileHata: true });
+  b = await k.y.baslat();
+  assert.equal(b.port, 8800);
+  assert.equal(k.cagrilar.filter((a) => a === 'servisYenile').length, 1);
+  k.y.durdur();
+  k.cagrilar.length = 0;
+  await k.y.baslat();
+  assert.equal(k.cagrilar.filter((a) => a === 'servisYenile').length, 0, 'döngüye girmez');
+  k.y.durdur();
+  // yapı kimliği yoksa (geliştirme/test derlemesi) denetim kapalı
+  const k2 = [];
+  const y2 = telefonYoklayici({ cagri: async (uri, par) => (k2.push(uri.replace(/^.*\//, '')), /kumandaBaslat$/.test(uri) ? { returnValue: true, port: 1, pin: '1111', adresler: [], yapi: 'X' } : { returnValue: true, komutlar: [] }), pin: () => '1111', uygula: () => {}, bekle: () => Promise.resolve(), yapi: '' });
+  await y2.baslat();
+  assert.ok(!k2.includes('servisYenile'));
+  y2.durdur();
+  delete globalThis.window.PalmServiceBridge;
+});
+
+test('derleme: servis yapı kimliği uygulamayla aynı kimlikle yazılır; yer tutucu servis kaynağında durur', () => {
+  const kok = join(dirname(fileURLToPath(import.meta.url)), '..', 'webos');
+  const oku = (...y) => readFileSync(join(kok, ...y), 'utf8');
+  assert.match(oku('service', 'service.js'), /var YAPI = '__YAPI__';/);
+  const b = oku('scripts', 'build.mjs');
+  assert.match(b, /__BUILD__: JSON\.stringify\(yapi\)/, 'uygulama aynı kimliği alır');
+  assert.match(b, /replace\("var YAPI = '__YAPI__';", 'var YAPI = ' \+ JSON\.stringify\(yapi\) \+ ';'\)/, 'servis aynı kimliği alır');
+  assert.match(oku('src', 'version.js'), /export const YAPI = /);
+  assert.match(oku('service', 'services.json'), /"name": "servisYenile"/);
+});

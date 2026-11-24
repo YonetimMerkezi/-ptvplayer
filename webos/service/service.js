@@ -23,6 +23,7 @@
 //   kumandaBaslat {pin, sifirla}            → {returnValue, port, pin, adresler[]}   (pin 4 hane verilirse sabit kalır)
 //   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat'|'kaynak'|'fare'|'ekran', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
 //   kumandaDurdur {}                        → {returnValue}
+//   servisYenile  {}                        → {returnValue, yapi}   (süreci kapatır; eski kodla canlı kalmış servis güncel kodla yeniden açılır)
 //
 // Güncelleme (GitHub sürümündeki IPK'yı indirir, doğrular, TV kurulum servisine verir; adres serviste sabittir):
 // <magaza-kes>
@@ -1300,8 +1301,23 @@ function sesYap(islem, cb) {
   });
 }
 
+// Derlemede yazılan yapı kimliği (scripts/build.mjs). Güncelleme sonrası eski servis süreci canlı kalırsa eski kumanda sayfasını sunmaya devam eder:
+// uygulama kendi yapı kimliğiyle karşılaştırıp uyuşmazsa servisYenile ile süreci kapattırır (sonraki çağrıda yenisi açılır).
+var YAPI = '__YAPI__';
+var cikis = function () {
+  process.exit(0);
+};
+
 function kumandaBilgi() {
-  return { returnValue: true, port: kumanda.port, pin: kumanda.pin, adresler: yerelAdresler() };
+  return { returnValue: true, port: kumanda.port, pin: kumanda.pin, adresler: yerelAdresler(), yapi: YAPI };
+}
+
+// Yanıtı verdikten kısa süre sonra süreci kapatır; webOS bir sonraki Luna çağrısında servisi diskteki güncel kodla yeniden başlatır.
+function servisYenile() {
+  setTimeout(function () {
+    cikis();
+  }, 400);
+  return { returnValue: true, yapi: YAPI };
 }
 
 function kumandaYanit(komutlar) {
@@ -2102,6 +2118,13 @@ module.exports = {
   kumandaBaslat: kumandaBaslat,
   kumandaSor: kumandaSor,
   kumandaDurdur: kumandaDurdur,
+  servisYenile: servisYenile,
+  _yapi: function () {
+    return YAPI;
+  },
+  _cikis: function (f) {
+    cikis = f;
+  },
   _kumanda: function () {
     return kumanda;
   },
@@ -2292,6 +2315,9 @@ if (Service) {
   });
   servis.register('kumandaDurdur', function (m) {
     m.respond(kumandaDurdur());
+  });
+  servis.register('servisYenile', function (m) {
+    m.respond(servisYenile());
   });
   // <magaza-kes>
   servis.register('guncelleBaslat', function (m) {

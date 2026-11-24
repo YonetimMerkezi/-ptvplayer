@@ -62,6 +62,11 @@ const info = JSON.parse(readFileSync(join(kok, 'appinfo.json'), 'utf8'));
 info.version = surum;
 writeFileSync(join(dist, 'app', 'appinfo.json'), JSON.stringify(info, null, 2));
 cpSync(join(kok, 'service'), join(dist, 'service'), { recursive: true });
+// Servise yapı kimliği yazılır: uygulama ile servis aynı derlemeden mi (eski süreç canlı kalmış mı) anlaşılsın diye
+const servisYolu = join(dist, 'service', 'service.js');
+const servisKaynak = readFileSync(servisYolu, 'utf8');
+if (!servisKaynak.includes("var YAPI = '__YAPI__';")) throw new Error('service.js içinde YAPI yer tutucusu yok');
+writeFileSync(servisYolu, servisKaynak.replace("var YAPI = '__YAPI__';", 'var YAPI = ' + JSON.stringify(yapi) + ';'));
 if (magaza) magazaServisi(join(dist, 'service'));
 const sp = JSON.parse(readFileSync(join(dist, 'service', 'package.json'), 'utf8'));
 sp.version = surum;

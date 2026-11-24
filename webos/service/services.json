@@ -95,6 +95,10 @@
           "description": "Telefon kumandası sunucusunu durdurur"
         },
         {
+          "name": "servisYenile",
+          "description": "Servis sürecini kapatır; güncelleme sonrası eski kodla canlı kalan servis bir sonraki çağrıda güncel kodla açılır"
+        },
+        {
           "name": "guncelleBaslat",
           "description": "Yayındaki IPK'yı indirip doğrulayarak TV kurulum servisine verir (deneme)"
         },
