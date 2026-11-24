@@ -6,11 +6,14 @@ import { minify } from 'terser';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { magazaServisi } from './magaza.mjs';
 
 const kok = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(kok, 'dist');
 const pkg = JSON.parse(readFileSync(join(kok, 'package.json'), 'utf8'));
 const surum = process.env.WEBOS_VERSION || pkg.version;
+// Mağaza sürümü (LG Content Store başvurusu): kendi kendine güncelleme çıkarılır (mağaza güncellemeyi kendisi yapar). WEBOS_MAGAZA=1 ile açılır.
+const magaza = process.env.WEBOS_MAGAZA === '1';
 const yapi = process.env.WEBOS_BUILD || new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 rmSync(dist, { recursive: true, force: true });
@@ -26,7 +29,7 @@ async function derle(girdi, cikti) {
     format: 'iife',
     target: 'es2020',
     legalComments: 'none',
-    define: { __VERSION__: JSON.stringify(surum), __BUILD__: JSON.stringify(yapi) },
+    define: { __VERSION__: JSON.stringify(surum), __BUILD__: JSON.stringify(yapi), __MAGAZA__: JSON.stringify(magaza) },
     logLevel: 'warning',
   });
   const kaynak = paket.outputFiles[0].text;
@@ -59,6 +62,7 @@ const info = JSON.parse(readFileSync(join(kok, 'appinfo.json'), 'utf8'));
 info.version = surum;
 writeFileSync(join(dist, 'app', 'appinfo.json'), JSON.stringify(info, null, 2));
 cpSync(join(kok, 'service'), join(dist, 'service'), { recursive: true });
+if (magaza) magazaServisi(join(dist, 'service'));
 const sp = JSON.parse(readFileSync(join(dist, 'service', 'package.json'), 'utf8'));
 sp.version = surum;
 writeFileSync(join(dist, 'service', 'package.json'), JSON.stringify(sp, null, 2));

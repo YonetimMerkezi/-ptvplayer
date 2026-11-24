@@ -25,8 +25,10 @@
 //   kumandaDurdur {}                        → {returnValue}
 //
 // Güncelleme (GitHub sürümündeki IPK'yı indirir, doğrular, TV kurulum servisine verir; adres serviste sabittir):
+// <magaza-kes>
 //   guncelleBaslat {sha256}                 → {returnValue, durum}   (hemen döner; arka planda sürer)
 //   guncelleDurum  {}                       → {returnValue, durum: yok|indiriyor|kuruluyor|tamam|hata|belirsiz, bayt, toplam, mesaj, tani[]}
+// </magaza-kes>
 //
 // Fragman dönüşü: fragman sayfası uygulamanın kendi penceresinde açılır; YouTube Geri ile pencereyi kapatınca uygulama da kapanır.
 // Bekçi uygulamanın kapandığını görünce onu yeniden açar (launch parametresi: {donus: 1, tani}).
@@ -570,6 +572,7 @@ function donusKur(p) {
 }
 
 
+// <magaza-kes yerine="var guncelle = null;\nfunction guncelleAktif() {\n  return false;\n}\n">
 // ---- Güncelleme: IPK GitHub sürümünden indirilir, doğrulanır ve TV'nin kurulum servisine verilir ----
 // Adres sabittir (uygulamadan alınmaz): başka bir kaynaktan paket kurdurulamaz. Dosya IPK (ar arşivi) değilse ya da
 // yayının özeti (sha256) verilmişse tutmuyorsa kurulmaz. TLS: önce gömülü GitHub kökleriyle doğrulanır; olmazsa yalnız güvenilir özetle (aşağıya bakın). TV kurulum servisinin buna izin verip vermediği TV'ye bağlıdır;
@@ -966,6 +969,7 @@ function guncelleBaslat(p) {
   dene(false);
   return guncelleOzet(g);
 }
+// </magaza-kes>
 
 var SAYFA =
   '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">' +
@@ -2120,6 +2124,7 @@ module.exports = {
   },
   _kumandaKontrol: kumandaKontrol,
   _kumandaSayfa: KUMANDA_SAYFA,
+  // <magaza-kes>
   guncelleBaslat: guncelleBaslat,
   guncelleDurum: guncelleDurum,
   _guncelleAyarla: function (a) {
@@ -2133,6 +2138,7 @@ module.exports = {
   },
   _guncelleAdres: GUNCELLE_ADRES,
   _guncelleKokler: GUNCELLE_KOKLER,
+  // </magaza-kes>
   donusKur: donusKur,
   donusDurum: donusDurum,
   donusIptal: donusIptal,
@@ -2304,6 +2310,7 @@ if (Service) {
   servis.register('kumandaDurdur', function (m) {
     m.respond(kumandaDurdur());
   });
+  // <magaza-kes>
   servis.register('guncelleBaslat', function (m) {
     m.respond(guncelleBaslat(m.payload || {}));
     canliTut();
@@ -2311,6 +2318,7 @@ if (Service) {
   servis.register('guncelleDurum', function (m) {
     m.respond(guncelleDurum());
   });
+  // </magaza-kes>
   servis.register('donusKur', function (m) {
     m.respond(donusKur(m.payload || {}));
   });

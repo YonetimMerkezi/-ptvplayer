@@ -32,6 +32,7 @@ import { telefonKumandaScreen } from './screens/telefonkumanda.js';
 import { telefonuBaslat } from './telefon.js';
 import { guncelleScreen } from './screens/guncelle.js';
 import { otomatikDenetle, guncellemeSonrasi } from './guncelle.js';
+import { MAGAZA } from './version.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -212,7 +213,7 @@ export function kaydet() {
     fragmantesti: fragmanTestiScreen,
     fragmanqr: fragmanQrScreen,
     telefonkumanda: telefonKumandaScreen,
-    guncelle: guncelleScreen,
+    guncelle: MAGAZA ? null : guncelleScreen,
     ad: adScreen,
     browse: browseScreen,
     detail: detailScreen,
@@ -273,10 +274,12 @@ export function start() {
   saatleriYaz();
   const b = document.getElementById('boot');
   if (b && b.parentNode) b.parentNode.removeChild(b);
-  guncellemeSonrasi({ store: ctx.store, bildir: (t) => setTimeout(() => toast(t, 4000), 800) });
-  setTimeout(() => {
-    if (varlik()) otomatikDenetle({ net: ctx.net, store: ctx.store, bildir: (t) => toast(t, 5000) }).catch((e) => K.hata(e)); // arka planda, en çok 12 saatte bir
-  }, 25000);
+  if (!MAGAZA) {
+    guncellemeSonrasi({ store: ctx.store, bildir: (t) => setTimeout(() => toast(t, 4000), 800) });
+    setTimeout(() => {
+      if (varlik()) otomatikDenetle({ net: ctx.net, store: ctx.store, bildir: (t) => toast(t, 5000) }).catch((e) => K.hata(e)); // arka planda, en çok 12 saatte bir
+    }, 25000);
+  }
   setTimeout(telefonuBaslat, 1500); // telefon kumandası açık bırakıldıysa sunucu ve yoklama başlar
   setTimeout(isit, 3000); // ana sayfa çizildikten sonra Filmler/Diziler'in açılacağı kategori arka planda önbelleğe alınır
 }
