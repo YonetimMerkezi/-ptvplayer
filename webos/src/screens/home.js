@@ -39,7 +39,9 @@ export function homeScreen() {
   const src = ctx.store.active();
   kok.innerHTML =
     ustCubuk('Iptv Player Pro', src ? esc(src.name) : '', true, false, true) +
-    '<div class="hm">' +
+    '<div class="rl">' +
+    KAROLAR.map((k, i) => '<div class="rl-it" data-rl="' + i + '"><i class="ic">' + k.ic + '</i><span>' + k.kisa + '</span></div>').join('') +
+    '</div><div class="hm">' +
     '<div class="hm-c">' +
     BUYUK.map((id, i) => {
       const k = bul(id);
@@ -56,6 +58,7 @@ export function homeScreen() {
 
   const kartlar = kok.querySelectorAll('.hc');
   const butonlar = kok.querySelectorAll('.hb');
+  const solOgeler = kok.querySelectorAll('.rl-it');
   const kumEl = kok.querySelector('.top-kum');
   const serit = kok.querySelector('#hm-pi');
   const ileti = kok.querySelector('#hm-m');
@@ -66,6 +69,8 @@ export function homeScreen() {
   let olu = false;
   let r = 0; // odaktaki satır: 0 kartlar, 1 butonlar, 2 afişler
   let ustte = false; // odak üst çubuktaki küçük Telefon kumandası düğmesinde (▲ ile kartlardan çıkılır)
+  let sol = false; // odak soldaki dikey menüde (içeriğin en solunda ◀ ile girilir, ▶ ile çıkılır)
+  let cr = 0; // sol menüde odaktaki öğe (KAROLAR sırası)
   const c = [0, 0, 0]; // her satırda son odak sütunu
 
   const adet = (satir) => (satir === 0 ? BUYUK.length : satir === 1 ? KUCUK.length : filmler.length);
@@ -102,13 +107,15 @@ export function homeScreen() {
 
   const isaretle = () => {
     kumEl.className = 'top-kum' + (ustte ? ' on' : '');
-    for (let i = 0; i < kartlar.length; i++) kartlar[i].className = 'tile hc ' + renkSinifi(i) + (!ustte && r === 0 && c[0] === i ? ' on' : '');
-    for (let i = 0; i < butonlar.length; i++) butonlar[i].className = 'tile hb ' + renkSinifi(i + 3) + (!ustte && r === 1 && c[1] === i ? ' on' : '');
+    const icerik = !ustte && !sol; // odak içerikte mi (tek yerde odak görünsün)
+    for (let i = 0; i < solOgeler.length; i++) solOgeler[i].className = 'rl-it' + (sol && cr === i ? ' on' : '');
+    for (let i = 0; i < kartlar.length; i++) kartlar[i].className = 'tile hc ' + renkSinifi(i) + (icerik && r === 0 && c[0] === i ? ' on' : '');
+    for (let i = 0; i < butonlar.length; i++) butonlar[i].className = 'tile hb ' + renkSinifi(i + 3) + (icerik && r === 1 && c[1] === i ? ' on' : '');
     for (let i = 0; i < afisler.length; i++) {
       const a = afisler[i];
-      a.dugum.className = 'pr' + (a.dugum.className.indexOf(' ok') >= 0 ? ' ok' : '') + (!ustte && r === 2 && c[2] === i ? ' on' : '');
+      a.dugum.className = 'pr' + (a.dugum.className.indexOf(' ok') >= 0 ? ' ok' : '') + (icerik && r === 2 && c[2] === i ? ' on' : '');
     }
-    const f = !ustte && r === 2 ? filmler[c[2]] : null;
+    const f = icerik && r === 2 ? filmler[c[2]] : null;
     tarihEl.textContent = f ? [tarihYaz(f)].filter(Boolean).join('') : '';
     if (afisler.length) {
       kaydir();
@@ -157,6 +164,14 @@ export function homeScreen() {
     );
   };
 
+  // Sol menüde odaklanacak öğe: odaktaki kartın/butonun gittiği bölüm (afişlerdeyken ilk öğe)
+  const solIndeks = () => {
+    if (r === 2) return 0;
+    const id = (r === 0 ? BUYUK : KUCUK)[c[r]];
+    for (let i = 0; i < KAROLAR.length; i++) if (KAROLAR[i].id === id) return i;
+    return 0;
+  };
+
   const ac = (satir, i) => {
     if (satir === 2) {
       if (filmler[i]) open('vizyon', { film: filmler[i] });
@@ -171,8 +186,17 @@ export function homeScreen() {
       open('telefonkumanda');
       return;
     }
+    const sn = enYakin(e.target, '[data-rl]', kok);
+    if (sn) {
+      sol = true;
+      cr = Number(sn.getAttribute('data-rl'));
+      isaretle();
+      open(KAROLAR[cr].ekran[0], KAROLAR[cr].ekran[1]);
+      return;
+    }
     const n = enYakin(e.target, '[data-r]', kok);
     if (!n) return;
+    sol = false;
     r = Number(n.getAttribute('data-r'));
     c[r] = Number(n.getAttribute('data-i'));
     isaretle();
@@ -198,6 +222,20 @@ export function homeScreen() {
         }
         return true;
       }
+      if (sol && (a === 'ok' || a === 'up' || a === 'down' || a === 'left' || a === 'right')) {
+        if (a === 'ok') open(KAROLAR[cr].ekran[0], KAROLAR[cr].ekran[1]);
+        else if (a === 'right') {
+          sol = false;
+          isaretle();
+        } else if (a === 'up' || a === 'down') {
+          const n = cr + (a === 'down' ? 1 : -1);
+          if (n >= 0 && n < KAROLAR.length) {
+            cr = n;
+            isaretle();
+          }
+        }
+        return true;
+      }
       if (a === 'ok') {
         ac(r, c[r]);
         return true;
@@ -213,6 +251,11 @@ export function homeScreen() {
         const n = c[r] + (a === 'right' ? 1 : -1);
         if (n >= 0 && n < adet(r)) {
           c[r] = n;
+          isaretle();
+        } else if (a === 'left') {
+          // satırın en solundayken ◀: odak soldaki menüye geçer
+          cr = solIndeks();
+          sol = true;
           isaretle();
         }
         return true;

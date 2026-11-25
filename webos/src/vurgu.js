@@ -2,7 +2,7 @@
 // Tuşa basılınca ya da imleç öğeden çıkınca vurgu kalkar; böylece tuş ve imleç aynı anda iki öğeyi vurgulamaz.
 import { enYakin } from './ui.js';
 
-export const HOVER_SECICI = '.top-back, .top-ara, .top-kum, .tile, .pr, .vl-it, .sp-d, .f-btn, .s-tab, .p-b, .pk-r, .mn-r';
+export const HOVER_SECICI = '.top-back, .top-ara, .top-kum, .tile, .rl-it, .pr, .vl-it, .sp-d, .f-btn, .s-tab, .p-b, .pk-r, .mn-r';
 
 export function hoverBagla(doc) {
   let acik = null;
