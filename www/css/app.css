@@ -757,8 +757,7 @@ body.on-home #btn-search { display: none; }
 .brand .ic { width: 30px; height: 30px; color: var(--accent); }
 .brand span { font-weight: 500; opacity: 0.85; }
 .home-clock { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.15; flex: none; white-space: nowrap; }
-@media (max-width: 479px) { .brand span { display: none; } .home-top { gap: 6px; } }
-@media (max-width: 399px) { .home-clock small { display: none; } .home-top .icon-btn { width: 40px; height: 40px; } } /* 360dp gibi çok dar ekranda tarih satırı gizlenir, marka kırpılmaz */
+@media (max-width: 479px) { .home-top { gap: 6px; } }
 .home-clock b { display: block; font-size: 1.375rem; font-weight: 600; }
 .home-clock small { color: var(--muted); font-size: 0.75rem; }
 .home-top .icon-btn { flex: none; }
@@ -2486,6 +2485,38 @@ html.tv [data-scroll] {
   .home-pill span { font-size: 0.95rem; }
   .home-top .icon-btn { width: 46px; height: 46px; }
 }
+
+/* Ana ekran · dikey görünüm başlığı (telefon dik): solda uygulama adı "Iptv Player Pro" ve altında saat/tarih, sağda Ara, Bildirim, TV kumandası, Ayarlar.
+   Kaynak ekle/değiştir düğmeleri başlıktan kaynak çubuğuna taşındı (başlık adı kırpıyordu). Yatay görünüm (üstteki blok) aynen kalır. */
+.home-id { display: flex; flex-direction: column; justify-content: center; flex: 1 1 auto; min-width: 0; gap: 1px; }
+@media not all and (orientation: landscape) and (min-width: 640px) {
+  .home-top { gap: 4px; }
+  .home-id .brand { font-size: clamp(1rem, 4.7vw, 1.2rem); gap: 7px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .home-id .brand b, .home-id .brand .brand-col { flex: none; }
+  .home-id .brand span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .home-id .brand span { opacity: 1; font-weight: 600; }
+  .home-id .brand span em { color: var(--accent); }
+  .home-id .home-clock { margin: 0; padding-left: 2px; display: flex; align-items: baseline; gap: 8px; text-align: left; flex: none; min-width: 0; overflow: hidden; }
+  .home-id .home-clock b { display: inline; font-size: 0.9rem; font-weight: 700; }
+  .home-id .home-clock small { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; }
+  .home-top .icon-btn { width: 40px; height: 40px; }
+  .home-top .icon-btn .ic { width: 25px; height: 25px; }
+  .home-top #h-search { color: #22d3ee; }
+  .home-top #h-bell { color: var(--gold, #fbbf24); }
+  .home-top #h-remote { color: var(--accent); }
+  .home-top #h-set { color: var(--muted); }
+  .home-sourcebar { gap: 8px; }
+  .home-sourcebar .icon-btn { width: 36px; height: 36px; margin: 0; padding: 0; gap: 0; min-height: 0; border-radius: 10px; justify-content: center; }
+  .home-sourcebar .icon-btn .ic { width: 20px; height: 20px; }
+  .home-sourcebar #h-add { margin-left: auto; }
+  .home-sourcebar .icon-btn ~ button[data-refresh] { margin-left: 0; }
+}
+@media (max-width: 379px) and (orientation: portrait) { /* 360dp gibi çok dar ekran */
+  .home-id .brand .ic { width: 26px; height: 26px; }
+  .home-top .icon-btn { width: 38px; height: 38px; }
+}
+/* Yatay görünümde başlığın iki satırlı sarmalayıcısı görünmez; marka, hap ve düğmeler eskisi gibi tek sırada */
+@media (orientation: landscape) and (min-width: 640px) { .home-id { display: contents; } }
 
 /* Bağlantı durumu: sorun varsa (çevrimdışı, liste hatası/boş) nokta ve yazı kırmızıya döner */
 .home-source-indicator.bad, .home-pill .hp-dot.bad { background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16); }
