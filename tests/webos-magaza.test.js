@@ -34,6 +34,7 @@ test('mağaza servisinde güncelleme izi kalmaz ve dosya yine yüklenir', () => 
     const yol = join(kok, 'service', 'service.js');
     writeFileSync(yol, kes);
     copyFileSync(join(servisKlasoru, 'kumanda.html'), join(kok, 'service', 'kumanda.html')); // servis telefon sayfasını yanından okur
+    copyFileSync(join(servisKlasoru, 'telefon-dil.js'), join(kok, 'service', 'telefon-dil.js')); // ... ve telefon sayfalarının dil betiğini
     const s = require(yol);
     for (const ad of Object.keys(s)) assert.equal(/guncelle/i.test(ad), false, ad);
     assert.equal(typeof s.donusKur, 'function', 'fragman dönüş bekçisi korunur');

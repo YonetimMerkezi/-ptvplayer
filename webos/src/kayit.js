@@ -2,6 +2,9 @@
 // kaydın oynatma adresi ve durum metinleri. Yayını TV içi servis diske (USB bellek) MPEG-TS olarak yazar.
 import { luna, SERVIS, varlik } from './luna.js';
 import { sure } from './ui.js';
+import { lang } from '../../www/js/i18n.js';
+
+const ond = () => (lang() === 'en' ? '.' : ','); // ondalık ayracı dile uyar
 
 async function servis(komut, par, ms) {
   const r = await luna(SERVIS + komut, par || {}, ms || 20000);
@@ -31,12 +34,12 @@ export const sonrakiSure = (sn, d) => {
 export function boyutYaz(b) {
   if (!(b > 0)) return '0 MB';
   if (b < 1024 * 1024) return Math.max(1, Math.round(b / 1024)) + ' KB';
-  if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
-  return (b / (1024 * 1024 * 1024)).toFixed(2).replace('.', ',') + ' GB';
+  if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1).replace('.', ond()) + ' MB';
+  return (b / (1024 * 1024 * 1024)).toFixed(2).replace('.', ond()) + ' GB';
 }
 
 // Ortalama hız (Mbit/sn)
-export const hizYaz = (bayt, ms) => (ms > 1500 && bayt > 0 ? ((bayt * 8) / 1e6 / (ms / 1000)).toFixed(1).replace('.', ',') + ' Mbps' : '');
+export const hizYaz = (bayt, ms) => (ms > 1500 && bayt > 0 ? ((bayt * 8) / 1e6 / (ms / 1000)).toFixed(1).replace('.', ond()) + ' Mbps' : '');
 
 // Disk özeti: "Dahili bellek: 2,1 GB boş (≈ 35 dk) · USB 2 (sda1): yazılamıyor (EACCES)". Süre tahmini 8 Mbps'lik yayına göredir.
 export const AKIS_BAYT_SN = 1000000; // 8 Mbps ≈ 1 MB/sn

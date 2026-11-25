@@ -6,6 +6,7 @@ import { VList } from '../vlist.js';
 import { araTur, aramayaHazirla, sonuclariSuz } from '../data.js';
 import { el, esc, px, toast, enYakin } from '../ui.js';
 import * as K from '../log.js';
+import { t as cevir } from '../../../www/js/i18n.js';
 
 const TUR = { live: 'Canlı', movie: 'Film', series: 'Dizi' };
 const YER = { live: 'Canlı TV', movie: 'Filmler', series: 'Diziler' };
@@ -135,13 +136,14 @@ export function searchScreen(p) {
     const toplam = sec.reduce((t, k) => t + (bul[k] ? bul[k].length : 0), 0);
     const bos = sec.filter((k) => hata[k]);
     let m = '';
-    if (toplam) m = toplam + ' sonuç' + (sec.some((k) => bul[k] && bul[k].length >= TUR_LIMIT) ? ' (türde ilk ' + TUR_LIMIT + ')' : '');
+    // Durum satırı parça parça çevrilir (birleşik metin tek kalıba uymaz): her parça sözlükteki kalıpla eşleşir
+    if (toplam) m = cevir(toplam + ' sonuç') + (sec.some((k) => bul[k] && bul[k].length >= TUR_LIMIT) ? ' ' + cevir('(türde ilk ' + TUR_LIMIT + ')') : '');
     else if (!yuk.length && !bos.length) m = '“' + sorgu + '” için sonuç yok';
     // Tarama ilerlemesi görünür: kaç kategori tarandı (ilk aramada kategoriler yüklenir, sonra anında)
-    if (yuk.length) m += (m ? ' · ' : '') + yuk.map((k) => YER[k] + (ilerle[k] ? ' ' + ilerle[k].b + '/' + ilerle[k].t : ' kategoriler yükleniyor')).join(', ') + ' taranıyor…';
-    if (bos.length) m += (m ? ' · ' : '') + bos.map((k) => YER[k] + ' yüklenemedi: ' + hata[k]).join(' · ');
+    if (yuk.length) m += (m ? ' · ' : '') + yuk.map((k) => cevir(YER[k]) + (ilerle[k] ? ' ' + ilerle[k].b + '/' + ilerle[k].t : ' ' + cevir('kategoriler yükleniyor'))).join(', ') + ' ' + cevir('taranıyor…');
+    if (bos.length) m += (m ? ' · ' : '') + bos.map((k) => cevir(YER[k]) + ' ' + cevir('yüklenemedi:') + ' ' + hata[k]).join(' · ');
     const eksik = sec.reduce((t, k) => t + (ilerle[k] ? ilerle[k].h || 0 : 0), 0);
-    if (eksik && !yuk.length) m += ' · ' + eksik + ' kategori yüklenemedi';
+    if (eksik && !yuk.length) m += ' · ' + cevir(eksik + ' kategori yüklenemedi');
     st.textContent = m;
   }
 

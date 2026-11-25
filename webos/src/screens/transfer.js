@@ -7,6 +7,7 @@ import { el, esc, toast } from '../ui.js';
 import { kaynakHazirla } from '../kaynak.js';
 import { qrSvg } from '../../../www/js/qr.js';
 import * as K from '../log.js';
+import { t as cevir } from '../../../www/js/i18n.js';
 
 const SORU_MS = 1200;
 
@@ -40,12 +41,12 @@ export function transferScreen() {
     const h = kaynakHazirla(g);
     if (h.hata) {
       msg(h.hata, true);
-      return sonuc(g.id, 'hata', h.hata);
+      return sonuc(g.id, 'hata', cevir(h.hata)); // telefona da TV'nin dilinde gider
     }
     msg('Alındı: “' + h.src.name + '” — bağlanılıyor…');
     try {
       const k = await kaynakEkle(h.src);
-      await sonuc(g.id, 'tamam', '“' + k.name + '” TV’ye eklendi.');
+      await sonuc(g.id, 'tamam', cevir('“' + k.name + '” TV’ye eklendi.'));
       msg('Eklendi: “' + k.name + '”');
       toast('Kaynak eklendi');
       calisiyor = false;
@@ -54,7 +55,7 @@ export function transferScreen() {
       K.hata(e);
       const t = 'Bağlanılamadı: ' + (e && e.message ? e.message : e) + '. Adresi kontrol edin.';
       msg(t, true);
-      await sonuc(g.id, 'hata', t);
+      await sonuc(g.id, 'hata', cevir(t));
     }
   }
 

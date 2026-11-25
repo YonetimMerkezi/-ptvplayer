@@ -6,6 +6,7 @@ import { VList } from '../vlist.js';
 import { el, esc, saat, sure, toast } from '../ui.js';
 import { eylemi, atamalar, eylemAdi } from '../kumanda.js';
 import * as K from '../log.js';
+import { lang } from '../../../www/js/i18n.js';
 import * as kayitIs from '../kayit.js';
 import * as arsiv from '../arsiv.js';
 import { hlsMi, kaliteCoz, kaliteVazgec } from '../kalite.js';
@@ -596,7 +597,7 @@ export function playerScreen({ list, index, fresh }) {
   let haricT = 0;
   let aramaNo = 0;
   let sonMetin = '';
-  const kaymaYaz = (k) => (k > 0 ? '+' : '') + (k / 1000).toFixed(1).replace('.', ',') + ' sn';
+  const kaymaYaz = (k) => (k > 0 ? '+' : '') + (k / 1000).toFixed(1).replace('.', lang() === 'en' ? '.' : ',') + ' sn';
   function onizleCiz() {
     subIc.textContent = 'Altyazı örnek metni\nİkinci satır';
     subEl.className = subSinif(true);

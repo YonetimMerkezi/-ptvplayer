@@ -33,6 +33,7 @@ import { telefonuBaslat } from './telefon.js';
 import { guncelleScreen } from './screens/guncelle.js';
 import { otomatikDenetle, guncellemeSonrasi } from './guncelle.js';
 import { MAGAZA } from './version.js';
+import { dilKur } from './dil.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -231,6 +232,7 @@ export function start() {
   K.yakala(window);
   donukluguIzle(() => (top() ? top().name : ''));
   ctx.store = createStore(depoSec());
+  dilKur(ctx.store);
   ctx.net = createNet({ ayar: () => ctx.store.setting('netMode', 'auto') });
   ctx.root = document.getElementById('app');
   kaydet();

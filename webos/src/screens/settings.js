@@ -9,6 +9,7 @@ import { bekleyenSurum } from '../guncelle.js';
 import { el, esc, px, toast, boyutla } from '../ui.js';
 import { temaBul, VARSAYILAN_TEMA } from '../tema.js';
 import * as K from '../log.js';
+import { DIL, dilKur } from '../dil.js';
 
 const FORMAT = [['m3u8', 'HLS (m3u8)'], ['ts', 'MPEG-TS (ts)']];
 const AG = [['auto', 'Otomatik'], ['direct', 'Doğrudan'], ['service', 'TV servisi']];
@@ -38,6 +39,7 @@ export function settingsScreen() {
       { id: 'add', ad: 'Kaynak ekle', deger: () => '', yardim: 'Xtream ya da M3U bağlantısı ekler' },
       { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Canlı, çok renkli temalar: canlı renkler, gökkuşağı, okyanus, gün batımı, orman, şeker, aurora' },
       { id: 'keys', ad: 'Kumanda tuşları', deger: () => '', yardim: 'Kırmızı / yeşil / sarı / mavi tuşlara oynatıcıda ve ana sayfada yapılacak eylemi atayın' },
+      { id: 'lang', ad: 'Dil / Language', deger: () => ad(DIL, ctx.store.setting('lang', 'auto')), yardim: 'Uygulamanın dili. Otomatik: TV’nin diline uyar (Türkçe değilse İngilizce). / App language. Auto follows the TV language.' },
       { id: 'fontScale', ad: 'Yazı boyutu', deger: () => ad(YAZI, ctx.store.setting('fontScale', '1')), yardim: 'Tüm ekranlardaki yazı ve düğme boyutunu büyütür ya da küçültür' },
       { id: 'aspectLive', ad: 'Kanallarda görüntü oranı', deger: () => ad(ORAN, ctx.store.setting(ORAN_AYAR.canli[0], ORAN_AYAR.canli[1])), yardim: 'Canlı kanalların ekrana yerleşimi. Varsayılan: Uzat (ekranı tam doldurur); sığdır özgün oranı korur, doldur kenarları kırpar' },
       { id: 'aspect', ad: 'Film/dizi görüntü oranı', deger: () => ad(ORAN, ctx.store.setting(ORAN_AYAR.vod[0], ORAN_AYAR.vod[1])), yardim: 'Film ve dizilerin ekrana yerleşimi: sığdır, doldur (kenarları kırp) ya da uzat. Oynatıcıda renkli tuşla da değişir' },
@@ -59,7 +61,7 @@ export function settingsScreen() {
   const { kok, list, panel } = listeEkrani('settings', 'Ayarlar', '▲▼ gezin · ◀▶ değiştir · OK: seç · Geri', {
     panel: true,
     list: {
-      render: (r) => '<span class="nm">' + esc(r.ad) + '</span><span class="rk">' + esc(r.deger()) + '</span>',
+      render: (r) => '<span class="nm">' + esc(r.ad) + '</span><span class="rk"' + (r.id === 'lang' ? ' translate="no"' : '') + '>' + esc(r.deger()) + '</span>',
       onFocus: (r) => {
         panel.innerHTML = '<div class="pn-t">' + esc(r.ad) + '</div><div class="pn-d">' + esc(r.yardim) + '</div>';
       },
@@ -90,7 +92,14 @@ export function settingsScreen() {
     else if (r.id === 'add') open('addsource');
     else if (r.id === 'theme') open('tema');
     else if (r.id === 'keys') open('kumanda');
-    else if (r.id === 'fontScale') {
+    else if (r.id === 'lang') {
+      ctx.store.setSetting('lang', sonraki(DIL, ctx.store.setting('lang', 'auto'), yon));
+      dilKur(ctx.store);
+      // Metinler baştan çizilir (Türkçe'ye dönüş için de gerekir): ekranlar yeni dille yeniden kurulur
+      resetTo('home');
+      open('settings');
+      return;
+    } else if (r.id === 'fontScale') {
       const yeni = sonraki(YAZI, ctx.store.setting('fontScale', '1'), yon);
       ctx.store.setSetting('fontScale', yeni);
       boyutla(Number(yeni));
@@ -129,7 +138,7 @@ export function settingsScreen() {
     onKey(a) {
       if (a === 'left' || a === 'right') {
         const r = list.cur;
-        if (r && /^(liveFmt|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
+        if (r && /^(lang|liveFmt|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
         return true;
       }
       return list.key(a);

@@ -5,6 +5,7 @@ import { el, esc, enYakin } from '../ui.js';
 import { eylemi } from '../kumanda.js';
 import { vizyonYukle } from '../vizyon.js';
 import * as K from '../log.js';
+import { t } from '../../../www/js/i18n.js';
 
 // id'ler Ayarlar › Kumanda tuşları'ndaki eylem adlarıyla aynıdır
 export const KAROLAR = [
@@ -26,7 +27,7 @@ const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz',
 
 export const tarihYaz = (f) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((f && f.date) || '');
-  if (m) return Number(m[3]) + ' ' + AYLAR[Number(m[2]) - 1] + ' ' + m[1];
+  if (m) return Number(m[3]) + ' ' + t(AYLAR[Number(m[2]) - 1]) + ' ' + m[1];
   return f && f.year ? String(f.year) : '';
 };
 const bas = (ad) => String(ad || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('');

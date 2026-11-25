@@ -85,13 +85,14 @@ details{margin:8px 0}summary{color:#9aa6bf;padding:8px 0;font-size:15px}
   </section>
 </main>
 <nav id="sek"><button data-s="p-k" class="on">Kumanda</button><button data-s="p-f">Fare</button><button data-s="p-y">Yaz</button><button data-s="p-d">Daha</button></nav>
+<!--DIL-->
 <script>(function () {
 var $ = function (i) { return document.getElementById(i); };
 var pin = (/[?&]k=(\d{4})/.exec(location.search) || [])[1] || '';
 try { if (pin) localStorage.setItem('tvk', pin); else pin = localStorage.getItem('tvk') || ''; } catch (e) {}
 if (!pin) $('pw').style.display = '';
 function pn() { return pin || $('pin').value.trim(); }
-function yaz(t, k) { var s = $('st'); s.textContent = t; s.className = k || ''; }
+function yaz(t, k) { var s = $('st'); s.textContent = T(t); s.className = k || ''; }
 
 // Tek istek: yol + govde; cb(basarili). Sessiz: durum satırını yalnız hatada günceller (imleç hareketi gibi sık istekler).
 function gonder(yol, g, cb, sessiz) {

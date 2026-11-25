@@ -27,6 +27,16 @@ const cache = new Map();
 let exact = null;
 let pats = null;
 
+// Ek sözlükler (ör. webOS'a özgü metinler): ana sözlüğün üstüne eklenir, aynı anahtar varsa ek sözlük kazanır.
+const extra = [];
+export function addPairs(pairs) {
+  extra.push(pairs);
+  exact = null;
+  pats = null;
+  memo.clear();
+  cache.clear();
+}
+
 function compile(pairs) {
   exact = new Map();
   pats = [];
@@ -67,7 +77,7 @@ function lookup(k, depth = 0) {
   return r;
 }
 function lookupRaw(k, depth) {
-  if (!exact) compile(EN_PAIRS);
+  if (!exact) compile(extra.length ? EN_PAIRS.concat(...extra) : EN_PAIRS);
   const hit = exact.get(k);
   if (hit !== undefined) return hit;
   if (depth > 1) return null;
@@ -136,7 +146,7 @@ export function translate(text) {
   if (cur !== 'en' || typeof text !== 'string' || !text) return text;
   const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(text);
   const core = m[2];
-  if (!core) return text;
+  if (!core || !/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(core)) return text; // harf yoksa (saat, sayı, simge) çevrilecek bir şey de yok
   let out = cache.get(core);
   if (out === undefined) {
     out = lookupDeep(norm(core));

@@ -972,6 +972,9 @@ function guncelleBaslat(p) {
 }
 // </magaza-kes>
 
+// Telefon sayfalarının dil betiği (telefon-dil.js): iki sayfaya da <script> olarak konur; telefonun dili Türkçe değilse sayfa İngilizce olur.
+var TELEFON_DIL = fs.readFileSync(pathm.join(__dirname, 'telefon-dil.js'), 'utf8');
+
 var SAYFA =
   '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Iptv Player Pro · TV\'ye aktar</title>' +
@@ -993,12 +996,13 @@ var SAYFA =
   '<label for="pw">Şifre</label><input id="pw" autocapitalize="none" autocorrect="off" spellcheck="false"></div>' +
   '<label for="ad">Ad (isteğe bağlı)</label><input id="ad" placeholder="Evim">' +
   '<button id="go" type="button">TV\'ye gönder</button><div id="msg"></div>' +
+  '<script>' + TELEFON_DIL + '</script>' +
   '<script>(function(){var $=function(i){return document.getElementById(i)},tip="m3u";' +
   'var q=/[?&]k=(\\d{4})/.exec(location.search);if(q)$("pin").value=q[1];' +
   'function sec(t){tip=t;$("g1").style.display=t==="m3u"?"":"none";$("g2").style.display=t==="xtream"?"":"none";' +
   '$("b1").className=t==="m3u"?"on":"";$("b2").className=t==="xtream"?"on":""}' +
   '$("b1").onclick=function(){sec("m3u")};$("b2").onclick=function(){sec("xtream")};' +
-  'function yaz(t,k){$("msg").className=k||"";$("msg").textContent=t}' +
+  'function yaz(t,k){$("msg").className=k||"";$("msg").textContent=T(t)}' +
   '$("go").onclick=function(){var g={pin:$("pin").value.trim(),tip:tip,ad:$("ad").value.trim(),url:$("url").value.trim(),' +
   'server:$("sv").value.trim(),user:$("us").value.trim(),pass:$("pw").value.trim()};' +
   'if(!/^\\d{4}$/.test(g.pin))return yaz("TV ekranındaki 4 haneli kodu yazın.","err");' +
@@ -1247,7 +1251,7 @@ function aliciKontrol(simdi) {
 }
 
 // Telefon kumandası sayfası (sekmeli, tek ekrana sığar): kumanda.html servis klasöründe durur ve açılışta bir kez okunur.
-var KUMANDA_SAYFA = fs.readFileSync(pathm.join(__dirname, 'kumanda.html'), 'utf8');
+var KUMANDA_SAYFA = fs.readFileSync(pathm.join(__dirname, 'kumanda.html'), 'utf8').replace('<!--DIL-->', '<script>' + TELEFON_DIL + '</script>');
 
 // Telefon kumandası: aynı ağdaki telefon tarayıcısı TV uygulamasına tuş, yazı ve oynatma bağlantısı gönderir.
 // Kaynak aktarma alıcısından ayrı bir sunucudur (aktarma ekranı kapanınca kumanda kapanmasın). Uygulama kumandaSor ile uzun

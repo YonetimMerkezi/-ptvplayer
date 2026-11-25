@@ -2,6 +2,7 @@
 // Bekleme, tek istek ve hata sınırı Android ile ortak www/js/hero.js'te; burada yalnız çizim ve görsel yükleme var.
 import { createHero, heroModel } from '../../www/js/hero.js';
 import { esc } from './ui.js';
+import { t } from '../../www/js/i18n.js';
 
 const kes = (s, n) => {
   s = String(s || '').replace(/\s+/g, ' ').trim();
@@ -17,8 +18,8 @@ export function vitrinMetni(m) {
   if (parcalar.length) h += '<div class="v-m">' + parcalar.join('<i>·</i>') + '</div>';
   if (m.plot) h += '<div class="v-p">' + esc(kes(m.plot, 300)) + '</div>';
   const kisiler = [];
-  if (m.cast) kisiler.push('Oyuncular: ' + kes(m.cast, 90));
-  if (m.director) kisiler.push('Yönetmen: ' + kes(m.director, 40));
+  if (m.cast) kisiler.push(t('Oyuncular') + ': ' + kes(m.cast, 90));
+  if (m.director) kisiler.push(t('Yönetmen') + ': ' + kes(m.director, 40));
   if (kisiler.length) h += '<div class="v-c">' + esc(kisiler.join('   ')) + '</div>';
   return h;
 }

@@ -7,6 +7,9 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// Sayfada iki betik var: dil betiği (telefon-dil.js) ve sayfanın kendi betiği (sonuncusu)
+const sonBetik = (h) => /<script>([\s\S]*)<\/script>/.exec(h.slice(h.lastIndexOf('<script>')))[1];
 import { createRequire } from 'node:module';
 
 globalThis.window = globalThis.window || {};
@@ -61,7 +64,7 @@ test('kumanda: sayfa kod içermez ve betiği geçerli; verilen kod sabit kalır;
   }
   assert.equal((await istek(a.port, '/baska')).kod, 404);
   assert.equal((await istek(a.port, '/tus')).kod, 404, 'GET /tus yok');
-  const betik = /<script>([\s\S]*)<\/script>/.exec(svc._kumandaSayfa)[1];
+  const betik = sonBetik(svc._kumandaSayfa);
   assert.doesNotThrow(() => new vm.Script(betik), 'sayfadaki betik sözdizimi geçerli');
   for (const tus of Object.keys(TUS_KODLARI)) assert.ok(svc._kumandaSayfa.includes('data-t="' + tus + '"'), 'telefon sayfasında ' + tus + ' düğmesi var');
 });
@@ -328,7 +331,7 @@ test('kumanda: /kaynak formu temizlenip sıraya girer; ekle için adres zorunlu;
   for (const id of ['id="ld"', 'id="ls"', 'id="lu"', 'id="lp"', 'id="lb"', 'id="la"', 'id="ly"', 'id="le"']) assert.ok(sayfa.metin.includes(id), id);
   assert.match(sayfa.metin, /\/kaynak/);
   assert.ok(!sayfa.metin.includes('1234'), 'sayfa kodu içermez');
-  const betik = /<script>([\s\S]*)<\/script>/.exec(sayfa.metin)[1];
+  const betik = sonBetik(sayfa.metin);
   new vm.Script(betik); // sözdizimi geçerli
 });
 
@@ -481,7 +484,7 @@ test('kumanda sayfası: tek ekrana sığan sekmeler, fare alanı, hızlı geçi�
   assert.match(s, /overflow:hidden/, 'ana düzen kaydırma gerektirmez');
   assert.ok(!/user-scalable=yes/.test(s));
   // Betik her sekmeden bağımsız çalışır: söz dizimi geçerli
-  const betik = /<script>([\s\S]*)<\/script>/.exec(s)[1];
+  const betik = sonBetik(s);
   assert.doesNotThrow(() => new vm.Script(betik));
 });
 

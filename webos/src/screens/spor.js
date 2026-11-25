@@ -162,7 +162,8 @@ export function sporScreen() {
       maclar = [];
       chipler = [];
       chipCiz();
-      list.setMessage('Maç bilgisi alınamadı: ' + (e && e.message ? e.message : e) + '. OK ile yeniden dene');
+      const hm = String(e && e.message ? e.message : e).replace(/\.+$/, '');
+      list.setMessage((/^Maç bilgisi/.test(hm) ? hm : 'Maç bilgisi alınamadı: ' + hm) + '. OK ile yeniden dene'); // ileti zaten "Maç bilgisi alınamadı…" ile başlıyorsa tekrarlanmaz
     }
   }
 
