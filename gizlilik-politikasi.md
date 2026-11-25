@@ -2,7 +2,9 @@
 
 *English version below.*
 
-Son güncelleme: 19 Kasım 2026 · Uygulama: Iptv Player Pro (`com.koruk.iptv`) · Geliştirici: YonetimMerkezi
+Son güncelleme: 25 Kasım 2026 · Uygulama: Iptv Player Pro (Android: `com.koruk.iptv`, LG webOS TV: `com.koruk.iptv.webos`) · Geliştirici: YonetimMerkezi · E-posta: karagozyazilim12@gmail.com
+
+Bu politika hem Android hem LG webOS TV uygulamasını kapsar. Android'e özgü bölümler başlıklarında “Android” yazar; LG TV sürümü için “LG webOS TV sürümü” bölümüne bakın.
 
 ## Kısaca
 
@@ -19,7 +21,7 @@ Son güncelleme: 19 Kasım 2026 · Uygulama: Iptv Player Pro (`com.koruk.iptv`) 
 
 Eklediğiniz IPTV kaynağına uygulama doğrudan bağlanır. Sağlayıcı, isteği IP adresinizle ve kendi hesap bilgilerinizle alır. Bu bağlantı sizin seçiminizdir; sağlayıcının kendi gizlilik koşulları geçerlidir. Biz bu bağlantılara aracılık etmeyiz.
 
-## Uygulamanın internetten aldığı bilgiler
+## Uygulamanın internetten aldığı bilgiler (Android)
 
 Uygulamanın özellikleri için aşağıdaki hizmetlere istek gider. İsteklerde adınız, hesabınız ya da cihaz kimliğiniz **bulunmaz**; her internet isteğinde olduğu gibi hizmet IP adresinizi görür.
 
@@ -36,7 +38,7 @@ Uygulamanın özellikleri için aşağıdaki hizmetlere istek gider. İsteklerde
 
 Google Play dışında dağıtılan APK sürümü ayrıca yeni sürüm denetimi için GitHub'a bağlanır. Google Play sürümünde bu yoktur.
 
-## Üyelik ve ödeme
+## Üyelik ve ödeme (Android)
 
 Üyelik (Standart, Pro) Google Play aboneliğidir. Ödeme bilgileriniz Google tarafından işlenir; bize ulaşmaz. Uygulama yalnız aboneliğinizin etkin olup olmadığını Google Play'den öğrenir. Aboneliği Google Play > Abonelikler bölümünden istediğiniz zaman iptal edebilirsiniz.
 
@@ -44,13 +46,29 @@ Google Play dışında dağıtılan APK sürümü ayrıca yeni sürüm denetimi 
 
 Yönetici size hediye üyelik verirse, cihaz kimliğinizi (Üyelik penceresinde görünen rastgele kimlik) siz ona iletirsiniz. Herkese açık yapılandırma dosyasında yalnızca bu kimlik, üyelik türü ve bitiş tarihi yer alır; ad, e-posta ya da hesap bilgisi yer almaz. Uygulama bu dosyayı okuyup kendi kimliğiyle eşleşen kaydı uygular.
 
-## İzinler
+## İzinler (Android)
 
 - **İnternet, ağ durumu, çoklu yayın:** kaynaklara ve hizmetlere bağlanmak, yerel ağda cihaz bulmak için.
 - **Bildirimler:** indirme ve kayıt durumu, program hatırlatıcıları için; yalnız siz açarsanız.
 - **Tam zamanlı alarm, açılışta başlatma:** zamanlı kayıt ve hatırlatıcıları zamanında çalıştırmak, cihaz açılınca yeniden kurmak için.
 - **Ön plan hizmetleri:** arka planda ses çalmak, indirmek ve zamanlı kayıt yapmak için.
 - **Android TV “Devam et”:** izlemeye devam edilecek içeriği TV ana ekranında göstermek için.
+
+## LG webOS TV sürümü
+
+LG TV'ler için ayrı, sade bir sürüm vardır (`com.koruk.iptv.webos`). Yukarıdaki ilkeler onun için de geçerlidir: hesap yok, reklam yok, analiz yok, kişisel bilgi istenmez, üyelik ya da satın alma yok. Farklar şunlardır:
+
+- **TV'de tutulan veriler:** Eklediğiniz kaynaklar (adres, kullanıcı adı, parola), favoriler, klasörler, son izlenenler, kaldığınız yer ve ayarlar yalnız TV'nin bu uygulamaya ayrılmış depolama alanında durur ve bize gönderilmez. Parola TV'de şifrelenmeden saklanır. Uygulamayı TV'den kaldırırsanız hepsi silinir. Kayıt özelliğini (deneme) kullanırsanız kayıtlar TV'nin ya da takılı USB belleğin diskine yazılır; hiçbir yere yüklenmez.
+- **Kaynağınızın sağlayıcısı:** Uygulama eklediğiniz IPTV kaynağına doğrudan (gerekirse TV içinde çalışan uygulama servisi aracılığıyla, aynı TV'de) bağlanır. Sağlayıcı isteği IP adresinizle ve kendi hesap bilgilerinizle alır; sağlayıcının kendi gizlilik koşulları geçerlidir.
+- **İnternetten alınanlar:** İsteklerde adınız, hesabınız ya da TV'nizin kimliği **bulunmaz**; her internet isteğinde olduğu gibi hizmet IP adresinizi görür.
+  - **Vizyondaki filmler:** Beyazperde (beyazperde.com) sayfası ve afişleri.
+  - **Film bilgisi ve afiş:** Film adı (ve varsa yıl) eşleştirme, tür, özet ve afiş için Cinemeta'ya (Stremio) gönderilir; afişler bu hizmetlerin gösterdiği görsel sunucularından (ör. Metahub, TMDB) yüklenir.
+  - **Altyazı:** Film adı, kimliğe çevrilmek üzere IMDb öneri hizmetine (v3.sg.media-imdb.com) gönderilir; altyazı listesi ve dosyası OpenSubtitles'ın Stremio eklentisinden (opensubtitles-v3.strem.io) alınır.
+  - **Fragmanlar:** YouTube (Google). Fragman, TV'nin YouTube uygulamasında açılır ya da ekrandaki QR kodla telefonda açılır; fragmanı bulmak için film adı YouTube'da aranabilir. Küçük resimler i.ytimg.com'dan yüklenir. YouTube bu istekleri kendi gizlilik politikasına göre işleyebilir.
+  - **Spor:** ESPN, LiveScore, Mackolik, TheSportsDB, sahadan, macrehberi, livesoccertv ve sporekrani.
+  - **Güncelleme:** LG İçerik Mağazası sürümü güncellemeyi mağaza üzerinden alır ve kendisi güncelleme denetlemez. Mağaza dışından yüklenen sürüm ayrıca yeni sürüm denetimi için GitHub'a bağlanır.
+- **Telefon kumandası (isteğe bağlı):** Ayarlar'dan ya da Kaynak ekle ekranından açarsanız TV, yalnız yerel ağınızda (aynı Wi-Fi) erişilebilen küçük bir sayfa sunar. Sayfayı kullanmak için TV ekranındaki 4 haneli kod gerekir. Telefonla TV arasında giden bilgi (tuşlar, yazdığınız arama, gönderdiğiniz bağlantı ya da kaynak bilgisi) internete çıkmaz. Ekranı kapatınca ya da özelliği kapatınca sayfa durur.
+- **İzinler:** LG webOS uygulaması kamera, mikrofon, konum ya da kişi listesi gibi izinleri kullanmaz.
 
 ## Çocuklar
 
@@ -70,13 +88,15 @@ Reklam ya da analiz eklenirse bu politika, o sürümden önce güncellenir. Gün
 
 ## İletişim
 
-Soru ve talepler için: https://github.com/YonetimMerkezi/-ptvplayer/issues
+Soru ve talepler için: karagozyazilim12@gmail.com ya da https://github.com/YonetimMerkezi/-ptvplayer/issues
 
 ---
 
 # Iptv Player Pro – Privacy Policy
 
-Last updated: 19 November 2026 · App: Iptv Player Pro (`com.koruk.iptv`) · Developer: YonetimMerkezi
+Last updated: 25 November 2026 · App: Iptv Player Pro (Android: `com.koruk.iptv`, LG webOS TV: `com.koruk.iptv.webos`) · Developer: YonetimMerkezi · Email: karagozyazilim12@gmail.com
+
+This policy covers both the Android app and the LG webOS TV app. Sections specific to Android say “Android” in their heading; for the LG TV version see the “LG webOS TV version” section.
 
 ## In short
 
@@ -93,7 +113,7 @@ The following is stored only in the app's storage on your device and is never se
 
 The app connects directly to the IPTV source you add. The provider receives the request with your IP address and your own account details. That connection is your choice and the provider's own privacy terms apply. We do not mediate these connections.
 
-## Information the app fetches from the internet
+## Information the app fetches from the internet (Android)
 
 To power its features the app sends requests to the services below. Requests contain **no** name, account or device identifier; as with any internet request, the service sees your IP address.
 
@@ -110,7 +130,7 @@ To power its features the app sends requests to the services below. Requests con
 
 The APK distributed outside Google Play also connects to GitHub to check for new versions. The Google Play version does not.
 
-## Membership and payment
+## Membership and payment (Android)
 
 Membership (Standard, Pro) is a Google Play subscription. Google processes your payment details; they never reach us. The app only learns from Google Play whether your subscription is active. You can cancel at any time in Google Play > Subscriptions.
 
@@ -118,13 +138,29 @@ Membership can be used on one phone and one TV at a time. To enforce this, the G
 
 If the administrator gives you a complimentary membership, you send them your device ID (the random ID shown in the Membership window). The publicly readable configuration file contains only that ID, the membership type and the end date; no name, email or account details. The app reads this file and applies the entry that matches its own ID.
 
-## Permissions
+## Permissions (Android)
 
 - **Internet, network state, multicast:** to reach sources and services and to find devices on the local network.
 - **Notifications:** for download and recording status and programme reminders, only if you allow them.
 - **Exact alarms, start at boot:** to run scheduled recordings and reminders on time and to re-arm them after a restart.
 - **Foreground services:** to play audio in the background, download, and record on schedule.
 - **Android TV "Continue watching":** to show what to resume on the TV home screen.
+
+## LG webOS TV version
+
+There is a separate, simplified version for LG TVs (`com.koruk.iptv.webos`). The principles above apply to it as well: no account, no ads, no analytics, no personal information requested, no membership or purchases. The differences are:
+
+- **Data kept on the TV:** The sources you add (address, username, password), favourites, folders, recently watched, resume positions and settings stay only in the storage the TV reserves for this app and are never sent to us. The password is stored on the TV without encryption. Removing the app from the TV deletes all of it. If you use the (experimental) recording feature, recordings are written to the TV's disk or an attached USB drive and are not uploaded anywhere.
+- **Your source provider:** The app connects to the IPTV source you add directly (if needed, through the app's service running on the same TV). The provider receives the request with your IP address and your own account details; the provider's own privacy terms apply.
+- **Information fetched from the internet:** Requests contain **no** name, account or TV identifier; as with any internet request, the service sees your IP address.
+  - **In cinemas:** the Beyazperde (beyazperde.com) page and its posters.
+  - **Movie information and posters:** The title (and the year, if known) is sent to Cinemeta (Stremio) for matching, genres, plots and posters; posters are loaded from the image servers those services point to (for example Metahub, TMDB).
+  - **Subtitles:** The title is sent to the IMDb suggestion service (v3.sg.media-imdb.com) to find its ID; the subtitle list and file come from OpenSubtitles' Stremio add-on (opensubtitles-v3.strem.io).
+  - **Trailers:** YouTube (Google). A trailer opens in the TV's YouTube app or, through the on-screen QR code, on your phone; the title may be searched on YouTube to find a trailer. Thumbnails load from i.ytimg.com. YouTube may process these requests under its own privacy policy.
+  - **Sports:** ESPN, LiveScore, Mackolik, TheSportsDB, sahadan, macrehberi, livesoccertv and sporekrani.
+  - **Updates:** The LG Content Store version is updated through the store and does not check for updates itself. A version installed from outside the store also connects to GitHub to check for new versions.
+- **Phone remote (optional):** If you turn it on in Settings or on the Add source screen, the TV serves a small page reachable only on your local network (the same Wi-Fi). The 4-digit code on the TV screen is required to use it. What passes between phone and TV (keys, the search you type, a link or source details you send) does not leave your network. The page stops when you leave that screen or turn the feature off.
+- **Permissions:** The LG webOS app does not use permissions such as camera, microphone, location or contacts.
 
 ## Children
 
@@ -144,4 +180,4 @@ If ads or analytics are ever added, this policy will be updated before that vers
 
 ## Contact
 
-Questions and requests: https://github.com/YonetimMerkezi/-ptvplayer/issues
+Questions and requests: karagozyazilim12@gmail.com or https://github.com/YonetimMerkezi/-ptvplayer/issues

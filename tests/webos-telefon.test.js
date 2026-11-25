@@ -380,7 +380,7 @@ test('kablolama: Kaynak ekle ekranı telefon panelini açar ve telefondan gelen 
   assert.match(tel, /kaynak: kaynakFormuDoldur/);
   assert.match(oku('src', 'app.js'), /setTimeout\(telefonuBaslat/);
   assert.match(oku('css', 'tv.css'), /\.tel-pn \{/);
-  assert.match(oku('css', 'tv.css'), /\.top-ara\.on \{/);
+  assert.match(oku('css', 'tv.css'), /\.top-ara\.on(, [^{]*)? \{/);
   // Ara düğmesi: üst çubuk çizimi, gözatma ekranı (Son izlenenler hariç) ve kapsamlı arama
   const ctxSrc = oku('src', 'ctx.js');
   assert.match(ctxSrc, /export function ustCubuk\(baslik, alt, kok, ara, kumanda\)/);
@@ -614,7 +614,7 @@ test('kablolama: ana sayfada kumanda düğmesi (üst çubuk, odak, tıklama) ve 
   assert.match(tel, /imlecKur\(\{ tus: \(a\) => tusGonder\(a\) \}\)/);
   const css = oku('css', 'tv.css');
   assert.match(css, /\.top-kum \{/);
-  assert.match(css, /\.top-kum\.on \{/);
+  assert.match(css, /\.top-kum\.on(, [^{]*)? \{/);
   assert.match(css, /\.sanal-imlec \{[^}]*pointer-events: none/, 'imleç tıklamayı yakalamaz');
   // ES5: imleç modülü Chromium 38'de olmayan işlevleri kullanmaz
   const im = oku('src', 'imlec.js');

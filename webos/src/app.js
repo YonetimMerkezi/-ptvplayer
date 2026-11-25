@@ -34,6 +34,7 @@ import { guncelleScreen } from './screens/guncelle.js';
 import { otomatikDenetle, guncellemeSonrasi } from './guncelle.js';
 import { MAGAZA } from './version.js';
 import { dilKur } from './dil.js';
+import { hoverBagla } from './vurgu.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -244,6 +245,7 @@ export function start() {
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
   temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);
+  hoverBagla(document); // Magic Remote / telefon imleci üzerine gelince vurgu
   resimYedegiKur(document); // yüklenemeyen logo: servis yedeği, olmazsa gizle (kırık simge görünmez)
   setInterval(saatleriYaz, 15000);
   K.bilgi('Açıldı: ' + window.innerWidth + '×' + window.innerHeight);

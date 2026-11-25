@@ -135,7 +135,7 @@ test('arama ekranı: yazdıkça arama, sekmeler ve Chromium 38 uyumu (kaynak den
   assert.doesNotMatch(k, /\.findIndex\(|\.includes\(|\.find\(/, 'Chromium 38\'de yok');
   assert.ok(CANLI_MIN >= 2 && CANLI_MS >= 150 && CANLI_MS <= 600 && TUR_LIMIT >= 100);
   const css = readFileSync(new URL('../webos/css/tv.css', import.meta.url), 'utf8');
-  assert.match(css, /\.s-tab\.on \{/);
+  assert.match(css, /\.s-tab\.on(, [^{]*)? \{/);
   assert.match(css, /\.search \.s-res \{ top: 20\.2rem/);
 });
 
