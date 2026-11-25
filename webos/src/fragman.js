@@ -8,6 +8,7 @@ import { trailerIds, trailerTitle } from '../../www/js/cinemeta.js';
 import { findTrailerOnYoutube } from '../../www/js/yt-search.js';
 import { luna } from './luna.js';
 import * as K from './log.js';
+import { MAGAZA } from './version.js';
 
 export const YOUTUBE_UYGULAMA = 'youtube.leanback.v4';
 export const YOLLAR = [
@@ -15,7 +16,8 @@ export const YOLLAR = [
   ['uygulama', 'TV’nin YouTube uygulaması'],
   ['qr', 'Telefonda izle: QR kod'],
 ];
-export const VARSAYILAN_YOL = 'sayfa';
+// Mağaza sürümünde (LG Content Store) varsayılan QR: 'sayfa' yolunda Geri tuşu uygulamayı kapatır, mağaza incelemesi bunu hata sayabilir. Yan yükleme sürümü 'sayfa' kalır.
+export const VARSAYILAN_YOL = MAGAZA ? 'qr' : 'sayfa';
 const yolGecerli = (y) => (YOLLAR.filter((x) => x[0] === y).length ? y : VARSAYILAN_YOL);
 // YouTube TV sayfası: ?v= parametresi videoyu açar; #/ TV arayüzünün kök yoludur (youtube-webos aynı adresi kullanır)
 export const ytTvAdresi = (id) => 'https://www.youtube.com/tv?v=' + encodeURIComponent(id) + '#/';

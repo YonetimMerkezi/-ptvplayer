@@ -1,6 +1,7 @@
 // LG webOS vitrin ve fragman: görünüm metni, görsel yedekleri, ayrıntı bekleme/yükleme, fragman kimliği bulma ve YouTube'u açma.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 class F {
   constructor() {
@@ -220,6 +221,8 @@ test('fragman: ekran akışı — iletiler, bulunamayan fragman, açılamayan Yo
 test('fragman yolları: varsayılan YouTube TV sayfası; sayfa yolu pencereyi video adresine götürür, QR yolu kısa bağlantıyla QR ekranını açar', async () => {
   assert.deepEqual(YOLLAR.map((y) => y[0]), ['sayfa', 'uygulama', 'qr']);
   assert.equal(VARSAYILAN_YOL, 'sayfa');
+  // Mağaza sürümü (WEBOS_MAGAZA=1) varsayılanı QR yapar: Geri tuşu uygulamayı kapatmasın
+  assert.match(readFileSync(new URL('../webos/src/fragman.js', import.meta.url), 'utf8'), /VARSAYILAN_YOL = MAGAZA \? 'qr' : 'sayfa'/);
   assert.equal(ytTvAdresi('dQw4w9WgXcQ'), 'https://www.youtube.com/tv?v=dQw4w9WgXcQ#/');
   assert.equal(kisaAdres('dQw4w9WgXcQ'), 'https://youtu.be/dQw4w9WgXcQ');
   const gidilen = [];
