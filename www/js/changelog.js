@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 183,
+    title: 'Projeksiyon ve eski TV cihazlarında ana ekran ekrana sığıyor',
+    items: [
+      'Eski Android sistem bileşeni (WebView) olan projeksiyon ve TV kutularında ana ekran sağdan ve alttan taşıp kesilmiyor; kartlar ekrana oturuyor',
+      'Ana ekrandaki “Kaldığın yerden devam et”, “Son eklenenler” gibi şeritlerde afişler bu cihazlarda da görünüyor',
+    ],
+  },
+  {
     id: 182,
     title: 'Ana ekran başlığı düzeldi, gençlik ligi maçları kalktı',
     items: [

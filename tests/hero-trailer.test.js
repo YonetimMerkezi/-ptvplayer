@@ -270,12 +270,12 @@ test('bağlantı: vitrin boyanınca fragman denetleyicisine bildirilir; vitrin k
 
 test('bağlantı: fragman katmanı tam ekran, oynamadan görünmez; cine kipinde bilgi solar; video başlık şeridi ekran dışında', () => {
   const css = kaynak('www/css/app.css');
-  assert.match(css, /#hero-tr \{ position: fixed; inset: 0;[^}]*visibility: hidden; opacity: 0;/);
+  assert.match(css, /#hero-tr \{ position: fixed; top: 0; right: 0; bottom: 0; left: 0;[^}]*visibility: hidden; opacity: 0;/);
   assert.match(css, /#hero-tr\.live \{ visibility: visible; opacity: 1;/);
   assert.match(css, /#hero-tr \.ht-frame \{ position: absolute; left: 0; top: -35%; width: 100%; height: 170%;/);
   assert.match(css, /html\.hero-cine #app \{ opacity: 0; \}/);
   assert.match(css, /html\.hero-cine #app \{ pointer-events: none; \}/, 'gizliyken dokunuş görünmeyen öğeye gitmez');
-  assert.match(css, /html:not\(\.tv\) #hero-dim \{ display: block; position: fixed; inset: 0; z-index: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0\.9s ease; \}/);
+  assert.match(css, /html:not\(\.tv\) #hero-dim \{ display: block; position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0\.9s ease; \}/);
   assert.match(css, /html:not\(\.tv\)\.hero-cine #hero-dim \{ opacity: 1; \}/, 'telefonda zemin kararır');
   assert.match(css, /html:not\(\.tv\)\.hero-cine #hero-tr::after \{ opacity: 0; \}/, 'telefonda video üstündeki gölge de kalkar');
 });
