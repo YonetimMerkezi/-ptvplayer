@@ -32,6 +32,7 @@ const gecerli = (l) => (Array.isArray(l) ? l.filter((c) => c && typeof c === 'ob
 export function createXtream(src, net, kalici = varsayilanOnbellek) {
   const cfg = { server: src.server, user: src.user, pass: src.pass };
   const cache = {};
+  let katSayac = 0; // ön plan kategori istekleri için dönüşümlü iptal grubu
   // Kalıcı önbellek anahtarı: kaynak başına ayrı (başka kaynağın listesi gösterilmesin)
   const kAnahtar = (ek) => 'x:' + (src.id || src.server + '|' + src.user) + ':' + ek;
   // Yazma ekran çizildikten sonra yapılır (büyük listenin kopyalanması eski TV'de kısa takılma yapar); canlı kanal listeleri kaydedilmez
@@ -108,9 +109,11 @@ export function createXtream(src, net, kalici = varsayilanOnbellek) {
     onbellekten: (kind, catId) => kalici.oku(kAnahtar('it:' + kind + ':' + catId)).catch(() => null),
     // Kategori içeriği bu oturumda zaten bellekte mi (açılışta ağ beklenmez)
     hazir: (kind, catId) => !!(cache['it:' + kind + ':' + catId] && cache['it:' + kind + ':' + catId].hazir),
-    // grup: aynı gruptaki yeni istek öncekini keser (varsayılan 'kat'); null = kesilmez (arka plan önyüklemesi)
+    // grup: aynı gruptaki yeni istek öncekini keser; null = kesilmez (arka plan önyüklemesi).
+    // Varsayılan: iki grup dönüşümlü kullanılır, yani kullanıcı kategorileri hızlı geçerken son iki istek birlikte sürer ve yarım kalan
+    // yük çöpe gitmez (tek grupta her geçişte öncekinin indirmesi kesilir, yavaş sunucuda hiçbir kategori tamamlanmazdı).
     items: (kind, catId, grup) =>
-      bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' : grup).then((l) => kaydet('it:' + kind + ':' + catId, l))),
+      bir(cache, 'it:' + kind + ':' + catId, () => liste(kind, { category_id: catId }, rawCats(kind), grup === undefined ? 'kat' + (katSayac++ % 2) : grup).then((l) => kaydet('it:' + kind + ':' + catId, l))),
     all: (kind) => bir(cache, 'all:' + kind, () => liste(kind, undefined, rawCats(kind))),
     // Bir türün tüm öğelerini kategori kategori gezer: her kategori yüklenince cb(öğeler, biten, toplam, hataSayisi) çağrılır (başarısız kategori boş liste verir).
     // iptal() doğruysa yeni istek başlatılmaz. Tüm kategoriler başarısızsa hata fırlatır. Kategori yoksa tüm liste tek parça gelir.

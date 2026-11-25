@@ -115,7 +115,7 @@ test('Xtream sağlayıcı: büyük kategori işçiden gelir; işçi yoksa aynı 
   const l1 = await a.p.items('movie', '3');
   assert.equal(l1.length, 900);
   assert.ok(SahteIsci.son.gelen.length >= 1, 'ayrıştırma işçiye verildi');
-  assert.ok(a.say.istekler.some((i) => i.grup === 'kat'), 'kategori isteği iptal grubuyla gitti');
+  assert.ok(a.say.istekler.some((i) => /^kat[01]$/.test(i.grup)), 'kategori isteği iptal grubuyla gitti');
   // işçi yok
   delete globalThis.Worker;
   ist.sifirla();

@@ -7,6 +7,7 @@ import { createXtream } from '../webos/src/data.js';
 // Küçük sahte IndexedDB: tek depo, get/put/delete/openCursor; olaylar mikro görev sonrası tetiklenir
 function sahteIdb() {
   const veri = new Map();
+  const sayac = { degerImleci: 0, anahtarImleci: 0 };
   const istek = (calis) => {
     const r = { result: undefined, onsuccess: null };
     Promise.resolve().then(() => {
@@ -19,7 +20,21 @@ function sahteIdb() {
     get: (k) => istek(() => veri.get(k)),
     put: (v, k) => istek(() => (veri.set(k, v), k)),
     delete: (k) => istek(() => (veri.delete(k), undefined)),
+    openKeyCursor: () => {
+      sayac.anahtarImleci++;
+      const anahtarlar = [...veri.keys()];
+      let i = -1;
+      const r = { result: null, onsuccess: null };
+      const ilerle = () => {
+        i++;
+        r.result = i < anahtarlar.length ? { key: anahtarlar[i], continue: () => Promise.resolve().then(ilerle) } : null;
+        if (r.onsuccess) r.onsuccess();
+      };
+      Promise.resolve().then(ilerle);
+      return r;
+    },
     openCursor: () => {
+      sayac.degerImleci++;
       const anahtarlar = [...veri.keys()];
       let i = -1;
       const r = { result: null, onsuccess: null };
@@ -41,7 +56,7 @@ function sahteIdb() {
       return tx;
     },
   };
-  return { veri, idb: { open: () => { const r = { result: db, onsuccess: null }; Promise.resolve().then(() => r.onsuccess && r.onsuccess()); return r; } } };
+  return { veri, sayac, idb: { open: () => { const r = { result: db, onsuccess: null }; Promise.resolve().then(() => r.onsuccess && r.onsuccess()); return r; } } };
 }
 
 test('önbellek: yazılan liste okunur; boş liste yazılmaz; eski kayıt gösterilmez; IndexedDB yoksa null', async () => {
@@ -89,4 +104,27 @@ test('xtream: kategori ve içerik kalıcı önbelleğe yazılır; yeni oturumda 
   await p1.items('live', '1').catch(() => {});
   await new Promise((r) => setTimeout(r, 1800));
   assert.equal(await p2.onbellekten('live', '1'), null);
+});
+
+test('önbellek: 60 kayıttan fazlası yazılınca en eskiler silinir; budama kayıt değerlerini okumaz', async () => {
+  const { veri, sayac, idb } = sahteIdb();
+  const o = createOnbellek(() => idb);
+  for (let i = 0; i < 63; i++) await o.yaz('k' + i, [{ id: i }], 1000 + i);
+  const kayitAnahtarlari = [...veri.keys()].filter((k) => k !== '__kunye');
+  assert.equal(kayitAnahtarlari.length, 60, 'en çok 60 kayıt kalır');
+  for (const silinen of ['k0', 'k1', 'k2']) assert.equal(veri.has(silinen), false, silinen + ' (en eski) silinmiş olmalı');
+  assert.equal(veri.has('k62'), true, 'en yeni kayıt kalır');
+  assert.equal(sayac.degerImleci, 0, 'değerleri okuyan imleç kullanılmaz');
+  assert.ok(sayac.anahtarImleci <= 1, 'anahtar taraması en çok bir kez (künye yokken)');
+  assert.deepEqual(await o.oku('k62', 5000), [{ id: 62 }]);
+});
+
+test('önbellek: künyesiz eski kayıtlar ilk yazımda en eski sayılıp budanır', async () => {
+  const { veri, idb } = sahteIdb();
+  for (let i = 0; i < 60; i++) veri.set('eski' + i, { at: 5, v: [{ id: i }] });
+  const o = createOnbellek(() => idb);
+  await o.yaz('yeni', [{ id: 1 }], 9000);
+  assert.equal([...veri.keys()].filter((k) => k !== '__kunye').length, 60);
+  assert.equal(veri.has('yeni'), true, 'yeni kayıt silinmez');
+  assert.equal(veri.has('eski0'), false, 'künyesiz eski kayıtlardan biri gider');
 });
