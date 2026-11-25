@@ -30,9 +30,10 @@ export function fold(s) {
     .trim();
 }
 
-// Genç / yaş grubu takımı ya da yarışması mı: "Fenerbahce U19", "Turkey U-21", "Under 19", "UEFA Youth League".
+// Genç / yaş grubu takımı ya da yarışması mı: "Fenerbahce U19", "Turkey U-21", "Under 19", "UEFA Youth League", "UEFA Gençlik Ligi",
+// "Gelişim Ligi", "Primavera", "Juvenil", "Jugend". Kulüp adları ("Gençlerbirliği") eşleşmez: "gençlik/gelişim" yalnız lig/kupa/turnuva sözüyle birlikte sayılır.
 // Spor sayfasında bunların maçı gösterilmez ve hatırlatıcısı kurulmaz.
-const YOUTH_RE = /(^|[^a-z0-9])(u ?-?(1[4-9]|2[0-3])|under ?-?(1[4-9]|2[0-3])|youth)([^a-z0-9]|$)/;
+const YOUTH_RE = /(^|[^a-z0-9])(u ?-?(1[4-9]|2[0-3])|under ?-?(1[4-9]|2[0-3])|youth|(genclik|gelisim|genc) (ligi|kupasi|turnuvasi)|primavera|juvenil(e|es)?|jugend|a-?jugend|nachwuchs)([^a-z0-9]|$)/;
 export const isYouthText = (s) => YOUTH_RE.test(fold(s));
 
 export function hashId(s) {

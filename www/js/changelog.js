@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 182,
+    title: 'Ana ekran başlığı düzeldi, gençlik ligi maçları kalktı',
+    items: [
+      'Telefonu dik tuttuğunuzda başlıkta uygulamanın adı tam görünür; Ara, Bildirimler (Planlananlar), TV kumandası ve Ayarlar yan yana durur',
+      'Kaynak ekle ve kaynak değiştir düğmeleri başlıktan kaynak çubuğuna (Yenile’nin yanına) taşındı',
+      'Spor sayfasında UEFA Gençlik Ligi gibi gençlik ve gelişim ligi maçları artık listelenmez; yalnız profesyonel takımların maçları görünür',
+    ],
+  },
+  {
     id: 181,
     title: 'Telefon kumandası yenilendi: fare alanı, yazı ve hızlı geçiş',
     items: [

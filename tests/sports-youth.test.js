@@ -14,10 +14,10 @@ const ev = (eid, a, b, e) => ({ Eid: eid, Esd: e, Eps: 'NS', T1: [{ Nm: a }], T2
 const side = (name) => ({ name, label: name, score: null });
 
 test('isYouthText: U14–U23, Under 19, Youth League yakalanır; gerçek kulüp adları yakalanmaz', () => {
-  for (const s of ['Fenerbahce U19', 'Shakhtar Donetsk U19', 'Turkey U-21', 'Besiktas U 17', 'Real Madrid U23', 'Under 19', 'under-21 Euro', 'UEFA Youth League', 'Galatasaray (U19)', 'Fenerbahçe U19']) {
+  for (const s of ['Fenerbahce U19', 'Shakhtar Donetsk U19', 'Turkey U-21', 'Besiktas U 17', 'Real Madrid U23', 'Under 19', 'under-21 Euro', 'UEFA Youth League', 'Galatasaray (U19)', 'Fenerbahçe U19', 'UEFA Gençlik Ligi', 'UEFA Genclik Ligi', 'Gençlik Kupası', 'Gelişim Ligi', 'Elit Gelişim Ligi', 'Campionato Primavera', 'Juvenil A', 'A-Jugend Bundesliga']) {
     assert.equal(isYouthText(s), true, s);
   }
-  for (const s of ['Fenerbahce', 'Galatasaray', 'Union Berlin', 'Universitatea Craiova', 'Genclerbirligi', 'Gençlerbirliği', 'FC U 2000', 'Bayern Munich II', 'Cluj 1948', 'Under Armour Cup', 'U24', 'U13', 'Hapoel Be\'er Sheva', 'Beşiktaş', '']) {
+  for (const s of ['Fenerbahce', 'Galatasaray', 'Union Berlin', 'Universitatea Craiova', 'Genclerbirligi', 'Gençlerbirliği', 'FC U 2000', 'Bayern Munich II', 'Cluj 1948', 'Under Armour Cup', 'U24', 'U13', 'Hapoel Be\'er Sheva', 'Beşiktaş', 'Gençlik Spor', 'Gelişim Spor', 'UEFA Şampiyonlar Ligi', 'UEFA Avrupa Ligi', 'Süper Lig', '']) {
     assert.equal(isYouthText(s), false, s);
   }
   assert.equal(isYouthText(null), false);
@@ -30,6 +30,9 @@ test('isYouthMatch: takım adı, etiketi, yarışma adı ya da tur bilgisi genç
   assert.equal(isYouthMatch({ home: side('Galatasaray'), away: side('Aston Villa U21'), lgName: 'Şampiyonlar Ligi' }), true, 'tek takım yeter');
   assert.equal(isYouthMatch({ home: { name: 'Besiktas', label: 'Beşiktaş U19' }, away: side('Hapoel'), lgName: 'Avrupa Ligi' }), true, 'etiket de bakılır');
   assert.equal(isYouthMatch({ home: side('Galatasaray'), away: side('Aston Villa'), lgName: 'Şampiyonlar Ligi', round: '5' }), false);
+  assert.equal(isYouthMatch({ home: side('Shakhtar Donetsk'), away: side('Fenerbahçe'), lgName: 'UEFA Gençlik Ligi' }), true, 'Türkçe yarışma adı: ekrandaki Shakhtar-Fenerbahçe örneği');
+  assert.equal(isYouthMatch({ home: side('PSG'), away: side('Roma'), lgName: 'UEFA Gençlik Ligi' }), true);
+  assert.equal(isYouthMatch({ home: side('PSG'), away: side('Roma'), lgName: 'UEFA Şampiyonlar Ligi' }), false);
   assert.equal(isYouthMatch(null), false);
   assert.equal(isYouthMatch({}), false);
 });
