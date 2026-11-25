@@ -20,7 +20,7 @@ export function vitrinMetni(m) {
   const kisiler = [];
   if (m.cast) kisiler.push(t('Oyuncular') + ': ' + kes(m.cast, 90));
   if (m.director) kisiler.push(t('Yönetmen') + ': ' + kes(m.director, 40));
-  if (kisiler.length) h += '<div class="v-c">' + esc(kisiler.join('   ')) + '</div>';
+  if (kisiler.length) h += '<div class="v-c">' + esc(kisiler.join('  ·  ')) + '</div>';
   return h;
 }
 
