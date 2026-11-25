@@ -78,7 +78,7 @@ Uygulama hiçbir içerik sunmaz ve içerik adresi içermez; yalnızca kullanıc�
 
 **Mağaza paketi.**
 
-Mağaza kendi güncellemesini yaptığı için mağazaya gönderilen pakette kendi kendine güncelleme bulunmaz (Ayarlar › Güncelleme satırı, açılıştaki otomatik denetim ve servisteki indirme/kurulum komutları çıkarılır). Yan yükleme sürümü (CI'nin yayınladığı) aynen kalır.
+Mağaza kendi güncellemesini yaptığı için mağazaya gönderilen pakette kendi kendine güncelleme bulunmaz (Ayarlar › Güncelleme satırı, açılıştaki otomatik denetim ve servisteki indirme/kurulum komutları çıkarılır). Yan yükleme sürümü (CI'nin yayınladığı) aynen kalır. Mağaza paketinde ayrıca fragman varsayılanı “Telefonda izle: QR kod”dur (yan yüklemedeki “Bu uygulamada aç” yolunda Geri tuşu uygulamayı kapatır; mağaza incelemesi bunu hata sayabilir). Ayarlar › Fragman testi'nden değiştirilebilir.
 
 ```
 cd webos
