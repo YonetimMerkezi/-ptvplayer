@@ -38,7 +38,7 @@ export function settingsScreen() {
     return [
       { id: 'source', ad: 'Etkin kaynak', deger: () => (src ? src.name : '—'), yardim: 'OK: kaynakları yönet' },
       { id: 'add', ad: 'Kaynak ekle', deger: () => '', yardim: 'Xtream ya da M3U bağlantısı ekler' },
-      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Canlı, çok renkli temalar: canlı renkler, gökkuşağı, okyanus, gün batımı, orman, şeker, aurora' },
+      { id: 'theme', ad: 'Tema merkezi', deger: () => temaAdi(), yardim: 'Canlı, çok renkli temalar ve koyu tema paketi: gece mavisi, kömür, AMOLED siyah, mor gece, zümrüt gece, bordo gece, derin deniz, altın gece' },
       { id: 'keys', ad: 'Kumanda tuşları', deger: () => '', yardim: 'Kırmızı / yeşil / sarı / mavi tuşlara oynatıcıda ve ana sayfada yapılacak eylemi atayın' },
       { id: 'lang', ad: 'Dil / Language', deger: () => ad(DIL, ctx.store.setting('lang', 'auto')), yardim: 'Uygulamanın dili. Otomatik: TV’nin diline uyar (Türkçe değilse İngilizce). / App language. Auto follows the TV language.' },
       { id: 'fontScale', ad: 'Yazı boyutu', deger: () => ad(YAZI, ctx.store.setting('fontScale', '1')), yardim: 'Tüm ekranlardaki yazı ve düğme boyutunu büyütür ya da küçültür' },

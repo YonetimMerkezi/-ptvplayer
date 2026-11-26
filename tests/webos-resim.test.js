@@ -33,7 +33,7 @@ const sunucu = http.createServer((req, res) => {
   }
   if (req.url === '/buyuk') {
     res.writeHead(200, { 'Content-Type': 'image/png' });
-    return res.end(Buffer.concat([PNG, Buffer.alloc(200 * 1024, 1)]));
+    return res.end(Buffer.concat([PNG, Buffer.alloc(320 * 1024, 1)]));
   }
   if (req.url === '/logo.svg') {
     res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
@@ -139,7 +139,7 @@ test('istemci: servis de getiremezse logo gizlenir ve adres bir daha denenmez; k
   assert.equal(d.style.display, undefined);
 });
 
-test('istemci: eşzamanlı istek sayısı 3 ile sınırlıdır', async () => {
+test('istemci: eşzamanlı istek sayısı 4 ile sınırlıdır', async () => {
   window.WebOSServiceBridge = function () {};
   let ayni = 0;
   let enCok = 0;
@@ -151,12 +151,52 @@ test('istemci: eşzamanlı istek sayısı 3 ile sınırlıdır', async () => {
   };
   const hepsi = [1, 2, 3, 4, 5, 6].map((n) => resim.resimYukle('https://k.example/' + n + '.png'));
   await mikro();
-  assert.equal(enCok, 3);
+  assert.equal(enCok, 4);
   while (bekle.length) {
     bekle.shift()();
     await mikro();
     await mikro();
   }
   await Promise.all(hepsi);
-  assert.equal(enCok, 3);
+  assert.equal(enCok, 4);
+});
+
+test('istemci: sıra en yeni istekten başlar; belgeden kalkan <img>\'ler için servise gidilmez ve başarısız sayılmaz', async () => {
+  window.WebOSServiceBridge = function () {};
+  const istenen = [];
+  const bekle = [];
+  resim.ayar.cagir = (u) => {
+    istenen.push(u);
+    return new Promise((coz) => bekle.push(() => coz({ mime: 'image/png', data: 'QQ==' })));
+  };
+  const belge = { documentElement: { contains: (e) => e.bagli !== false } };
+  const img = (bagli) => ({ ownerDocument: belge, bagli });
+  // dört istek servisi doldurur; arkadan gelenler bekler
+  const dolu = [1, 2, 3, 4].map((n) => resim.resimYukle('https://s.example/dolu' + n + '.png'));
+  const eski = img(true);
+  const p1 = resim.resimYukle('https://s.example/eski.png', eski).then(() => null, (e) => e); // sonra kalkacak
+  const yeniKalkan = img(true);
+  const p2 = resim.resimYukle('https://s.example/yeni1.png', yeniKalkan);
+  const p3 = resim.resimYukle('https://s.example/yeni2.png', img(true));
+  await mikro();
+  eski.bagli = false; // başka kategoriye geçildi: eski afiş belgeden kalktı
+  const bitir = async () => {
+    while (bekle.length) {
+      bekle.shift()();
+      await mikro();
+      await mikro();
+      await mikro();
+    }
+  };
+  await bitir();
+  await Promise.allSettled(dolu);
+  assert.match(String((await p1).message), /Vazgeçildi/);
+  await p2;
+  await p3;
+  assert.ok(istenen.indexOf('https://s.example/eski.png') < 0, 'belgeden kalkan afiş için servise gidilmedi');
+  assert.ok(istenen.indexOf('https://s.example/yeni2.png') < istenen.indexOf('https://s.example/yeni1.png'), 'en yeni istek önce işlendi');
+  // kalkan afiş başarısız sayılmadı: aynı adres tekrar istenebilir
+  const tekrar = resim.resimYukle('https://s.example/eski.png', img(true));
+  await bitir();
+  await tekrar;
 });

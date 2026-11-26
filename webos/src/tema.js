@@ -9,9 +9,11 @@ const ORIJINAL_TEMA = 'varsayilan';
 
 const T = (id, ad, bg, surface, raised, line, accent, ink, ek) => Object.assign({ id, ad, bg, surface, raised, line, accent, ink }, ek || {});
 
-// Hepsi canlı ve çok renkli: gradyan zemin + her karo ayrı parlak renkte dolu. Koyu/tek renkli zemin yok.
-// Her temada zemin renkleri beyaz yazıyla ≥ 4,4 karşıtlıkta kalır (test denetler); karo yazısı koyu (vurgu yazı rengi).
+// Canlı paket: gradyan zemin + her karo ayrı parlak renkte dolu. Her temada zemin renkleri beyaz yazıyla ≥ 4,4 karşıtlıkta kalır
+// (test denetler); karo yazısı koyu (vurgu yazı rengi).
 const CANLI = { canli: true, multi: true, dolu: true };
+// Koyu paket: koyu zemin, karolar zeminin biraz açığı ve kendi renginde yazı; odaklanan karo o renkle dolar. Özgün açık yazı renkleri korunur.
+const KOYU = { koyu: true, multi: true };
 
 export const TEMALAR = [
   // Canlı renkler (varsayılan): orta tonlu doygun mor-pembe zemin, her karo ayrı parlak renkte dolu; yazılar beyaz (canli), vurgu sarı.
@@ -57,6 +59,54 @@ export const TEMALAR = [
     ...CANLI,
     p: ['#efe9ff', '#ff6ec7', '#b6f23c', '#ffd84a', '#ff9a45', '#4fe3ff', '#7dffb5', '#f5f2ff', '#ff6b7a'],
     zemin: 'linear-gradient(135deg, #5b21b6 0%, #1d4ed8 52%, #0f7f7c 100%)',
+  }),
+  // --- Koyu tema paketi (gözü yormayan, karanlık odada rahat; son iki tema AMOLED/TV panelleri için en koyu)
+  // Gece mavisi: uygulamanın özgün lacivert zemini, turkuaz vurgu
+  T('gece-mavisi', 'Gece mavisi', '#0b1020', '#161d31', '#212c47', '#31416a', '#34e0c8', '#03161a', {
+    ...KOYU,
+    p: ['#e8ecf4', '#2dd4bf', '#fbbf24', '#b9a5ff', '#7dbaff', '#34d399', '#f78bc4', '#fb923c', '#ff8c8c'],
+    zemin: 'linear-gradient(135deg, #0b1020 0%, #111c38 55%, #0b2433 100%)',
+  }),
+  // Kömür: nötr koyu gri, mavi vurgu
+  T('komur', 'Kömür', '#0f1012', '#1a1c20', '#262930', '#3a3e47', '#60a5fa', '#04101f', {
+    ...KOYU,
+    p: ['#eceef2', '#7dbaff', '#fbbf24', '#4ade80', '#ff8a9c', '#c4b5fd', '#fb923c', '#2dd4bf', '#f08cfb'],
+    zemin: 'linear-gradient(135deg, #0c0d0f 0%, #14161a 55%, #181b21 100%)',
+  }),
+  // AMOLED siyah: saf siyah zemin (ışık sızdırmaz, enerji harcamaz), camgöbeği vurgu
+  T('amoled', 'AMOLED siyah', '#000000', '#0c0c0e', '#18181c', '#2a2a31', '#22d3ee', '#00181d', {
+    ...KOYU,
+    p: ['#f1f3f7', '#22d3ee', '#a3e635', '#ff8a9c', '#fbbf24', '#818cf8', '#34d399', '#f78bc4', '#fb923c'],
+  }),
+  // Mor gece: derin mordan koyu indigoya
+  T('mor-gece', 'Mor gece', '#0f0a1f', '#1a1233', '#2a1d4d', '#41306f', '#a78bfa', '#14082e', {
+    ...KOYU,
+    p: ['#ede9fe', '#b9a5ff', '#f78bc4', '#38bdf8', '#fbbf24', '#34d399', '#ff8a9c', '#67e8f9', '#fdba74'],
+    zemin: 'linear-gradient(135deg, #0f0a1f 0%, #1c1040 55%, #2a1052 100%)',
+  }),
+  // Zümrüt gece: koyu ormandan petrol mavisine
+  T('zumrut-gece', 'Zümrüt gece', '#06130e', '#0d2119', '#143328', '#1f4d3b', '#34d399', '#03140d', {
+    ...KOYU,
+    p: ['#e6faf1', '#34d399', '#fbbf24', '#7dbaff', '#f78bc4', '#a3e635', '#fb923c', '#c4b5fd', '#2dd4bf'],
+    zemin: 'linear-gradient(135deg, #06130e 0%, #0b2a1f 55%, #0a2530 100%)',
+  }),
+  // Bordo gece: koyu şaraptan erik rengine
+  T('bordo-gece', 'Bordo gece', '#14080c', '#25101a', '#38182a', '#5a2640', '#fb7185', '#2a0610', {
+    ...KOYU,
+    p: ['#ffe8ee', '#ff8a9c', '#fbbf24', '#f9a8d4', '#fdba74', '#a5b4fc', '#5eead4', '#fde68a', '#cb94ff'],
+    zemin: 'linear-gradient(135deg, #14080c 0%, #2a0f1f 55%, #3a1226 100%)',
+  }),
+  // Derin deniz: gece lacivertinden denizin dibine
+  T('derin-deniz', 'Derin deniz', '#04121c', '#0a2233', '#10324a', '#1b4a6b', '#38bdf8', '#021520', {
+    ...KOYU,
+    p: ['#e4f4ff', '#38bdf8', '#fbbf24', '#34d399', '#f78bc4', '#b9a5ff', '#fb923c', '#5eead4', '#ff8a9c'],
+    zemin: 'linear-gradient(135deg, #04121c 0%, #08283f 55%, #06303a 100%)',
+  }),
+  // Altın gece: siyaha yakın kahveden koyu altına; altın ve sıcak tonlar
+  T('altin-gece', 'Altın gece', '#0d0b06', '#1c1810', '#2c2516', '#4a3f22', '#fbbf24', '#1a1100', {
+    ...KOYU,
+    p: ['#fff4d6', '#fbbf24', '#fb923c', '#fde68a', '#ff8c8c', '#a3e635', '#f9a8d4', '#e9d5ff', '#67e8f9'],
+    zemin: 'linear-gradient(135deg, #0d0b06 0%, #1d1708 55%, #2a1d06 100%)',
   }),
 ];
 
@@ -123,11 +173,9 @@ export function cssUret(css, t) {
     });
     // Parıltılardaki şeffaf vurgu rengi de paletin vurgusuna döner
     c = c.replace(/rgba\(45, ?212, ?191,/g, 'rgba(' + rgbMetni(t.accent) + ',');
-    if (t.canli) {
-      // Koyu lacivert katmanlar (afiş altı, ayrıntı perdesi, açık paneller, bildirim) zeminin kendi rengine döner
-      c = c.replace(/rgba\(10, ?14, ?23,/g, 'rgba(' + rgbMetni(t.bg) + ',');
-      c = c.replace(/rgba\(27, ?36, ?55,/g, 'rgba(' + rgbMetni(t.surface) + ',');
-    }
+    // Koyu lacivert katmanlar (afiş altı, ayrıntı perdesi, açık paneller, soldaki menü, bildirim) temanın kendi zemin ve kutu rengine döner
+    c = c.replace(/rgba\(10, ?14, ?23,/g, 'rgba(' + rgbMetni(t.bg) + ',');
+    c = c.replace(/rgba\(27, ?36, ?55,/g, 'rgba(' + rgbMetni(t.surface) + ',');
   }
   if (t.zemin) c += '\nhtml, body { background: ' + t.zemin + '; }\n.screen { background: transparent; }\n.player { background: #000; }';
   if (t.multi && t.p) {

@@ -182,9 +182,9 @@ function getir(p, cb) {
 
 // ---------------------------------------------------------------------------------------------------------------
 // Resim yedeği: <img> doğrudan yüklenemezse (eski TV'lerin kök sertifika listesi eski; bazı sunucular başvuranı denetler)
-// resmi bu servis getirir ve data: adresi olarak verir. Yalnız küçük resimler (kanal logoları) için.
+// resmi bu servis getirir ve data: adresi olarak verir. Küçük resimler (kanal logoları, afişler) için.
 // ---------------------------------------------------------------------------------------------------------------
-var RESIM_EN_FAZLA = 160 * 1024; // luna yanıtı (base64) ~215 KB: parçalı okuma gerekmez
+var RESIM_EN_FAZLA = 300 * 1024; // luna yanıtı (base64) ~400 KB: parçalı okuma gerekmez (afişler kanal logolarından büyüktür)
 var RESIM_SURE_MS = 12000;
 
 // İlk baytlardan resim türü; resim değilse ''.

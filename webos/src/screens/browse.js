@@ -12,9 +12,10 @@ import * as D from '../duzen.js';
 const BASLIK = { live: 'Canlı TV', guide: 'TV Rehberi', movie: 'Filmler', series: 'Diziler', favs: 'Favoriler', recents: 'Son izlenenler' };
 const TUR_AD = { live: 'Canlı', movie: 'Filmler', series: 'Diziler' };
 const SUTUN = 5;
-const ONYUKLE_ILERI = 6; // seçili kategorinin altındaki, arka planda önceden yüklenen kategori sayısı
-const ONYUKLE_GERI = 2; // üstündeki
-const ONYUKLE_ZINCIR = 2; // aynı anda çalışan önyükleme sayısı
+const ONYUKLE_ILERI = 2; // açılan kategorinin altındaki, arka planda önceden yüklenen kategori sayısı
+const ONYUKLE_GERI = 1; // üstündeki
+const ONYUKLE_ZINCIR = 1; // aynı anda çalışan önyükleme sayısı (afişlerle aynı bağlantıları paylaşır: tek istek)
+const ONYUKLE_BEKLEME = 2500; // içerik ve afişler yerleşmeden komşu önyüklemesi başlamaz
 const SUTUN_VITRIN = 8; // kategoriler gizli olduğundan afişler tüm genişliğe dizilir; altta ikinci satırın başı görünür kalır
 
 const logoHtml = (u) => (u ? '<img src="' + esc(u) + '" alt="">' : '');
@@ -97,16 +98,36 @@ export function browseScreen({ kind, katAc }) {
       onFocus: (c) => {
         if (sessiz) return;
         clearTimeout(katT);
+        if (acilir) return; // Canlı TV/Filmler/Diziler: panelde gezerken içerik yüklenmez; ▶ ya da OK ile seçilen kategori açılır
         // Bellekte hazır kategori beklemeden açılır; ağdan gelecek olan, hızlı gezinirken istek yağmasın diye kısa süre bekletilir
         const hazir = c.klasor || (provider() && provider().hazir && provider().hazir(gercekTur, c.id));
         if (hazir) katYukle(c);
         else katT = setTimeout(() => katYukle(c), 160);
       },
-      onActivate: () => odak('list'),
+      onActivate: () => kategoriAc(),
     });
     cats.setItems(liste);
     aktifYaz();
   };
+
+  // Panelde seçili kategoriyi açar (▶, OK ya da tıklama): içerik sağda listelenir, odak içeriğe geçer, panel kapanır
+  function kategoriAc() {
+    const c = cats && cats.cur;
+    if (c && (!secilenKat || String(secilenKat.id) !== String(c.id) || (list && list.retry))) katYukle(c);
+    odak('list');
+  }
+  // Panel açılırken imleç içerikte gösterilen kategoride durur (gezinip vazgeçilen satırda kalmaz)
+  function katImleciSenkronla() {
+    if (!acilir || !cats || !secilenKat) return;
+    const i = cats.items.findIndex((x) => String(x.id) === String(secilenKat.id));
+    if (i < 0 || i === cats.index) return;
+    sessiz = true;
+    try {
+      cats.setIndex(i);
+    } finally {
+      sessiz = false;
+    }
+  }
 
   // --- sağ: içerik
   // Rehber satırının program metni ve ilerleme yüzdesi
@@ -267,7 +288,7 @@ export function browseScreen({ kind, katAc }) {
           },
         );
     };
-    for (let z = 0; z < ONYUKLE_ZINCIR; z++) setTimeout(adim, 150 + z * 60);
+    for (let z = 0; z < ONYUKLE_ZINCIR; z++) setTimeout(adim, ONYUKLE_BEKLEME + z * 60);
   }
 
   // --- canlı TV: şimdi / sonra
@@ -407,7 +428,12 @@ export function browseScreen({ kind, katAc }) {
     } finally {
       sessiz = false;
     }
-    if (i >= 0) secilenKat = cats.items[i];
+    if (acilir) {
+      // İmleç taşınan kategoridedir; içerikte açık olan kategori değişmez (silindiyse imlecin kategorisi açılır)
+      const j = secilenKat ? cats.items.findIndex((x) => String(x.id) === String(secilenKat.id)) : -1;
+      if (j >= 0) secilenKat = cats.items[j];
+      else if (cats.cur) katYukle(cats.cur);
+    } else if (i >= 0) secilenKat = cats.items[i];
     else if (cats.cur) katYukle(cats.cur);
   }
   // Klasör satırlarının sayıları (öğe eklenip çıkarılınca) — sütunu yeniden kurmadan
@@ -423,10 +449,13 @@ export function browseScreen({ kind, katAc }) {
       }
     }
   };
+  // Menü işlemlerinin hedefi: odak kategori panelindeyse imlecin üstündeki kategori (içerik ona geçilene dek yüklenmez), değilse açık kategori
+  const menuKat = () => (acilir && bolge === 'cats' && cats && cats.cur ? cats.cur : secilenKat);
   const kategoriIslem = (fn, ...arg) => {
-    if (!cats || !secilenKat) return;
-    duzenYaz(fn(duzen, cats.items, secilenKat, ...arg));
-    katYenile(secilenKat.id);
+    const c = menuKat();
+    if (!cats || !c) return;
+    duzenYaz(fn(duzen, cats.items, c, ...arg));
+    katYenile(c.id);
   };
   const siraUygula = (k) => {
     duzenYaz(D.siraDegistir(duzen, k));
@@ -461,7 +490,7 @@ export function browseScreen({ kind, katAc }) {
     });
   };
   const klasorAdlandir = () => {
-    const c = secilenKat;
+    const c = menuKat();
     if (!c || !c.klasor) return;
     open('ad', {
       baslik: 'Klasör adı',
@@ -474,7 +503,7 @@ export function browseScreen({ kind, katAc }) {
     });
   };
   const klasorSil = () => {
-    const c = secilenKat;
+    const c = menuKat();
     if (!c || !c.klasor) return;
     duzenYaz(D.klasorSil(duzen, c.fid));
     toast('Klasör silindi');
@@ -503,7 +532,7 @@ export function browseScreen({ kind, katAc }) {
     };
     return {
       baslik: 'Kategori sırası',
-      not: secilenKat ? 'Seçili: ' + secilenKat.name : '',
+      not: menuKat() ? 'Seçili: ' + menuKat().name : '',
       satirlar: [
         { ad: 'Yukarı taşı', calis: tasi('up') },
         { ad: 'Aşağı taşı', calis: tasi('down') },
@@ -516,12 +545,13 @@ export function browseScreen({ kind, katAc }) {
   };
   const klasorMenusu = () => {
     const l = [{ ad: 'Yeni klasör…', calis: () => yeniKlasor(null) }];
-    if (secilenKat && secilenKat.klasor) {
+    const hedef = menuKat();
+    if (hedef && hedef.klasor) {
       l.push({ ad: 'Yeniden adlandır…', calis: () => klasorAdlandir() });
       l.push({
         ad: 'Bu klasörü sil',
         calis: () => ({
-          baslik: '“' + secilenKat.name + '” silinsin mi?',
+          baslik: '“' + hedef.name + '” silinsin mi?',
           not: 'İçindeki öğeler yalnız klasörden kalkar, kaynağınızdan silinmez.',
           satirlar: [
             { ad: 'Evet, sil', calis: () => klasorSil() },
@@ -602,6 +632,7 @@ export function browseScreen({ kind, katAc }) {
           const i = liste.findIndex((x) => String(x.id) === son);
           if (i > 0) cats.setIndex(i);
         }
+        if (acilir && cats.cur) katYukle(cats.cur); // panelde gezerken içerik yüklenmediği için ilk kategori burada açılır
       };
       let taze = false;
       const tazeSoz = provider().categories(gercekTur);
@@ -681,6 +712,7 @@ export function browseScreen({ kind, katAc }) {
     // Menüde 1 sn beklenince / OK ile: kategori paneli açılır (odak menüde kalır)
     katAc() {
       if (!acilir) return;
+      katImleciSenkronla();
       railAcik = true;
       panelYaz();
     },
@@ -693,7 +725,9 @@ export function browseScreen({ kind, katAc }) {
       panelYaz();
     },
     katOdak() {
-      if (acilir && cats) odak('cats');
+      if (!acilir || !cats) return;
+      if (bolge !== 'cats') katImleciSenkronla();
+      odak('cats');
     },
     // Ara düğmesi / Mavi tuş: bulunulan bölümde (Filmler, Diziler, Canlı TV) aranır; Favoriler'de tüm katalogda
     araAc() {
@@ -733,7 +767,8 @@ export function browseScreen({ kind, katAc }) {
           return true;
         }
         if (a === 'right' || a === 'ok') {
-          if (vitrinli) odak('list');
+          if (acilir) kategoriAc();
+          else if (vitrinli) odak('list');
           else if (list && list.items.length) odak('list');
           else if (list && list.retry) list.retry();
           return true;

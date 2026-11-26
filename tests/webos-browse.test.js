@@ -119,25 +119,47 @@ function kurHizli(kind) {
   return { scr, cagri };
 }
 
-test('kategori hızı: canlı TV için de komşu kategoriler arka planda yüklenir, hepsi bir kez', async () => {
+test('kategori hızı: açılan kategorinin komşuları (altta 2, üstte 1) içerik yerleşince tek zincirle arka planda yüklenir, hepsi bir kez', async () => {
   const { cagri } = kurHizli('live');
   await bekle(900);
+  assert.deepEqual(cagri.map((c) => c[0]), ['k0'], 'önce yalnız seçili kategori; komşular içerik yerleşmeden başlamaz');
+  await bekle(3600);
   const yuklenen = cagri.map((c) => c[0]);
   assert.equal(yuklenen[0], 'k0', 'önce seçili kategori ön planda');
   assert.deepEqual(cagri[0], ['k0', true]);
-  for (const k of ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']) assert.ok(yuklenen.indexOf(k) > 0, k + ' önceden yüklendi');
+  for (const k of ['k1', 'k2']) assert.ok(yuklenen.indexOf(k) > 0, k + ' önceden yüklendi');
+  assert.ok(yuklenen.indexOf('k3') < 0, 'uzaktaki kategoriler önceden yüklenmez (afişlerin bağlantılarını tüketmesin)');
   assert.ok(cagri.slice(1).every((c) => c[1] === false), 'önyükleme ön plan isteğini kesmeyen gruptan gider');
   assert.equal(new Set(yuklenen).size, yuklenen.length, 'aynı kategori iki kez istenmedi');
 });
 
-test('kategori hızı: bellekte hazır kategoriye geçince 160 ms beklenmez', async () => {
+test('kategori hızı: panelde ▲▼ ile gezerken içerik yüklenmez; ▶ ya da OK ile seçilen kategori hemen açılır ve panel kapanır', async () => {
   const { scr, cagri } = kurHizli('live');
-  await bekle(900); // k1.. önceden yüklendi
+  await bekle(4500); // k0 ve komşuları (k1, k2) önceden yüklendi
   const once = cagri.length;
-  assert.equal(scr.onKey('down'), true); // k1'e odak
+  scr.onKey('down');
+  scr.onKey('down');
+  scr.onKey('down'); // k3'e odak
+  scr.onKey('up'); // k2
+  await bekle(400);
+  assert.equal(cagri.length, once, 'gezinirken ağa istek gitmez');
+  assert.equal(scr.katAcik(), true, 'odak panelde');
+  assert.equal(scr.onKey('right'), true); // ▶: k2 açılır
   await bekle(40);
   const yeni = cagri.slice(once);
-  assert.ok(yeni.some((c) => c[0] === 'k1' && c[1] === true), 'k1 ön planda hemen istendi (kısa bekleme yok)');
+  assert.ok(yeni.some((c) => c[0] === 'k2' && c[1] === true), 'k2 ön planda hemen istendi (kısa bekleme yok)');
+  assert.equal(scr.katAcik(), false, 'içeriğe geçilince panel kapanır');
+  // Gezip vazgeçmek: panel yeniden açılınca imleç içerikteki kategoriye döner
+  scr.katAc();
+  scr.katOdak();
+  scr.onKey('down');
+  scr.onKey('down');
+  scr.onKey('back');
+  scr.katAc();
+  scr.katOdak();
+  scr.onKey('ok'); // imleç k2'de (gösterilen kategori): yeniden yüklenmez
+  await bekle(40);
+  assert.equal(cagri.slice(once).filter((c) => c[0] === 'k2' && c[1] === true).length, 1, 'aynı kategori yeniden açılınca tekrar istenmez');
 });
 
 test('yazı boyutu: kök boyut ve [data-fs] kademesi birlikte ayarlanır (sabit yükseklikli kutular en büyük boyutta sıkılaşır)', async () => {

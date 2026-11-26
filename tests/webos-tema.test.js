@@ -35,15 +35,20 @@ test('tema: kimlikler tekil, renkler geçerli; vurgu rengi üzerindeki yazı oku
     if (t.multi) {
       assert.equal(t.p.length, 9);
       for (let i = 1; i <= 8; i++) assert.match(t.p[i], /^#[0-9a-f]{6}$/);
-      if (t.dolu) for (let i = 1; i <= 8; i++) assert.ok(oran(t.p[i], t.ink) >= 4.5, t.id + ' p' + i);
+      // Odaklanan karo her temada p rengiyle dolar ve ink yazı taşır; koyu temalarda karo yazısı p rengindedir ve karo zemininde okunur
+      for (let i = 1; i <= 8; i++) assert.ok(oran(t.p[i], t.ink) >= 4.5, t.id + ' p' + i);
+      if (!t.dolu) for (let i = 1; i <= 8; i++) assert.ok(oran(t.p[i], karistir(t.surface, t.p[i], 0.22)) >= 4.5, t.id + ' karo yazısı p' + i);
     }
   }
   assert.equal(temaBul('yok').id, VARSAYILAN_TEMA, 'bilinmeyen kimlik varsayılana döner');
 });
 
-test('tema: hepsi canlı ve çok renkli (gradyan zemin, dolu karolar, sekiz ayrı karo rengi); eski koyu temalar yenisine döner', () => {
-  assert.ok(TEMALAR.length >= 7, 'zengin bir tema seçkisi var');
-  for (const t of TEMALAR) {
+const CANLILAR = TEMALAR.filter((t) => t.canli);
+const KOYULAR = TEMALAR.filter((t) => t.koyu);
+
+test('tema: canlı paket (gradyan zemin, dolu karolar, sekiz ayrı karo rengi); eski koyu temalar yenisine döner', () => {
+  assert.ok(CANLILAR.length >= 7, 'zengin bir canlı tema seçkisi var');
+  for (const t of CANLILAR) {
     assert.ok(t.canli && t.multi && t.dolu, t.id + ': canlı, çok renkli, dolu karolu');
     assert.match(t.zemin, /^linear-gradient\(.*#[0-9a-f]{6} 0%.*#[0-9a-f]{6} 100%\)$/, t.id + ': gradyan zemin');
     assert.ok((t.zemin.match(/#[0-9a-f]{6}/g) || []).length >= 3, t.id + ': en az üç renk durağı');
@@ -55,6 +60,38 @@ test('tema: hepsi canlı ve çok renkli (gradyan zemin, dolu karolar, sekiz ayr�
   assert.equal(temaBul('neon').id, 'aurora');
   assert.equal(temaBul('cards').id, VARSAYILAN_TEMA);
   assert.equal(temaBul('solid').id, VARSAYILAN_TEMA);
+});
+
+test('tema: koyu tema paketi (en az sekiz tema; koyu zemin, sekiz ayrı karo rengi, her yazı okunur); hepsi seçilebilir, canlı paketten sonra gelir', () => {
+  assert.ok(KOYULAR.length >= 8, 'koyu paket en az sekiz tema içerir');
+  assert.ok(TEMALAR.indexOf(KOYULAR[0]) > TEMALAR.indexOf(CANLILAR[CANLILAR.length - 1]), 'koyu paket canlı temaların ardından listelenir');
+  for (const t of KOYULAR) {
+    assert.ok(t.multi && !t.canli && !t.dolu, t.id + ': çok renkli, koyu (canlı değil), karo yazısı kendi renginde');
+    assert.equal(new Set(t.p.slice(1, 9)).size, 8, t.id + ': sekiz karo rengi birbirinden farklı');
+    assert.ok(parlaklik(t.bg) < 0.02, t.id + ': zemin gerçekten koyu');
+    assert.ok(parlaklik(t.surface) < 0.03 && parlaklik(t.raised) < 0.05, t.id + ': kutular koyu');
+    assert.ok(oran(t.bg, '#e8ecf4') >= 12, t.id + ': özgün açık yazı zeminde çok rahat okunur (' + oran(t.bg, '#e8ecf4').toFixed(1) + ')');
+    assert.ok(oran(t.surface, '#e8ecf4') >= 10 && oran(t.raised, '#e8ecf4') >= 8, t.id + ': kutular üzerinde yazı okunur');
+    assert.ok(oran(t.surface, t.line) >= 1.3, t.id + ': çizgi kutudan ayırt edilir');
+    if (t.zemin) {
+      assert.match(t.zemin, /^linear-gradient\(.*#[0-9a-f]{6} 0%.*#[0-9a-f]{6} 100%\)$/, t.id + ': gradyan zemin');
+      for (const d of t.zemin.match(/#[0-9a-f]{6}/g)) assert.ok(parlaklik(d) < 0.03 && oran(d, '#e8ecf4') >= 11, t.id + ': gradyan durağı ' + d + ' koyu kalır');
+    }
+    // Sarı vurguda beyaz yazı olmaz: sarı/altın vurgu ya da dolgu üzerindeki yazı koyu mürekkeptir
+    for (const r of [t.accent].concat(t.p.slice(1, 9))) if (parlaklik(r) > 0.45 && /^#(f|e)[b-f][a-f0-9]{2}[0-5][0-9a-f]$/.test(r)) assert.ok(parlaklik(t.ink) < 0.05, t.id + ': sarı ' + r + ' üzerinde koyu yazı');
+    const c = cssUret(css, t);
+    assert.ok(!/#2dd4bf/i.test(c) || t.accent === '#2dd4bf' || t.p.indexOf('#2dd4bf') > 0, t.id + ': özgün vurgu başka renge döndü');
+    assert.ok(!/#0a0e17/i.test(c) || t.bg === '#0a0e17', t.id + ': özgün zemin kalmadı');
+    // Karolar zeminden ayrı, yazılar kendi renginde; odakta p dolgusu + parıltı
+    for (let i = 1; i <= 8; i++) {
+      assert.ok(c.includes('.tile.c' + i + ' { background: ' + karistir(t.surface, t.p[i], 0.22) + '; color: ' + t.p[i] + '; }'), t.id + ' karo ' + i);
+      assert.ok(c.includes('.tile.c' + i + '.on { background: ' + t.p[i] + '; color: ' + t.ink), t.id + ' odak ' + i);
+    }
+    // Soluk gri yazılar koyu temada özgün haliyle kalır (canlı temalardaki gibi beyaza çekilmez)
+    assert.ok(c.includes('#e8ecf4') && c.includes('#9aa6bf'), t.id + ': özgün yazı renkleri korunur');
+  }
+  assert.ok(KOYULAR.some((t) => t.id === 'amoled' && t.bg === '#000000'), 'AMOLED siyah saf siyah zeminli');
+  for (const t of TEMALAR) assert.equal(temaBul(t.id).id, t.id, t.id + ' kimliğiyle bulunur');
 });
 
 // Boyama mantığını sınamak için tek renkli deneme paleti (uygulamada tek renkli tema yok)
@@ -70,7 +107,7 @@ test('tema: özgün kimlikte CSS değişmez; paletli temalarda renkler tek geçi
   assert.ok(!/rgba\(45, ?212, ?191/.test(c), 'eski vurgunun şeffaf hali kalmadı');
   assert.ok(c.includes('rgba(167, 139, 250, .55)'), 'karo parıltısı palet vurgusunda');
   // Boyut ve düzen kuralları aynen korunur
-  const yalin = (x) => x.replace(/#[0-9a-f]{6}\b/gi, '#').replace(/rgba\(45, ?212, ?191,/g, 'rgba(V,').replace(/rgba\(167, 139, 250,/g, 'rgba(V,');
+  const yalin = (x) => x.replace(/#[0-9a-f]{6}\b/gi, '#').replace(/rgba\(45, ?212, ?191,/g, 'rgba(V,').replace(/rgba\(167, 139, 250,/g, 'rgba(V,').replace(/rgba\(10, ?14, ?23,/g, 'rgba(Z,').replace(/rgba\(11, ?8, ?24,/g, 'rgba(Z,').replace(/rgba\(27, ?36, ?55,/g, 'rgba(K,').replace(/rgba\(24, ?18, ?51,/g, 'rgba(K,');
   assert.equal(yalin(c), yalin(css));
 });
 
@@ -114,13 +151,15 @@ test('tema: çok renkli temalar karo renk kuralları, gradyan temalar zemin kura
 test('tema: soldaki menü her temada paletin renklerini taşır (sabit lacivert/turkuaz kalmaz); simgeler bölümün palet rengindedir', () => {
   const MENU = /^(\.screen\.rl-ekran|\.rl[ .{]|\.rl-it|\[data-fs="xl"\] \.rl)/;
   const varsayilanRenk = /#(0a0e17|151b2b|1b2437|26324b|2dd4bf|04141a|e8ecf4|9aa6bf)\b/i;
+  // Koyu temalarda özgün açık yazı renkleri bilerek korunur (zemin zaten koyu); diğer rollerin hepsi paletten gelir
+  const koyuTemaRengi = /#(0a0e17|151b2b|1b2437|26324b|2dd4bf|04141a)\b/i;
   for (const t of TEMALAR) {
     const c = cssUret(css, t);
     const satirlar = c.split('\n').filter((l) => MENU.test(l));
     assert.ok(satirlar.length >= 10, t.id + ': menü kuralları var');
     // tv.css'ten gelen menü kuralları boyanır; temaya özgü c1..c8 kuralları paletten gelir
     const govde = satirlar.filter((l) => !/^\.rl-it\.c\d/.test(l)).join('\n');
-    assert.ok(!varsayilanRenk.test(govde), t.id + ': menüde boyanmamış varsayılan renk kalmadı');
+    assert.ok(!(t.koyu ? koyuTemaRengi : varsayilanRenk).test(govde), t.id + ': menüde boyanmamış varsayılan renk kalmadı');
     assert.ok(govde.includes('rgba(' + parseInt(t.bg.slice(1, 3), 16) + ', ' + parseInt(t.bg.slice(3, 5), 16) + ', ' + parseInt(t.bg.slice(5, 7), 16) + ','), t.id + ': menü zemini tema zemininden');
     assert.ok(govde.includes('.rl-it.on, .rl-it.hv { background: ' + t.accent + '; color: ' + t.ink), t.id + ': odak vurgu renginde');
     for (let i = 1; i <= 8; i++) {

@@ -1,7 +1,7 @@
 // Tema merkezi: renk temalarını gezip OK ile uygular; sağda seçilen temanın küçük önizlemesi görünür.
 import { ctx, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
-import { TEMALAR, VARSAYILAN_TEMA, temaUygula, temaBul } from '../tema.js';
+import { TEMALAR, VARSAYILAN_TEMA, temaUygula, temaBul, karistir } from '../tema.js';
 import { el, esc, px, toast } from '../ui.js';
 import * as K from '../log.js';
 
@@ -11,7 +11,7 @@ const yuvarlak = (t) => (t.multi && t.p ? 'linear-gradient(135deg,' + t.p[1] + '
 function onizleme(t) {
   const karo = (i, ad) => {
     const p = t.multi && t.p ? t.p[i] : t.accent;
-    const arka = t.multi ? (t.dolu ? p : t.surface) : t.surface;
+    const arka = t.multi ? (t.dolu ? p : karistir(t.surface, p, 0.22)) : t.surface;
     const yazi = t.multi && t.dolu ? t.ink : p;
     return '<div class="tm-k" style="background:' + arka + ';color:' + yazi + '">' + ad + '</div>';
   };
@@ -35,7 +35,7 @@ export function temaScreen() {
 
   const list = new VList(kok.querySelector('.l-list'), {
     rowH: Math.round(px() * 3.8),
-    render: (t) => '<span class="sw" style="background:' + yuvarlak(t) + '"></span><span class="nm">' + esc(t.ad) + '</span><span class="rk">' + (t.id === secili() ? '● seçili' : t.multi ? 'çok renkli' : '') + '</span>',
+    render: (t) => '<span class="sw" style="background:' + yuvarlak(t) + '"></span><span class="nm">' + esc(t.ad) + '</span><span class="rk">' + (t.id === secili() ? '● seçili' : t.koyu ? 'koyu' : t.multi ? 'çok renkli' : '') + '</span>',
     onFocus: (t) => {
       panel.innerHTML = '<div class="pn-t">' + esc(t.ad) + '</div>' + onizleme(t);
     },
