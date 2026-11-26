@@ -20,7 +20,7 @@ const SUTUN_VITRIN = 8; // kategoriler gizli olduğundan afişler tüm genişli�
 const logoHtml = (u) => (u ? '<img src="' + esc(u) + '" alt="">' : '');
 const yildiz = (sid, it) => (ctx.store.isFav(sid, it.id) ? '<i class="star">' + ikon.yildiz + '</i>' : '');
 
-export function browseScreen({ kind }) {
+export function browseScreen({ kind, katAc }) {
   const kok = el('div', 'screen browse k-' + kind);
   const src = ctx.store.active();
   const sid = src ? src.id : '';
@@ -28,11 +28,12 @@ export function browseScreen({ kind }) {
   const canliTur = kind === 'live' || kind === 'guide'; // sağda şimdi/sonra paneli olan türler
   const solVar = kind !== 'recents';
   const vitrinli = kind === 'movie' || kind === 'series';
+  const acilir = kind === 'live' || vitrinli; // kategori paneli soldaki menünün yanında açılıp kapanan bölümler
   kok.innerHTML =
     (vitrinli ? '<div class="v-zm"></div>' : '') +
     ustCubuk(BASLIK[kind], src ? esc(src.name) : '', false, kind !== 'recents') +
     '<div class="br">' +
-    (solVar ? '<div class="cats' + (vitrinli ? ' gizli' : '') + '"></div>' : '') +
+    (solVar ? '<div class="cats' + (vitrinli && !katAc ? ' gizli' : '') + '"></div>' : '') +
     (vitrinli ? '<div class="rt"><div class="vit"></div><div class="content"></div></div>' : '<div class="content' + (solVar ? '' : ' wide') + '"></div>') +
     (canliTur ? '<div class="info"></div>' : '') +
     '</div>' +
@@ -62,6 +63,8 @@ export function browseScreen({ kind }) {
   const vitrin = vitrinli ? createVitrin(kok.querySelector('.vit'), { zemin: kok.querySelector('.v-zm'), saglayici: provider }) : null;
   const menu = createMenu(kok);
   let bolge = solVar && !vitrinli ? 'cats' : 'list'; // Filmler/Diziler'de kategoriler gizli başlar, odak afişlerde
+  let railAcik = acilir && !!katAc; // kategori paneli soldaki menüde beklenerek açıldı (odak menüde, panel görünür)
+  let solda = false; // kumanda odağı soldaki menüde: içerikte hiçbir satır vurgulanmaz
   let cats = null; // VList
   let list = null; // VList
   let yuklendi = false;
@@ -81,7 +84,7 @@ export function browseScreen({ kind }) {
   const ipucu = () => {
     const o = canliTur ? 'OK: izle' : kind === 'recents' ? 'OK: devam et' : 'OK: aç';
     const f = kind === 'recents' ? 'Sarı: geçmişi temizle' : 'Sarı / OK basılı tut: favori';
-    hint.innerHTML = (vitrinli ? '▲▼◀▶ gezin · ◀ soldaki sütunda: kategoriler · ' : '▲▼◀▶ gezin · ') + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + (duzenli ? ' · Yeşil: düzenle' : '') + ' · Geri';
+    hint.innerHTML = (acilir ? '▲▼◀▶ gezin · ◀ menü (bekle: kategoriler) · ' : '▲▼◀▶ gezin · ') + o + (vitrinli ? ' · Kırmızı: fragman' : '') + ' · ' + f + (kind === 'recents' ? '' : ' · Mavi: ara') + (duzenli ? ' · Yeşil: düzenle' : '') + ' · Geri';
   };
 
   // --- sol: kategoriler
@@ -102,7 +105,7 @@ export function browseScreen({ kind }) {
       onActivate: () => odak('list'),
     });
     cats.setItems(liste);
-    cats.setActive(bolge === 'cats');
+    aktifYaz();
   };
 
   // --- sağ: içerik
@@ -167,7 +170,7 @@ export function browseScreen({ kind }) {
       },
       onActivate: (it, i) => ac(it, i),
     });
-    list.setActive(bolge === 'list');
+    aktifYaz();
   };
 
   const ac = (it, i) => {
@@ -361,16 +364,27 @@ export function browseScreen({ kind }) {
     else list.redraw(list.index);
   };
 
+  // Hangi bölgede satır vurgulu: odak soldaki menüdeyse hiçbiri
+  function aktifYaz() {
+    if (cats) cats.setActive(!solda && bolge === 'cats');
+    if (list) list.setActive(!solda && bolge === 'list');
+  }
+  // Kategori paneli yalnız odaktayken ya da soldaki menüde beklenerek açılmışken görünür (Canlı TV, Filmler, Diziler)
+  const panelSinif = () => 'cats' + (acilir && bolge !== 'cats' && !railAcik ? ' gizli' : '');
+  const panelYaz = () => {
+    if (acilir && catsEl) catsEl.className = panelSinif() + (cats ? ' vl' : ''); // VList'in kapsayıcıya eklediği 'vl' sınıfı korunur
+  };
   function odak(b) {
     bolge = b;
-    if (cats) cats.setActive(b === 'cats');
-    if (list) list.setActive(b === 'list');
-    if (vitrinli && catsEl) catsEl.className = 'cats' + (b === 'cats' ? '' : ' gizli'); // kategori sütunu yalnız istenince açılır
+    solda = false;
+    railAcik = false;
+    aktifYaz();
+    panelYaz();
   }
 
   // Kategoriler yüklenirken/yüklenemezken ileti: Filmler/Diziler'de kategori sütunu gizli olduğundan içerik alanında gösterilir
   function kategoriMesaji(html) {
-    const hedef = vitrinli ? contEl : catsEl;
+    const hedef = acilir ? contEl : catsEl;
     hedef.innerHTML = '<div class="vl-msg" style="display:block">' + html + '</div>';
   }
 
@@ -382,7 +396,7 @@ export function browseScreen({ kind }) {
     if (!cats) return;
     const liste = duzenle(hamKats);
     const hedef = String(odakId != null ? odakId : cats.cur ? cats.cur.id : '');
-    const yeni = el('div', 'cats' + (vitrinli && bolge !== 'cats' ? ' gizli' : ''));
+    const yeni = el('div', panelSinif());
     catsEl.parentNode.replaceChild(yeni, catsEl); // VList dinleyicileri kapsayıcıda durur: eskisini bırakıp yenisini kur
     catsEl = yeni;
     const i = liste.findIndex((x) => String(x.id) === hedef);
@@ -482,7 +496,7 @@ export function browseScreen({ kind }) {
     };
   };
   const kategoriMenusu = () => {
-    if (vitrinli) odak('cats'); // Filmler/Diziler'de kategori sütunu gizli: taşırken görünsün
+    if (acilir) odak('cats'); // kategori paneli kapalıyken olabilir: taşırken görünsün
     const tasi = (nereye) => () => {
       kategoriIslem(D.kategoriTasi, nereye);
       return 'kal'; // art arda taşınabilsin
@@ -581,7 +595,7 @@ export function browseScreen({ kind }) {
       const kur = (ham) => {
         hamKats = ham;
         const liste = duzenle(ham);
-        (vitrinli ? contEl : catsEl).innerHTML = '';
+        (acilir ? contEl : catsEl).innerHTML = '';
         katKur(liste);
         if (vitrinli) {
           const son = String(ctx.store.setting(katAnahtar, ''));
@@ -647,6 +661,40 @@ export function browseScreen({ kind }) {
     onLong() {
       if (!menu.acik) favDegis();
     },
+    // --- soldaki menü (solmenu.js) ile birlikte çalışma
+    // İçeriğin en solundayken ◀ menüye geçer; Rehber/Favoriler'de önce kategori sütununa gidilir
+    solKenar() {
+      if (menu.acik) return false;
+      if (bolge === 'cats') return true;
+      if (cats && !acilir) return false;
+      return !list || list.o.cols === 1 || list.index % list.o.cols === 0;
+    },
+    solGir() {
+      solda = true;
+      aktifYaz();
+    },
+    solCik() {
+      solda = false;
+      aktifYaz();
+    },
+    katAcik: () => acilir && (railAcik || bolge === 'cats'),
+    // Menüde 1 sn beklenince / OK ile: kategori paneli açılır (odak menüde kalır)
+    katAc() {
+      if (!acilir) return;
+      railAcik = true;
+      panelYaz();
+    },
+    // Başka menü öğesine geçildi: açık panel kapanır, odak içeriğe dönecekse afişlerde/listede kalır
+    katKapat() {
+      if (!acilir) return;
+      railAcik = false;
+      if (bolge === 'cats' && list && list.items.length) bolge = 'list';
+      aktifYaz();
+      panelYaz();
+    },
+    katOdak() {
+      if (acilir && cats) odak('cats');
+    },
     // Ara düğmesi / Mavi tuş: bulunulan bölümde (Filmler, Diziler, Canlı TV) aranır; Favoriler'de tüm katalogda
     araAc() {
       open('search', gercekTur ? { tur: gercekTur } : undefined);
@@ -680,8 +728,8 @@ export function browseScreen({ kind }) {
         return true;
       }
       if (bolge === 'cats') {
-        if (a === 'back' && vitrinli) {
-          odak('list'); // açık kategori sütunu Geri ile kapanır
+        if (a === 'back' && acilir) {
+          odak('list'); // açık kategori paneli Geri ile kapanır
           return true;
         }
         if (a === 'right' || a === 'ok') {
@@ -698,7 +746,7 @@ export function browseScreen({ kind }) {
         return true;
       }
       if (list && list.key(a)) return true;
-      if (a === 'left' && cats && (!list || list.o.cols === 1 || list.index % list.o.cols === 0)) {
+      if (a === 'left' && cats && !acilir && (!list || list.o.cols === 1 || list.index % list.o.cols === 0)) {
         odak('cats');
         return true;
       }

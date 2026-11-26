@@ -67,6 +67,12 @@ export function araVar() {
   return !!(t && t.el && t.el.querySelector && t.el.querySelector('.top-ara'));
 }
 
+// Ekran yığını değişince (gösterilmeden önce) sol menüyü günceller: hangi ekranlarda görünür, ekran sağa kayar. solmenu.js bağlar.
+export const kanca = { yigin: null };
+const yiginDegisti = () => {
+  if (kanca.yigin) kanca.yigin();
+};
+
 export function push(ekran) {
   geriOdakla(false);
   const t = ust();
@@ -77,6 +83,7 @@ export function push(ekran) {
   ctx.stack.push(ekran);
   ctx.root.appendChild(ekran.el);
   saatleriYaz();
+  yiginDegisti(); // ekran ölçüleri onShow'dan önce son halini almalı
   if (ekran.onShow) ekran.onShow();
 }
 
@@ -90,6 +97,7 @@ export function pop() {
   const t = ust();
   if (t) {
     t.el.style.display = '';
+    yiginDegisti();
     if (t.onShow) t.onShow();
   }
   return true;
@@ -100,6 +108,32 @@ export function open(ad, arg) {
   const e = ctx.reg[ad](arg);
   e.acilis = { ad, arg }; // fragmandan dönüşte ekranı yeniden kurmak için (donus.js)
   push(e);
+}
+
+// Soldaki menüden bölüm değiştirme: üstteki ekranın yerine yenisi konur (geri tuşu aynı yere döner; yığın şişmez).
+// Alttaki ekran zaten gizli ve onHide almıştı: yeniden gösterilmez.
+// ek: yalnız kurucuya giden geçici seçenekler (kayıtlı açılış verisine, yani fragmandan dönüşe girmez)
+export function degistir(ad, arg, ek) {
+  if (!ctx.reg[ad]) throw new Error('Ekran yok: ' + ad);
+  if (ctx.stack.length <= 1) return open(ad, arg);
+  geriOdakla(false);
+  const eski = ctx.stack.pop();
+  if (eski.onHide) eski.onHide();
+  if (eski.destroy) eski.destroy();
+  if (eski.el.parentNode) eski.el.parentNode.removeChild(eski.el);
+  let kurucuArg = arg;
+  if (ek) {
+    kurucuArg = {};
+    for (const k in arg) kurucuArg[k] = arg[k];
+    for (const k in ek) kurucuArg[k] = ek[k];
+  }
+  const e = ctx.reg[ad](kurucuArg);
+  e.acilis = { ad, arg };
+  ctx.stack.push(e);
+  ctx.root.appendChild(e.el);
+  saatleriYaz();
+  yiginDegisti();
+  if (e.onShow) e.onShow();
 }
 
 // Yığını tek ekrana indir (örn. kaynak değişince ana sayfaya dön)

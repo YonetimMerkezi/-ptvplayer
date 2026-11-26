@@ -604,8 +604,7 @@ test('kablolama: ana sayfada kumanda düğmesi (üst çubuk, odak, tıklama) ve 
   assert.match(ana, /open\('telefonkumanda'\)/);
   assert.match(ana, /let ustte = false/);
   assert.match(ana, /a === 'up' && r === 0/, 'kart satırından ▲ ile düğmeye çıkılır');
-  assert.match(ana, /const icerik = !ustte && !sol/, 'düğmedeyken ve sol menüdeyken içerik işaretli kalmaz');
-  assert.match(ana, /icerik && r === 0/, 'düğmedeyken kartlar işaretli kalmaz');
+  assert.match(ana, /!ustte && r === 0/, 'düğmedeyken kartlar işaretli kalmaz');
   const c = oku('src', 'ctx.js');
   assert.match(c, /data-kum="1"/);
   assert.match(c, /telefon: '<svg/);

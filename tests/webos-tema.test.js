@@ -111,6 +111,25 @@ test('tema: çok renkli temalar karo renk kuralları, gradyan temalar zemin kura
   assert.ok(!duz.includes('.tile.c1 {'));
 });
 
+test('tema: soldaki menü her temada paletin renklerini taşır (sabit lacivert/turkuaz kalmaz); simgeler bölümün palet rengindedir', () => {
+  const MENU = /^(\.screen\.rl-ekran|\.rl[ .{]|\.rl-it|\[data-fs="xl"\] \.rl)/;
+  const varsayilanRenk = /#(0a0e17|151b2b|1b2437|26324b|2dd4bf|04141a|e8ecf4|9aa6bf)\b/i;
+  for (const t of TEMALAR) {
+    const c = cssUret(css, t);
+    const satirlar = c.split('\n').filter((l) => MENU.test(l));
+    assert.ok(satirlar.length >= 10, t.id + ': menü kuralları var');
+    // tv.css'ten gelen menü kuralları boyanır; temaya özgü c1..c8 kuralları paletten gelir
+    const govde = satirlar.filter((l) => !/^\.rl-it\.c\d/.test(l)).join('\n');
+    assert.ok(!varsayilanRenk.test(govde), t.id + ': menüde boyanmamış varsayılan renk kalmadı');
+    assert.ok(govde.includes('rgba(' + parseInt(t.bg.slice(1, 3), 16) + ', ' + parseInt(t.bg.slice(3, 5), 16) + ', ' + parseInt(t.bg.slice(5, 7), 16) + ','), t.id + ': menü zemini tema zemininden');
+    assert.ok(govde.includes('.rl-it.on, .rl-it.hv { background: ' + t.accent + '; color: ' + t.ink), t.id + ': odak vurgu renginde');
+    for (let i = 1; i <= 8; i++) {
+      assert.ok(c.includes('.rl-it.c' + i + ' { color: ' + t.p[i] + '; }'), t.id + ' c' + i + ' simge rengi');
+      assert.ok(c.includes('.rl-it.c' + i + '.on, .rl-it.c' + i + '.hv { background: ' + t.p[i] + '; color: ' + t.ink), t.id + ' c' + i + ' odak dolgusu');
+    }
+  }
+});
+
 test('tema: karistir iki rengi orantıyla birleştirir', () => {
   assert.equal(karistir('#000000', '#ffffff', 0), '#000000');
   assert.equal(karistir('#000000', '#ffffff', 1), '#ffffff');

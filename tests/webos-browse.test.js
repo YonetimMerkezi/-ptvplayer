@@ -160,3 +160,45 @@ test('yazı boyutu: kök boyut ve [data-fs] kademesi birlikte ayarlanır (sabit 
     boyutla(1);
   }
 });
+
+test('sol menü: Canlı TV kategori paneli yalnız odaktayken ya da menüde beklenince görünür; listenin sol kenarında ◀ menüye geçer', async () => {
+  const { scr } = kur();
+  await bekle(400);
+  const gizli = () => /\bgizli\b/.test(scr.el.qs['.cats'].className);
+  scr.solCik(); // ekran açılışında odak panelde
+  scr.katOdak();
+  assert.equal(gizli(), false, 'odaktaki kategori paneli görünür');
+  assert.match(scr.el.qs['.cats'].className, /\bvl\b/, 'liste sınıfı korunur');
+  assert.equal(scr.solKenar(), true, 'kategori panelinin solu menüdür');
+  assert.equal(scr.katAcik(), true);
+  scr.onKey('ok'); // kategori seçildi: içerik listelenir, panel kapanır
+  assert.equal(gizli(), true, 'OK sonrası panel kapanır, içerik menünün sağında kalır');
+  assert.equal(scr.katAcik(), false);
+  assert.equal(scr.solKenar(), true, 'listenin ilk sütununda ◀ menüye geçer');
+  scr.solGir();
+  scr.katAc(); // menüde 1 sn beklendi
+  assert.equal(gizli(), false);
+  assert.equal(scr.katAcik(), true);
+  scr.katKapat(); // başka menü öğesine geçildi
+  assert.equal(gizli(), true);
+  scr.katAc();
+  scr.katOdak(); // ▶ ile panele girildi
+  assert.equal(gizli(), false);
+  scr.onKey('back'); // Geri paneli kapatır
+  assert.equal(gizli(), true);
+  assert.match(scr.el.qs['.cats'].className, /\bvl\b/);
+});
+
+test('sol menü: katAc ile açılan ekranda kategori paneli açık gelir; menüden ▶ ile panele girilir', async () => {
+  kur();
+  ctx.stack.pop();
+  const yeni = browseScreen({ kind: 'live', katAc: true });
+  push(yeni);
+  yeni.solGir(); // menü odakta: panel görünür ama içerikte vurgulu satır yok
+  await bekle(400);
+  assert.equal(yeni.katAcik(), true);
+  assert.equal(/\bgizli\b/.test(yeni.el.qs['.cats'].className), false);
+  yeni.solCik();
+  yeni.katOdak();
+  assert.equal(yeni.katAcik(), true);
+});

@@ -14,6 +14,7 @@ import { DIL, dilKur } from '../dil.js';
 const FORMAT = [['m3u8', 'HLS (m3u8)'], ['ts', 'MPEG-TS (ts)']];
 const AG = [['auto', 'Otomatik'], ['direct', 'Doğrudan'], ['service', 'TV servisi']];
 const YAZI = [['0.9', 'Küçük'], ['1', 'Normal'], ['1.15', 'Büyük'], ['1.3', 'Çok büyük']];
+const DEGER_SATIRI = /^(lang|liveFmt|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/; // ◀▶ ile değeri değişen ayar satırları
 const temaAdi = () => temaBul(ctx.store.setting('theme', VARSAYILAN_TEMA)).ad;
 const ad = (liste, v) => (liste.filter((x) => x[0] === v)[0] || liste[0])[1];
 const sonraki = (liste, v, yon) => {
@@ -132,13 +133,15 @@ export function settingsScreen() {
   return {
     el: kok,
     name: 'settings',
+    // Değeri ◀▶ ile değişen satırlarda ◀ ayarı değiştirir; diğer satırlarda soldaki menüye geçer
+    solKenar: () => !(list.cur && DEGER_SATIRI.test(list.cur.id)),
     onShow() {
       list.setItems(satirlar(), true);
     },
     onKey(a) {
       if (a === 'left' || a === 'right') {
         const r = list.cur;
-        if (r && /^(lang|liveFmt|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
+        if (r && DEGER_SATIRI.test(r.id)) etkinles(r, a === 'right' ? 1 : -1);
         return true;
       }
       return list.key(a);

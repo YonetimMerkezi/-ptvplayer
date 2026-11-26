@@ -220,6 +220,8 @@ export function sporScreen() {
   return {
     el: kok,
     name: 'spor',
+    // Maç listesinde ◀ soldaki menüye geçer (gün ve lig şeritlerinde ◀▶ gün/lig değiştirir)
+    solKenar: () => bolge === 'list',
     onShow() {
       gunCiz();
       chipCiz();

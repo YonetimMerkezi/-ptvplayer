@@ -281,6 +281,8 @@ export function searchScreen(p) {
   return {
     el: kok,
     name: 'search',
+    // Yazı kutusunda ve ilk sekmedeyken ◀ soldaki menüye geçer (öteki yerlerde ◀▶ düğme/sekme değiştirir)
+    solKenar: () => bolge === 'input' || (SEKMELER[0].id === kapsam && (bolge === 'tabs' || bolge === 'list')),
     onShow() {
       odak(bolge);
       if (!hazirlandi) {

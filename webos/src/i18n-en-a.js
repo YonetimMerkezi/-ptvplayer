@@ -2,7 +2,7 @@
 // Çift: [Türkçe metin, İngilizce karşılık]; değişen kısımlar {0}, {1}. Ortak (Android) sözlükte olanlar burada yinelenmez.
 export const EN_WEBOS_A = [
   // kısayol ipuçları (' · ' ile birleştirilen parçalar tek tek çevrilir)
-  ['▲▼◀▶ gezin', '▲▼◀▶ move'], ['▲▼ gezin', '▲▼ move'], ['◀ soldaki sütunda: kategoriler', '◀ in the left column: categories'],
+  ['▲▼◀▶ gezin', '▲▼◀▶ move'], ['▲▼ gezin', '▲▼ move'], ['◀ menü (bekle: kategoriler)', '◀ menu (wait: categories)'],
   ['Kırmızı: fragman', 'Red: trailer'], ['Mavi: ara', 'Blue: search'], ['Yeşil: düzenle', 'Green: edit'], ['Sarı: favori', 'Yellow: favorite'],
   ['◀▶ düğme seç', '◀▶ choose button'], ['◀▶ değiştir', '◀▶ change'], ['◀▶ sekme', '◀▶ tab'],
   ['OK: seç', 'OK: select'], ['OK seç', 'OK: select'], ['OK: oynat', 'OK: play'], ['OK: yaz / aç', 'OK: type / open'], ['▶ Ara', '▶ Search'],
@@ -90,7 +90,7 @@ export const EN_WEBOS_A = [
   ['OK: izle', 'OK: watch'], ['OK: devam et', 'OK: resume'], ['OK: aç', 'OK: open'],
   ['Sarı: geçmişi temizle', 'Yellow: clear history'],
   ['Sarı / OK basılı tut: favori', 'Yellow / hold OK: favorite'],
-  ['▲▼◀▶ gezin · ◀ soldaki sütunda: kategoriler · ', '▲▼◀▶ move · ◀ in the left column: categories · '],
+  ['▲▼◀▶ gezin · ◀ menü (bekle: kategoriler) · ', '▲▼◀▶ move · ◀ menu (wait: categories) · '],
   ['▲▼◀▶ gezin · ', '▲▼◀▶ move · '],
   [' · Kırmızı: fragman', ' · Red: trailer'], [' · Mavi: ara', ' · Blue: search'], [' · Yeşil: düzenle', ' · Green: edit'],
   ['Burada gösterilecek bir şey yok', 'Nothing to show here'],

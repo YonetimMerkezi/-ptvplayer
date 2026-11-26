@@ -135,6 +135,8 @@ export function cssUret(css, t) {
       const p = t.p[i];
       if (t.dolu) c += '\n.tile.c' + i + ' { background: ' + p + '; color: ' + t.ink + '; }\n.tile.c' + i + '.on { background: ' + p + '; color: ' + t.ink + '; ' + PARILTI(p) + ' }';
       else c += '\n.tile.c' + i + ' { background: ' + karistir(t.surface, p, 0.22) + '; color: ' + p + '; }\n.tile.c' + i + '.on { background: ' + p + '; color: ' + t.ink + '; ' + PARILTI(p) + ' }';
+      // Soldaki menü: simge ve yazı bölümün paletteki rengini taşır; odaklanınca/üzerine gelince o renkle dolar
+      c += '\n.rl-it.c' + i + ' { color: ' + p + '; }\n.rl-it.c' + i + '.on, .rl-it.c' + i + '.hv { background: ' + p + '; color: ' + t.ink + '; ' + PARILTI(p) + ' }';
     }
   }
   return c;

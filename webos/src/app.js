@@ -35,6 +35,7 @@ import { otomatikDenetle, guncellemeSonrasi } from './guncelle.js';
 import { MAGAZA } from './version.js';
 import { dilKur } from './dil.js';
 import { hoverBagla } from './vurgu.js';
+import { solMenuKur } from './solmenu.js';
 
 const UZUN_BASMA_MS = 650;
 
@@ -51,6 +52,8 @@ function depoSec() {
 }
 
 const yaziOlcegi = () => Number(ctx.store.setting('fontScale', '1')) || 1;
+
+let sol = null; // soldaki menü (solmenu.js); start() kurar
 
 export function tuslariBagla(doc) {
   let okAsagida = false;
@@ -93,6 +96,7 @@ export function tuslariBagla(doc) {
   };
   const gonder = (t, a) => {
     if (!t) return;
+    if (sol && sol.durum.odak && sol.key(t, a)) return; // odak soldaki menüde
     if (geri.odak) {
       // Odak üst çubuktaki Geri düğmesinde: OK/Geri geri döner, ▼ içeriğe iner, yön tuşları yerinde kalır
       if (a === 'ok' && geri.dugme === 'ara') {
@@ -114,6 +118,11 @@ export function tuslariBagla(doc) {
       else if (a === 'left' && geri.dugme === 'ara') geriOdakla(true, 'geri');
       if (a === 'up' || a === 'left' || a === 'right') return;
       geriOdakla(false);
+    }
+    // İçeriğin sol kenarında ◀: odak soldaki menüye geçer (ekran kenarı nerede olduğunu kendisi bilir)
+    if (a === 'left' && sol && sol.durum.gorunur && t.solKenar && t.solKenar()) {
+      sol.gir(t);
+      return;
     }
     let tuketildi = false;
     try {
@@ -236,6 +245,7 @@ export function start() {
   dilKur(ctx.store);
   ctx.net = createNet({ ayar: () => ctx.store.setting('netMode', 'auto') });
   ctx.root = document.getElementById('app');
+  sol = solMenuKur(ctx.root);
   kaydet();
   boyutla(yaziOlcegi());
   window.addEventListener('resize', () => boyutla(yaziOlcegi()));

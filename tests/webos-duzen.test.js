@@ -304,7 +304,9 @@ test('gözat: yeni klasör → ad ekranı → klasör kaydedilir; öğe klasöre
   tus('back', 'back');
   // kategori sütununa dön: klasör en üstte, odak yeni konumda
   const istekOnce = t.istek.length;
-  tus('left');
+  assert.ok(scr.solKenar(), 'listenin sol kenarında ◀ soldaki menüye geçer');
+  scr.katAc(); // soldaki menüde beklenince kategori paneli açılır
+  scr.katOdak(); // menüden ▶ ile panele girilir
   tus('up'); // 'Ulusal' (k1) klasörün altına inmişti → klasöre
   await bekle(60);
   assert.equal(t.istek.length, istekOnce, 'klasör içeriği ağdan istenmez');
