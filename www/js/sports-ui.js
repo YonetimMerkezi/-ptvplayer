@@ -5,7 +5,7 @@ import { esc, fmtClock, fold } from './util.js';
 import { $, icon, openPage } from './ui.js';
 import { MATCH_LEADS, MATCH_LEAD_DEFAULT, leadLabel, matchPlanId, canRemind, makeMatchPlan } from './plan.js';
 import {
-  ESPN_BASE, lgLine, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
+  ESPN_BASE, ESPN_BASES, lgLine, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
   matchesOnDay, sections, chipsFor, capSections, hasLive, noScore, isYouthMatch,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
@@ -613,7 +613,7 @@ export function openSports(env) {
 
   async function loadEspn() {
     try {
-      const r = await loadMatches({ net, now: now(), base });
+      const r = await loadMatches({ net, now: now(), base: env.base || ESPN_BASES });
       espn = r.matches;
       failed = r.failed;
       fetchedAt = now();

@@ -4,6 +4,8 @@ import { fold, isYouthText } from './util.js';
 import { lang } from './i18n.js';
 
 export const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
+// Aynı API'nin ikinci sunucusu: ilki ağda engelliyse (Akamai "Access Denied") ona geçilir.
+export const ESPN_BASES = [ESPN_BASE, 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/'];
 export const DAY = 86400000;
 
 // Sıra, ekrandaki sıralamadır (aynı saatteki maçlar bu sırayla dizilir).
@@ -354,7 +356,8 @@ export function withTimeout(p, ms) {
 // (hata.detail: "tur.1: HTTP 403" gibi ilk nedenler, ekranda gösterilir).
 // vazgec: hiçbir lig alınamadan art arda bu kadar lig başarısız olursa sunucuya ulaşılamıyor sayılır, kalan ligler denenmez (engelli/yavaş ağda dakikalarca beklenmez).
 // onPart(maçlar): her lig alındıkça o ana kadarki (süzülmüş, sıralı) liste verilir; ekran ligler bitmeden ilk satırları gösterebilir.
-export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null, vazgec = 3 } = {}) {
+export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASES, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null, vazgec = 3 } = {}) {
+  const bases = Array.isArray(base) ? base : [base];
   const today = startOfDay(now);
   const from = today - back * DAY;
   const to = today + (ahead + 1) * DAY;
@@ -367,6 +370,9 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
   let ardisik = 0; // hiç başarı yokken art arda alınamayan lig sayısı
   // Bağlantı kurulamadı ya da süre doldu: aynı sunucudaki daha yalın adresler de aynı sonucu verir, basamaklara inilmez
   const ulasilamaz = (e) => !!e && (e.status === 0 || /zamanında yanıt/i.test(String(e.message || '')));
+  // Sunucu bu ağa kapalı (ulaşılamadı, süre doldu ya da erişim engeli 401/403/451): bir lige özgü değil, sunucuya özgüdür; sıradaki sunucu denenir
+  const sunucuSorunu = (e) => ulasilamaz(e) || (!!e && (e.status === 401 || e.status === 403 || e.status === 451));
+  let sunucu = 0; // çalışan sunucu (sonraki ligler buradan başlar)
   const deadline = Date.now() + budgetMs;
   const queue = [...leagues];
   // Gençlik maçları ayıklanır, tekrarlar tekilleşir, saat sırasına dizilir
@@ -388,18 +394,26 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
         errors[lg.id] = errors[lg.id] || 'Sunucuya ulaşılamadı (atlandı)';
         continue;
       }
-      const urls = scoreboardLadder(lg.id, from - DAY, to + DAY, base);
       let json = null;
-      for (let k = Math.min(level, urls.length - 1); k < urls.length && json === null; k++) {
-        try {
-          json = await withTimeout(net.json(urls[k], { fast: true }), timeoutMs);
-          if (json === null || typeof json !== 'object') throw new Error('Boş yanıt');
-          if (k > level && ++votes[k] >= 2) level = k; // iki ayrı ligde aynı basamağa düşülürse sonrakiler oradan başlar (tek seferlik ağ hatası yalınlaştırmaz)
-        } catch (e) {
-          json = null;
-          if (!errors[lg.id]) errors[lg.id] = String((e && e.message) || e || 'hata').slice(0, 140);
-          if (ulasilamaz(e)) break;
+      for (let h = sunucu; h < bases.length && json === null; h++) {
+        const urls = scoreboardLadder(lg.id, from - DAY, to + DAY, bases[h]);
+        let engel = false; // bu sunucu bu ağda kapalı mı
+        for (let k = Math.min(level, urls.length - 1); k < urls.length && json === null; k++) {
+          try {
+            json = await withTimeout(net.json(urls[k], { fast: true }), timeoutMs);
+            if (json === null || typeof json !== 'object') throw new Error('Boş yanıt');
+            if (k > level && ++votes[k] >= 2) level = k; // iki ayrı ligde aynı basamağa düşülürse sonrakiler oradan başlar (tek seferlik ağ hatası yalınlaştırmaz)
+            if (h > sunucu) sunucu = h; // ilk sunucu kapalı, ikincisi açık: sonraki ligler doğrudan ikinciden başlar
+          } catch (e) {
+            json = null;
+            if (!errors[lg.id]) errors[lg.id] = String((e && e.message) || e || 'hata').slice(0, 140);
+            if (sunucuSorunu(e)) {
+              engel = true;
+              break; // aynı sunucudaki daha yalın adresler de aynı sonucu verir
+            }
+          }
         }
+        if (json === null && !engel) break; // lige özgü hata (ör. 404): diğer sunucu da aynısını verir
       }
       if (json === null) {
         failed.push(lg.id);
@@ -425,7 +439,7 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
     err.detail = Object.entries(errors).slice(0, 3).map(([id, m]) => `${id}: ${m}`).join(' · ');
     throw err;
   }
-  return { matches: topla(), okCount, failed, errors, level };
+  return { matches: topla(), okCount, failed, errors, level, sunucu: sunucu + 1 };
 }
 
 // ---- gün ve lig süzgeci ----

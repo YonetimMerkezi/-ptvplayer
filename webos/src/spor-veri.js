@@ -41,7 +41,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
         if (paralel) secenek.parallel = paralel;
         const t0 = Date.now();
         const r = await d.loadEspn(secenek);
-        K.bilgi('Spor ESPN: ' + (r.matches || []).length + ' maç, ' + (r.okCount != null ? r.okCount + '/' + (r.okCount + (r.failed || []).length) + ' lig, ' : '') + sn(Date.now() - t0));
+        K.bilgi('Spor ESPN: ' + (r.matches || []).length + ' maç, ' + (r.okCount != null ? r.okCount + '/' + (r.okCount + (r.failed || []).length) + ' lig, ' : '') + (r.sunucu ? r.sunucu + '. sunucu, ' : '') + sn(Date.now() - t0));
         st.espn[k] = { at: now(), matches: r.matches || [] };
         st.espnAt = now();
         st.espnHata = '';

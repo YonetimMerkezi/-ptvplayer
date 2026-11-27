@@ -386,7 +386,23 @@ test('loadMatches: onPart hata atarsa yükleme bozulmaz', async () => {
 test('loadMatches: sunucuya hiç ulaşılamıyorsa birkaç denemeden sonra vazgeçilir, basamaklara inilmez', async () => {
   const net = { calls: [], json: async function (u) { this.calls.push(u); const e = new Error('Bağlanılamadı'); e.status = 0; throw e; } };
   await assert.rejects(() => loadMatches({ net, now: NOW, parallel: 1 }), /Maç bilgisi alınamadı/);
-  assert.equal(net.calls.length, 3, 'üç lig denendi (her biri tek adres), kalanı atlandı');
+  assert.equal(net.calls.length, 6, 'üç lig denendi (her biri iki sunucuda tek adres), kalanı atlandı');
+});
+
+test('loadMatches: ilk ESPN sunucusu erişimi engellerse (403) ikinci sunucuya geçilir ve sonraki ligler doğrudan oradan başlar', async () => {
+  const ilk = 'https://site.api.espn.com/', ikinci = 'https://site.web.api.espn.com/';
+  const net = { calls: [], json: async function (u) { this.calls.push(u); if (u.startsWith(ilk)) { const e = new Error('HTTP 403'); e.status = 403; throw e; } return { events: [] }; } };
+  const r = await loadMatches({ net, now: NOW, parallel: 1 });
+  assert.equal(r.okCount, LEAGUES.length, 'tüm ligler ikinci sunucudan alındı');
+  assert.equal(net.calls.filter((u) => u.startsWith(ilk)).length, 1, 'engelli sunucu yalnız bir kez denendi');
+  assert.equal(net.calls.filter((u) => u.startsWith(ikinci)).length, LEAGUES.length);
+});
+
+test('loadMatches: lige özgü hata (404) diğer sunucuya geçirmez', async () => {
+  const net = { calls: [], json: async function (u) { this.calls.push(u); if (slugOf(u) === 'tur.1') { const e = new Error('HTTP 404'); e.status = 404; throw e; } return { events: [] }; } };
+  const r = await loadMatches({ net, now: NOW, parallel: 1 });
+  assert.deepEqual(r.failed, ['tur.1']);
+  assert.equal(net.calls.some((u) => u.startsWith('https://site.web.api.espn.com/')), false);
 });
 
 test('loadMatches: HTTP hatasında basamaklı adresler yine denenir; bir lig başarılı olunca vazgeçme devre dışı', async () => {
