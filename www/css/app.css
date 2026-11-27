@@ -168,6 +168,13 @@ html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-
 .cat-tile.vis b { color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); }
 .cat-tile.vis small { color: color-mix(in srgb, var(--accent) 55%, #fff); font-weight: 600; }
 html[data-multi] .row.cat.vis:is(.k0, .k1, .k2, .k3, .k4, .k5) { box-shadow: none; }
+/* Görselli kategori kartında kumanda odağı: halka resmin ve perdenin ÜSTÜNE (::after) çizilir (kartın kendi gölgesi resmin altında kalırdı);
+   görsel canlanır, sol çubuk beyazlaşıp uzar, ok belirginleşir. Böylece karanlık odada ve projeksiyonda da seçili kart bir bakışta anlaşılır. */
+html.kbd .row.cat.vis:focus::after, html.kbd .cat-tile.vis:focus::after { box-shadow: inset 0 0 0 4px var(--ring), inset 0 0 0 7px var(--ring-edge); border-radius: inherit; }
+html.kbd .row.cat.vis:focus .cat-art, html.kbd .cat-tile.vis:focus .cat-art { filter: brightness(1.28) saturate(1.15); }
+html.kbd .row.cat.vis:focus::before { top: 14%; bottom: 14%; width: 6px; background: var(--ring); }
+html.kbd .row.cat.vis:focus .chev { opacity: 1; color: var(--ring); }
+html.kbd .row.cat.vis:focus .nm, html.kbd .cat-tile.vis:focus b { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9), 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent); }
 html[data-multi] .cat-tile.vis { background: var(--vis-bg); }
 
 /* Ana ekran film önerisi: tür çipleri ve öneri satırı */
@@ -257,7 +264,8 @@ input, select, textarea { font: inherit; color: var(--text); }
 /* kumanda kipi (html.kbd: yön tuşlarına basılınca ya da Android TV'de): odaktaki öğe uzaktan da seçilir.
    Halka tüm temalarda beyaz + koyu kenar (vurgu rengi zeminle karışabildiği için tek başına yetmez); seçili (.on) durumdan da ayrışır. */
 html.kbd :focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ring-edge); scroll-margin: 16px; }
-html.kbd input:focus, html.kbd select:focus { outline-offset: 0; box-shadow: none; }
+/* Arama/yazı kutuları: kutuya özgü kurallar (.field input:focus …) halkayı siliyordu; kumandada beyaz halka her zaman görünür */
+html.kbd input:focus, html.kbd select:focus, html.kbd textarea:focus { outline: 3px solid var(--ring); outline-offset: 0; box-shadow: none; }
 html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus, html.kbd .sh-more:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
 html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus, html.kbd .sp-m:focus, html.kbd .td-r:focus, html.kbd .td-c:focus { outline: none; background: var(--ring-bg); box-shadow: inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); }
 html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus, html.kbd .act:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
@@ -2210,6 +2218,27 @@ html[data-multi] .set-tile[data-set=theme] { --tc: var(--p0); }
 .speed-footnote { color:var(--muted); text-align:center; font-size:.7rem; line-height:1.45; margin:0 8px 12px; }
 .tile.mini.t-speed { --accent:#38bdf8; }
 @media (min-width:560px) { .speed-page { gap:18px; }.speed-hero { padding:22px 26px; }.speed-meter { width:226px; height:226px; }.speed-metric { padding:16px; } }
+/* Yatay ekran (TV, tablet, telefon yan): iki sütun; solda ölçer, sağda değerler, karar ve düğmeler. Sayfa kaydırmadan ekrana sığar (960×540 TV'de tek sütun taşıyordu). */
+@media (orientation:landscape) and (min-width:700px) {
+  .speed-page-shell .pg-body { padding:6px 28px calc(10px + env(safe-area-inset-bottom)); }
+  .speed-page { max-width:1080px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.05fr); grid-template-areas:"hero metrics" "hero verdict" "hero start" "hero cancel" "note note"; gap:12px 22px; align-content:start; }
+  .speed-hero { grid-area:hero; align-self:stretch; display:flex; flex-direction:column; justify-content:center; }
+  .speed-metrics { grid-area:metrics; }
+  .speed-verdict { grid-area:verdict; }
+  .speed-start { grid-area:start; }
+  .speed-cancel { grid-area:cancel; }
+  .speed-footnote { grid-area:note; margin:0; }
+}
+@media (orientation:landscape) and (max-height:620px) {
+  .speed-hero { padding:12px 18px 14px; }
+  .speed-hero:after { display:none; }
+  .speed-meter { width:172px; height:172px; margin:14px auto 10px; }
+  .speed-meter-core b { font-size:2.5rem; }
+  .speed-sub { margin:4px 0 10px; }
+  .speed-metric { padding:10px; gap:5px; }
+  .speed-verdict { padding:10px 12px; }
+  .speed-start { min-height:48px; }
+}
 
 
 /* Ana ekran düzeni (tek blok): kaynak çubuğu, bölüm başlıkları, 2x2 kategori kutuları ve kısayollar.
