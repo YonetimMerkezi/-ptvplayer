@@ -4,9 +4,10 @@
 import { ctx, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast, enYakin } from '../ui.js';
-import { sporVeri, kanalHaritasi, haftaBasi, haftaKaydir, haftaGunleri, haftaEtiketi, ULKE_LIGLERI, TABLOLU_LIGLER, TUM_LIGLER, ligBul, ikinciLigMi } from '../spor-veri.js';
+import { sporVeri, kanalHaritasi, ULKE_LIGLERI, TABLOLU_LIGLER, TUM_LIGLER, ligBul, ikinciLigMi } from '../spor-veri.js';
 import { dayStart, dayLabel, dayMonth, sections, lgLine } from '../../../www/js/sports.js';
 import { cleanFavs, toggleFav, setFavLeague, isFavSide, FAV_KEY } from '../../../www/js/sports-fav.js';
+import { turEtiketi, turNoKomsu, turNoTablodan, gunEkle } from '../../../www/js/sports-tur.js';
 import { lang } from '../../../www/js/i18n.js';
 import * as K from '../log.js';
 
@@ -74,7 +75,10 @@ export function sporScreen() {
   // Lig
   let ligId = String(AYAR(LIG_KEY, '') || '');
   if (!ligBul(ligId)) ligId = '';
-  let hafta = haftaBasi(Date.now());
+  // Lig sekmesi maç haftasını gösterir (14. hafta gibi): hedef = hangi turun aranacağı, tur = bulunan tur, turRef = numara çıkarmak için komşu tur
+  let hedef = { merkez: BUGUN, yon: 0, guncel: true };
+  let tur = null;
+  let turRef = null;
   let progM = null; // null: yüklenmedi
   let progHata = '';
   let progYuk = false;
@@ -160,7 +164,7 @@ export function sporScreen() {
     const durum = m.state === 'in' ? '<span class="sp-c live">' + esc(m.text || 'Canlı') + '</span>' : m.state === 'post' || m.off ? '<span class="sp-c">' + esc(m.text || 'MS') + '</span>' : '<span class="sp-c">' + saat(m.t) + '</span>';
     const skor = m.home.score != null && m.away.score != null ? m.home.score + ' - ' + m.away.score : 'v';
     const kn = kanallar[m.id];
-    const alt = dar ? [grupAdi(m), m.round].filter(Boolean).join(' · ') : lgLine(m);
+    const alt = dar ? [grupAdi(m), /hafta/i.test(m.round || '') ? '' : m.round].filter(Boolean).join(' · ') : lgLine(m); // lig sekmesinde hafta numarası üstteki düğmede
     return durum + '<span class="sp-h">' + takimAdi(m.home) + '</span><span class="sp-s">' + skor + '</span><span class="sp-a">' + takimAdi(m.away) + '</span>' + (kn || alt ? '<span class="sp-r">' + (kn ? '<b class="sp-k">' + esc(kanalYazi(kn)) + '</b>' : '') + '<i>' + esc(alt) + '</i></span>' : '');
   };
   const satirRender = (it) => {
@@ -202,7 +206,7 @@ export function sporScreen() {
     return [
       { ad: (ligId ? ligAdi(ligId) : 'Lig seçin') + ' ▾' },
       { ad: '‹ Önceki' },
-      { ad: haftaEtiketi(hafta) + (progYuk ? ' …' : ''), dim: true },
+      { ad: (tur ? turEtiketi(tur) : 'Hafta') + (progYuk ? ' …' : ''), dim: true },
       { ad: 'Sonraki ›' },
       { ad: yayinDurum || 'Yayın kanalları' },
     ];
@@ -260,7 +264,7 @@ export function sporScreen() {
     if (progYuk && (!progM || !progM.length)) return liste.setMessage(ligAdi(ligId) + ': hafta yükleniyor…');
     if (progHata && !progM) return liste.setMessage(progHata + '. OK ile yeniden dene');
     if (!progM) return liste.setMessage(ligAdi(ligId) + " için haftalık programı yüklemek için OK'a basın");
-    if (!progM.length) return liste.setMessage('Bu hafta ' + ligAdi(ligId) + ' maçı yok. Kırmızı/Yeşil: başka hafta');
+    if (!progM.length) return liste.setMessage(ligAdi(ligId) + ' için yakın tarihte maç bulunamadı');
     const g = gunlu(progM);
     const onceki = korumak && liste.cur && liste.cur.id;
     let k = g.ilk;
@@ -354,7 +358,24 @@ export function sporScreen() {
     canliYukle(true);
   }
 
-  // Lig (ya da hafta) seçildi: önce ESPN haftası, sonra eksik günler ikinci kaynaktan (liste geldikçe tazelenir), sonra puan durumu, sonra yayın kanalları — hepsi sırayla, tek tek
+  // Maç haftasının numarası: kaynak verisinden; yoksa komşu turdan; yoksa önceki çözümden; güncel turda puan durumundan (numaraTamamla)
+  const turNumarali = (t, ref, yon) => {
+    if (!t) return null;
+    const c = Object.assign({}, t);
+    if (!c.no) c.no = turNoKomsu(t, ref, yon) || hedef.no || 0;
+    return c;
+  };
+  function numaraTamamla() {
+    if (!tur || tur.no || !hedef.guncel || !tabloG || !tabloG.length) return;
+    const no = turNoTablodan(tur, tabloG);
+    if (!no) return;
+    tur.no = no;
+    hedef.no = no;
+    altCiz();
+  }
+  const turGunleri = () => (progM || []).map((m) => dayStart(m.t)).filter((g, i, a) => a.indexOf(g) === i).sort((x, y) => x - y);
+
+  // Lig (ya da hafta) seçildi: ligin maç haftası günler ikinci kaynaktan geldikçe kurulur (liste geldikçe tazelenir), sonra puan durumu, sonra yayın kanalları — hepsi sırayla, tek tek
   async function ligYukle(zorla) {
     if (!ligId) return seciciAc('lig');
     const n = ++ligN;
@@ -363,44 +384,50 @@ export function sporScreen() {
     progYuk = true;
     progHata = '';
     progM = null;
+    tur = null;
     progCiz();
     duzen();
-    let ham = null;
+    const yon = hedef.yon;
+    const ref = turRef;
+    const guncel = !!hedef.guncel;
+    let sonuc = null;
     try {
-      ham = await veri.hafta(ligId, hafta, !!zorla);
-    } catch (e) {
-      if (n !== ligN || kapali) return;
-      progHata = String((e && e.message) || 'Maç bilgisi alınamadı').replace(/\.+$/, '');
-    }
-    if (n !== ligN || kapali) return;
-    if (ham) {
-      progM = ham;
-      progCiz();
-      duzen();
-    }
-    // ESPN haftayı hiç vermediyse (alt ligler, ağ sorunu) ya da eksik verdiyse maçsız günler LiveScore/Mackolik'ten eklenir
-    try {
-      const ml = await veri.haftaEk(ligId, hafta, ham || [], {
+      sonuc = await veri.turAl(ligId, {
+        merkez: hedef.merkez,
+        yon,
+        zorla: !!zorla,
         aktif: () => n === ligN && !kapali && sekme === LIG,
-        onPart: (ml) => {
+        onPart: (ml, t) => {
           if (n !== ligN || kapali) return;
           progM = ml;
+          tur = turNumarali(t, ref, yon);
           progHata = '';
           progCiz(true);
           duzen();
         },
       });
-      if (n === ligN && !kapali && ml && ml.length) {
-        progM = ml;
-        progHata = '';
-      }
-    } catch (err) {
-      K.uyar('Hafta tamamlama: ' + (err && err.message ? err.message : err));
+    } catch (e) {
+      if (n !== ligN || kapali) return;
+      progHata = String((e && e.message) || 'Maç bilgisi alınamadı').replace(/\.+$/, '');
     }
     if (n !== ligN || kapali) return;
+    if (sonuc && sonuc.tur) {
+      tur = turNumarali(sonuc.tur, ref, yon);
+      progM = sonuc.tur.maclar;
+      progHata = '';
+      hedef = { merkez: sonuc.tur.bas, yon: 0, no: tur.no, guncel }; // bulunan tur artık hedeftir (sekme dönüşünde aynı tur yeniden kurulur)
+      turRef = null;
+    } else if (sonuc && yon !== 0 && ref) {
+      tur = ref; // o yönde başka tur yok: eski turda kalınır
+      progM = ref.maclar;
+      hedef = { merkez: ref.bas, yon: 0, no: ref.no, guncel: false };
+      turRef = null;
+      toast('Bu yönde maç bulunamadı');
+    }
     progYuk = false;
     if (sekme !== LIG) {
       progM = null; // sekme değişince yarım kalan liste saklanmaz: dönüşte yeniden kurulur (önbellekten hızlı)
+      tur = null;
       return;
     }
     if (!progM && !progHata) progM = [];
@@ -408,6 +435,7 @@ export function sporScreen() {
     duzen();
     if (!tabloG && !tabloYuk) await puanYukle(false, true); // puan durumu sekmesi açıldığında hazır olsun (tek hafif istek)
     if (n !== ligN || kapali) return;
+    numaraTamamla();
     yayinZamanla(n);
   }
   // Puan durumu (Puan durumu sekmesi): tek ESPN isteği; alt liglerde yok
@@ -437,6 +465,7 @@ export function sporScreen() {
     tabloYuk = false;
     tabloCiz();
     duzen();
+    numaraTamamla();
   }
   // Program geldikten sonra yayın kanalları kendiliğinden aranır; kullanıcı tuşa basıyorsa beklenir (gezinirken arayüz donmasın)
   function yayinZamanla(n) {
@@ -455,7 +484,9 @@ export function sporScreen() {
     if (!ligBul(id)) return;
     ligId = id;
     ctx.store.setSetting(LIG_KEY, id);
-    hafta = haftaBasi(Date.now());
+    hedef = { merkez: dayStart(Date.now()), yon: 0, guncel: true };
+    tur = null;
+    turRef = null;
     progM = null;
     progHata = '';
     tabloG = null;
@@ -477,14 +508,17 @@ export function sporScreen() {
     }
   }
   function haftaDegis(d) {
-    if (!ligId) return;
-    hafta = haftaKaydir(hafta, d);
+    const kaynak = tur || turRef;
+    if (!ligId || !kaynak) return;
+    turRef = kaynak; // numara komşu turdan çıkarılabilsin; yeni tur bulunamazsa buraya dönülür
+    hedef = { merkez: d > 0 ? gunEkle(kaynak.son, 1) : gunEkle(kaynak.bas, -1), yon: d, guncel: false };
     clearTimeout(haftaT);
     ++ligN;
     yayinIptal();
     progM = null;
     progHata = '';
     progYuk = true;
+    tur = null;
     progCiz();
     altCiz();
     haftaT = setTimeout(() => ligYukle(false), 350); // art arda basışta her haftaya istek atılmaz (puan durumu ligle aynı: yüklüyse yeniden alınmaz)
@@ -499,7 +533,7 @@ export function sporScreen() {
     if (!progM || !progM.length) return sessiz ? undefined : toast('Önce haftalık programı yükleyin');
     const n = ++yayinN;
     const simdi = dayStart(Date.now());
-    const gunler = haftaGunleri(hafta).filter((g) => progM.some((m) => dayStart(m.t) === g && m.state !== 'post' && !m.off) && g >= simdi);
+    const gunler = turGunleri().filter((g) => progM.some((m) => dayStart(m.t) === g && m.state !== 'post' && !m.off) && g >= simdi);
     if (!gunler.length) return sessiz ? undefined : toast('Bu haftada yayını aranacak maç yok');
     let bos = 0;
     for (let i = 0; i < gunler.length; i++) {
@@ -523,7 +557,7 @@ export function sporScreen() {
   // Önceden alınmış (taze) yayınlar ağa gitmeden satırlara yazılır; gün verilirse yalnız o günün maçları
   async function kanalIsle(gun, yayin, n) {
     if (sekme !== LIG || !progM) return;
-    const gunler = gun != null ? [gun] : haftaGunleri(hafta);
+    const gunler = gun != null ? [gun] : turGunleri();
     for (let i = 0; i < gunler.length; i++) {
       const y = gun != null ? yayin : veri.yayinVar(gunler[i]);
       if (!y) continue;
@@ -708,8 +742,9 @@ export function sporScreen() {
     if (sekme === PUAN) return;
     if (i === 1) return haftaDegis(-1);
     if (i === 2) {
-      if (hafta !== haftaBasi(Date.now())) {
-        hafta = haftaBasi(Date.now());
+      if (!hedef.guncel) {
+        hedef = { merkez: dayStart(Date.now()), yon: 0, guncel: true }; // güncel (ya da yaklaşan) tura dön
+        turRef = null;
         clearTimeout(haftaT);
         if (ligId) ligYukle(false);
         altCiz();
