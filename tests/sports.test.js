@@ -415,3 +415,14 @@ test('loadMatches: HTTP hatasında basamaklı adresler yine denenir; bir lig ba�
   const r = await loadMatches({ net, now: NOW, parallel: 1 });
   assert.equal(r.okCount, LEAGUES.length, 'basamak inerek tur.1 de alındı');
 });
+
+test('loadMatches: ilk adres basamağı hata veriyorsa çalışan basamak sonraki yüklemelerde de hatırlanır', async () => {
+  const hatira = {};
+  const net = { calls: [], json: async function (u) { this.calls.push(u); if (/&limit=/.test(u)) { const e = new Error('HTTP 400'); e.status = 400; throw e; } return { events: [] }; } };
+  await loadMatches({ net, now: NOW, parallel: 1, hatira });
+  const ilkSayi = net.calls.filter((u) => /&limit=/.test(u)).length;
+  assert.ok(ilkSayi >= 2, 'ilk yüklemede iki lig basamağı dener');
+  net.calls.length = 0;
+  await loadMatches({ net, now: NOW, parallel: 1, hatira });
+  assert.equal(net.calls.filter((u) => /&limit=/.test(u)).length, 0, 'ikinci yüklemede bozuk basamak hiç denenmez');
+});

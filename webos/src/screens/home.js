@@ -4,8 +4,6 @@ import { ctx, open, ikon, ustCubuk } from '../ctx.js';
 import { el, esc, enYakin } from '../ui.js';
 import { eylemi } from '../kumanda.js';
 import { vizyonYukle } from '../vizyon.js';
-import { sporVeri, KULLANILDI_KEY, ISITMA_GECIKME_MS } from '../spor-veri.js';
-import { dayStart } from '../../../www/js/sports.js';
 import * as K from '../log.js';
 import { t } from '../../../www/js/i18n.js';
 
@@ -66,7 +64,6 @@ export function homeScreen() {
   let afisler = [];
   let yukleniyor = false;
   let olu = false;
-  let isitT = 0; // spor ısıtması zamanlayıcısı
   let r = 0; // odaktaki satır: 0 kartlar, 1 butonlar, 2 afişler
   let ustte = false; // odak üst çubuktaki küçük Telefon kumandası düğmesinde (▲ ile kartlardan çıkılır)
   const c = [0, 0, 0]; // her satırda son odak sütunu
@@ -188,16 +185,9 @@ export function homeScreen() {
     onShow() {
       isaretle();
       yukle();
-      // Spor ekranını daha önce kullanan kullanıcıda bugünün maçları arka planda hazırlanır; Spor'a girince liste hazırdır
-      clearTimeout(isitT);
-      if (ctx.store.setting(KULLANILDI_KEY, false)) isitT = setTimeout(() => sporVeri(ctx.net).isit(dayStart(Date.now())), ISITMA_GECIKME_MS);
-    },
-    onHide() {
-      clearTimeout(isitT);
     },
     destroy() {
       olu = true;
-      clearTimeout(isitT);
     },
     onKey(a) {
       if (ustte && (a === 'ok' || a === 'down' || a === 'up' || a === 'left' || a === 'right')) {

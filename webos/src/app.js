@@ -285,29 +285,5 @@ export function start() {
     }, 25000);
   }
   setTimeout(telefonuBaslat, 1500); // telefon kumandası açık bırakıldıysa sunucu ve yoklama başlar
-  setTimeout(isit, 3000); // ana sayfa çizildikten sonra Filmler/Diziler'in açılacağı kategori arka planda önbelleğe alınır
 }
 
-// Filmler ve Diziler'de son açılan (yoksa ilk) kategorinin içeriği önceden indirilir: bölüme girince liste hazır gelir.
-// Yalnız Xtream; sırayla ve arka planda (grup yok: kullanıcı başka kategoriye geçse de kesilmez); hata sessizce geçilir.
-function isit() {
-  try {
-    const src = ctx.store.active();
-    const p = provider();
-    if (!src || !p || p.type !== 'xtream') return;
-    ['movie', 'series'].reduce(
-      (zincir, tur) =>
-        zincir
-          .then(() => p.categories(tur))
-          .then((cats) => {
-            const son = String(ctx.store.setting('kat:' + tur + ':' + src.id, ''));
-            const c = cats.filter((x) => String(x.id) === son)[0] || cats[0];
-            return c ? p.items(tur, c.id, null) : null;
-          })
-          .catch(() => {}),
-      Promise.resolve(),
-    );
-  } catch (e) {
-    /* ısınma başarısız: bölüm açılınca normal yoldan yüklenir */
-  }
-}

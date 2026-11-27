@@ -169,7 +169,7 @@ test('spor: ESPN yalnız istenen günün penceresini alır; ilk sonuç ikinci ka
   assert.equal(istekler[0].now, gun0);
 });
 
-// ---- kademeli liste, kayıtlı liste, ısıtma ----
+// ---- kademeli liste, kayıtlı liste, süren yüklemeye katılma ----
 
 const bekle = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 const sahteKalici = (kayit) => {
@@ -256,7 +256,7 @@ test('spor: çok eski kayıt gösterilmez; yenileme (zorla) kayıtlıya bakmaz',
   assert.ok(ilkler2.every((l) => l.join() === 'e1'), 'zorla yenilemede kayıtlı liste gösterilmez');
 });
 
-test('spor: ısıtma sürerken Spor açılırsa aynı yüklemeye katılır (çift istek yok), o ana kadarki liste hemen gelir', async () => {
+test('spor: yükleme sürerken ekran yeniden açılırsa aynı yüklemeye katılır (çift istek yok), o ana kadarki liste hemen gelir', async () => {
   let say = 0;
   let parca;
   let bitir;
@@ -265,7 +265,7 @@ test('spor: ısıtma sürerken Spor açılırsa aynı yüklemeye katılır (çif
     loadEspn: async (o) => {
       say++;
       parca = o.onPart;
-      assert.equal(o.parallel, 2, 'ısıtma az eşzamanlı istekle yapılır');
+      assert.equal(o.parallel, 2, 'verilen eşzamanlılık ESPN yüklemesine iletilir');
       o.onPart([maç('e1', gun0 + 20 * 3600e3, 'A', 'B')]);
       await bitis;
       return { matches: [maç('e1', gun0 + 20 * 3600e3, 'A', 'B')] };
@@ -275,22 +275,16 @@ test('spor: ısıtma sürerken Spor açılırsa aynı yüklemeye katılır (çif
     birlestir: (a, b) => ({ matches: a.concat(b) }),
   };
   const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps });
-  const isinma = v.isit(gun0);
+  const ilkYukleme = v.maclar(gun0, false, null, 2);
   await bekle();
   const ilkler = [];
   const sonuc = v.maclar(gun0, false, (l) => ilkler.push(l.map((x) => x.id)));
-  assert.deepEqual(ilkler, [['e1']], 'katılan ekran ısıtmanın o ana kadarki listesini hemen alır');
+  assert.deepEqual(ilkler, [['e1']], 'katılan ekran yüklemenin o ana kadarki listesini hemen alır');
   bitir();
   assert.deepEqual((await sonuc).map((x) => x.id), ['e1']);
-  assert.equal(await isinma, true);
+  assert.deepEqual((await ilkYukleme).map((x) => x.id), ['e1']);
   assert.equal(say, 1, 'ESPN yalnız bir kez istenir');
   assert.ok(parca);
-});
-
-test('spor: ısıtma hata verirse sessizce false döner', async () => {
-  const deps = { loadEspn: async () => { throw new Error('x'); }, loadLs: async () => { throw new Error('y'); }, loadMk: async () => { throw new Error('z'); } };
-  const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps });
-  assert.equal(await v.isit(gun0), false);
 });
 
 test('spor: ESPN hiç yanıt vermezse 10 dk denenmez (gün değiştirirken beklenmez), sonra yeniden denenir', async () => {

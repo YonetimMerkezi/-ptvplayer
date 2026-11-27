@@ -1,6 +1,6 @@
 // Spor verisi: ESPN (tüm ligler) + gün gün ikinci kaynak (LiveScore, olmazsa Mackolik) + yayın akışı (hangi kanalda).
 // Ayrıştırma ve birleştirme Android uygulamasıyla ortaktır (www/js/sports*.js); burada yalnız önbellekli yükleme sırası vardır.
-import { loadMatches, dayStart, matchesOnDay } from '../../www/js/sports.js';
+import { loadMatches, dayStart, matchesOnDay, espnHatirasi } from '../../www/js/sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources, sameTeam } from '../../www/js/sports-ls.js';
 import { loadMackolikDay } from '../../www/js/sports-mk.js';
 import { loadSchedDay, seInfoFor } from '../../www/js/sports-se.js';
@@ -16,8 +16,6 @@ export const PARCA_MS = 250; // ligler/kaynaklar geldikçe listeyi en sık bu ar
 const kayitAnahtari = (dayMs) => 'spor:' + dayMs;
 const sn = (ms) => (ms / 1000).toFixed(1) + ' sn';
 const ara = () => new Promise((c) => setTimeout(c, 0)); // olay döngüsüne dön (tuşlar işlensin)
-export const KULLANILDI_KEY = 'sp.kullanildi'; // Spor ekranı bir kez açıldıysa ana sayfa bugünün maçlarını önceden hazırlar
-export const ISITMA_GECIKME_MS = 7000; // ana sayfa açıldıktan bu kadar sonra (afişler yerleşince) ısıtma başlar
 
 // kalici: { okuYasli(anahtar), yaz(anahtar, dizi) } (IndexedDB önbelleği); verilmezse her şey yalnız bellekte tutulur.
 export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici = null } = {}) {
@@ -39,6 +37,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
       try {
         const secenek = dayMs == null ? { net, now: now(), back: 1, ahead: 7 } : { net, now: dayMs, back: 0, ahead: 0 };
         if (onPart) secenek.onPart = onPart;
+        secenek.hatira = espnHatirasi;
         if (paralel) secenek.parallel = paralel;
         const t0 = Date.now();
         const r = await d.loadEspn(secenek);
@@ -167,11 +166,6 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
     return sonuc;
   }
 
-  // Ana sayfa boştayken günün maçlarını arka planda hazırlar (liste Spor'a girince hazır olur); hata sessizce yutulur
-  function isit(dayMs) {
-    return maclar(dayMs, false, null, 2).then(() => true, () => false);
-  }
-
   // Günün yayın akışı (maç → kanal adları). Önce Spor Ekranı sayfası, olmazsa TheSportsDB. Alınamazsa null.
   function yayin(dayMs) {
     return bir('yayin:' + dayMs, async () => {
@@ -199,7 +193,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
     });
   }
 
-  return { espn, maclar, isit, yayin, durum: () => ({ espnHata: st.espnHata, espnAt: st.espnAt }) };
+  return { espn, maclar, yayin, durum: () => ({ espnHata: st.espnHata, espnAt: st.espnAt }) };
 }
 
 // Tek ortak örnek: Spor ekranı ve ana sayfadaki ısıtma aynı önbelleği ve aynı bekleyen istekleri paylaşır.

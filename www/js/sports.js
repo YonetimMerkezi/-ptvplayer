@@ -356,7 +356,9 @@ export function withTimeout(p, ms) {
 // (hata.detail: "tur.1: HTTP 403" gibi ilk nedenler, ekranda gösterilir).
 // vazgec: hiçbir lig alınamadan art arda bu kadar lig başarısız olursa sunucuya ulaşılamıyor sayılır, kalan ligler denenmez (engelli/yavaş ağda dakikalarca beklenmez).
 // onPart(maçlar): her lig alındıkça o ana kadarki (süzülmüş, sıralı) liste verilir; ekran ligler bitmeden ilk satırları gösterebilir.
-export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASES, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null, vazgec = 3 } = {}) {
+// Çalışan adres basamağı sunucu başına hatırlanır: ilk basamak o ağda hata veriyorsa (ör. HTTP 400) her yüklemede aynı boşa giden istekler tekrarlanmaz
+export const espnHatirasi = {}; // uygulama boyunca ortak; loadMatches'e hatira olarak verilir (verilmezse her çağrı baştan başlar)
+export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASES, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null, vazgec = 3, hatira = {} } = {}) {
   const bases = Array.isArray(base) ? base : [base];
   const today = startOfDay(now);
   const from = today - back * DAY;
@@ -365,7 +367,8 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
   const failed = [];
   const errors = {};
   let okCount = 0;
-  let level = 0; // çalışan en yalın basamak (sonraki ligler buradan başlar)
+  const anahtar = [].concat(base).join('|');
+  let level = hatira[anahtar] || 0; // çalışan en yalın basamak (sonraki ligler buradan başlar)
   const votes = [0, 0, 0];
   let ardisik = 0; // hiç başarı yokken art arda alınamayan lig sayısı
   // Bağlantı kurulamadı ya da süre doldu: aynı sunucudaki daha yalın adresler de aynı sonucu verir, basamaklara inilmez
@@ -402,7 +405,7 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
           try {
             json = await withTimeout(net.json(urls[k], { fast: true }), timeoutMs);
             if (json === null || typeof json !== 'object') throw new Error('Boş yanıt');
-            if (k > level && ++votes[k] >= 2) level = k; // iki ayrı ligde aynı basamağa düşülürse sonrakiler oradan başlar (tek seferlik ağ hatası yalınlaştırmaz)
+            if (k > level && ++votes[k] >= 2) hatira[anahtar] = level = k; // iki ayrı ligde aynı basamağa düşülürse sonrakiler (ve sonraki yüklemeler) oradan başlar (tek seferlik ağ hatası yalınlaştırmaz)
             if (h > sunucu) sunucu = h; // ilk sunucu kapalı, ikincisi açık: sonraki ligler doğrudan ikinciden başlar
           } catch (e) {
             json = null;

@@ -25,6 +25,9 @@ export function dinle(fn) {
 
 // Yakalanmamış hatalar da kayda girer (TV'de konsol yok).
 export function yakala(pencere) {
-  pencere.addEventListener('error', (e) => hata('JS: ' + e.message + (e.filename ? ' @' + String(e.filename).split('/').pop() + ':' + e.lineno : '')));
+  pencere.addEventListener('error', (e) => {
+    const yig = e.error && e.error.stack ? String(e.error.stack).split('\n').slice(1, 3).map((x) => x.replace(/^\s*at\s+/, '').split('/').pop()).join(' < ') : '';
+    hata('JS: ' + e.message + (e.filename ? ' @' + String(e.filename).split('/').pop() + ':' + e.lineno + ':' + e.colno : '') + (yig ? ' | ' + yig.slice(0, 160) : ''));
+  });
   pencere.addEventListener('unhandledrejection', (e) => hata('Söz: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
 }

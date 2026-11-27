@@ -2,7 +2,7 @@
 import { ctx, provider, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast, enYakin } from '../ui.js';
-import { sporVeri, kanalHaritasi, KULLANILDI_KEY } from '../spor-veri.js';
+import { sporVeri, kanalHaritasi } from '../spor-veri.js';
 import { dayStart, dayStrip, dayLabel, sections, chipsFor, capSections, lgLine, hasLive } from '../../../www/js/sports.js';
 import { cleanFavs, toggleFav, isFavSide, hasFavMatch, FAV_KEY, FAV_CHIP } from '../../../www/js/sports-fav.js';
 import * as K from '../log.js';
@@ -12,8 +12,7 @@ const yenileMs = 60000;
 export function sporScreen() {
   const kok = el('div', 'screen k-spor');
   const src = ctx.store.active();
-  const veri = sporVeri(ctx.net); // ekran kapanıp açılınca ve ana sayfadaki ısıtmayla önbellek paylaşılır
-  if (!ctx.store.setting(KULLANILDI_KEY, false)) ctx.store.setSetting(KULLANILDI_KEY, true);
+  const veri = sporVeri(ctx.net); // ekran kapanıp açılınca önbellek paylaşılır
   const gunler = dayStrip(Date.now(), 1, 7);
   let gunNo = 1; // bugün
   let chip = '';
