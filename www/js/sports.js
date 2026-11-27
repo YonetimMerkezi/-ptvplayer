@@ -352,8 +352,9 @@ export function withTimeout(p, ms) {
 // Dün'den (back) bugünden itibaren ahead gün sonrasına kadar tüm liglerin maçları. Bir lig alınamazsa diğerleri yine gelir.
 // Döner: { matches, okCount, failed: [lig kimlikleri], errors: { lig: ilk hata iletisi }, level }; hiçbir lig alınamazsa hata atar
 // (hata.detail: "tur.1: HTTP 403" gibi ilk nedenler, ekranda gösterilir).
+// vazgec: hiçbir lig alınamadan art arda bu kadar lig başarısız olursa sunucuya ulaşılamıyor sayılır, kalan ligler denenmez (engelli/yavaş ağda dakikalarca beklenmez).
 // onPart(maçlar): her lig alındıkça o ana kadarki (süzülmüş, sıralı) liste verilir; ekran ligler bitmeden ilk satırları gösterebilir.
-export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null } = {}) {
+export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null, vazgec = 3 } = {}) {
   const today = startOfDay(now);
   const from = today - back * DAY;
   const to = today + (ahead + 1) * DAY;
@@ -363,6 +364,9 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
   let okCount = 0;
   let level = 0; // çalışan en yalın basamak (sonraki ligler buradan başlar)
   const votes = [0, 0, 0];
+  let ardisik = 0; // hiç başarı yokken art arda alınamayan lig sayısı
+  // Bağlantı kurulamadı ya da süre doldu: aynı sunucudaki daha yalın adresler de aynı sonucu verir, basamaklara inilmez
+  const ulasilamaz = (e) => !!e && (e.status === 0 || /zamanında yanıt/i.test(String(e.message || '')));
   const deadline = Date.now() + budgetMs;
   const queue = [...leagues];
   // Gençlik maçları ayıklanır, tekrarlar tekilleşir, saat sırasına dizilir
@@ -379,6 +383,11 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
         errors[lg.id] = errors[lg.id] || 'Süre doldu';
         continue;
       }
+      if (!okCount && ardisik >= vazgec) {
+        failed.push(lg.id);
+        errors[lg.id] = errors[lg.id] || 'Sunucuya ulaşılamadı (atlandı)';
+        continue;
+      }
       const urls = scoreboardLadder(lg.id, from - DAY, to + DAY, base);
       let json = null;
       for (let k = Math.min(level, urls.length - 1); k < urls.length && json === null; k++) {
@@ -389,12 +398,15 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
         } catch (e) {
           json = null;
           if (!errors[lg.id]) errors[lg.id] = String((e && e.message) || e || 'hata').slice(0, 140);
+          if (ulasilamaz(e)) break;
         }
       }
       if (json === null) {
         failed.push(lg.id);
+        ardisik++;
         continue;
       }
+      ardisik = 0;
       delete errors[lg.id];
       okCount++;
       for (const m of parseScoreboard(json, lg.id)) if (m.t >= from && m.t < to) matches.push(m);

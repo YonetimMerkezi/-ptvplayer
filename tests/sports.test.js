@@ -382,3 +382,20 @@ test('loadMatches: onPart hata atarsa yükleme bozulmaz', async () => {
   const r = await loadMatches({ net, now: NOW, onPart: () => { throw new Error('ekran'); } });
   assert.equal(r.matches.length, 1);
 });
+
+test('loadMatches: sunucuya hiç ulaşılamıyorsa birkaç denemeden sonra vazgeçilir, basamaklara inilmez', async () => {
+  const net = { calls: [], json: async function (u) { this.calls.push(u); const e = new Error('Bağlanılamadı'); e.status = 0; throw e; } };
+  await assert.rejects(() => loadMatches({ net, now: NOW, parallel: 1 }), /Maç bilgisi alınamadı/);
+  assert.equal(net.calls.length, 3, 'üç lig denendi (her biri tek adres), kalanı atlandı');
+});
+
+test('loadMatches: HTTP hatasında basamaklı adresler yine denenir; bir lig başarılı olunca vazgeçme devre dışı', async () => {
+  let n = 0;
+  const net = fakeNet((u) => {
+    n++;
+    if (slugOf(u) === 'tur.1' && n <= 1) { const e = new Error('HTTP 400'); e.status = 400; throw e; }
+    return { events: [] };
+  });
+  const r = await loadMatches({ net, now: NOW, parallel: 1 });
+  assert.equal(r.okCount, LEAGUES.length, 'basamak inerek tur.1 de alındı');
+});

@@ -272,3 +272,14 @@ test('spor: ısıtma hata verirse sessizce false döner', async () => {
   const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps });
   assert.equal(await v.isit(gun0), false);
 });
+
+test('spor: ESPN hiç yanıt vermezse 10 dk denenmez (gün değiştirirken beklenmez), sonra yeniden denenir', async () => {
+  const { v, say, ilerle } = kur({ espn: new Error('espn engelli'), ls: [maç('l1', gun0 + 18 * 3600e3, 'A', 'B')], birlestir: (a, b) => ({ matches: a.concat(b) }) });
+  assert.equal((await v.maclar(gun0)).length, 1);
+  assert.equal(say.espn, 1);
+  await v.maclar(gun0 + G);
+  assert.equal(say.espn, 1, 'düşen ESPN diğer günde tekrar denenmez');
+  ilerle(11 * 60000);
+  await v.maclar(gun0 + 2 * G);
+  assert.equal(say.espn, 2, '10 dakika sonra yeniden denenir');
+});

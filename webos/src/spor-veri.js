@@ -10,6 +10,7 @@ import { onbellek } from './onbellek.js';
 export const TAZE_MS = 5 * 60000; // ESPN ve günlük listeler bu süre taze sayılır
 export const YAYIN_TAZE_MS = 30 * 60000;
 export const KAYIT_OMUR_MS = 6 * 3600 * 1000; // kayıtlı gün listesi bundan eskiyse ilk anda gösterilmez (skorlar çok eskimiş olur)
+export const ESPN_BEKLEME_MS = 10 * 60000; // ESPN hiç yanıt vermediyse bu süre yeniden denenmez (LiveScore için de aynı kural)
 export const PARCA_MS = 250; // ligler/kaynaklar geldikçe listeyi en sık bu aralıkla tazele (zayıf TV'de çizim yükü)
 const kayitAnahtari = (dayMs) => 'spor:' + dayMs;
 export const KULLANILDI_KEY = 'sp.kullanildi'; // Spor ekranı bir kez açıldıysa ana sayfa bugünün maçlarını önceden hazırlar
@@ -18,7 +19,7 @@ export const ISITMA_GECIKME_MS = 7000; // ana sayfa açıldıktan bu kadar sonra
 // kalici: { okuYasli(anahtar), yaz(anahtar, dizi) } (IndexedDB önbelleği); verilmezse her şey yalnız bellekte tutulur.
 export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici = null } = {}) {
   const d = Object.assign({ loadEspn: loadMatches, loadLs: loadLiveScoreDay, loadMk: loadMackolikDay, loadSched: loadSchedDay, loadTv: loadTvDay, birlestir: mergeSources }, deps);
-  const st = { espn: {}, espnAt: 0, espnHata: '', gunler: {}, yayin: {}, lsDownAt: 0 };
+  const st = { espn: {}, espnAt: 0, espnHata: '', espnDownAt: 0, gunler: {}, yayin: {}, lsDownAt: 0 };
   const bekleyen = {};
   const bir = (k, fn) => bekleyen[k] || (bekleyen[k] = fn().finally(() => delete bekleyen[k]));
 
@@ -30,6 +31,8 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
     return bir('espn:' + k, async () => {
       const c = st.espn[k];
       if (!zorla && c && now() - c.at < TAZE_MS) return c.matches;
+      // ESPN hiçbir ligde yanıt vermediyse (engelli/yavaş ağ) kısa süre denenmez: gün değiştirirken her seferinde beklenmez
+      if (st.espnDownAt && now() - st.espnDownAt < ESPN_BEKLEME_MS) return (c && c.matches) || [];
       try {
         const secenek = dayMs == null ? { net, now: now(), back: 1, ahead: 7 } : { net, now: dayMs, back: 0, ahead: 0 };
         if (onPart) secenek.onPart = onPart;
@@ -38,8 +41,10 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
         st.espn[k] = { at: now(), matches: r.matches || [] };
         st.espnAt = now();
         st.espnHata = '';
+        st.espnDownAt = 0;
       } catch (e) {
         st.espnHata = (e && e.message) || 'Maç bilgisi alınamadı';
+        st.espnDownAt = now();
         if (!st.espn[k]) st.espn[k] = { at: 0, matches: [] };
       }
       return st.espn[k].matches;
