@@ -6,6 +6,8 @@ import { HAFTA_YETER, createSporVeri, kanalAdlari, kanalHaritasi, kullaniciKanal
 const G = 86400000;
 const gun0 = new Date(2026, 10, 20).getTime(); // Cuma
 const pzt0 = new Date(2026, 10, 16).getTime(); // o haftanın pazartesisi
+// LiveScore/Mackolik maçı: lg ESPN kimliği değil kaynağa özgüdür; lig, yarışma adından ve grubundan eşlenir
+const lsMaç = (id, t, h, a, ek = {}) => maç(id, t, h, a, { lg: 'ls:turkey-super-lig', lgName: 'Türkiye · Süper Lig', grp: 'tr', src: 'ls', ...ek });
 const maç = (id, t, h, a, ek = {}) => ({ id, lg: 'tur.1', t, state: 'pre', text: '', home: { name: h, label: h, score: null }, away: { name: a, label: a, score: null }, ...ek });
 
 // espn: lig kimliği → maç dizisi | Error; ls/mk: dizi | Error
@@ -21,15 +23,16 @@ function kur({ espn = {}, ls, mk, sched, tv, tablo, saat = 12, ozetHata = null }
       const r = espn[id];
       if (r instanceof Error) throw r;
       if (r === undefined && espn['*'] instanceof Error) throw espn['*'];
-      return { matches: r || [], okCount: 1, failed: [] };
+      return { matches: r || [], okCount: 1, failed: [], level: espn.__level || 0 };
     },
     loadTablo: async ({ slug }) => {
       say.tablo++;
       if (tablo instanceof Error) throw tablo;
       return tablo || [{ name: '', rows: [{ name: slug, rank: 1, pts: 3 }] }];
     },
-    loadLs: async ({ dayMs } = {}) => {
+    loadLs: async ({ dayMs, filtre } = {}) => {
       say.ls++;
+      (say.filtreler = say.filtreler || []).push(filtre);
       if (ls instanceof Error) throw ls;
       return { matches: typeof ls === 'function' ? ls(dayMs) : ls || [] };
     },
@@ -273,8 +276,8 @@ test('spor: ESPN haftayı eksik verirse maçsız günler ikinci kaynaktan tamaml
   const ls = (gun) => {
     const i = Math.round((gun - pzt0) / G);
     return [
-      maç('l' + i, gun + 19 * 3600e3, 'T' + i, 'U' + i), // bu lig
-      maç('x' + i, gun + 19 * 3600e3, 'Y', 'Z', { lg: 'eng.1' }), // başka lig: eklenmez
+      lsMaç('l' + i, gun + 19 * 3600e3, 'T' + i, 'U' + i), // bu lig
+      lsMaç('x' + i, gun + 19 * 3600e3, 'Y', 'Z', { lg: 'ls:england-premier-league', lgName: 'İngiltere · Premier League', grp: 'eu' }), // başka lig: eklenmez
     ];
   };
   const { v, say } = kur({ espn: { 'tur.1': ESPN_MAC }, ls });
@@ -285,7 +288,7 @@ test('spor: ESPN haftayı eksik verirse maçsız günler ikinci kaynaktan tamaml
   assert.equal(say.ls, 6, 'cuma dışındaki altı gün sorulur');
   assert.equal(son.length, 2 + 6, 'her boş güne bu ligin bir maçı eklendi, başka lig eklenmedi');
   assert.deepEqual(parcalar, [3, 4, 5, 6, 7, 8], 'liste gün gün büyür');
-  assert.ok(son.every((m) => m.lg === 'tur.1'));
+  assert.ok(son.every((m) => m.lg === 'tur.1' || m.lgName === 'Türkiye · Süper Lig'));
   assert.ok(son.every((m, i) => i === 0 || son[i - 1].t <= m.t), 'saat sırasında');
   // tamamlanmış hafta ağa gitmez; hafta() önbelleği tamamlanmış listeyi verir
   assert.equal((await v.haftaEk('tur.1', pzt0, ml)).length, 8);
@@ -300,7 +303,7 @@ test('spor: ESPN haftayı eksik verirse maçsız günler ikinci kaynaktan tamaml
 });
 
 test('spor: hafta tamamlama aktif() false olunca durur; ikinci kaynak düşerse eldeki liste bozulmaz', async () => {
-  const ls = (gun) => [maç('l' + gun, gun + 19 * 3600e3, 'T', 'U')];
+  const ls = (gun) => [lsMaç('l' + gun, gun + 19 * 3600e3, 'T', 'U')];
   const k = kur({ espn: { 'tur.1': [maç('e1', pzt0 + 4 * G + 18 * 3600e3, 'A', 'B')] }, ls });
   const ml = await k.v.hafta('tur.1', pzt0);
   let n = 0;
@@ -344,4 +347,74 @@ test('spor: maç olayları — ESPN maçı doğrudan özetten, ESPN dışı kayn
 test('spor: maç olayları — özet alınamazsa hata atar (ekran "alınamadı" yazar)', async () => {
   const { v } = kur({ ozetHata: new Error('Maç ayrıntısı alınamadı'), espn: { 'tur.1': [] } });
   await assert.rejects(() => v.ozet(maç('tur.1:5', gun0, 'A', 'B', { state: 'post' })), /alınamadı/);
+});
+
+test('spor: alt ligler (Türkiye 1./2. Lig) ESPN\'e gitmeden ikinci kaynaktan kurulur; ülke süzgeci istenir; grup adı korunur', async () => {
+  const bir = (gun) => [
+    lsMaç('a' + gun, gun + 15 * 3600e3, 'A', 'B', { lg: 'ls:turkey-2-lig-beyaz-grup', lgName: 'Türkiye · 2. Lig: Beyaz Grup' }),
+    lsMaç('b' + gun, gun + 17 * 3600e3, 'C', 'D', { lg: 'ls:turkey-1-lig', lgName: 'Türkiye · 1. Lig' }),
+    lsMaç('c' + gun, gun + 18 * 3600e3, 'E', 'F'), // Süper Lig: bu ligde yok
+  ];
+  const { v, say } = kur({ ls: bir });
+  const ml = await v.hafta('tff.2', pzt0);
+  assert.deepEqual(ml, [], 'ESPN yok: hafta() ağa gitmez');
+  assert.equal(say.espn, 0);
+  const son = await v.haftaEk('tff.2', pzt0, ml);
+  assert.equal(say.ls, 7, 'haftanın yedi günü de sorulur');
+  assert.equal(son.length, 7, 'yalnız 2. Lig maçları (1. Lig ve Süper Lig değil)');
+  assert.ok(son.every((m) => /2\. Lig/.test(m.lgName)));
+  assert.ok(say.filtreler.every((f) => f === 'u=turkey,turkiye'), 'servis içinde ülkeye süzülür');
+  // 1. Lig aynı gün listelerinden (önbellekli) kurulur: yeni istek yok
+  const b1 = await v.haftaEk('tff.1', pzt0, await v.hafta('tff.1', pzt0));
+  assert.equal(b1.length, 7);
+  assert.equal(say.ls, 7);
+  // bugüne yakın günler önce istenir
+  const k2 = kur({ ls: bir });
+  const sirali = [];
+  await k2.v.haftaEk('tff.1', pzt0, [], { onPart: (x) => sirali.push(x[x.length - 1].t) });
+  assert.equal(sirali.length, 7);
+});
+
+test('spor: ESPN "yalnız bugün" adresine düştüyse hafta, maç sayısı yeterli görünse de ikinci kaynakla tamamlanır', async () => {
+  const bugun = Array.from({ length: HAFTA_YETER }, (_, i) => maç('e' + i, gun0 + 20 * 3600e3 + i * 600e3, 'A' + i, 'B' + i));
+  const ls = (gun) => [lsMaç('l' + gun, gun + 19 * 3600e3, 'T', 'U')];
+  const dusuk = kur({ espn: { 'tur.1': bugun, __level: 2 }, ls });
+  const ml = await dusuk.v.hafta('tur.1', pzt0);
+  assert.equal(ml.length, HAFTA_YETER);
+  const son = await dusuk.v.haftaEk('tur.1', pzt0, ml);
+  assert.equal(dusuk.say.ls, 6, 'bugün dışındaki altı gün ikinci kaynaktan istendi');
+  assert.equal(son.length, HAFTA_YETER + 6);
+  // aynı sayıda maç, ESPN aralık adresiyle (düşük değil) geldiyse hafta tam sayılır
+  const tam = kur({ espn: { 'tur.1': bugun }, ls });
+  const m2 = await tam.v.hafta('tur.1', pzt0);
+  assert.equal((await tam.v.haftaEk('tur.1', pzt0, m2)).length, HAFTA_YETER);
+  assert.equal(tam.say.ls, 0);
+});
+
+test('spor: canlı liste LiveScore\'dan yalnız süren maç süzgeciyle istenir', async () => {
+  const k = kur({ ls: [lsMaç('l1', gun0 + 12 * 3600e3, 'T', 'U', { state: 'in', text: "67'" })] });
+  const c = await k.v.canli(true);
+  assert.equal(c.length, 1);
+  assert.deepEqual(k.say.filtreler, ['x=1']);
+});
+
+test('spor: ESPN\'de aralık adresi hatırası "yalnız bugün" ise hafta istekleri sıfırdan dener; aralık çalışırsa hatıra onarılır', async () => {
+  const hatira = { 'u|v': 2, 'u|v#oy': [0, 2, 2] };
+  const cagri = [];
+  const t = gun0 + 12 * 3600e3;
+  const deps = {
+    loadEspn: async (o) => {
+      cagri.push(Object.assign({}, o.hatira));
+      return { matches: [], okCount: 1, failed: [], level: 0 };
+    },
+    loadTablo: async () => [],
+    loadLs: async () => ({ matches: [] }),
+    loadMk: async () => ({ matches: [] }),
+  };
+  const kayit = [];
+  const v = createSporVeri({}, { now: () => t, deps, hatira, hatiraKaydet: (h) => kayit.push(Object.assign({}, h)) });
+  await v.hafta('tur.1', pzt0);
+  assert.equal(cagri[0]['u|v'], 0, 'istek hatırasız başladı (en yalın adrese inilmedi)');
+  assert.equal(hatira['u|v'], 0, 'aralık adresi çalıştı: kalıcı hatıra onarıldı');
+  assert.ok(kayit.length >= 1);
 });

@@ -154,3 +154,29 @@ test('proje: ESPN maç özeti — olaylar budanmışla budanmamışta aynı, yor
   assert.ok(budali.length < tam.length / 5, 'budanmış özet çok daha küçük (' + budali.length + ' / ' + tam.length + ')');
   assert.ok(budali.indexOf('Yorum satırı') < 0 && budali.indexOf('Haber 0') < 0);
 });
+
+test('proje: LiveScore günü ülke ve "yalnız süren" süzgeci servis içinde uygulanır; süzgeçsiz çağrı eskisi gibi', () => {
+  const ev = (id, eps) => ({ Eid: id, Esd: '20261127200000', T1: [{ Nm: 'A' + id }], T2: [{ Nm: 'B' + id }], Tr1: '1', Tr2: '0', Eps: eps, Gurultu: 'x'.repeat(50) });
+  const gun = {
+    Stages: [
+      { Sid: 's1', Cnm: 'Turkey', Snm: 'Super Lig', CompN: 'Trendyol Super Lig', Events: [ev(1, 'FT'), ev(2, "67'"), ev(3, 'NS'), ev(4, 'HT')] },
+      { Sid: 's2', Cnm: 'Türkiye', Snm: '1. Lig', Events: [ev(5, 'NS')] },
+      { Sid: 's3', Cnm: 'England', Snm: 'Premier League', Events: [ev(6, "12'"), ev(7, 'FT')] },
+      { Sid: 's4', Cnm: 'Brazil', Snm: 'Serie A', Events: [ev(8, '2H')] },
+    ],
+  };
+  const tam = JSON.stringify(gun);
+  const idler = (m, ad) => JSON.parse(svc.buda(m, ad)).Stages.map((s) => s.Sid + ':' + s.Events.map((e) => e.Eid).join(','));
+  assert.deepEqual(idler(tam, 'ls-gun'), ['s1:1,2,3,4', 's2:5', 's3:6,7', 's4:8']);
+  assert.deepEqual(idler(tam, 'ls-gun:u=turkey,turkiye'), ['s1:1,2,3,4', 's2:5'], 'yalnız Türkiye (Türkçe yazım da)');
+  assert.deepEqual(idler(tam, 'ls-gun:x=1'), ['s1:2,4', 's3:6', 's4:8'], 'yalnız süren maçlar; maçı kalmayan yarışma düşer');
+  assert.deepEqual(idler(tam, 'ls-gun:u=turkey&x=1'), ['s1:2,4']);
+  // ayrıştırıcı için gerekli alanlar korunur, gürültü atılır
+  const s = JSON.parse(svc.buda(tam, 'ls-gun:u=turkey'));
+  assert.equal(s.Stages[0].Events[0].Gurultu, undefined);
+  assert.equal(s.Stages[0].Events[1].Eps, "67'");
+  // bilinmeyen ad ve bozuk süzgeç: metin aynen / süzgeçsiz budama
+  assert.equal(svc.buda(tam, 'baska:u=turkey'), tam);
+  assert.deepEqual(idler(tam, 'ls-gun:zz'), ['s1:1,2,3,4', 's2:5', 's3:6,7', 's4:8']);
+  assert.equal(svc.buda('JSON degil', 'ls-gun:x=1'), 'JSON degil');
+});

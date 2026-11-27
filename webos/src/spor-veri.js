@@ -5,7 +5,7 @@
 //  yayin(gün)             → günün yayın akışı (hangi maç hangi kanalda); ağır sayfa, yalnız istenince
 // Ayrıştırma ve birleştirme Android uygulamasıyla ortaktır (www/js/sports*.js); burada yalnız yükleme sırası ve önbellek vardır.
 // İstekler birbiri ardına atılır (aynı anda tek ağır iş): yavaş TV'de yanıt işlenirken arayüz tuşlara yanıt verebilsin.
-import { loadMatches, DAY, dayStart, leagueOf, dayMonth, norm } from '../../www/js/sports.js';
+import { loadMatches, DAY, dayStart, leagueOf, dayMonth, norm, LEAGUES } from '../../www/js/sports.js';
 import { TABLE_IDS, loadStandings } from '../../www/js/sports-table.js';
 import { LS_HOSTS, loadLiveScoreDay } from '../../www/js/sports-ls.js';
 import { loadMackolikDay } from '../../www/js/sports-mk.js';
@@ -26,6 +26,38 @@ export const AVRUPA_LIGLERI = ['uefa.champions', 'uefa.europa', 'uefa.europa.con
 export const TABLOLU_LIGLER = TABLE_IDS; // puan durumu olan ligler
 export const TAKIM_GERI_GUN = 7; // takım sayfası: kaç gün öncesinden
 export const TAKIM_ILERI_GUN = 21; // ... kaç gün sonrasına kadar
+
+// Lig katalogu (TV): ESPN ligleri + ESPN'de bulunmayan Türkiye alt ligleri. Alt liglerin haftası yalnız ikinci kaynaktan (LiveScore, olmazsa Mackolik) kurulur.
+export const IKINCI_LIGLER = [
+  { id: 'tff.1', name: 'Türkiye 1. Lig', ikinci: true },
+  { id: 'tff.2', name: 'Türkiye 2. Lig', ikinci: true },
+];
+export const TUM_LIGLER = LEAGUES.slice(0, 1).concat(IKINCI_LIGLER, LEAGUES.slice(1)); // Süper Lig'in hemen ardından alt ligler
+export const ligBul = (id) => TUM_LIGLER.find((l) => l.id === id) || null;
+export const ikinciLigMi = (id) => IKINCI_LIGLER.some((l) => l.id === id);
+
+// İkinci kaynağın (LiveScore/Mackolik) maçı hangi lige ait? Yarışma adı ve grubundan (lg kimlikleri ESPN'inkilerle aynı değildir: "ls:turkey-super-lig").
+const trAd = (re) => (m) => m.grp === 'tr' && re.test(norm(m.lgName || ''));
+const adda = (re) => (m) => re.test(norm(m.lgName || ''));
+const ESLER = {
+  'tur.1': trAd(/(^| )super lig( |$)/),
+  'tff.1': trAd(/(^| )(1 lig|1st lig|first lig)( |$)/),
+  'tff.2': trAd(/(^| )2 lig( |$)/),
+  'eng.1': adda(/(ingiltere|england) premier/),
+  'esp.1': adda(/(ispanya|spain) (la ?liga|primera)/),
+  'ita.1': adda(/(italya|italy) serie a/),
+  'ger.1': adda(/(almanya|germany) bundesliga(?! 2)/),
+  'fra.1': adda(/(fransa|france) ligue 1/),
+  'uefa.champions': adda(/champions league/),
+  'uefa.europa': adda(/(^| )europa league/),
+  'uefa.europa.conf': adda(/conference league/),
+};
+export const ligEsler = (id) => ESLER[id] || (() => false);
+// LiveScore günü servis içinde yalnız bu ülkelerin yarışmalarına süzülür (arayüz günlük ~600 maçı işlerken 5 sn donuyordu)
+const TR_ULKE = 'u=turkey,turkiye';
+const AVRUPA_ULKE = 'u=europe,uefa,international,world';
+export const LIG_ULKE = { 'tur.1': TR_ULKE, 'tff.1': TR_ULKE, 'tff.2': TR_ULKE, 'eng.1': 'u=england', 'esp.1': 'u=spain', 'ita.1': 'u=italy', 'ger.1': 'u=germany', 'fra.1': 'u=france', 'uefa.champions': AVRUPA_ULKE, 'uefa.europa': AVRUPA_ULKE, 'uefa.europa.conf': AVRUPA_ULKE };
+export const CANLI_SUZGEC = 'x=1'; // canlı liste: yalnız süren maçlar
 
 const sn = (ms) => (ms / 1000).toFixed(1) + ' sn';
 const ara = () => new Promise((c) => setTimeout(c, 0)); // olay döngüsüne dön (tuşlar işlensin)
@@ -91,17 +123,46 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
     }
   };
 
-  // Ligin bir takvim haftası (pzt: haftanın pazartesi 00:00'ı). Saat sırasına dizili.
+  // ESPN'de en yalın adrese (yalnız bugün) düşülüp kalınması haftalık programı bozar: hafta istekleri hafızayı sıfırdan dener, ağ sonradan düzeldiyse
+  // (aralıklı adres çalışırsa) kalıcı hafızayı da onarır. Döner: ESPN yanıtı.
+  async function espnHafta(lgId, pzt) {
+    const lig = leagueOf(lgId);
+    if (!lig) throw new Error('Bilinmeyen lig');
+    const bozuk = Object.keys(hatira).some((a) => !/#oy$/.test(a) && Number(hatira[a]) >= 2);
+    if (!bozuk) return espn(lgId, pzt, 0, 6);
+    const gecici = {};
+    Object.keys(hatira).forEach((a) => {
+      if (!/#oy$/.test(a)) gecici[a] = 0;
+    });
+    try {
+      const r = await d.loadEspn({ net, now: pzt, back: 0, ahead: 6, leagues: [lig], parallel: 1, hatira: gecici, timeoutMs: 20000, budgetMs: 45000, vazgec: 1 });
+      if (r.level < 2) {
+        Object.keys(gecici).forEach((a) => {
+          if (!/#oy$/.test(a)) hatira[a] = gecici[a];
+        });
+        if (hatiraKaydet) hatiraKaydet(hatira);
+      }
+      return r;
+    } catch (e) {
+      return espn(lgId, pzt, 0, 6); // bu ağda hiçbir adres çalışmıyor: olağan yol (hata iletisi aynı)
+    }
+  }
+
+  // Ligin bir takvim haftası (pzt: haftanın pazartesi 00:00'ı). Saat sırasına dizili. Alt ligler ESPN'de yoktur: boş döner, hafta haftaEk ile kurulur.
   function hafta(lgId, pzt, zorla) {
     const k = lgId + '|' + pzt;
+    if (ikinciLigMi(lgId)) {
+      const c = st.hafta[k];
+      return Promise.resolve(c ? c.matches : []);
+    }
     return bir('hafta:' + k, async () => {
       const c = st.hafta[k];
       if (!zorla && c && now() - c.at < TAZE_MS) return c.matches;
       const t0 = Date.now();
       try {
-        const r = await espn(lgId, pzt, 0, 6);
-        K.bilgi('Spor ' + lgId + ' haftası: ' + r.matches.length + ' maç, ' + sn(Date.now() - t0));
-        st.hafta[k] = { at: now(), matches: r.matches };
+        const r = await espnHafta(lgId, pzt);
+        K.bilgi('Spor ' + lgId + ' haftası: ' + r.matches.length + ' maç' + (r.level >= 2 ? ' (yalnız bugün adresi)' : '') + ', ' + sn(Date.now() - t0));
+        st.hafta[k] = { at: now(), matches: r.matches, dusuk: r.level >= 2 };
         return r.matches;
       } catch (e) {
         K.uyar('Spor ' + lgId + ' haftası alınamadı: ' + ((e && (e.detail || e.message)) || e) + ' · ' + sn(Date.now() - t0));
@@ -114,33 +175,41 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
   // Haftanın tamamlanması: ESPN bazen haftanın yalnız birkaç maçını verir (günlük: Süper Lig haftası 2 maç). Maçı olmayan her gün için
   // ikinci kaynağın (LiveScore, olmazsa Mackolik) o gün listesi alınır ve bu ligin maçları eklenir; günler tek tek, aktif() false olunca durur.
   // Yalnız ESPN'nin gün başına hiç maç vermediği günlere dokunulur (çift kayıt oluşmaz). Gün listeleri 10 dk saklanır.
-  async function ikinciGun(dayMs) {
-    const c = st.gun[dayMs];
+  async function ikinciGun(dayMs, filtre = '') {
+    const kk = dayMs + '|' + filtre;
+    const c = st.gun[kk];
     if (c && now() - c.at < GUN_TAZE_MS) return c.m;
-    const m = await ikinci(dayMs);
-    if (m) st.gun[dayMs] = { at: now(), m };
+    const m = await ikinci(dayMs, filtre);
+    if (m) st.gun[kk] = { at: now(), m };
     return m;
   }
   async function haftaEk(lgId, pzt, mevcut, { aktif = () => true, onPart = null } = {}) {
     const k = lgId + '|' + pzt;
     let hepsi = Array.isArray(mevcut) ? mevcut : [];
     const c = st.hafta[k];
-    if (c && c.tam) return c.matches;
-    if (hepsi.length >= HAFTA_YETER) return hepsi;
-    const gunler = haftaGunleri(pzt).filter((g) => !hepsi.some((m) => dayStart(m.t) === g));
+    const esle = ligEsler(lgId);
+    const ikinciLig = ikinciLigMi(lgId);
+    if (c && c.tam && now() - c.at < TAZE_MS) return c.matches;
+    if (ikinciLig && c && c.tam) hepsi = []; // alt lig listesi eskidi: günlerden yeniden kurulur (gün listeleri 10 dk önbellekli)
+    if (!ikinciLig && !(c && c.dusuk) && hepsi.length >= HAFTA_YETER) return hepsi; // ESPN haftayı tam verdi
+    const bugun = dayStart(now());
+    // bugüne yakın günler önce: ilk satırlar en çok bakılan günlerden gelir
+    const gunler = haftaGunleri(pzt)
+      .filter((g) => !hepsi.some((m) => dayStart(m.t) === g))
+      .sort((a, b) => Math.abs(a - bugun) - Math.abs(b - bugun) || a - b);
     const t0 = Date.now();
     let eklenen = 0;
     for (let i = 0; i < gunler.length; i++) {
       if (!aktif()) return hepsi;
       let m = null;
       try {
-        m = await ikinciGun(gunler[i]);
+        m = await ikinciGun(gunler[i], LIG_ULKE[lgId] || '');
       } catch (e) {
         m = null;
       }
       if (!aktif()) return hepsi;
       if (!m) continue;
-      const ek = m.filter((x) => x && x.lg === lgId && dayStart(x.t) === gunler[i]);
+      const ek = m.filter((x) => x && esle(x) && dayStart(x.t) === gunler[i]);
       if (!ek.length) continue;
       eklenen += ek.length;
       hepsi = tekilSirala(hepsi.concat(ek));
@@ -156,6 +225,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
     if (kayit) {
       kayit.matches = hepsi;
       kayit.tam = true;
+      if (ikinciLig) kayit.at = now();
     } else st.hafta[k] = { at: now(), matches: hepsi, tam: true };
     K.bilgi('Spor ' + lgId + ' haftası tamamlandı: +' + eklenen + ' maç, ' + sn(Date.now() - t0));
     return hepsi;
@@ -210,12 +280,12 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
   }
 
   // Bir günün ikinci kaynak maçları: önce LiveScore; alınamazsa (ya da kısa süre önce alınamadıysa) Mackolik. Hiçbiri olmazsa null.
-  async function ikinci(dayMs) {
+  async function ikinci(dayMs, filtre = '') {
     let m = null;
     const t0 = Date.now();
     if (!st.lsDownAt || now() - st.lsDownAt >= 10 * 60000) {
       try {
-        m = (await d.loadLs({ net, dayMs, now: now(), hosts: LS_HOSTS })).matches;
+        m = (await d.loadLs({ net, dayMs, now: now(), hosts: LS_HOSTS, filtre })).matches;
         st.lsDownAt = 0;
         K.bilgi('Spor LiveScore: ' + m.length + ' maç, ' + sn(Date.now() - t0));
       } catch (e) {
@@ -244,7 +314,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
       let hepsi = [];
       let alindi = false;
       for (let i = 0; i < gunler.length; i++) {
-        const m = await ikinci(gunler[i]);
+        const m = await ikinci(gunler[i], CANLI_SUZGEC);
         if (m) {
           alindi = true;
           hepsi = hepsi.concat(m);

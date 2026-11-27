@@ -171,12 +171,19 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .sp-d.on, .sp-d.hv { background: #2dd4bf; color: #04141a; font-weight: 600; }
 .sp-d.on i, .sp-d.hv i { color: #0b3a40; }
 .sp-body { position: absolute; top: 11rem; bottom: 4rem; left: 4rem; right: 4rem; }
-.sp-body.lig { top: 16rem; }
+.sp-body.lig, .sp-body.puan { top: 16rem; }
 .sp-p1 { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.sp-body.lig .sp-p1 { right: 36rem; }
+.sp-body.puan .sp-p1 { display: none; }
 .sp-body .content { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .sp-p2 { display: none; position: absolute; top: 0; right: 0; bottom: 0; width: 34rem; }
-.sp-body.lig .sp-p2 { display: block; }
+.sp-body.puan .sp-p2 { display: block; width: 74rem; }
+.sp-body.puan .st-hd { height: 3.4rem; font-size: 1.5rem; }
+.sp-body.puan .st-lst { top: 3.6rem; }
+.sp-body.puan .st-hd .st-n, .sp-body.puan .st-hd .st-t, .sp-body.puan .st-hd .st-v, .sp-body.puan .st-hd .st-p { font-size: 1.5rem; }
+.sp-body.puan .st-n { width: 5.4rem; font-size: 1.8rem; }
+.sp-body.puan .st-t { font-size: 2rem; }
+.sp-body.puan .st-v { width: 7rem; font-size: 1.9rem; }
+.sp-body.puan .st-p { width: 8rem; font-size: 2.1rem; }
 .st-hd { position: absolute; top: 0; left: 0; right: 0; height: 3rem; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 0 1.4rem; font-size: 1.4rem; color: #8b97b1; }
 .st-lst { position: absolute; top: 3.2rem; left: 0; right: 0; bottom: 0; }
 .st-n { width: 3.2rem; color: #8b97b1; font-size: 1.6rem; }
@@ -193,7 +200,6 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .sp-body.lig .sp-c { width: 8.4rem; font-size: 1.6rem; }
 .sp-body.lig .sp-s { width: 7rem; }
 .sp-body.lig .vl-it { font-size: 1.8rem; }
-.sp-body.lig .vl-it .sp-r { width: auto; max-width: 10rem; -webkit-flex-shrink: 0; flex-shrink: 0; margin-left: 1rem; }
 .sp-pick { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 20; background: rgba(5, 8, 14, .78); }
 .sp-pk-box { position: absolute; top: 8rem; bottom: 6rem; left: 28rem; right: 28rem; background: #10151f; border-radius: 1.2rem; box-shadow: 0 1rem 4rem rgba(0, 0, 0, .6); }
 .sp-pk-t { position: absolute; top: 1.6rem; left: 2.4rem; right: 2.4rem; margin: 0; font-size: 2.4rem; font-weight: 600; }

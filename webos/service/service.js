@@ -2,7 +2,7 @@
 // Uygulama (paketlenmiş web uygulaması) başka sunuculara XHR atınca tarayıcı CORS kuralı engelleyebilir;
 // bu servis isteği Node tarafında yapar, yanıtı parça parça luna köprüsünden uygulamaya verir.
 //
-//   fetch {url, headers, timeoutMs, chunk, proje} → {returnValue, status, data, id, done}   (proje: 'espn-skor' | 'espn-tablo' | 'ls-gun' → yanıt JSON'u yalnız okunan alanlara budanır)
+//   fetch {url, headers, timeoutMs, chunk, proje} → {returnValue, status, data, id, done}   (proje: 'espn-skor' | 'espn-tablo' | 'ls-gun[:u=ülkeler&x=1]' → yanıt JSON'u yalnız okunan alanlara budanır)
 //   read  {id, offset, length}              → {returnValue, data, done}
 //
 // Telefondan kaynak aktarma (yerel ağda küçük HTTP alıcı; ekran açıkken çalışır, kapanınca durur):
@@ -223,13 +223,61 @@ function kirp(deger, maske) {
   return deger;
 }
 
+// LiveScore günü süzgeci (proje adına ':' ile eklenir: 'ls-gun:u=turkey,turkiye&x=1'):
+//   u=a,b  → yalnız ülkesi (Cnm) bunlardan biri olan yarışmalar kalır (günde yüzlerce maç: arayüz hepsini işlemek için saniyeler donuyordu)
+//   x=1    → başlamamış, bitmiş, ertelenmiş ve iptal edilmiş maçlar atılır (yalnız süren ya da durumu bilinmeyen maçlar kalır: canlı liste)
+function katla(s) {
+  return String(s == null ? '' : s).replace(/[çÇ]/g, 'c').replace(/[ğĞ]/g, 'g').replace(/[ıİ]/g, 'i').replace(/[öÖ]/g, 'o').replace(/[şŞ]/g, 's').replace(/[üÜ]/g, 'u').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+var LS_BITTI = /^(NS|TBA|TBD|FT|AET|AP|PEN|FT ?PEN|AFTER PEN|POSTP.*|PPD|CANC.*|CNL|ABD.*|ABAN.*|)$/;
+function lsSuz(v, spec) {
+  if (!v || !Array.isArray(v.Stages)) return v;
+  var ulkeler = null;
+  var surenler = false;
+  var parcalar = String(spec || '').split('&');
+  for (var i = 0; i < parcalar.length; i++) {
+    var kv = parcalar[i].split('=');
+    if (kv[0] === 'u' && kv[1]) ulkeler = kv[1].split(',').map(katla);
+    else if (kv[0] === 'x' && kv[1] === '1') surenler = true;
+  }
+  var out = [];
+  for (var j = 0; j < v.Stages.length; j++) {
+    var st = v.Stages[j];
+    if (!st || typeof st !== 'object') continue;
+    if (ulkeler && ulkeler.indexOf(katla(st.Cnm)) < 0) continue;
+    if (surenler) {
+      var ev = Array.isArray(st.Events) ? st.Events : [];
+      var kal = [];
+      for (var k = 0; k < ev.length; k++) {
+        var u = String((ev[k] && ev[k].Eps) == null ? '' : ev[k].Eps).toUpperCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+        if (!LS_BITTI.test(u)) kal.push(ev[k]);
+      }
+      if (!kal.length) continue;
+      var kopya = {};
+      for (var key in st) if (Object.prototype.hasOwnProperty.call(st, key)) kopya[key] = st[key];
+      kopya.Events = kal;
+      st = kopya;
+    }
+    out.push(st);
+  }
+  var r = {};
+  for (var anahtar in v) if (Object.prototype.hasOwnProperty.call(v, anahtar)) r[anahtar] = v[anahtar];
+  r.Stages = out;
+  return r;
+}
+
 // JSON metnini maskeye göre budar; JSON değilse ya da bir sorun olursa metin aynen döner (uygulama eskisi gibi çalışır).
 function buda(metin, ad) {
-  var maske = Object.prototype.hasOwnProperty.call(PROJE, ad) ? PROJE[ad] : null;
+  var tam = String(ad == null ? '' : ad);
+  var ayrac = tam.indexOf(':');
+  var ham = ayrac < 0 ? tam : tam.slice(0, ayrac);
+  var spec = ayrac < 0 ? '' : tam.slice(ayrac + 1);
+  var maske = Object.prototype.hasOwnProperty.call(PROJE, ham) ? PROJE[ham] : null;
   if (!maske) return metin;
   try {
     var v = JSON.parse(metin);
     if (!v || typeof v !== 'object') return metin;
+    if (spec && ham === 'ls-gun') v = lsSuz(v, spec);
     return JSON.stringify(kirp(v, maske));
   } catch (e) {
     return metin;

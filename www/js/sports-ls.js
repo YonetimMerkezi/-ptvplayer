@@ -201,12 +201,13 @@ export function parseLiveScore(json, { now = Date.now() } = {}) {
 }
 
 // Bir günün tüm maçlarını indirir. Döner: { matches, url }; hiçbir adres çalışmazsa hata atar (hata.detail: ilk neden).
-export async function loadLiveScoreDay({ net, dayMs, now = Date.now(), hosts = LS_HOSTS, timeoutMs = 25000 } = {}) {
+// filtre (yalnız TV servisi): 'u=ülkeler&x=1' — gün listesi servis içinde süzülür (bkz. webos/service/service.js lsSuz)
+export async function loadLiveScoreDay({ net, dayMs, now = Date.now(), hosts = LS_HOSTS, timeoutMs = 25000, filtre = '' } = {}) {
   const urls = lsUrls(dayMs, hosts);
   const errs = [];
   for (const url of urls) {
     try {
-      const json = await withTimeout(net.json(url, { fast: true, proje: 'ls-gun' }), timeoutMs);
+      const json = await withTimeout(net.json(url, { fast: true, proje: filtre ? 'ls-gun:' + filtre : 'ls-gun' }), timeoutMs);
       if (!json || typeof json !== 'object') throw new Error('Boş yanıt');
       if (!Array.isArray(json.Stages)) throw new Error('Beklenmeyen yanıt biçimi');
       return { matches: parseLiveScore(json, { now }), url };

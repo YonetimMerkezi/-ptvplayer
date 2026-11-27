@@ -417,29 +417,58 @@ export function playerScreen({ list, index, fresh }) {
   v.addEventListener('waiting', () => {
     if (!kapali) spin.className = 'p-spin on';
   });
-  // Teşhis: canlı yayında oynatıcının kendi başına geri sarması / ileri atlaması ve beklemeleri Hata kaydına yazılır
-  // (yerel oynatıcı canlı akışta tampon bitince ya da liste yenilenince konumu kaydırabilir; tampon ve canlı kenara uzaklık görünür)
+  // Teşhis: canlı yayında oynatıcının kendi başına geri sarması / ileri atlaması Hata kaydına ve Bilgi panelindeki "Atlama" satırına yazılır.
+  // Medya saati ile gerçek saat karşılaştırılır (timeupdate ~4 kez/sn): geriye gitme ya da gerçek süreden hızlı ilerleme atlamadır; durup beklemek atlama sayılmaz.
+  // (yerel oynatıcı canlı akışta tampon bitince, bağlantı yenilenince ya da sağlayıcı akışı eski konumdan sürdürünce konumu kaydırabilir)
+  const atlama = { geri: 0, ileri: 0, son: '', olay: 0 };
   let sonKonum = 0;
   let sonBekleme = 0;
+  let sonOrnek = null;
   const tamponYazi = () => {
     try {
       const b = v.buffered;
       const ileri = b && b.length ? Math.round(b.end(b.length - 1) - (v.currentTime || 0)) : 0;
       const sk = v.seekable;
       const kenar = sk && sk.length ? Math.round(sk.end(sk.length - 1) - (v.currentTime || 0)) : null;
-      return 'tampon ' + ileri + ' sn' + (kenar != null ? ', canlı kenara ' + kenar + ' sn' : '');
+      return 'tampon ' + ileri + ' sn, ' + (b ? b.length : 0) + ' aralık' + (kenar != null ? ', canlı kenara ' + kenar + ' sn' : '') + ', durum ' + v.readyState;
     } catch (e) {
       return '';
     }
   };
   v.addEventListener('timeupdate', () => {
     if (!v.seeking) sonKonum = v.currentTime || 0;
+    if (kapali || !canli() || v.paused || v.seeking) {
+      sonOrnek = null;
+      return;
+    }
+    const ct = v.currentTime || 0;
+    const t = Date.now();
+    if (sonOrnek) {
+      const dm = ct - sonOrnek.ct;
+      const dg = (t - sonOrnek.t) / 1000;
+      if (dm < -0.4 || dm > dg + 1.5) {
+        atlama[dm < 0 ? 'geri' : 'ileri']++;
+        atlama.son = (dm > 0 ? '+' : '') + dm.toFixed(1) + ' sn';
+        if (atlama.geri + atlama.ileri <= 12) K.uyar('Yayın zamanı atladı: ' + atlama.son + ' (gerçek ' + dg.toFixed(1) + ' sn) · ' + tamponYazi() + (it ? ' · ' + it.name : ''));
+      }
+    }
+    sonOrnek = { ct, t };
   });
   v.addEventListener('seeked', () => {
     if (kapali || !canli() || geri) return;
     const fark = (v.currentTime || 0) - sonKonum;
-    if (Math.abs(fark) > 2) K.uyar('Yayın konumu atladı: ' + (fark > 0 ? '+' : '') + Math.round(fark) + ' sn · ' + tamponYazi() + (it ? ' · ' + it.name : ''));
+    if (Math.abs(fark) > 2) K.uyar('Yayın konumu atladı (seeked): ' + (fark > 0 ? '+' : '') + Math.round(fark) + ' sn · ' + tamponYazi() + (it ? ' · ' + it.name : ''));
     sonKonum = v.currentTime || 0;
+    sonOrnek = null;
+  });
+  // Oynatıcı akışı kendiliğinden yeniden açarsa (bağlantı yenilenmesi) bu olaylar görünür
+  ['stalled', 'emptied', 'loadstart', 'ratechange', 'durationchange'].forEach((ad) => {
+    v.addEventListener(ad, () => {
+      if (kapali || !canli() || atlama.olay >= 10 || (ad !== 'stalled' && v.readyState < 2 && ad !== 'emptied')) return;
+      if (ad === 'loadstart' && !sonKonum) return; // ilk açılış
+      atlama.olay++;
+      K.uyar('Oynatıcı olayı: ' + ad + ' · ' + tamponYazi());
+    });
   });
   v.addEventListener('waiting', () => {
     if (kapali || !canli() || Date.now() - sonBekleme < 5000) return;
@@ -1256,6 +1285,7 @@ export function playerScreen({ list, index, fresh }) {
     } catch (e) {
       /* tampon bilgisi yok */
     }
+    if (canli()) r.push({ ad: 'Atlama (geri / ileri)', sag: atlama.geri + ' / ' + atlama.ileri + (atlama.son ? ' · son ' + atlama.son : '') });
     const bicim = (/\.(m3u8|ts|mp4|mkv|avi|mov|webm)(?:[?#]|$)/i.exec(kaynakUrl) || [])[1];
     r.push({ ad: 'Kaynak', sag: hostOf(kaynakUrl) + (bicim ? ' · ' + bicim.toLowerCase() : '') });
     r.push({ ad: 'Ses / Altyazı yolu', sag: (v.audioTracks ? v.audioTracks.length : 0) + ' / ' + (v.textTracks ? v.textTracks.length : 0) });
