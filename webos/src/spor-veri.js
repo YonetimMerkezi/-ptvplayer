@@ -6,6 +6,7 @@ import { loadMackolikDay } from '../../www/js/sports-mk.js';
 import { loadSchedDay, seInfoFor } from '../../www/js/sports-se.js';
 import { loadTvDay, tvChannelsFor, channelsByName } from '../../www/js/sports-tv.js';
 import { onbellek } from './onbellek.js';
+import * as K from './log.js';
 
 export const TAZE_MS = 5 * 60000; // ESPN ve günlük listeler bu süre taze sayılır
 export const YAYIN_TAZE_MS = 30 * 60000;
@@ -13,6 +14,7 @@ export const KAYIT_OMUR_MS = 6 * 3600 * 1000; // kayıtlı gün listesi bundan e
 export const ESPN_BEKLEME_MS = 10 * 60000; // ESPN hiç yanıt vermediyse bu süre yeniden denenmez (LiveScore için de aynı kural)
 export const PARCA_MS = 250; // ligler/kaynaklar geldikçe listeyi en sık bu aralıkla tazele (zayıf TV'de çizim yükü)
 const kayitAnahtari = (dayMs) => 'spor:' + dayMs;
+const sn = (ms) => (ms / 1000).toFixed(1) + ' sn';
 export const KULLANILDI_KEY = 'sp.kullanildi'; // Spor ekranı bir kez açıldıysa ana sayfa bugünün maçlarını önceden hazırlar
 export const ISITMA_GECIKME_MS = 7000; // ana sayfa açıldıktan bu kadar sonra (afişler yerleşince) ısıtma başlar
 
@@ -37,7 +39,9 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
         const secenek = dayMs == null ? { net, now: now(), back: 1, ahead: 7 } : { net, now: dayMs, back: 0, ahead: 0 };
         if (onPart) secenek.onPart = onPart;
         if (paralel) secenek.parallel = paralel;
+        const t0 = Date.now();
         const r = await d.loadEspn(secenek);
+        K.bilgi('Spor ESPN: ' + (r.matches || []).length + ' maç, ' + (r.okCount != null ? r.okCount + '/' + (r.okCount + (r.failed || []).length) + ' lig, ' : '') + sn(Date.now() - t0));
         st.espn[k] = { at: now(), matches: r.matches || [] };
         st.espnAt = now();
         st.espnHata = '';
@@ -45,6 +49,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
       } catch (e) {
         st.espnHata = (e && e.message) || 'Maç bilgisi alınamadı';
         st.espnDownAt = now();
+        K.uyar('Spor ESPN alınamadı' + (e && e.detail ? ': ' + e.detail : '') + ' · 10 dk denenmeyecek');
         if (!st.espn[k]) st.espn[k] = { at: 0, matches: [] };
       }
       return st.espn[k].matches;
@@ -54,19 +59,24 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
   // Bir günün ikinci kaynak maçları: önce LiveScore; alınamazsa (ya da kısa süre önce alınamadıysa) Mackolik
   async function ikinci(dayMs) {
     let m = null;
+    const t0 = Date.now();
     if (!st.lsDownAt || now() - st.lsDownAt >= 10 * 60000) {
       try {
         m = (await d.loadLs({ net, dayMs, now: now(), hosts: LS_HOSTS })).matches;
         st.lsDownAt = 0;
+        K.bilgi('Spor LiveScore: ' + m.length + ' maç, ' + sn(Date.now() - t0));
       } catch (e) {
         st.lsDownAt = now();
+        K.uyar('Spor LiveScore alınamadı: ' + ((e && e.message) || e) + ' · ' + sn(Date.now() - t0));
       }
     }
     if (!m) {
+      const t1 = Date.now();
       try {
         m = (await d.loadMk({ net, dayMs, now: now() })).matches;
+        K.bilgi('Spor Mackolik: ' + m.length + ' maç, ' + sn(Date.now() - t1));
       } catch (e) {
-        /* ikinci kaynak yok */
+        K.uyar('Spor Mackolik alınamadı: ' + ((e && e.message) || e) + ' · ' + sn(Date.now() - t1));
       }
     }
     return m || null;
@@ -83,6 +93,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
     const c = st.gunler[dayMs];
     if (!zorla && c && now() - c.at < TAZE_MS) return Promise.resolve(c.matches);
     const gunu = dayStart(dayMs);
+    const basla = Date.now();
     const g = (canli[dayMs] = { ilk: null, e: [], s: null, gosterildi: false, kayitli: false, kayitOkundu: false, bitti: false, zamanlayici: null });
     g.yap = () => {
       g.zamanlayici = null;
@@ -133,6 +144,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
         const hepsi = ikincil && ikincil.length ? d.birlestir(son, ikincil).matches : son;
         const gun = matchesOnDay(hepsi, gunu);
         st.gunler[dayMs] = { at: now(), matches: gun };
+        K.bilgi('Spor gün hazır: ' + gun.length + ' maç, toplam ' + sn(Date.now() - basla));
         if (kalici && gun.length) Promise.resolve(kalici.yaz(kayitAnahtari(dayMs), gun, now())).catch(() => {});
         return gun;
       } finally {
