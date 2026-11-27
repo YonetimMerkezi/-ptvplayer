@@ -74,7 +74,7 @@ export function openMatchDetail(env, m) {
   const teamLogo = (side, other) => logoHtml(sideLogo(side, other, env.badgeOf), side.label, esc);
   const lgName = (LEAGUES.find((l) => l.id === m.lg) || {}).name || m.lgName || '';
   const mk = m.src === 'mk'; // Mackolik maçı: yalnız skor ve durum (olay/kadro yok); canlıda skor Mackolik listesinden tazelenir
-  const lite = m.src === 'se' || mk; // yalnız yayın sitesinden gelen maç: önce LiveScore'daki karşılığı aranır; bulunamazsa yalnız yayın ve not
+  const lite = m.src === 'se' || m.src === 'tsdb' || mk; // yalnız yayın sitesinden ya da hafta listesinden (TheSportsDB) gelen maç: önce LiveScore'daki karşılığı aranır; bulunamazsa yalnız yayın ve not
   let lsFound = null; // yayın sitesi maçının LiveScore karşılığı: bulunursa skor, olay, kadro ve istatistik oradan gelir
   let lsNote = '';
   let lsTriedAt = 0;
@@ -268,7 +268,7 @@ export function openMatchDetail(env, m) {
     drawStatus();
     try {
       let lm = m.src === 'ls' ? m : lsFound;
-      if (!lm && m.src === 'se' && m.t - now() < LS_LOOKAHEAD_MS && (force || !lsTriedAt || now() - lsTriedAt > LS_RETRY_MS)) {
+      if (!lm && (m.src === 'se' || m.src === 'tsdb') && m.t - now() < LS_LOOKAHEAD_MS && (force || !lsTriedAt || now() - lsTriedAt > LS_RETRY_MS)) {
         lsTriedAt = now();
         try {
           const d = dayStart(m.t);

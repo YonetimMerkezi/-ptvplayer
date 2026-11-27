@@ -11,6 +11,7 @@ import {
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
 import { HAFTALI_LIGLER, ligMaci, ikinciLigMi } from './sports-lig.js';
 import { turCoz, turEtiketi, turNoKomsu, turNoTablodan, gunEkle, ayniMac } from './sports-tur.js';
+import { haftaCoz, eslestir } from './sports-hafta.js';
 import { TABLE_IDS, loadStandings } from './sports-table.js';
 import { loadMackolikDay } from './sports-mk.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
@@ -87,14 +88,16 @@ export function openSports(env) {
   let day = dayStart(now());
   let lg = '';
   // Lig görünümü (HAFTALI liglerden biri seçiliyken): gün şeridi yerine ‹ hafta ›; hedef = hangi turun aranacağı, tur = bulunan tur, turRef = numara çıkarmak için komşu tur
-  let hedef = { merkez: dayStart(now()), yon: 0, no: 0, guncel: true };
+  let hedef = { merkez: dayStart(now()), yon: 0, no: 0, hafta: 0, sezon: '', guncel: true }; // hafta: istenen hafta numarası (0 = güncel)
   let tur = null;
   let turRef = null;
   let turYuk = false;
   let turHata = '';
   let turN = 0; // her yeni yükleme/değişiklikte artar: eskiyen yüklemeler sonucu atılır
   let turT = 0;
-  const turOnb = new Map(); // lig → Map(gün → o günün lig maçları): hafta gezerken günler yeniden indirilmez
+  const turOnb = new Map(); // lig → Map(gün → o günün lig maçları): gün gün yöntemde günler yeniden indirilmez
+  const hafOnb = new Map(); // ligId|sezon|no → hafta listesi (TheSportsDB)
+  let ligRows = new Map(); // lig görünümünde çizilen satırlar (kimlik → maç): yalnız hafta listesinde olan maçlara da dokunulabilsin
   const tabloOnb = new Map(); // lig → puan durumu grupları (hafta numarası ikinci kaynaktan gelmezse tablodan çıkarılır)
   let favs = cleanFavs(store.pref(FAV_KEY, []));
   let chan = new Map(); // maç kimliği → { item, p }
@@ -266,7 +269,7 @@ export function openSports(env) {
     loadRem();
     for (const row of root.querySelectorAll('.sp-m')) {
       const b = row.querySelector('.sp-bell');
-      const m = b && matches.find((x) => x.id === row.dataset.id);
+      const m = b && (matches.find((x) => x.id === row.dataset.id) || ligRows.get(row.dataset.id));
       if (!m) continue;
       const on = remIds.has(matchPlanId(m));
       b.classList.toggle('on', on);
@@ -470,15 +473,17 @@ export function openSports(env) {
           : `<div class="empty"><h3>Maç yok</h3><p>${esc(ligAdi(lg))} için maç haftası bulunamadı.</p></div>${sourceNote()}`);
       return;
     }
+    // Satırlar haftanın maçlarıdır (hafta listesi); her biri için canlı kaynaklardaki karşılık (skor, durum, kanal, ayrıntı) varsa o gösterilir
+    const adaylar = matches.filter((x) => ligMaci(x, lg));
+    const byId = new Map(adaylar.map((x) => [x.id, x]));
     const rows = [];
-    for (const m of matches
-      .filter((x) => ligMaci(x, lg) && dayStart(x.t) >= tur.bas && dayStart(x.t) <= tur.son)
-      .sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id))) {
+    for (const m of tur.maclar.map((x) => byId.get(x.id) || eslestir(x, adaylar) || x).sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id))) {
       // aynı maçın iki kaynakta farklı yazılmış kopyası tek satır olur; yayın kanalı bilinen satır kalır
-      const i = rows.findIndex((x) => ayniMac(x, m));
+      const i = rows.findIndex((x) => x.id === m.id || ayniMac(x, m));
       if (i < 0) rows.push(m);
       else if (!(tvFor.get(rows[i].id) || []).length && (tvFor.get(m.id) || []).length) rows[i] = m;
     }
+    ligRows = new Map(rows.map((x) => [x.id, x]));
     if (!rows.length) {
       put(list, `<div class="empty"><h3>Maç yok</h3><p>${esc(ligAdi(lg))} için bu haftada maç bulunamadı.</p></div>${sourceNote()}`);
       return;
@@ -834,12 +839,13 @@ export function openSports(env) {
     keepFocus(draw);
     if (autoRemind()) toast('Takip ettiğiniz takımların maçları için hatırlatıcı kuruldu', 2800);
     if (ligMod()) {
-      if (!quiet && tur) turTazele(turN);
+      if (!quiet && tur) turYukle(true); // elle yenilemede hafta listesi de yeniden alınır
     } else if (day !== d0) ensureLs(day);
   }
 
   // ---- lig görünümü: maç haftası ----
-  // Haftanın sınırı gün gün ikinci kaynaktan (LiveScore, olmazsa Mackolik) kurulur; hafta numarası kaynaktan, komşu turdan ya da puan durumundan gelir.
+  // Hafta listesi TheSportsDB'den numarasıyla tek istekte gelir (sports-hafta.js). O kaynak çalışmazsa ya da lig için yoksa haftanın sınırı gün gün
+  // ikinci kaynaktan (LiveScore, olmazsa Mackolik) kurulur; numara kaynaktan, komşu turdan ya da puan durumundan gelir. Skor, durum, kanal canlı listeden eklenir.
   const trLig = (id) => id === 'tur.1' || ikinciLigMi(id);
   const lsDown = () => !!lsDownAt && now() - lsDownAt < LS_DOWN_MS;
   function liveDay() {
@@ -856,7 +862,7 @@ export function openSports(env) {
     return !l.length && !dayList(d) ? null : l;
   }
 
-  async function turYukle() {
+  async function turYukle(zorla = false) {
     const id = lg;
     if (!HAFTALI.has(id)) return;
     const n = ++turN;
@@ -868,38 +874,48 @@ export function openSports(env) {
     const yon = hedef.yon;
     const ref = turRef;
     const guncel = !!hedef.guncel;
-    let onb = turOnb.get(id);
-    if (!onb) turOnb.set(id, (onb = new Map()));
     const aktif = () => n === turN && lg === id && page.el.isConnected;
     let sonuc = null;
+    // 1) numaralı hafta tek istekte; kaynak çalışmazsa ya da lig/yön için uygun değilse 2) günler ikinci kaynaktan gün gün
     try {
-      sonuc = await turCoz({
-        gunYukle: (d) => turGun(id, d, aktif),
-        onbellek: onb,
-        merkez: hedef.merkez,
-        yon,
-        aktif,
-        onPart: (_turlar, x) => {
-          if (!aktif()) return;
-          tur = turNumarali(x, ref, yon);
-          draw();
-        },
-      });
-    } catch (e) {
-      if (!aktif()) return;
-      turHata = (e && e.message) || 'Maç bilgisi alınamadı';
+      const r = await haftaCoz({ net, ligId: id, no: hedef.hafta || 0, yon, sezon: hedef.sezon || '', now: now(), lgName: ligAdi(id), onbellek: hafOnb, zorla });
+      if (r && (r.tur || (r.yok && yon !== 0))) sonuc = { tur: r.tur, eksik: [] };
+    } catch {
+      /* hafta kaynağı alınamadı: gün gün kurulur */
+    }
+    if (!aktif()) return;
+    if (!sonuc) {
+      let onb = turOnb.get(id);
+      if (!onb) turOnb.set(id, (onb = new Map()));
+      try {
+        sonuc = await turCoz({
+          gunYukle: (d) => turGun(id, d, aktif),
+          onbellek: onb,
+          merkez: hedef.merkez,
+          yon,
+          aktif,
+          onPart: (_turlar, x) => {
+            if (!aktif()) return;
+            tur = turNumarali(x, ref, yon);
+            draw();
+          },
+        });
+      } catch (e) {
+        if (!aktif()) return;
+        turHata = (e && e.message) || 'Maç bilgisi alınamadı';
+      }
     }
     if (!aktif()) return;
     if (sonuc && sonuc.tur) {
       tur = turNumarali(sonuc.tur, ref, yon);
-      hedef = { merkez: sonuc.tur.bas, yon: 0, no: tur.no, guncel }; // bulunan tur artık hedeftir (yeniden çizimde aynı tur kurulur)
+      hedef = { merkez: sonuc.tur.bas, yon: 0, no: tur.no, hafta: sonuc.tur.kaynak === 'tsdb' ? tur.no : 0, sezon: sonuc.tur.sezon || '', guncel }; // bulunan tur artık hedeftir (yeniden çizimde aynı tur kurulur)
       turRef = null;
     } else if (sonuc && yon !== 0 && ref) {
       tur = ref; // o yönde başka tur yok: eski turda kalınır
-      hedef = { merkez: ref.bas, yon: 0, no: ref.no, guncel: false };
+      hedef = { merkez: ref.bas, yon: 0, no: ref.no, hafta: ref.kaynak === 'tsdb' ? ref.no : 0, sezon: ref.sezon || '', guncel: false };
       turRef = null;
       toast('Bu yönde maç bulunamadı', 2200);
-    } else if (sonuc && sonuc.eksik.length) {
+    } else if (sonuc && sonuc.eksik && sonuc.eksik.length) {
       turHata = 'Maç bilgisi alınamadı';
     }
     turYuk = false;
@@ -933,36 +949,18 @@ export function openSports(env) {
   async function turKanallar(n) {
     if (!tur) return;
     const t0 = dayStart(now());
-    const gunler = [];
-    for (let d = tur.bas; d <= tur.son; d = gunEkle(d, 1)) {
-      if (d >= t0 && matchesOnDay(matches, d).some((m) => ligMaci(m, lg) && m.state !== 'post' && !m.off)) gunler.push(d);
-    }
+    const gunler = [...new Set(tur.maclar.filter((m) => m.state !== 'post' && !m.off && dayStart(m.t) >= t0).map((m) => dayStart(m.t)))].sort((x, y) => x - y);
     for (const d of gunler) {
       if (n !== turN || !page.el.isConnected) return;
       await ensureTv(d);
     }
   }
 
-  // Elle yenilemede haftanın öbür günlerinin listesi de (eskimişse) sırayla tazelenir
-  async function turTazele(n) {
-    if (!tur) return;
-    const b = tur.bas;
-    const s = tur.son;
-    for (let d = b; d <= s; d = gunEkle(d, 1)) {
-      if (n !== turN || !page.el.isConnected || !ligMod()) return;
-      if (d !== liveDay() && lsStale(d) && !(lsDown() && !trLig(lg))) await loadLs(d);
-    }
-    if (n !== turN || !page.el.isConnected) return;
-    recompute();
-    matchChannels();
-    draw();
-  }
-
   function haftaDegis(yon) {
     const kaynak = tur || turRef;
     if (!ligMod() || !kaynak) return;
     turRef = kaynak; // numara komşu turdan çıkarılabilsin; yeni tur bulunamazsa buraya dönülür
-    hedef = { merkez: yon > 0 ? gunEkle(kaynak.son, 1) : gunEkle(kaynak.bas, -1), yon, guncel: false };
+    hedef = { merkez: yon > 0 ? gunEkle(kaynak.son, 1) : gunEkle(kaynak.bas, -1), yon, no: 0, hafta: kaynak.no > 0 ? kaynak.no + yon : 0, sezon: kaynak.sezon || '', guncel: false };
     clearTimeout(turT);
     ++turN;
     tur = null;
@@ -1054,7 +1052,7 @@ export function openSports(env) {
       ++turN; // önceki yüklemeler sonucu atılır
       if (ligMod()) {
         // lig seçilince (ya da seçili ligin düğmesine yeniden basılınca) güncel maç haftası açılır
-        hedef = { merkez: dayStart(now()), yon: 0, no: 0, guncel: true };
+        hedef = { merkez: dayStart(now()), yon: 0, no: 0, hafta: 0, sezon: '', guncel: true };
         turRef = null;
         tur = null;
         turHata = '';
@@ -1084,7 +1082,7 @@ export function openSports(env) {
     }
     const row = e.target.closest('.sp-m');
     if (row) {
-      const m = matches.find((x) => x.id === row.dataset.id);
+      const m = matches.find((x) => x.id === row.dataset.id) || ligRows.get(row.dataset.id);
       if (!m) return;
       if (e.target.closest('[data-bell]')) return rem && toggleBell(m);
       openDetail(m);

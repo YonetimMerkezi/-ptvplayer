@@ -76,7 +76,7 @@ export function sporScreen() {
   let ligId = String(AYAR(LIG_KEY, '') || '');
   if (!ligBul(ligId)) ligId = '';
   // Lig sekmesi maç haftasını gösterir (14. hafta gibi): hedef = hangi turun aranacağı, tur = bulunan tur, turRef = numara çıkarmak için komşu tur
-  let hedef = { merkez: BUGUN, yon: 0, guncel: true };
+  let hedef = { merkez: BUGUN, yon: 0, hafta: 0, sezon: '', guncel: true }; // hafta: istenen hafta numarası (0 = güncel)
   let tur = null;
   let turRef = null;
   let progM = null; // null: yüklenmedi
@@ -394,6 +394,8 @@ export function sporScreen() {
     try {
       sonuc = await veri.turAl(ligId, {
         merkez: hedef.merkez,
+        no: hedef.hafta || 0,
+        sezon: hedef.sezon || '',
         yon,
         zorla: !!zorla,
         aktif: () => n === ligN && !kapali && sekme === LIG,
@@ -415,12 +417,12 @@ export function sporScreen() {
       tur = turNumarali(sonuc.tur, ref, yon);
       progM = sonuc.tur.maclar;
       progHata = '';
-      hedef = { merkez: sonuc.tur.bas, yon: 0, no: tur.no, guncel }; // bulunan tur artık hedeftir (sekme dönüşünde aynı tur yeniden kurulur)
+      hedef = { merkez: sonuc.tur.bas, yon: 0, no: tur.no, hafta: sonuc.kaynak === 'tsdb' ? tur.no : 0, sezon: sonuc.tur.sezon || '', guncel }; // bulunan tur artık hedeftir (sekme dönüşünde aynı tur yeniden kurulur)
       turRef = null;
     } else if (sonuc && yon !== 0 && ref) {
       tur = ref; // o yönde başka tur yok: eski turda kalınır
       progM = ref.maclar;
-      hedef = { merkez: ref.bas, yon: 0, no: ref.no, guncel: false };
+      hedef = { merkez: ref.bas, yon: 0, no: ref.no, hafta: ref.kaynak === 'tsdb' ? ref.no : 0, sezon: ref.sezon || '', guncel: false };
       turRef = null;
       toast('Bu yönde maç bulunamadı');
     }
@@ -484,7 +486,7 @@ export function sporScreen() {
     if (!ligBul(id)) return;
     ligId = id;
     ctx.store.setSetting(LIG_KEY, id);
-    hedef = { merkez: dayStart(Date.now()), yon: 0, guncel: true };
+    hedef = { merkez: dayStart(Date.now()), yon: 0, hafta: 0, sezon: '', guncel: true };
     tur = null;
     turRef = null;
     progM = null;
@@ -511,7 +513,7 @@ export function sporScreen() {
     const kaynak = tur || turRef;
     if (!ligId || !kaynak) return;
     turRef = kaynak; // numara komşu turdan çıkarılabilsin; yeni tur bulunamazsa buraya dönülür
-    hedef = { merkez: d > 0 ? gunEkle(kaynak.son, 1) : gunEkle(kaynak.bas, -1), yon: d, guncel: false };
+    hedef = { merkez: d > 0 ? gunEkle(kaynak.son, 1) : gunEkle(kaynak.bas, -1), yon: d, hafta: kaynak.no > 0 ? kaynak.no + d : 0, sezon: kaynak.sezon || '', guncel: false };
     clearTimeout(haftaT);
     ++ligN;
     yayinIptal();
@@ -743,7 +745,7 @@ export function sporScreen() {
     if (i === 1) return haftaDegis(-1);
     if (i === 2) {
       if (!hedef.guncel) {
-        hedef = { merkez: dayStart(Date.now()), yon: 0, guncel: true }; // güncel (ya da yaklaşan) tura dön
+        hedef = { merkez: dayStart(Date.now()), yon: 0, hafta: 0, sezon: '', guncel: true }; // güncel (ya da yaklaşan) tura dön
         turRef = null;
         clearTimeout(haftaT);
         if (ligId) ligYukle(false);

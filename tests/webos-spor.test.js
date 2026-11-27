@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TUR_ESPN_GUN, createSporVeri, kanalAdlari, kanalHaritasi, kullaniciKanallari, ULKE_LIGLERI, AVRUPA_LIGLERI } from '../webos/src/spor-veri.js';
 import { gunEkle } from '../www/js/sports-tur.js';
+import { haftaTur } from '../www/js/sports-hafta.js';
 
 const G = 86400000;
 const gun0 = new Date(2026, 10, 20).getTime(); // Cuma
@@ -11,11 +12,19 @@ const lsMaç = (id, t, h, a, ek = {}) => maç(id, t, h, a, { lg: 'ls:turkey-supe
 const maç = (id, t, h, a, ek = {}) => ({ id, lg: 'tur.1', t, state: 'pre', text: '', home: { name: h, label: h, score: null }, away: { name: a, label: a, score: null }, ...ek });
 
 // espn: lig kimliği → maç dizisi | Error; ls/mk: dizi | Error
-function kur({ espn = {}, ls, mk, sched, tv, tablo, saat = 12, ozetHata = null } = {}) {
-  const say = { espn: 0, ls: 0, mk: 0, sched: 0, tv: 0, tablo: 0 };
+// hafta: hafta kaynağı (TheSportsDB) yanıtı — verilmezse kaynak yokmuş gibi (null) gün gün yönteme düşülür; Error | işlev | sonuç
+function kur({ espn = {}, ls, mk, sched, tv, tablo, hafta, saat = 12, ozetHata = null } = {}) {
+  const say = { espn: 0, ls: 0, mk: 0, sched: 0, tv: 0, tablo: 0, hafta: 0 };
   const cagrilar = [];
   let t = gun0 + saat * 3600e3;
   const deps = {
+    haftaCoz: async (o) => {
+      say.hafta++;
+      (say.haftaIstekleri = say.haftaIstekleri || []).push({ no: o.no, yon: o.yon, sezon: o.sezon, zorla: o.zorla });
+      if (hafta instanceof Error) throw hafta;
+      if (typeof hafta === 'function') return hafta(o);
+      return hafta === undefined ? null : hafta;
+    },
     loadEspn: async (o) => {
       say.espn++;
       cagrilar.push(o);
@@ -384,6 +393,7 @@ test('spor: maç haftası — ESPN\'de aralık adresi hatırası "yalnız bugün
   const cagri = [];
   const t = gun0 + 12 * 3600e3;
   const deps = {
+    haftaCoz: async () => null,
     loadEspn: async (o) => {
       cagri.push(Object.assign({}, o.hatira));
       return { matches: [], okCount: 1, failed: [], level: 0 };
@@ -412,4 +422,77 @@ test('spor: maç olayları — ikinci kaynaktan gelen maç, Lig sekmesinde işle
   assert.equal(cagrilar.filter((c) => c.ozet).pop().ozet, 'tur.1:55');
   const yok = await v.ozet(maç('ls:turkey-super-lig:7', t, 'Rize', 'Konya', { lg: 'ls:turkey-super-lig', state: 'post' }));
   assert.equal(yok.durum, 'yok', 'lig kimliği yoksa (ligId) eşleme denenmez');
+});
+
+// ---- hafta kaynağı (TheSportsDB): numaralı hafta tek istekte; olmazsa günler ikinci kaynaktan ----
+const tsdb = (id, gun, saat, h, a, ek = {}) => maç('tsdb:' + id, new Date(2026, 10, gun, saat, 0).getTime(), h, a, { src: 'tsdb', lg: 'tur.1', ligId: 'tur.1', round: '13. hafta', ...ek });
+const H13 = () => [
+  tsdb('1', 20, 10, 'Aslan', 'Bora', { state: 'post', text: 'MS', home: { name: 'Aslan', label: 'Aslan', score: 2 }, away: { name: 'Bora', label: 'Bora', score: 0 } }),
+  tsdb('2', 21, 20, 'Çelik', 'Deniz'),
+  tsdb('3', 23, 20, 'Ege', 'Fırat'),
+];
+
+test('spor: hafta kaynağı — hafta tek istekte gelir; gün gün tarama, ESPN ve ikinci kaynak çağrılmaz (başlamış maç yoksa)', async () => {
+  const { v, say } = kur({ hafta: () => ({ tur: haftaTur(13, H13(), '2026-2027'), yok: false }) });
+  const r = await v.turAl('tur.1');
+  assert.equal(r.kaynak, 'tsdb');
+  assert.equal(r.tur.no, 13);
+  assert.equal(r.tur.maclar.length, 3);
+  assert.equal(r.tur.son, new Date(2026, 10, 23).getTime(), 'pazartesi dahil');
+  assert.equal(say.hafta, 1);
+  assert.equal(say.ls + say.mk + say.espn, 0, 'başka kaynağa gidilmedi');
+});
+
+test('spor: hafta kaynağı — numara/yön/sezon kaynağa iletilir, zorla yenilemede önbellek atlanır', async () => {
+  const { v, say } = kur({ hafta: ({ no }) => ({ tur: haftaTur(no || 13, H13(), '2026-2027'), yok: false }) });
+  await v.turAl('tur.1', { no: 14, yon: 1, sezon: '2026-2027' });
+  await v.turAl('tur.1', { zorla: true });
+  assert.deepEqual(say.haftaIstekleri[0], { no: 14, yon: 1, sezon: '2026-2027', zorla: false });
+  assert.equal(say.haftaIstekleri[1].zorla, true);
+});
+
+test('spor: hafta kaynağı — bugün başlamış maçın skoru ikinci kaynaktaki karşılığından gelir (yalnız o gün istenir)', async () => {
+  const bugun = [
+    tsdb('1', 20, 11, 'Aslan', 'Bora', { state: 'pre', text: '' }), // başlamış (şimdi 12:00) ama hafta listesinde henüz skor yok
+    tsdb('2', 21, 20, 'Çelik', 'Deniz'),
+  ];
+  const canli = lsMaç('ls:x', new Date(2026, 10, 20, 11, 0).getTime(), 'Aslan FK', 'Bora', { state: 'in', text: "63'", home: { name: 'Aslan FK', label: 'Aslan FK', score: 2 }, away: { name: 'Bora', label: 'Bora', score: 1 } });
+  const { v, say } = kur({ hafta: { tur: haftaTur(13, bugun), yok: false }, ls: (g) => (gunBas(g) === gun0 ? [canli] : []) });
+  const r = await v.turAl('tur.1');
+  assert.equal(say.ls, 1, 'yalnız bugünün listesi');
+  const m = r.tur.maclar.find((x) => x.home.name.indexOf('Aslan') === 0);
+  assert.equal(m.state, 'in');
+  assert.equal(m.home.score, 2);
+  assert.equal(m.ligId, 'tur.1');
+  assert.equal(r.tur.maclar.find((x) => x.id === 'tsdb:2').state, 'pre', 'karşılığı olmayan maç hafta listesindeki halinde');
+});
+
+test('spor: hafta kaynağı — alınamazsa ya da uygun değilse günler ikinci kaynaktan gün gün kurulur (eski yöntem)', async () => {
+  const a = kur({ ls: gunluk(SUPER), hafta: new Error('HTTP 429') });
+  const r = await a.v.turAl('tur.1');
+  assert.equal(r.kaynak, 'ikinci');
+  assert.equal(r.tur.no, 13);
+  assert.equal(a.say.hafta, 1);
+  const b = kur({ ls: gunluk(SUPER), hafta: null });
+  assert.equal((await b.v.turAl('tur.1')).kaynak, 'ikinci');
+  const ilk = await b.v.turAl('tur.1');
+  const sonraki = await b.v.turAl('tur.1', { merkez: gunEkle(ilk.tur.son, 1), yon: 1 });
+  assert.equal(sonraki.tur.no, 14);
+});
+
+test('spor: hafta kaynağı — o yönde hafta yoksa (yok) gün gün aranmaz; güncel hafta yoksa gün gün aranır', async () => {
+  const a = kur({ ls: gunluk(SUPER), hafta: { tur: null, yok: true } });
+  const son = await a.v.turAl('tur.1', { no: 99, yon: 1 });
+  assert.equal(son.tur, null);
+  assert.equal(son.yok, true);
+  assert.equal(a.say.ls, 0, 'sezon sonunda boşuna gün taranmadı');
+  const b = kur({ ls: gunluk(SUPER), hafta: { tur: null, yok: true } });
+  assert.equal((await b.v.turAl('tur.1')).tur.no, 13, 'yön yokken kaynağın "yok" demesi yedeği engellemez');
+});
+
+test('spor: hafta kaynağı — iptal edilen çağrı yarım sonuç dönmez', async () => {
+  const { v } = kur({ hafta: () => ({ tur: haftaTur(13, H13()), yok: false }) });
+  const r = await v.turAl('tur.1', { aktif: () => false });
+  assert.equal(r.iptal, true);
+  assert.equal(r.tur, null);
 });

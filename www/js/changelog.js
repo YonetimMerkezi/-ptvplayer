@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 186,
+    title: 'Spor: haftanın maçları tek seferde geliyor',
+    items: [
+      'Süper Lig, 1. Lig, 2. Lig ve büyük liglerde hafta programı (14. hafta: 27–30 Kas gibi) artık haftalık program kaynağından tek istekte alınıyor; bugün ve yarınla sınırlı kalmıyor, Pazartesi maçları dahil tüm hafta görünüyor',
+      'Skorlar ve canlı durum yine anlık kaynaklardan geliyor; haftalık kaynağa ulaşılamazsa eski gün gün yöntem otomatik devreye giriyor',
+    ],
+  },
+  {
     id: 185,
     title: 'Spor: maç haftası artık bölünmüyor',
     items: [
