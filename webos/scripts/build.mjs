@@ -15,6 +15,9 @@ const surum = process.env.WEBOS_VERSION || pkg.version;
 // Mağaza sürümü (LG Content Store başvurusu): kendi kendine güncelleme çıkarılır (mağaza güncellemeyi kendisi yapar). WEBOS_MAGAZA=1 ile açılır.
 const magaza = process.env.WEBOS_MAGAZA === '1';
 const yapi = process.env.WEBOS_BUILD || new Date().toISOString().slice(0, 16).replace('T', ' ');
+// Grafik çözünürlüğü: LG Seller Lounge FHD (1280x720) ve UHD (1920x1080) TV'ler için ayrı paket ister. Arayüz rem ile ekran yüksekliğine göre ölçeklendiği için iki paket aynı koddur; yalnız appinfo.json'daki resolution değişir.
+const cozunurluk = process.env.WEBOS_COZUNURLUK || '';
+if (cozunurluk && cozunurluk !== '1920x1080' && cozunurluk !== '1280x720') throw new Error('WEBOS_COZUNURLUK 1920x1080 veya 1280x720 olmalı: ' + cozunurluk);
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'app', 'js'), { recursive: true });
@@ -60,6 +63,7 @@ cpSync(join(kok, 'css'), join(dist, 'app', 'css'), { recursive: true });
 cpSync(join(kok, 'assets'), join(dist, 'app'), { recursive: true });
 const info = JSON.parse(readFileSync(join(kok, 'appinfo.json'), 'utf8'));
 info.version = surum;
+if (cozunurluk) info.resolution = cozunurluk;
 writeFileSync(join(dist, 'app', 'appinfo.json'), JSON.stringify(info, null, 2));
 cpSync(join(kok, 'service'), join(dist, 'service'), { recursive: true });
 // Servise yapı kimliği yazılır: uygulama ile servis aynı derlemeden mi (eski süreç canlı kalmış mı) anlaşılsın diye

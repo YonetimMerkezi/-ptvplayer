@@ -23,7 +23,7 @@ export const EN_WEBOS_B = [
   ['Camgöbeği', 'Cyan'],
   ['Arka plan', 'Background'],
   ['Altta', 'Bottom'], ['Yukarıda', 'Higher'], ['En yukarıda', 'Highest'],
-  ['Altyazı örnek metni İkinci satır', 'Subtitle sample text Second line'],
+  ['Altyazı örnek metni İkinci satır', 'Subtitle sample text\nSecond line'],
   // görüntü oranı
   ['Sığdır (özgün oran)', 'Fit (original ratio)'],
   ['Küçült %95 (kenar payı)', 'Shrink 95% (edge margin)'],
