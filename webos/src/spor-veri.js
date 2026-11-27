@@ -5,11 +5,12 @@
 //  yayin(gün)             → günün yayın akışı (hangi maç hangi kanalda); ağır sayfa, yalnız istenince
 // Ayrıştırma ve birleştirme Android uygulamasıyla ortaktır (www/js/sports*.js); burada yalnız yükleme sırası ve önbellek vardır.
 // İstekler birbiri ardına atılır (aynı anda tek ağır iş): yavaş TV'de yanıt işlenirken arayüz tuşlara yanıt verebilsin.
-import { loadMatches, DAY, dayStart, leagueOf, dayMonth } from '../../www/js/sports.js';
+import { loadMatches, DAY, dayStart, leagueOf, dayMonth, norm } from '../../www/js/sports.js';
 import { TABLE_IDS, loadStandings } from '../../www/js/sports-table.js';
 import { LS_HOSTS, loadLiveScoreDay } from '../../www/js/sports-ls.js';
 import { loadMackolikDay } from '../../www/js/sports-mk.js';
 import { loadSchedDay, seInfoFor } from '../../www/js/sports-se.js';
+import { loadSummary, eventIdOf } from '../../www/js/sports-detail.js';
 import { loadTvDay, tvChannelsFor, channelsByName } from '../../www/js/sports-tv.js';
 import { hasFavMatch } from '../../www/js/sports-fav.js';
 import * as K from './log.js';
@@ -18,6 +19,8 @@ export const TAZE_MS = 5 * 60000; // lig haftası ve takım maçları bu süre t
 export const TABLO_TAZE_MS = 10 * 60000;
 export const CANLI_TAZE_MS = 45000;
 export const YAYIN_TAZE_MS = 30 * 60000;
+export const HAFTA_YETER = 5; // ESPN haftaya bu kadar maç verdiyse hafta tam sayılır (altındaysa maçsız günler ikinci kaynaktan tamamlanır)
+const GUN_TAZE_MS = 10 * 60000;
 export const ULKE_LIGLERI = ['tur.1', 'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1']; // takımın "ülke ligi" aranacak ligler (bu sırayla)
 export const AVRUPA_LIGLERI = ['uefa.champions', 'uefa.europa', 'uefa.europa.conf'];
 export const TABLOLU_LIGLER = TABLE_IDS; // puan durumu olan ligler
@@ -72,8 +75,8 @@ function tekilSirala(maclar) {
 
 // hatira: ESPN adres basamağı belleği (loadMatches'e verilir); hatiraKaydet(hatira): değişince kalıcı yazım
 export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira = {}, hatiraKaydet = null } = {}) {
-  const d = Object.assign({ loadEspn: loadMatches, loadTablo: loadStandings, loadLs: loadLiveScoreDay, loadMk: loadMackolikDay, loadSched: loadSchedDay, loadTv: loadTvDay }, deps);
-  const st = { hafta: {}, tablo: {}, takim: {}, canli: null, yayin: {}, lsDownAt: 0 };
+  const d = Object.assign({ loadEspn: loadMatches, loadTablo: loadStandings, loadLs: loadLiveScoreDay, loadMk: loadMackolikDay, loadSched: loadSchedDay, loadTv: loadTvDay, loadSummary }, deps);
+  const st = { hafta: {}, tablo: {}, takim: {}, canli: null, yayin: {}, gun: {}, ozet: {}, lsDownAt: 0 };
   const bekleyen = {};
   const bir = (k, fn) => bekleyen[k] || (bekleyen[k] = fn().finally(() => delete bekleyen[k]));
 
@@ -105,6 +108,84 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
         if (c) return c.matches; // eski liste varsa o gösterilir
         throw e;
       }
+    });
+  }
+
+  // Haftanın tamamlanması: ESPN bazen haftanın yalnız birkaç maçını verir (günlük: Süper Lig haftası 2 maç). Maçı olmayan her gün için
+  // ikinci kaynağın (LiveScore, olmazsa Mackolik) o gün listesi alınır ve bu ligin maçları eklenir; günler tek tek, aktif() false olunca durur.
+  // Yalnız ESPN'nin gün başına hiç maç vermediği günlere dokunulur (çift kayıt oluşmaz). Gün listeleri 10 dk saklanır.
+  async function ikinciGun(dayMs) {
+    const c = st.gun[dayMs];
+    if (c && now() - c.at < GUN_TAZE_MS) return c.m;
+    const m = await ikinci(dayMs);
+    if (m) st.gun[dayMs] = { at: now(), m };
+    return m;
+  }
+  async function haftaEk(lgId, pzt, mevcut, { aktif = () => true, onPart = null } = {}) {
+    const k = lgId + '|' + pzt;
+    let hepsi = Array.isArray(mevcut) ? mevcut : [];
+    const c = st.hafta[k];
+    if (c && c.tam) return c.matches;
+    if (hepsi.length >= HAFTA_YETER) return hepsi;
+    const gunler = haftaGunleri(pzt).filter((g) => !hepsi.some((m) => dayStart(m.t) === g));
+    const t0 = Date.now();
+    let eklenen = 0;
+    for (let i = 0; i < gunler.length; i++) {
+      if (!aktif()) return hepsi;
+      let m = null;
+      try {
+        m = await ikinciGun(gunler[i]);
+      } catch (e) {
+        m = null;
+      }
+      if (!aktif()) return hepsi;
+      if (!m) continue;
+      const ek = m.filter((x) => x && x.lg === lgId && dayStart(x.t) === gunler[i]);
+      if (!ek.length) continue;
+      eklenen += ek.length;
+      hepsi = tekilSirala(hepsi.concat(ek));
+      if (onPart) {
+        try {
+          onPart(hepsi);
+        } catch (e) {
+          /* ekrandaki hata veri yüklemeyi bozmaz */
+        }
+      }
+    }
+    const kayit = st.hafta[k];
+    if (kayit) {
+      kayit.matches = hepsi;
+      kayit.tam = true;
+    } else st.hafta[k] = { at: now(), matches: hepsi, tam: true };
+    K.bilgi('Spor ' + lgId + ' haftası tamamlandı: +' + eklenen + ' maç, ' + sn(Date.now() - t0));
+    return hepsi;
+  }
+
+  // Maç olayları (gol, kart, VAR, değişiklik): ESPN maç özeti, yalnız olaylar kalacak biçimde budanmış gelir. ESPN dışı kaynaktan gelen maç
+  // (LiveScore/Mackolik) ligin aynı gün ESPN listesindeki karşılığıyla eşlenir; bulunamazsa olay yoktur. Döner: { events[], durum: 'ok'|'baslamadi'|'yok' }
+  const ad = (s) => norm((s && (s.name || s.label)) || '');
+  const ayni = (a, b) => !!a && !!b && (a === b || a.indexOf(b) >= 0 || b.indexOf(a) >= 0);
+  const espnMaci = (m) => !!m.id && !!m.lg && String(m.id).indexOf(m.lg + ':') === 0;
+  function ozet(m, zorla) {
+    return bir('ozet:' + m.id, async () => {
+      if (!m || m.state === 'pre' || m.off) return { events: [], durum: 'baslamadi' };
+      const c = st.ozet[m.id];
+      const omur = m.state === 'in' ? 45000 : 10 * 60000;
+      if (!zorla && c && now() - c.at < omur) return c.v;
+      const t0 = Date.now();
+      let es = espnMaci(m) ? m : null;
+      if (!es && leagueOf(m.lg)) {
+        const r = await espn(m.lg, dayStart(m.t), 0, 0);
+        es = r.matches.find((x) => Math.abs(x.t - m.t) < 4 * 3600e3 && ayni(ad(x.home), ad(m.home)) && ayni(ad(x.away), ad(m.away))) || null;
+      }
+      let v = { events: [], durum: 'yok' };
+      if (es) {
+        const s = await d.loadSummary({ net, match: es, proje: 'espn-ozet' });
+        v = { events: s.events || [], durum: 'ok' };
+      }
+      K.bilgi('Spor maç olayları: ' + v.events.length + ', ' + sn(Date.now() - t0));
+      st.ozet[m.id] = { at: now(), v };
+      return v;
     });
   }
 
@@ -256,7 +337,7 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
     return c && now() - c.at < YAYIN_TAZE_MS ? c.v : null;
   };
 
-  return { hafta, tablo, canli, takim, yayin, yayinVar };
+  return { hafta, haftaEk, tablo, canli, takim, yayin, yayinVar, ozet };
 }
 
 // ESPN adres basamağı belleği kalıcıdır (3 gün): bu ağda ilk adres (limit=…) hata veriyorsa her açılışta boşa istek atılmaz.

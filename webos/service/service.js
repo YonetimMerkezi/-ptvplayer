@@ -19,6 +19,9 @@
 //   medyaSor {}                             → {returnValue, port, jeton}      (canlı tutar)
 //   medyaDurdur {}                          → {returnValue}
 //
+// Yerel aktarım (büyük yanıtlar luna köprüsü yerine 127.0.0.1 HTTP ile uygulamaya akar; köprü iletisi çözme maliyeti yok):
+//   roleBilgi {}                            → {returnValue, port, jeton}   (adres: http://127.0.0.1:port/jeton/g?u=…&h=…&p=…&s=…)
+//
 // Telefon kumandası (kaynak aktarma alıcısından ayrı sunucu; telefon tarayıcısı http://TV-IP:port/k?k=KOD açar):
 //   kumandaBaslat {pin, sifirla}            → {returnValue, port, pin, adresler[]}   (pin 4 hane verilirse sabit kalır)
 //   kumandaSor    {bekleMs}                 → {returnValue, komutlar[{t:'tus'|'metin'|'oynat'|'kaynak'|'fare'|'ekran', ...}], telefon}   (uzun yoklama; 20 sn sorulmazsa kapanır)
@@ -191,6 +194,8 @@ var PROJE = {
       }
     }
   },
+  // ESPN maç özeti: yorum akışı, haber, video, oran gibi büyük bölümler atılır; olaylar (keyEvents), başlık, bilgi ve takım kimlikleri kalır (sports-detail.js parseSummary)
+  'espn-ozet': { header: 1, gameInfo: 1, broadcasts: 1, keyEvents: 1, boxscore: { teams: { homeAway: 1, team: { id: 1 } } }, rosters: { homeAway: 1, team: { id: 1 } } },
   'espn-tablo': tabloDugumu(4),
   'ls-gun': { Stages: { Sid: 1, Cnm: 1, Snm: 1, CompN: 1, Events: { Eid: 1, Esd: 1, T1: { Nm: 1 }, T2: { Nm: 1 }, Tr1: 1, Tr2: 1, Trp1: 1, Trp2: 1, Eps: 1, ErnInf: 1 } } }
 };
@@ -315,6 +320,100 @@ function oku(p) {
   kayit.okunan += data.length;
   if (kayit.okunan >= kayit.metin.length - kayit.ilk) delete depo[p.id];
   return { returnValue: true, data: data, done: bitti };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Yerel aktarım (yalnız 127.0.0.1, jetonlu): büyük yanıtlar luna köprüsünden parça parça taşınınca TV'nin arayüz iş parçacığında
+// her ileti ~8 ms/KB ile çözülüp arayüz donuyordu (günlük: 296 KB → 2,4 sn). Aynı yanıt yerel HTTP ile uygulamaya doğal ağ
+// yığınından akar: köprü iletisi ve JSON çözme yok. Uygulama bu yolu dener, olmazsa köprüye döner.
+// GET /<jeton>/g?u=<adres>&h=<başlıklar JSON>&p=<proje>&s=<zaman aşımı ms> → 200 + metin; yukarı akış durumu X-Upstream-Status başlığında
+// (yukarı akışa ulaşılamazsa 502 + hata metni). Yanıtı uygulama okur, CORS * (uygulama file:// kaynaklıdır).
+// ---------------------------------------------------------------------------------------------------------------
+var role = null; // { sunucu, port, jeton, aktif }
+
+function roleAktifMi() {
+  return !!role && role.aktif > 0;
+}
+
+function roleIstek(req, res) {
+  var ortak = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Expose-Headers': 'X-Upstream-Status',
+    'Cache-Control': 'no-store'
+  };
+  function yanit(kod, metin, ek) {
+    try {
+      var h = {};
+      var k;
+      for (k in ortak) h[k] = ortak[k];
+      for (k in ek || {}) h[k] = ek[k];
+      h['Content-Type'] = 'text/plain; charset=utf-8';
+      res.writeHead(kod, h);
+      res.end(metin);
+    } catch (e) {
+      /* bağlantı kapandı */
+    }
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Allow-Headers': '*' });
+    return res.end();
+  }
+  if (req.method !== 'GET') return yanit(405, 'Yöntem desteklenmiyor');
+  var q = urlm.parse(String(req.url || ''), true);
+  var yol = String(q.pathname || '').split('/'); // ['', jeton, 'g']
+  if (yol.length !== 3 || yol[1] !== role.jeton || yol[2] !== 'g') return yanit(403, 'Yetkisiz');
+  var adres = String(q.query.u || '');
+  if (!/^https?:\/\//i.test(adres)) return yanit(400, 'Adres yok');
+  var basliklar = null;
+  try {
+    basliklar = q.query.h ? JSON.parse(String(q.query.h)) : null;
+  } catch (e) {
+    return yanit(400, 'Başlıklar okunamadı');
+  }
+  var sure = Number(q.query.s) > 0 ? Number(q.query.s) : 30000;
+  role.aktif++;
+  if (kapaninca) kapaninca();
+  var bitti = false;
+  var son = function () {
+    if (bitti) return;
+    bitti = true;
+    role.aktif--;
+    if (kapaninca) kapaninca();
+  };
+  req.on('close', son); // uygulama isteği bıraktı
+  temizle();
+  istek(adres, basliklariBirlestir(basliklar), Date.now() + sure, MAX_YONLENDIRME, function (e, r) {
+    son();
+    if (e) return yanit(502, String((e && e.message) || e));
+    var metin = metne(r.body);
+    if (q.query.p && r.status >= 200 && r.status < 300) metin = buda(metin, String(q.query.p));
+    yanit(200, metin, { 'X-Upstream-Status': String(r.status) });
+  });
+}
+
+// cb(hata, bilgi). Zaten çalışıyorsa aynı port ve jeton döner.
+function roleBaslat(p, cb) {
+  if (role) return cb(null, { returnValue: true, port: role.port, jeton: role.jeton });
+  var sunucu = http.createServer(roleIstek);
+  var tamam = false;
+  sunucu.on('error', function (e) {
+    if (!tamam) cb(new Error('Yerel aktarım başlatılamadı: ' + String((e && e.message) || e)));
+  });
+  sunucu.listen(0, '127.0.0.1', function () {
+    tamam = true;
+    role = { sunucu: sunucu, port: sunucu.address().port, jeton: crypto.randomBytes(12).toString('hex'), aktif: 0 };
+    cb(null, { returnValue: true, port: role.port, jeton: role.jeton });
+  });
+}
+
+function roleDurdur() {
+  if (!role) return;
+  try {
+    role.sunucu.close();
+  } catch (e) {
+    /* kapalı */
+  }
+  role = null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2210,6 +2309,8 @@ module.exports = {
   kayitAlan: kayitAlan,
   resimGetir: resimGetir,
   resimTuru: resimTuru,
+  roleBaslat: roleBaslat,
+  roleDurdur: roleDurdur,
   kumandaBaslat: kumandaBaslat,
   kumandaSor: kumandaSor,
   kumandaDurdur: kumandaDurdur,
@@ -2298,7 +2399,7 @@ if (Service) {
   var etkinlikHata = 0;
   var canliTut = function () {
     try {
-      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar() && !donus && !kumanda && !guncelleAktif();
+      var bos = Object.keys(depo).length === 0 && !alici && !medya && !kayitVar() && !donus && !kumanda && !guncelleAktif() && !roleAktifMi();
       if (!bos && !etkinlik && !etkinlikIstendi) {
         if (!servis.activityManager) {
           if (donus && !etkinlikHata) donusNot(donus, 'canlı tutma: servis.activityManager yok');
@@ -2353,6 +2454,11 @@ if (Service) {
   servis.register('medyaListele', function (m) {
     m.respond(medyaListele(m.payload || {}));
     canliTut();
+  });
+  servis.register('roleBilgi', function (m) {
+    roleBaslat({}, function (e, r) {
+      m.respond(e ? { returnValue: false, errorText: String((e && e.message) || e) } : r);
+    });
   });
   servis.register('medyaBaslat', function (m) {
     medyaBaslat(m.payload || {}, function (e, r) {

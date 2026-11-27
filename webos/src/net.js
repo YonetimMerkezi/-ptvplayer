@@ -19,8 +19,9 @@ const iptalHatasi = () => {
 };
 const aktifXhr = {}; // grup → bekleyen XMLHttpRequest (aynı gruptaki yeni istek öncekini keser)
 
-const CHUNK_VARSAYILAN = 262144; // servis yanıtları bu kadar karakterlik parçalarla okunur
-const PARALEL = 4; // aynı anda istenen parça sayısı
+// Köprü iletisi TV'de ~8 ms/KB ile çözülüyor (günlük: 296 KB → 2,4 sn donma): yedek yolda parçalar küçük tutulur, böylece her ileti kısa sürer
+const CHUNK_VARSAYILAN = 24576; // servis yanıtları bu kadar karakterlik parçalarla okunur (yalnız yerel aktarım çalışmazsa)
+const PARALEL = 2; // aynı anda istenen parça sayısı
 
 const hostOf = (u) => {
   const m = /^[a-z]+:\/\/([^/?#]+)/i.exec(String(u));
@@ -68,11 +69,100 @@ export function xhrGet(url, { timeoutMs = 30000, headers, onProgress, grup, sonU
   });
 }
 
+// Yerel aktarım: servisin 127.0.0.1 HTTP kapısı. Büyük yanıt köprü iletisi olarak değil doğal ağ yığınından gelir (arayüz donmaz).
+// Çalışmazsa (kapı kapalı, CORS, eski sistem) köprü yoluna dönülür; art arda iki başarısızlıktan sonra bu oturumda denenmez.
+const ROLE_BOSTA_MS = 3500; // servis ~5 sn boşta kalınca kapanır: bu süreden eskiyse bilgi yenilenir (servis yeniden başlatılır)
+let role = null; // { port, jeton, t }
+let roleHata = 0;
+const roleHatasi = (m) => {
+  const e = new AgHatasi(m, 0);
+  e.role = true;
+  return e;
+};
+async function roleBilgisi(zorla) {
+  if (!zorla && role && Date.now() - role.t < ROLE_BOSTA_MS) return role;
+  let r;
+  try {
+    r = await luna(SERVIS + 'roleBilgi', {}, 8000);
+  } catch (e) {
+    throw roleHatasi('Yerel aktarım bilgisi alınamadı: ' + (e && e.message ? e.message : e));
+  }
+  if (!r || !r.returnValue || !r.port || !r.jeton) throw roleHatasi('Yerel aktarım bilgisi alınamadı');
+  role = { port: r.port, jeton: r.jeton, t: Date.now() };
+  return role;
+}
+function roleXhr(b, url, { timeoutMs, headers, onProgress, iptalMi, proje }) {
+  return new Promise((coz, red) => {
+    const x = new XMLHttpRequest();
+    let q = 'u=' + encodeURIComponent(url) + '&s=' + timeoutMs;
+    if (headers) q += '&h=' + encodeURIComponent(JSON.stringify(headers));
+    if (proje) q += '&p=' + encodeURIComponent(proje);
+    x.open('GET', 'http://127.0.0.1:' + b.port + '/' + b.jeton + '/g?' + q, true);
+    x.timeout = timeoutMs + 15000;
+    const kes = iptalMi ? setInterval(() => iptalMi() && x.abort(), 300) : 0;
+    const bitir = () => {
+      if (kes) clearInterval(kes);
+      role && (role.t = Date.now());
+    };
+    x.onprogress = (e) => {
+      if (onProgress) onProgress(e.loaded);
+    };
+    x.onload = () => {
+      bitir();
+      if (x.status === 502) return red(new AgHatasi(String(x.responseText || 'Bağlanılamadı'), 0));
+      const ust = Number(x.getResponseHeader('X-Upstream-Status'));
+      if (x.status !== 200 || !ust) return red(roleHatasi('Yerel aktarım ' + x.status + ' döndürdü'));
+      if (ust >= 400) return red(new AgHatasi('Sunucu ' + ust + ' döndürdü', ust));
+      coz(x.responseText);
+    };
+    x.onerror = () => {
+      bitir();
+      red(roleHatasi('Yerel aktarıma bağlanılamadı'));
+    };
+    x.onabort = () => {
+      bitir();
+      red(iptalMi && iptalMi() ? iptalHatasi() : roleHatasi('Yerel aktarım kesildi'));
+    };
+    x.ontimeout = () => {
+      bitir();
+      red(new AgHatasi('Zaman aşımı', 0));
+    };
+    x.send();
+  });
+}
+async function roleGet(url, o) {
+  const t0 = Date.now();
+  let son;
+  for (let deneme = 0; deneme < 2; deneme++) {
+    try {
+      const m = await roleXhr(await roleBilgisi(deneme > 0), url, o);
+      roleHata = 0;
+      if (m.length > 60000) K.bilgi('Yerel aktarım: ' + Math.round(m.length / 1024) + ' KB, ' + (Date.now() - t0) + ' ms');
+      return m;
+    } catch (e) {
+      if (!e || !e.role) throw e;
+      son = e;
+      role = null; // servis yeniden başlamış olabilir: jeton ve kapı yenilenir
+    }
+  }
+  throw son;
+}
+
 // TV içindeki JS servisi (service/service.js): istekleri Node tarafında atar, CORS yoktur.
 // proje: servis yanıt JSON'unu yalnız uygulamanın okuduğu alanlara budar (küçük köprü iletisi: büyük ileti TV'de arayüzü donduruyordu).
 // chunk: parça boyutu (varsayılan CHUNK); nazik: parçalar tek tek ve aralarda kısa bekleyerek okunur (tuşlar işlenebilsin; yalnız ağır, isteğe bağlı sayfalarda).
 const bekle = (ms) => new Promise((c) => setTimeout(c, ms));
 export async function servisGet(url, { timeoutMs = 30000, headers, onProgress, iptalMi, proje, chunk, nazik } = {}) {
+  if (roleHata < 2) {
+    try {
+      return await roleGet(url, { timeoutMs, headers, onProgress, iptalMi, proje });
+    } catch (e) {
+      if (!e || !e.role) throw e; // gerçek ağ/HTTP hatası: köprü de aynı sonucu verirdi
+      roleHata++;
+      K.uyar('Yerel aktarım çalışmadı, köprüye dönülüyor: ' + e.message);
+      if (iptalMi && iptalMi()) throw iptalHatasi();
+    }
+  }
   const CHUNK = chunk > 0 ? chunk : CHUNK_VARSAYILAN;
   const par = nazik ? 1 : PARALEL;
   let r = await luna(SERVIS + 'fetch', { url, headers: headers || null, timeoutMs, chunk: CHUNK, proje: proje || null }, timeoutMs + 15000);

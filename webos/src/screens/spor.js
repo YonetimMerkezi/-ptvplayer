@@ -385,6 +385,22 @@ export function sporScreen() {
     if (n !== ligN || kapali) return;
     tabloCiz();
     duzen();
+    haftaTamamla(n, ligId, hafta);
+  }
+  // ESPN haftayı eksik verdiyse maçsız günler ikinci kaynaktan arka planda eklenir; liste geldikçe imleç yerinde kalarak tazelenir
+  function haftaTamamla(n, lig, hf) {
+    veri
+      .haftaEk(lig, hf, progM || [], {
+        aktif: () => n === ligN && !kapali && sekme === LIG,
+        onPart: (ml) => {
+          if (n !== ligN || kapali) return;
+          progM = ml;
+          progHata = '';
+          progCiz(true);
+          duzen();
+        },
+      })
+      .catch((err) => K.uyar('Hafta tamamlama: ' + (err && err.message ? err.message : err)));
   }
   function ligSec(id, yukle) {
     if (!leagueOf(id)) return;

@@ -51,6 +51,7 @@ test('ağ: servis yolu büyük yanıtı paralel okur, sıra bozulmaz, ilerleme a
       const p = JSON.parse(json);
       const komut = uri.split('/').pop();
       const yanit = (o) => setTimeout(() => this.onservicecallback(JSON.stringify(o)), 0);
+      if (komut === 'roleBilgi') return yanit({ returnValue: false, errorText: 'yerel aktarım yok' }); // yedek (köprü) yolu sınanıyor
       if (komut === 'fetch') {
         kayit.id = 'x1';
         return yanit({ returnValue: true, status: 200, total: METIN.length, data: METIN.slice(0, p.chunk), id: 'x1', done: false });
@@ -71,8 +72,8 @@ test('ağ: servis yolu büyük yanıtı paralel okur, sıra bozulmaz, ilerleme a
     const ilerleme = [];
     const m = await servisGet('http://x/y', { onProgress: (n) => ilerleme.push(n) });
     assert.equal(m, METIN);
-    assert.ok(enCok > 1 && enCok <= 4, 'parçalar aynı anda istendi, en çok 4 (' + enCok + ')');
-    assert.equal(okumaSayisi, Math.ceil((METIN.length - 262144) / 262144));
+    assert.ok(enCok > 1 && enCok <= 2, 'parçalar aynı anda istendi, en çok 2 (' + enCok + ')');
+    assert.equal(okumaSayisi, Math.ceil((METIN.length - 24576) / 24576));
     assert.equal(ilerleme[ilerleme.length - 1], METIN.length);
     // toplam bildirilen uzunluktan kısa içerik gelirse sessizce bozuk metin verilmez
     class Eksik extends Kopru {

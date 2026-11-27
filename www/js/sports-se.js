@@ -381,7 +381,7 @@ export async function loadSchedDay({ net, dayMs, bases = SCHED_BASES, timeoutMs 
     if (src.todayOnly && seDateKey(dayMs) !== seDateKey(nowMs)) continue;
     const url = src.url(dayMs, bases);
     try {
-      const html = await withTimeout(net.text(url, { fast: true, nazik: true, chunk: 65536 }), timeoutMs); // nazik: TV'de parçalar tek tek ve aralarda bekleyerek okunur (tuşlar işlensin)
+      const html = await withTimeout(net.text(url, { fast: true, nazik: true, chunk: 24576 }), timeoutMs); // nazik: TV'de parçalar tek tek ve aralarda bekleyerek okunur (tuşlar işlensin)
       const r = await src.parse(html, bases, dayMs, ara);
       if (r.rows.length) return { ...r, url, via: src.key, note: [...notes, `${src.label}: ${seDiagText(r.diag, r.rows.length)}`].join(' · ') };
       notes.push(`${src.label}: ${r.diag.anchors ? seDiagText(r.diag, 0) : `${r.diag.bytes} bayt, maç bağlantısı yok`}`);

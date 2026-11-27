@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { parseScoreboard } from '../www/js/sports.js';
 import { parseStandings } from '../www/js/sports-table.js';
 import { parseLiveScore } from '../www/js/sports-ls.js';
+import { parseSummary } from '../www/js/sports-detail.js';
 
 const require = createRequire(import.meta.url);
 const svc = require('../webos/service/service.js');
@@ -128,4 +129,28 @@ test('proje: servis getir proje verilince yanıtı budar; hata yanıtı (4xx) bu
   const h = await getir({ url: taban + '/hata', proje: 'espn-skor' });
   assert.equal(h.status, 400);
   assert.match(h.data, /zzz/);
+});
+
+test('proje: ESPN maç özeti — olaylar budanmışla budanmamışta aynı, yorum akışı ve haber gibi büyük bölümler atılır', () => {
+  const ozet = {
+    header: { competitions: [{ status: { displayClock: "67'", type: { state: 'in', name: 'STATUS_SECOND_HALF' } }, competitors: [{ id: '10', homeAway: 'home', score: '2', team: { id: '10', displayName: 'A' } }, { id: '20', homeAway: 'away', score: '1', team: { id: '20', displayName: 'B' } }] }] },
+    gameInfo: { venue: { fullName: 'Stat' }, attendance: 1000 },
+    keyEvents: [
+      { type: { text: 'Goal' }, scoringPlay: true, team: { id: '10' }, clock: { displayValue: "12'" }, participants: [{ athlete: { displayName: 'Oyuncu 1' } }], shortText: 'Gol 1' },
+      { type: { text: 'Yellow Card' }, team: { id: '20' }, clock: { displayValue: "30'" }, participants: [{ athlete: { displayName: 'Oyuncu 2' } }] },
+      { type: { text: 'Red Card' }, team: { id: '20' }, clock: { displayValue: "55'" }, participants: [{ athlete: { displayName: 'Oyuncu 3' } }] },
+    ],
+    commentary: Array.from({ length: 400 }, (_, i) => ({ sequence: i, time: { displayValue: i + "'" }, text: 'Yorum satırı '.repeat(10) })),
+    news: { articles: Array.from({ length: 30 }, (_, i) => ({ headline: 'Haber ' + i, description: 'x'.repeat(300) })) },
+    videos: Array.from({ length: 20 }, (_, i) => ({ id: i, headline: 'Video', links: { web: { href: 'https://x/' + i } } })),
+    boxscore: { teams: [{ homeAway: 'home', team: { id: '10', displayName: 'A', logo: 'https://x/a.png' }, statistics: [{ name: 'a', value: 1 }] }] },
+    rosters: [{ homeAway: 'home', team: { id: '10' }, roster: Array.from({ length: 30 }, (_, i) => ({ athlete: { displayName: 'P' + i } })) }],
+  };
+  const tam = JSON.stringify(ozet);
+  const budali = svc.buda(tam, 'espn-ozet');
+  const mac = { id: 'tur.1:1', lg: 'tur.1' };
+  assert.deepEqual(parseSummary(JSON.parse(budali), mac).events, parseSummary(ozet, mac).events);
+  assert.equal(parseSummary(JSON.parse(budali), mac).events.length, 3);
+  assert.ok(budali.length < tam.length / 5, 'budanmış özet çok daha küçük (' + budali.length + ' / ' + tam.length + ')');
+  assert.ok(budali.indexOf('Yorum satırı') < 0 && budali.indexOf('Haber 0') < 0);
 });

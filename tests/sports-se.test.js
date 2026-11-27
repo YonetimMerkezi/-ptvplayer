@@ -97,7 +97,7 @@ test('loadSchedDay: birincil kaynak, ağ hatası ve tanınmayan sayfa', async ()
   const r = await loadSchedDay({ net, dayMs: DAYMS, nowMs: DAYMS });
   assert.equal(urls.length, 1, 'ilk kaynak satır verince diğerlerine gidilmez');
   assert.equal(urls[0][0], 'https://www.sporekrani.com/home/day/2026-11-12');
-  assert.deepEqual(urls[0][1], { fast: true, nazik: true, chunk: 65536 }); // ağır sayfa TV'de nazik okunur
+  assert.deepEqual(urls[0][1], { fast: true, nazik: true, chunk: 24576 }); // ağır sayfa TV'de nazik okunur
   assert.equal(r.rows.length, 4);
   assert.equal(r.via, 'se');
   // hiçbir kaynak alınamazsa hata: nedenler kaynak adıyla

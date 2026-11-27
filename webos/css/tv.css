@@ -326,6 +326,22 @@ input.on2, .on2 input { border-color: #2dd4bf; background: #0f1a2a; }
 .mc-yt { margin: 2.2rem 0 1.4rem; font-size: 2rem; line-height: 1.5; }
 .mc-yt b { color: #2dd4bf; margin-right: .6rem; }
 .mc-yt .dim { color: #7f8aa3; }
+/* Maç olayları (gol, kart, VAR): düğmelerin sağındaki sütun */
+.mc-ev { position: absolute; left: 53rem; right: 0; top: 21rem; bottom: 0; overflow: hidden; }
+.mc-ev .ev-h { font-size: 1.7rem; color: #2dd4bf; font-weight: 600; margin-bottom: .6rem; }
+.mc-ev .ev-bos { font-size: 1.7rem; color: #7f8aa3; line-height: 2.4rem; }
+.mc-ev .ev-r { display: -webkit-flex; display: flex; -webkit-align-items: baseline; align-items: baseline; font-size: 1.7rem; line-height: 2.7rem; white-space: nowrap; }
+.mc-ev .ev-m { width: 4.2rem; -webkit-flex-shrink: 0; flex-shrink: 0; color: #9aa6bf; }
+.mc-ev .ev-k { width: 10.8rem; -webkit-flex-shrink: 0; flex-shrink: 0; font-weight: 600; }
+.mc-ev .ev-p { -webkit-flex: 1; flex: 1; min-width: 0; display: -webkit-flex; display: flex; overflow: hidden; }
+.mc-ev .ev-p b { font-weight: 400; -webkit-flex: 0 0 auto; flex: 0 0 auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.mc-ev .ev-p i { font-style: normal; color: #7f8aa3; -webkit-flex: 0 1 auto; flex: 0 1 auto; min-width: 0; margin-left: .6rem; overflow: hidden; text-overflow: ellipsis; }
+.mc-ev .ev-p i:before { content: '· '; }
+.mc-ev .ev-s { margin-left: 1rem; -webkit-flex-shrink: 0; flex-shrink: 0; font-weight: 700; }
+.mc-ev .ev-goal .ev-k, .mc-ev .ev-own .ev-k { color: #7ee787; }
+.mc-ev .ev-yellow .ev-k { color: #ffd21f; }
+.mc-ev .ev-red .ev-k { color: #ff6b6b; }
+.mc-ev .ev-var .ev-k, .mc-ev .ev-penmiss .ev-k { color: #9ad0ff; }
 .mc-b .f-btn, .vd-b .f-btn { display: block; width: 52rem; margin: 0 0 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mc-b .f-btn.on, .vd-b .f-btn.on, .mc-b .f-btn.hv, .vd-b .f-btn.hv { background: #2dd4bf; color: #04141a; }
 

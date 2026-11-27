@@ -4,6 +4,7 @@ import { el, esc, saat, toast } from '../ui.js';
 import { kanalAdlari, kullaniciKanallari } from '../spor-veri.js';
 import { lgLine } from '../../../www/js/sports.js';
 import { cleanFavs, toggleFav, isFavSide, FAV_KEY } from '../../../www/js/sports-fav.js';
+import { KIND_LABEL } from '../../../www/js/sports-detail.js';
 import * as K from '../log.js';
 
 let canliKanallar = null; // kullanıcının canlı kanalları: kaynak değişmedikçe bir kez yüklenir
@@ -36,10 +37,12 @@ export function macScreen(p) {
     ustCubuk('Maç', src ? esc(src.name) : '') +
     '<div class="mc"><div class="mc-lg">' + esc(lgLine(m)) + (m.venue ? ' · ' + esc(m.venue) : '') + '</div>' +
     '<div class="mc-sc"><span class="mc-h">' + esc(ad(m.home)) + '</span><span class="mc-m"><b>' + esc(skor) + '</b><i class="' + (m.state === 'in' ? 'live' : '') + '">' + esc(durumMetni) + '</i></span><span class="mc-a">' + esc(ad(m.away)) + '</span></div>' +
-    '<div class="mc-yt" id="mc-yt">Yayın kanalı aranıyor…</div><div class="mc-b" id="mc-b"></div></div>' +
+    '<div class="mc-yt" id="mc-yt">Yayın kanalı aranıyor…</div><div class="mc-b" id="mc-b"></div>' +
+    '<div class="mc-ev" id="mc-ev"></div></div>' +
     '<div class="hint">▲▼ gezin · OK: seç · Sarı: ev sahibini takip et · Mavi: deplasmanı takip et · Geri</div>';
   const ytEl = kok.querySelector('#mc-yt');
   const kapEl = kok.querySelector('#mc-b');
+  const evEl = kok.querySelector('#mc-ev');
   let kanal = null; // kanallariBul sonucu
   let secili = 0;
   let kapali = false;
@@ -60,6 +63,46 @@ export function macScreen(p) {
     if (!kanal) return;
     if (kanal.adlar.length) ytEl.innerHTML = '<b>Yayın:</b> ' + esc(kanal.adlar.join(', ')) + (kanal.hits.length ? '' : '<span class="dim"> · listenizde bu kanallar bulunamadı</span>');
     else ytEl.innerHTML = '<span class="dim">' + esc(kanal.durum || 'Yayın kanalı bulunamadı') + '</span>';
+  };
+
+  // Olaylar (gol, kart, VAR): değişiklikler sıklığı yüzünden listelenmez; en çok EV_SATIR satır, fazlası en yeniler kalacak biçimde kısaltılır
+  const EV_SATIR = 8;
+  const evKisa = { goal: 'Gol', own: 'Kendi kalesine', penmiss: 'Penaltı kaçtı', yellow: 'Sarı kart', red: 'Kırmızı kart', var: 'VAR' };
+  const olaylariYaz = (r) => {
+    if (kapali) return;
+    if (!r || r.durum === 'baslamadi') {
+      evEl.innerHTML = m.state === 'pre' ? '' : '<div class="ev-bos">Olay bilgisi yok</div>';
+      return;
+    }
+    const l = (r.events || []).filter((e) => evKisa[e.kind]);
+    if (!l.length) {
+      evEl.innerHTML = '<div class="ev-h">Olaylar</div><div class="ev-bos">' + (r.durum === 'ok' ? 'Henüz önemli olay yok' : 'Bu maç için olay bilgisi bulunamadı') + '</div>';
+      return;
+    }
+    const gor = l.slice(-EV_SATIR);
+    const ek = l.length - gor.length;
+    evEl.innerHTML =
+      '<div class="ev-h">Olaylar</div>' +
+      (ek > 0 ? '<div class="ev-bos">+' + ek + ' önceki olay</div>' : '') +
+      gor
+        .map((e) => {
+          const takim = e.side === 'home' ? ad(m.home) : e.side === 'away' ? ad(m.away) : '';
+          const kisi = e.player || takim;
+          const detay = e.detail && e.kind === 'goal' && e.detail !== KIND_LABEL.goal ? ' (' + e.detail + ')' : '';
+          return (
+            '<div class="ev-r ev-' + e.kind + (e.side ? ' ev-' + e.side : '') + '"><span class="ev-m">' + esc(e.minute) + '</span><span class="ev-k">' + esc(evKisa[e.kind]) + '</span><span class="ev-p">' +
+            '<b>' + esc(kisi + detay) + '</b>' + (e.player && takim ? '<i>' + esc(takim) + '</i>' : '') + '</span>' + (e.score && (e.kind === 'goal' || e.kind === 'own') ? '<span class="ev-s">' + esc(e.score) + '</span>' : '') + '</div>'
+          );
+        })
+        .join('');
+  };
+  const olaylariAl = (zorla) => {
+    if (!p.veri || !p.veri.ozet || m.state === 'pre' || m.off) return olaylariYaz({ durum: 'baslamadi' });
+    p.veri.ozet(m, zorla).then(olaylariYaz, (e) => {
+      if (kapali) return;
+      K.uyar('Maç olayları: ' + (e && e.message ? e.message : e));
+      evEl.innerHTML = '<div class="ev-h">Olaylar</div><div class="ev-bos">Olaylar alınamadı</div>';
+    });
   };
 
   const takipDegis = (taraf) => {
@@ -88,6 +131,10 @@ export function macScreen(p) {
   });
 
   dugmeleriKur();
+  if (m.state !== 'pre' && !m.off) evEl.innerHTML = '<div class="ev-h">Olaylar</div><div class="ev-bos">Olaylar yükleniyor…</div>';
+  olaylariAl(false);
+  // Canlı maçta olaylar dakikada bir tazelenir (yanıt küçük; yalnız maç ekranı açıkken)
+  const evT = m.state === 'in' ? setInterval(() => olaylariAl(true), 60000) : 0;
   kanallariBul(p.veri, m, p.gun).then(
     (k) => {
       if (kapali) return;
@@ -134,6 +181,7 @@ export function macScreen(p) {
     },
     destroy() {
       kapali = true;
+      if (evT) clearInterval(evT);
     },
   };
 }

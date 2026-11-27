@@ -10,6 +10,16 @@ let enUzun = 0;
 let sayi = 0;
 let kim = () => '';
 
+// JS yığın kullanımı (teşhis): yığın sınıra yakınsa çöp toplama her büyük ayırmada uzun donmalara yol açar
+const bellek = () => {
+  try {
+    const m = typeof performance !== 'undefined' ? performance.memory : null;
+    return m && m.usedJSHeapSize ? ' · bellek ' + Math.round(m.usedJSHeapSize / 1048576) + '/' + Math.round(m.jsHeapSizeLimit / 1048576) + ' MB' : '';
+  } catch (e) {
+    return '';
+  }
+};
+
 export function baslat(ekranAdi, saat) {
   if (zamanlayici) return;
   if (ekranAdi) kim = ekranAdi;
@@ -22,7 +32,7 @@ export function baslat(ekranAdi, saat) {
     if (gec > enUzun) enUzun = gec;
     if (gec >= ESIK) {
       sayi++;
-      K.uyar('Arayüz ' + gec + ' ms yanıtsız kaldı (' + kim() + ')');
+      K.uyar('Arayüz ' + gec + ' ms yanıtsız kaldı (' + kim() + ')' + bellek());
     }
   }, ARALIK);
 }

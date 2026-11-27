@@ -228,12 +228,12 @@ export const PRE_POLL_MS = 90 * 60e3;
 export const shouldPoll = (state, t, nowMs) => state === 'in' || (state === 'pre' && Number(t) - nowMs < PRE_POLL_MS);
 
 // Ayrıntıyı indirir. Döner: parseSummary çıktısı; ağ/biçim hatasında Error (hata.detail: kısa neden).
-export async function loadSummary({ net, match, base = ESPN_BASE, timeoutMs = 12000 }) {
+export async function loadSummary({ net, match, base = ESPN_BASE, timeoutMs = 12000, proje = '' }) {
   const url = summaryUrl(match.lg, eventIdOf(match), base);
   let timer;
   try {
     const json = await Promise.race([
-      net.json(url, { fast: true }),
+      net.json(url, proje ? { fast: true, proje } : { fast: true }),
       new Promise((_, rej) => (timer = setTimeout(() => rej(new Error('Sunucu zamanında yanıt vermedi')), timeoutMs))),
     ]);
     if (!json || typeof json !== 'object') throw new Error('Boş yanıt');

@@ -417,6 +417,35 @@ export function playerScreen({ list, index, fresh }) {
   v.addEventListener('waiting', () => {
     if (!kapali) spin.className = 'p-spin on';
   });
+  // Teşhis: canlı yayında oynatıcının kendi başına geri sarması / ileri atlaması ve beklemeleri Hata kaydına yazılır
+  // (yerel oynatıcı canlı akışta tampon bitince ya da liste yenilenince konumu kaydırabilir; tampon ve canlı kenara uzaklık görünür)
+  let sonKonum = 0;
+  let sonBekleme = 0;
+  const tamponYazi = () => {
+    try {
+      const b = v.buffered;
+      const ileri = b && b.length ? Math.round(b.end(b.length - 1) - (v.currentTime || 0)) : 0;
+      const sk = v.seekable;
+      const kenar = sk && sk.length ? Math.round(sk.end(sk.length - 1) - (v.currentTime || 0)) : null;
+      return 'tampon ' + ileri + ' sn' + (kenar != null ? ', canlı kenara ' + kenar + ' sn' : '');
+    } catch (e) {
+      return '';
+    }
+  };
+  v.addEventListener('timeupdate', () => {
+    if (!v.seeking) sonKonum = v.currentTime || 0;
+  });
+  v.addEventListener('seeked', () => {
+    if (kapali || !canli() || geri) return;
+    const fark = (v.currentTime || 0) - sonKonum;
+    if (Math.abs(fark) > 2) K.uyar('Yayın konumu atladı: ' + (fark > 0 ? '+' : '') + Math.round(fark) + ' sn · ' + tamponYazi() + (it ? ' · ' + it.name : ''));
+    sonKonum = v.currentTime || 0;
+  });
+  v.addEventListener('waiting', () => {
+    if (kapali || !canli() || Date.now() - sonBekleme < 5000) return;
+    sonBekleme = Date.now();
+    K.uyar('Yayın bekliyor · ' + tamponYazi());
+  });
   v.addEventListener('timeupdate', zamanGuncelle);
   v.addEventListener('durationchange', zamanGuncelle);
   v.addEventListener('pause', () => {

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TEMALAR, VARSAYILAN_TEMA, temaBul, cssUret, karistir } from '../webos/src/tema.js';
+import { TEMALAR, VARSAYILAN_TEMA, temaBul, cssUret, karistir, temaHizli } from '../webos/src/tema.js';
 import { bellekDepo, createStore } from '../webos/src/store.js';
 import { atamalar, eylemi, degistir, eylemAdi, OYNATICI, ANA, VARSAYILAN } from '../webos/src/kumanda.js';
 
@@ -203,4 +203,38 @@ test('tema: canlı temalarda soluk gri yazılar parlar, koyu lacivert katmanlar 
   // Boyut ve düzen kuralları aynen korunur
   const yalin = (x) => x.replace(/#[0-9a-f]{6}\b/gi, '#').replace(/rgba\([0-9, ]+,/g, 'rgba(V,');
   assert.equal(yalin(c), yalin(css));
+});
+
+test('tema: üretilen CSS önbelleğe yazılır; sonraki açılışta ilk çizimden önce eşzamanlı uygulanır', () => {
+  const eski = globalThis.localStorage;
+  const kayit = {};
+  globalThis.localStorage = { getItem: (k) => (k in kayit ? kayit[k] : null), setItem: (k, v) => (kayit[k] = String(v)) };
+  const belge = () => {
+    const stiller = {};
+    const kok = { className: '' };
+    return {
+      stiller,
+      documentElement: kok,
+      head: { appendChild: (e) => (stiller[e.id] = e) },
+      getElementById: (id) => stiller[id] || null,
+      createElement: () => ({ id: '', textContent: '' }),
+      querySelector: () => ({ disabled: false }),
+    };
+  };
+  try {
+    const tema = temaBul(VARSAYILAN_TEMA);
+    const d1 = belge();
+    assert.equal(temaHizli(tema.id, d1), false, 'önbellek boşken eşzamanlı uygulanmaz');
+    // üretimi simüle et: sürüm|yapı|kimlik anahtarı ve CSS metni
+    kayit['iptv.temaCss'] = 'body{color:#fff}';
+    kayit['iptv.temaCss.k'] = '1.0.0||' + tema.id;
+    const d2 = belge();
+    assert.equal(temaHizli(tema.id, d2), true);
+    assert.equal(d2.stiller['tema-css'].textContent, 'body{color:#fff}');
+    const baska = TEMALAR.find((t) => t.id !== tema.id && t.id !== 'varsayilan');
+    assert.equal(temaHizli(baska.id, belge()), false, 'başka temanın önbelleği kullanılmaz');
+  } finally {
+    if (eski === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = eski;
+  }
 });

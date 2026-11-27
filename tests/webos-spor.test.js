@@ -1,7 +1,7 @@
 // LG webOS spor (lig öncelikli): lig haftası, puan durumu, canlı, takım maçları, yayın akışından kanal eşleme. Hiçbir şey kendiliğinden yüklenmez.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSporVeri, kanalAdlari, kanalHaritasi, kullaniciKanallari, haftaBasi, haftaKaydir, haftaGunleri, haftaEtiketi, ULKE_LIGLERI, AVRUPA_LIGLERI } from '../webos/src/spor-veri.js';
+import { HAFTA_YETER, createSporVeri, kanalAdlari, kanalHaritasi, kullaniciKanallari, haftaBasi, haftaKaydir, haftaGunleri, haftaEtiketi, ULKE_LIGLERI, AVRUPA_LIGLERI } from '../webos/src/spor-veri.js';
 
 const G = 86400000;
 const gun0 = new Date(2026, 10, 20).getTime(); // Cuma
@@ -9,7 +9,7 @@ const pzt0 = new Date(2026, 10, 16).getTime(); // o haftanın pazartesisi
 const maç = (id, t, h, a, ek = {}) => ({ id, lg: 'tur.1', t, state: 'pre', text: '', home: { name: h, label: h, score: null }, away: { name: a, label: a, score: null }, ...ek });
 
 // espn: lig kimliği → maç dizisi | Error; ls/mk: dizi | Error
-function kur({ espn = {}, ls, mk, sched, tv, tablo, saat = 12 } = {}) {
+function kur({ espn = {}, ls, mk, sched, tv, tablo, saat = 12, ozetHata = null } = {}) {
   const say = { espn: 0, ls: 0, mk: 0, sched: 0, tv: 0, tablo: 0 };
   const cagrilar = [];
   let t = gun0 + saat * 3600e3;
@@ -28,10 +28,10 @@ function kur({ espn = {}, ls, mk, sched, tv, tablo, saat = 12 } = {}) {
       if (tablo instanceof Error) throw tablo;
       return tablo || [{ name: '', rows: [{ name: slug, rank: 1, pts: 3 }] }];
     },
-    loadLs: async () => {
+    loadLs: async ({ dayMs } = {}) => {
       say.ls++;
       if (ls instanceof Error) throw ls;
-      return { matches: ls || [] };
+      return { matches: typeof ls === 'function' ? ls(dayMs) : ls || [] };
     },
     loadMk: async () => {
       say.mk++;
@@ -42,6 +42,12 @@ function kur({ espn = {}, ls, mk, sched, tv, tablo, saat = 12 } = {}) {
       say.sched++;
       if (sched instanceof Error) throw sched;
       return { rows: sched || [] };
+    },
+    loadSummary: async ({ match, proje }) => {
+      say.ozet = (say.ozet || 0) + 1;
+      cagrilar.push({ ozet: match.id, proje });
+      if (ozetHata) throw ozetHata;
+      return { events: [{ kind: 'goal', minute: "12'", side: 'home', player: 'X', score: '1–0' }] };
     },
     loadTv: async () => {
       say.tv++;
@@ -261,3 +267,81 @@ test('spor: kanal eşleme dilimlidir (arada olay döngüsüne döner), hesaplana
   assert.ok(Object.keys(hazir2).length < 400, 'aktif() false olunca kalan işlenmez');
 });
 
+
+test('spor: ESPN haftayı eksik verirse maçsız günler ikinci kaynaktan tamamlanır (yalnız o lig, yalnız boş günler); tam haftaya dokunulmaz', async () => {
+  const ESPN_MAC = [maç('e1', pzt0 + 4 * G + 18 * 3600e3, 'A', 'B'), maç('e2', pzt0 + 4 * G + 20 * 3600e3, 'C', 'D')]; // yalnız cuma
+  const ls = (gun) => {
+    const i = Math.round((gun - pzt0) / G);
+    return [
+      maç('l' + i, gun + 19 * 3600e3, 'T' + i, 'U' + i), // bu lig
+      maç('x' + i, gun + 19 * 3600e3, 'Y', 'Z', { lg: 'eng.1' }), // başka lig: eklenmez
+    ];
+  };
+  const { v, say } = kur({ espn: { 'tur.1': ESPN_MAC }, ls });
+  const ml = await v.hafta('tur.1', pzt0);
+  assert.equal(ml.length, 2);
+  const parcalar = [];
+  const son = await v.haftaEk('tur.1', pzt0, ml, { onPart: (x) => parcalar.push(x.length) });
+  assert.equal(say.ls, 6, 'cuma dışındaki altı gün sorulur');
+  assert.equal(son.length, 2 + 6, 'her boş güne bu ligin bir maçı eklendi, başka lig eklenmedi');
+  assert.deepEqual(parcalar, [3, 4, 5, 6, 7, 8], 'liste gün gün büyür');
+  assert.ok(son.every((m) => m.lg === 'tur.1'));
+  assert.ok(son.every((m, i) => i === 0 || son[i - 1].t <= m.t), 'saat sırasında');
+  // tamamlanmış hafta ağa gitmez; hafta() önbelleği tamamlanmış listeyi verir
+  assert.equal((await v.haftaEk('tur.1', pzt0, ml)).length, 8);
+  assert.equal(say.ls, 6);
+  assert.equal((await v.hafta('tur.1', pzt0)).length, 8);
+  // yeterli maç varsa ikinci kaynağa gidilmez
+  const dolu = Array.from({ length: HAFTA_YETER }, (_, i) => maç('d' + i, pzt0 + i * G + 18 * 3600e3, 'P' + i, 'Q' + i));
+  const k2 = kur({ espn: { 'tur.1': dolu }, ls });
+  const m2 = await k2.v.hafta('tur.1', pzt0);
+  assert.equal((await k2.v.haftaEk('tur.1', pzt0, m2)).length, HAFTA_YETER);
+  assert.equal(k2.say.ls, 0);
+});
+
+test('spor: hafta tamamlama aktif() false olunca durur; ikinci kaynak düşerse eldeki liste bozulmaz', async () => {
+  const ls = (gun) => [maç('l' + gun, gun + 19 * 3600e3, 'T', 'U')];
+  const k = kur({ espn: { 'tur.1': [maç('e1', pzt0 + 4 * G + 18 * 3600e3, 'A', 'B')] }, ls });
+  const ml = await k.v.hafta('tur.1', pzt0);
+  let n = 0;
+  const yari = await k.v.haftaEk('tur.1', pzt0, ml, { aktif: () => ++n <= 3 });
+  assert.ok(yari.length >= 2 && yari.length < 7, 'yarıda kesildi (' + yari.length + ')');
+  const dusuk = kur({ espn: { 'tur.1': [maç('e1', pzt0 + 4 * G + 18 * 3600e3, 'A', 'B')] }, ls: new Error('LS yok'), mk: new Error('MK yok') });
+  const m3 = await dusuk.v.hafta('tur.1', pzt0);
+  const s3 = await dusuk.v.haftaEk('tur.1', pzt0, m3);
+  assert.equal(s3.length, 1, 'ikinci kaynak yoksa ESPN listesi olduğu gibi kalır');
+});
+
+test('spor: maç olayları — ESPN maçı doğrudan özetten, ESPN dışı kaynak ligin o günkü ESPN listesiyle eşlenir, başlamamış maç ağa gitmez', async () => {
+  const t = gun0 + 20 * 3600e3;
+  const espnM = maç('tur.1:55', t, 'Galatasaray', 'Fenerbahçe', { state: 'in' });
+  const { v, say, cagrilar } = kur({ espn: { 'tur.1': [espnM] } });
+  // ESPN kimlikli maç: doğrudan özet, budanmış istenir
+  const a = await v.ozet(espnM);
+  assert.equal(a.durum, 'ok');
+  assert.equal(a.events.length, 1);
+  assert.equal(say.espn, 0);
+  assert.deepEqual(cagrilar.filter((c) => c.ozet), [{ ozet: 'tur.1:55', proje: 'espn-ozet' }]);
+  // canlı maç 45 sn önbellekli
+  await v.ozet(espnM);
+  assert.equal(say.ozet, 1);
+  // LiveScore kimlikli aynı maç: ESPN günlük listesinden eşlenir
+  const ls = maç('ls:99', t + 60000, 'Galatasaray SK', 'Fenerbahce', { state: 'post', text: 'MS' });
+  const b = await v.ozet(ls);
+  assert.equal(b.durum, 'ok');
+  assert.equal(say.espn, 1, 'ligin o günkü ESPN listesi istendi');
+  assert.equal(cagrilar.filter((c) => c.ozet).pop().ozet, 'tur.1:55', 'eşleşen ESPN maçının özeti alındı');
+  // eşleşme yok → olay yok
+  const baska = maç('ls:7', t, 'Rize', 'Konya', { state: 'post' });
+  assert.equal((await v.ozet(baska)).durum, 'yok');
+  // başlamamış ya da ertelenmiş maç: ağ yok
+  const onceki = say.espn + say.ozet;
+  assert.equal((await v.ozet(maç('tur.1:1', t, 'A', 'B', { state: 'pre' }))).durum, 'baslamadi');
+  assert.equal((await v.ozet(maç('tur.1:2', t, 'A', 'B', { state: 'post', off: true }))).durum, 'baslamadi');
+  assert.equal(say.espn + say.ozet, onceki);
+});
+
+test('spor: maç olayları — özet alınamazsa hata atar (ekran "alınamadı" yazar)', async () => {
+  const { v } = kur({ ozetHata: new Error('Maç ayrıntısı alınamadı'), espn: { 'tur.1': [] } });
+  await assert.rejects(() => v.ozet(maç('tur.1:5', gun0, 'A', 'B', { state: 'post' })), /alınamadı/);
+});

@@ -253,7 +253,8 @@ export function start() {
   qrKaynagi((p) => open('fragmanqr', p));
   donusKaynagi(() => donusHazirla());
   const tema = ctx.store.setting('theme', VARSAYILAN_TEMA);
-  temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
+  // Seçili tema hazır olana kadar açılış perdesi kalır (önbellekteki CSS eşzamanlı uygulanır; yoksa üretilir): ana sayfa önce başka renkte görünmez
+  const temaHazir = temaUygula(tema).catch((e) => K.hata(e)); // varsayılan tema da boyanmış CSS ister; kaldırılmış (tek renkli) kayıtlı tema varsayılana döner
   tuslariBagla(document);
   hoverBagla(document); // Magic Remote / telefon imleci üzerine gelince vurgu
   resimYedegiKur(document); // yüklenemeyen logo: servis yedeği, olmazsa gizle (kırık simge görünmez)
@@ -276,8 +277,18 @@ export function start() {
     }
   } else open('addsource', { first: true });
   saatleriYaz();
-  const b = document.getElementById('boot');
-  if (b && b.parentNode) b.parentNode.removeChild(b);
+  const perdeKaldir = () => {
+    const b = document.getElementById('boot');
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+  };
+  let perdeBitti = false;
+  const perdeBir = () => {
+    if (perdeBitti) return;
+    perdeBitti = true;
+    perdeKaldir();
+  };
+  temaHazir.then(perdeBir);
+  setTimeout(perdeBir, 10000); // tema üretimi aksarsa uygulama yine de açılır
   if (!MAGAZA) {
     guncellemeSonrasi({ store: ctx.store, bildir: (t) => setTimeout(() => toast(t, 4000), 800) });
     setTimeout(() => {

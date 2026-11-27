@@ -1,9 +1,12 @@
+import { SURUM, YAPI } from './version.js';
+
 // Tema merkezi: renk paletleri. Chromium 38'de CSS değişkeni olmadığından tv.css'teki varsayılan renkler,
 // seçilen paletin renkleriyle değiştirilerek çalışma anında bir <style> olarak uygulanır (varsayılan temada tv.css olduğu gibi kullanılır).
 // Paletler Android uygulamasının tema renkleriyle aynıdır (www/css/app.css).
 
 // Paletin rolleri: bg zemin, surface kutu, raised vurgulu kutu, line çizgi, accent vurgu, ink vurgu üzerindeki yazı
 export const VARSAYILAN_TEMA = 'canli-renkli';
+
 // tv.css'in özgün (boyanmamış) turkuaz renkleri: artık seçilebilir tema değil; yalnız boyama mantığı bu kimliği "değiştirme" diye tanır.
 const ORIJINAL_TEMA = 'varsayilan';
 
@@ -209,25 +212,71 @@ function cssYukle() {
   });
 }
 
+// Üretilen CSS (sürüm + tema kimliği anahtarıyla) kalıcı yazılır: sonraki açılışta ilk çizimden önce eşzamanlı uygulanır,
+// böylece ana sayfa önce varsayılan renkte açılıp birkaç saniye sonra seçili temaya dönmez.
+const OB_CSS = 'iptv.temaCss';
+const OB_ANAHTAR = 'iptv.temaCss.k';
+const obAnahtar = (t) => SURUM + '|' + YAPI + '|' + t.id;
+const depo = () => {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+function stilYaz(doc, link, t, css) {
+  let st = doc.getElementById('tema-css');
+  if (!st) {
+    st = doc.createElement('style');
+    st.id = 'tema-css';
+    doc.head.appendChild(st);
+  }
+  st.textContent = css;
+  if (link) link.disabled = true;
+  doc.documentElement.className = t.multi ? 'multi' : '';
+}
+
+// Önbellekteki CSS bu tema ve bu sürüm için varsa eşzamanlı uygular (true); yoksa false.
+export function temaHizli(id, doc) {
+  doc = doc || document;
+  const t = temaBul(id);
+  if (t.id === ORIJINAL_TEMA) return false;
+  const d = depo();
+  if (!d) return false;
+  try {
+    if (d.getItem(OB_ANAHTAR) !== obAnahtar(t)) return false;
+    const css = d.getItem(OB_CSS);
+    if (!css) return false;
+    stilYaz(doc, doc.querySelector('link[rel="stylesheet"]'), t, css);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function temaUygula(id, doc) {
   doc = doc || document;
   const t = temaBul(id);
   const link = doc.querySelector('link[rel="stylesheet"]');
-  let st = doc.getElementById('tema-css');
+  const st = doc.getElementById('tema-css');
   if (t.id === ORIJINAL_TEMA) {
     if (st && st.parentNode) st.parentNode.removeChild(st);
     if (link) link.disabled = false;
     doc.documentElement.className = '';
     return t;
   }
-  const css = await cssYukle();
-  if (!st) {
-    st = doc.createElement('style');
-    st.id = 'tema-css';
-    doc.head.appendChild(st);
+  if (temaHizli(id, doc)) return t;
+  const css = cssUret(await cssYukle(), t);
+  stilYaz(doc, link, t, css);
+  const d = depo();
+  if (d) {
+    try {
+      d.setItem(OB_CSS, css);
+      d.setItem(OB_ANAHTAR, obAnahtar(t));
+    } catch (e) {
+      /* kota dolu: sonraki açılışta yeniden üretilir */
+    }
   }
-  st.textContent = cssUret(css, t);
-  if (link) link.disabled = true;
-  doc.documentElement.className = t.multi ? 'multi' : '';
   return t;
 }

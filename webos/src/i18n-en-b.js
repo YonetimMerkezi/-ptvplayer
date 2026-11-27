@@ -186,5 +186,10 @@ export const EN_WEBOS_B = [
   ['▲▼ gezin · OK: takımın maçları · Sarı: takipten çıkar · Geri', '▲▼ move · OK: team matches · Yellow: unfollow · Back'],
   ['▲▼ gezin · OK: ligi aç · Sarı: favoriden çıkar · Geri', '▲▼ move · OK: open league · Yellow: remove favourite · Back'],
   ['▲▼ gezin · OK: seç · Sarı: favori ligi aç/kapat · Geri', '▲▼ move · OK: select · Yellow: toggle favourite league · Back'],
+  // Maç ekranı: olaylar
+  ['Olaylar', 'Events'], ['Olaylar yükleniyor…', 'Loading events…'], ['Olay bilgisi yok', 'No event information'],
+  ['Henüz önemli olay yok', 'No key events yet'], ['Bu maç için olay bilgisi bulunamadı', 'No event information found for this match'], ['Olaylar alınamadı', 'Events could not be loaded'],
+  ['+{0} önceki olay', '+{0} earlier events'],
+  ['Gol', 'Goal'], ['Kendi kalesine', 'Own goal'], ['Penaltı kaçtı', 'Penalty missed'], ['Sarı kart', 'Yellow card'], ['Kırmızı kart', 'Red card'],
   ['Oynanan', 'Played'], ['Galibiyet', 'Wins'], ['Beraberlik', 'Draws'], ['Mağlubiyet', 'Losses'], ['Averaj', 'Goal difference'],
 ];
