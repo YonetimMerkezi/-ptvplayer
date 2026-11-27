@@ -360,3 +360,25 @@ test('noScore: yalnız takvimden gelen, başlayalı 2,5 saatten uzun süren ve s
   assert.equal(noScore({ ...se, home: { score: 1 }, away: { score: 0 } }, t0 + 5 * 3600e3), false);
   assert.equal(noScore(null), false);
 });
+
+test('loadMatches: onPart her lig alındıkça o ana kadarki süzülmüş listeyi verir; son liste dönen sonuçla aynıdır', async () => {
+  const day = (n, h) => new Date(at(2026, 11, 10 + n, h)).toISOString();
+  const net = fakeNet((u) => {
+    const s = slugOf(u);
+    if (s === 'tur.1') return { events: [ev(1, day(0, 20), 'Galatasaray', 'Fenerbahçe')] };
+    if (s === 'eng.1') return { events: [ev(9, day(-1, 18), 'Arsenal', 'Chelsea', { hs: '1', as: '0', state: 'post', name: 'STATUS_FULL_TIME' })] };
+    return { events: [] };
+  });
+  const parcalar = [];
+  const r = await loadMatches({ net, now: NOW, parallel: 1, onPart: (m) => parcalar.push(m.map((x) => x.id)) });
+  assert.equal(parcalar.length, LEAGUES.length, 'her başarılı lig için bir kez');
+  assert.deepEqual(parcalar[0], ['tur.1:1'], 'ilk lig gelir gelmez görünür');
+  assert.deepEqual(parcalar[parcalar.length - 1], r.matches.map((m) => m.id));
+  assert.deepEqual(r.matches.map((m) => m.id), ['eng.1:9', 'tur.1:1']);
+});
+
+test('loadMatches: onPart hata atarsa yükleme bozulmaz', async () => {
+  const net = fakeNet((u) => (slugOf(u) === 'tur.1' ? { events: [ev(1, new Date(at(2026, 11, 10, 20)).toISOString(), 'A', 'B')] } : { events: [] }));
+  const r = await loadMatches({ net, now: NOW, onPart: () => { throw new Error('ekran'); } });
+  assert.equal(r.matches.length, 1);
+});

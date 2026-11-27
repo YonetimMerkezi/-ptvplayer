@@ -148,3 +148,127 @@ test('spor: ESPN yalnız istenen günün penceresini alır; ilk sonuç ikinci ka
   assert.equal(istekler[0].ahead, 0, 'gelecek günleri toptan çekmez');
   assert.equal(istekler[0].now, gun0);
 });
+
+// ---- kademeli liste, kayıtlı liste, ısıtma ----
+
+const bekle = (ms = 10) => new Promise((r) => setTimeout(r, ms));
+const sahteKalici = (kayit) => {
+  const yazilan = {};
+  return {
+    yazilan,
+    okuYasli: async (k) => (kayit && kayit[k]) || null,
+    yaz: async (k, v) => {
+      yazilan[k] = v;
+      return true;
+    },
+  };
+};
+
+test('spor: ligler geldikçe liste kademeli gelir, dönen son sonuç hepsini içerir', async () => {
+  let parca;
+  let bitir;
+  const bitis = new Promise((r) => (bitir = r));
+  const deps = {
+    loadEspn: async (o) => {
+      parca = o.onPart;
+      parca([maç('e1', gun0 + 20 * 3600e3, 'Galatasaray', 'Fenerbahçe')]);
+      await bitis;
+      return { matches: [maç('e1', gun0 + 20 * 3600e3, 'Galatasaray', 'Fenerbahçe'), maç('e2', gun0 + 21 * 3600e3, 'Arsenal', 'Chelsea')] };
+    },
+    loadLs: async () => ({ matches: [] }),
+    loadMk: async () => ({ matches: [] }),
+    birlestir: (a, b) => ({ matches: a.concat(b) }),
+  };
+  const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps });
+  const ilkler = [];
+  const sonuc = v.maclar(gun0, false, (l) => ilkler.push(l.map((x) => x.id)));
+  await bekle();
+  assert.deepEqual(ilkler[0], ['e1'], 'ilk lig gelir gelmez gösterilir');
+  parca([maç('e1', gun0 + 20 * 3600e3, 'Galatasaray', 'Fenerbahçe'), maç('e2', gun0 + 21 * 3600e3, 'Arsenal', 'Chelsea')]);
+  await bekle(300);
+  assert.deepEqual(ilkler[ilkler.length - 1], ['e1', 'e2'], 'sonraki lig de kısa sürede eklenir');
+  bitir();
+  assert.deepEqual((await sonuc).map((x) => x.id), ['e1', 'e2']);
+});
+
+test('spor: kayıtlı liste ağı beklemeden gösterilir, ağdan gelen kısmi liste onun yerine geçmez, tam sonuç kaydedilir', async () => {
+  const eski = [maç('k1', gun0 + 18 * 3600e3, 'Kayıtlı', 'Maç')];
+  const kalici = sahteKalici({ ['spor:' + gun0]: { v: eski, at: gun0 + 11 * 3600e3 } });
+  let bitir;
+  const bitis = new Promise((r) => (bitir = r));
+  const deps = {
+    loadEspn: async (o) => {
+      await bekle(5); // gerçekte ağ yanıtı eşzamanlı gelmez; kayıtlı liste okuması önce biter
+      o.onPart([maç('e1', gun0 + 20 * 3600e3, 'A', 'B')]);
+      await bitis;
+      return { matches: [maç('e1', gun0 + 20 * 3600e3, 'A', 'B'), maç('e2', gun0 + 21 * 3600e3, 'C', 'D')] };
+    },
+    loadLs: async () => ({ matches: [] }),
+    loadMk: async () => ({ matches: [] }),
+    birlestir: (a, b) => ({ matches: a.concat(b) }),
+  };
+  const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps, kalici });
+  const ilkler = [];
+  const sonuc = v.maclar(gun0, false, (l) => ilkler.push(l.map((x) => x.id)));
+  await bekle(300);
+  assert.deepEqual(ilkler, [['k1']], 'yalnız kayıtlı liste; ESPN kısmi listesi onu bozmaz');
+  bitir();
+  assert.deepEqual((await sonuc).map((x) => x.id), ['e1', 'e2']);
+  assert.deepEqual(kalici.yazilan['spor:' + gun0].map((x) => x.id), ['e1', 'e2'], 'tam sonuç sonraki açılış için kaydedilir');
+});
+
+test('spor: çok eski kayıt gösterilmez; yenileme (zorla) kayıtlıya bakmaz', async () => {
+  const eski = [maç('k1', gun0 + 18 * 3600e3, 'Kayıtlı', 'Maç')];
+  const kalici = sahteKalici({ ['spor:' + gun0]: { v: eski, at: gun0 + 1 * 3600e3 } }); // 11 saat önce
+  const deps = {
+    loadEspn: async () => ({ matches: [maç('e1', gun0 + 20 * 3600e3, 'A', 'B')] }),
+    loadLs: async () => ({ matches: [] }),
+    loadMk: async () => ({ matches: [] }),
+    birlestir: (a, b) => ({ matches: a.concat(b) }),
+  };
+  const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps, kalici });
+  const ilkler = [];
+  await v.maclar(gun0, false, (l) => ilkler.push(l.map((x) => x.id)));
+  assert.ok(ilkler.every((l) => l.join() === 'e1'), 'altı saatten eski kayıt ilk anda gösterilmez');
+  const v2 = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps, kalici: sahteKalici({ ['spor:' + gun0]: { v: eski, at: gun0 + 11 * 3600e3 } }) });
+  const ilkler2 = [];
+  await v2.maclar(gun0, true, (l) => ilkler2.push(l.map((x) => x.id)));
+  assert.ok(ilkler2.every((l) => l.join() === 'e1'), 'zorla yenilemede kayıtlı liste gösterilmez');
+});
+
+test('spor: ısıtma sürerken Spor açılırsa aynı yüklemeye katılır (çift istek yok), o ana kadarki liste hemen gelir', async () => {
+  let say = 0;
+  let parca;
+  let bitir;
+  const bitis = new Promise((r) => (bitir = r));
+  const deps = {
+    loadEspn: async (o) => {
+      say++;
+      parca = o.onPart;
+      assert.equal(o.parallel, 2, 'ısıtma az eşzamanlı istekle yapılır');
+      o.onPart([maç('e1', gun0 + 20 * 3600e3, 'A', 'B')]);
+      await bitis;
+      return { matches: [maç('e1', gun0 + 20 * 3600e3, 'A', 'B')] };
+    },
+    loadLs: async () => ({ matches: [] }),
+    loadMk: async () => ({ matches: [] }),
+    birlestir: (a, b) => ({ matches: a.concat(b) }),
+  };
+  const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps });
+  const isinma = v.isit(gun0);
+  await bekle();
+  const ilkler = [];
+  const sonuc = v.maclar(gun0, false, (l) => ilkler.push(l.map((x) => x.id)));
+  assert.deepEqual(ilkler, [['e1']], 'katılan ekran ısıtmanın o ana kadarki listesini hemen alır');
+  bitir();
+  assert.deepEqual((await sonuc).map((x) => x.id), ['e1']);
+  assert.equal(await isinma, true);
+  assert.equal(say, 1, 'ESPN yalnız bir kez istenir');
+  assert.ok(parca);
+});
+
+test('spor: ısıtma hata verirse sessizce false döner', async () => {
+  const deps = { loadEspn: async () => { throw new Error('x'); }, loadLs: async () => { throw new Error('y'); }, loadMk: async () => { throw new Error('z'); } };
+  const v = createSporVeri({}, { now: () => gun0 + 12 * 3600e3, deps });
+  assert.equal(await v.isit(gun0), false);
+});

@@ -47,6 +47,9 @@ export function createOnbellek(idbFabrika) {
         }),
     );
   return {
+    // Kayıtlı değer ve yazılma zamanı { v, at } (taze ise) ya da null; kısa ömürlü veriler (maç listesi) yaşa göre kendi eşiğini uygular
+    okuYasli: (anahtar, simdi) =>
+      islem('readonly', (st) => st.get(anahtar)).then((e) => (e && typeof e === 'object' && Array.isArray(e.v) && (simdi || Date.now()) - e.at < OMUR_MS ? { v: e.v, at: e.at } : null)),
     // Kayıtlı değer (taze ise) ya da null
     oku: (anahtar, simdi) =>
       islem('readonly', (st) => st.get(anahtar)).then((e) => (e && typeof e === 'object' && Array.isArray(e.v) && (simdi || Date.now()) - e.at < OMUR_MS ? e.v : null)),

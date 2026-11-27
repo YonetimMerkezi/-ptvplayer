@@ -352,7 +352,8 @@ export function withTimeout(p, ms) {
 // Dün'den (back) bugünden itibaren ahead gün sonrasına kadar tüm liglerin maçları. Bir lig alınamazsa diğerleri yine gelir.
 // Döner: { matches, okCount, failed: [lig kimlikleri], errors: { lig: ilk hata iletisi }, level }; hiçbir lig alınamazsa hata atar
 // (hata.detail: "tur.1: HTTP 403" gibi ilk nedenler, ekranda gösterilir).
-export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4, budgetMs = 60000 } = {}) {
+// onPart(maçlar): her lig alındıkça o ana kadarki (süzülmüş, sıralı) liste verilir; ekran ligler bitmeden ilk satırları gösterebilir.
+export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, leagues = LEAGUES, base = ESPN_BASE, timeoutMs = 12000, parallel = 4, budgetMs = 60000, onPart = null } = {}) {
   const today = startOfDay(now);
   const from = today - back * DAY;
   const to = today + (ahead + 1) * DAY;
@@ -364,6 +365,13 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
   const votes = [0, 0, 0];
   const deadline = Date.now() + budgetMs;
   const queue = [...leagues];
+  // Gençlik maçları ayıklanır, tekrarlar tekilleşir, saat sırasına dizilir
+  const topla = () => {
+    const seen = new Set();
+    const uniq = matches.filter((m) => !isYouthMatch(m) && !seen.has(m.id) && seen.add(m.id));
+    uniq.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
+    return uniq;
+  };
   async function worker() {
     for (let lg = queue.shift(); lg; lg = queue.shift()) {
       if (Date.now() > deadline) {
@@ -390,6 +398,13 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
       delete errors[lg.id];
       okCount++;
       for (const m of parseScoreboard(json, lg.id)) if (m.t >= from && m.t < to) matches.push(m);
+      if (onPart) {
+        try {
+          onPart(topla());
+        } catch (e) {
+          /* ekrandaki hata veri yüklemeyi bozmaz */
+        }
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, leagues.length)) }, worker));
@@ -398,10 +413,7 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
     err.detail = Object.entries(errors).slice(0, 3).map(([id, m]) => `${id}: ${m}`).join(' · ');
     throw err;
   }
-  const seen = new Set();
-  const uniq = matches.filter((m) => !isYouthMatch(m) && !seen.has(m.id) && seen.add(m.id));
-  uniq.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
-  return { matches: uniq, okCount, failed, errors, level };
+  return { matches: topla(), okCount, failed, errors, level };
 }
 
 // ---- gün ve lig süzgeci ----

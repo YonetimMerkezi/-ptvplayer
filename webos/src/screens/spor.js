@@ -2,18 +2,18 @@
 import { ctx, provider, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast, enYakin } from '../ui.js';
-import { createSporVeri, kanalHaritasi } from '../spor-veri.js';
+import { sporVeri, kanalHaritasi, KULLANILDI_KEY } from '../spor-veri.js';
 import { dayStart, dayStrip, dayLabel, sections, chipsFor, capSections, lgLine, hasLive } from '../../../www/js/sports.js';
 import { cleanFavs, toggleFav, isFavSide, hasFavMatch, FAV_KEY, FAV_CHIP } from '../../../www/js/sports-fav.js';
 import * as K from '../log.js';
 
-let veri = null; // ekran kapanıp açılınca önbellek korunur
 const yenileMs = 60000;
 
 export function sporScreen() {
   const kok = el('div', 'screen k-spor');
   const src = ctx.store.active();
-  if (!veri) veri = createSporVeri(ctx.net);
+  const veri = sporVeri(ctx.net); // ekran kapanıp açılınca ve ana sayfadaki ısıtmayla önbellek paylaşılır
+  if (!ctx.store.setting(KULLANILDI_KEY, false)) ctx.store.setSetting(KULLANILDI_KEY, true);
   const gunler = dayStrip(Date.now(), 1, 7);
   let gunNo = 1; // bugün
   let chip = '';
@@ -141,11 +141,12 @@ export function sporScreen() {
     }
     try {
       // ESPN yanıtı gelir gelmez liste gösterilir; ikinci kaynak (LiveScore/Mackolik) gelince birleşik liste tazelenir
-      const m = await veri.maclar(gun, zorla, (ilk) => {
-        if (n !== sayac || maclar.length) return;
-        maclar = ilk;
+      const m = await veri.maclar(gun, zorla, (parca) => {
+        if (n !== sayac) return;
+        const ilkMi = !maclar.length;
+        maclar = parca;
         chipleriKur();
-        satirlariKur(false);
+        satirlariKur(!ilkMi); // ilk liste başa, sonraki kademeler okuyucunun yerini koruyarak gelir
       });
       if (n !== sayac) return;
       yukleniyor = false;
@@ -159,6 +160,12 @@ export function sporScreen() {
       if (n !== sayac) return;
       yukleniyor = false;
       K.hata(e);
+      if (maclar.length) {
+        // Kayıtlı ya da kısmi liste ekranda: silinmez, güncellenemediği bildirilir
+        chipCiz();
+        toast('Maçlar güncellenemedi, kayıtlı liste gösteriliyor');
+        return;
+      }
       maclar = [];
       chipler = [];
       chipCiz();

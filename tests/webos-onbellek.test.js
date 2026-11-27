@@ -128,3 +128,13 @@ test('önbellek: künyesiz eski kayıtlar ilk yazımda en eski sayılıp budanı
   assert.equal(veri.has('yeni'), true, 'yeni kayıt silinmez');
   assert.equal(veri.has('eski0'), false, 'künyesiz eski kayıtlardan biri gider');
 });
+
+test('onbellek: okuYasli değeri ve yazılma zamanını döndürür; kayıt yoksa null', async () => {
+  const { idb } = sahteIdb();
+  const o = createOnbellek(() => idb);
+  assert.equal(await o.okuYasli('yok', 1000), null);
+  await o.yaz('spor:1', [{ id: 'a' }], 5000);
+  const k = await o.okuYasli('spor:1', 6000);
+  assert.deepEqual(k, { v: [{ id: 'a' }], at: 5000 });
+  assert.deepEqual(await o.oku('spor:1', 6000), [{ id: 'a' }], 'oku eskisi gibi çalışır');
+});

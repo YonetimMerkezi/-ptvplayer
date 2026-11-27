@@ -5,11 +5,18 @@ import { LS_HOSTS, loadLiveScoreDay, mergeSources, sameTeam } from '../../www/js
 import { loadMackolikDay } from '../../www/js/sports-mk.js';
 import { loadSchedDay, seInfoFor } from '../../www/js/sports-se.js';
 import { loadTvDay, tvChannelsFor, channelsByName } from '../../www/js/sports-tv.js';
+import { onbellek } from './onbellek.js';
 
 export const TAZE_MS = 5 * 60000; // ESPN ve günlük listeler bu süre taze sayılır
 export const YAYIN_TAZE_MS = 30 * 60000;
+export const KAYIT_OMUR_MS = 6 * 3600 * 1000; // kayıtlı gün listesi bundan eskiyse ilk anda gösterilmez (skorlar çok eskimiş olur)
+export const PARCA_MS = 250; // ligler/kaynaklar geldikçe listeyi en sık bu aralıkla tazele (zayıf TV'de çizim yükü)
+const kayitAnahtari = (dayMs) => 'spor:' + dayMs;
+export const KULLANILDI_KEY = 'sp.kullanildi'; // Spor ekranı bir kez açıldıysa ana sayfa bugünün maçlarını önceden hazırlar
+export const ISITMA_GECIKME_MS = 7000; // ana sayfa açıldıktan bu kadar sonra (afişler yerleşince) ısıtma başlar
 
-export function createSporVeri(net, { now = () => Date.now(), deps = {} } = {}) {
+// kalici: { okuYasli(anahtar), yaz(anahtar, dizi) } (IndexedDB önbelleği); verilmezse her şey yalnız bellekte tutulur.
+export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici = null } = {}) {
   const d = Object.assign({ loadEspn: loadMatches, loadLs: loadLiveScoreDay, loadMk: loadMackolikDay, loadSched: loadSchedDay, loadTv: loadTvDay, birlestir: mergeSources }, deps);
   const st = { espn: {}, espnAt: 0, espnHata: '', gunler: {}, yayin: {}, lsDownAt: 0 };
   const bekleyen = {};
@@ -17,13 +24,16 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {} } = {}) 
 
   // ESPN: dayMs verilirse yalnız o günün (±1 gün) maçları istenir; yanıtlar küçük kalır, 2016 model TV'de ayrıştırma arayüzü dondurmaz.
   // dayMs verilmezse eski gibi tüm pencere (dün + 7 gün) tek seferde alınır.
-  const espn = (zorla, dayMs) => {
+  // onPart(maçlar): her lig gelince o ana kadarki liste (yalnız yüklemeyi başlatan çağrıda); paralel: arka plan ısıtmasında daha az eşzamanlı istek
+  const espn = (zorla, dayMs, onPart, paralel) => {
     const k = dayMs == null ? '' : String(dayMs);
     return bir('espn:' + k, async () => {
       const c = st.espn[k];
       if (!zorla && c && now() - c.at < TAZE_MS) return c.matches;
       try {
         const secenek = dayMs == null ? { net, now: now(), back: 1, ahead: 7 } : { net, now: dayMs, back: 0, ahead: 0 };
+        if (onPart) secenek.onPart = onPart;
+        if (paralel) secenek.parallel = paralel;
         const r = await d.loadEspn(secenek);
         st.espn[k] = { at: now(), matches: r.matches || [] };
         st.espnAt = now();
@@ -58,26 +68,90 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {} } = {}) 
   }
 
   // Günün maçları (tüm kaynaklar birleşik); hiçbir kaynaktan veri gelmezse hata fırlatır. zorla: önbelleğe bakmadan yeniler.
-  // ilk(maclar): ESPN yanıtı gelir gelmez (ikinci kaynak beklenmeden) bir kez çağrılır; ekran listeyi hemen gösterip birleşik sonucu sonra tazeler.
-  function maclar(dayMs, zorla, ilk) {
-    return bir('gun:' + dayMs, async () => {
-      const c = st.gunler[dayMs];
-      if (!zorla && c && now() - c.at < TAZE_MS) return c.matches;
-      const pe = espn(zorla, dayMs);
-      const ps = ikinci(dayMs);
-      if (ilk) {
-        pe.then((e) => {
-          const gun = matchesOnDay(e, dayStart(dayMs));
-          if (gun.length) ilk(gun);
-        });
-      }
-      const [e, s] = await Promise.all([pe, ps]);
-      if (!e.length && !s) throw new Error(st.espnHata || 'Maç bilgisi alınamadı');
-      const hepsi = s && s.length ? d.birlestir(e, s).matches : e;
-      const gun = matchesOnDay(hepsi, dayStart(dayMs));
-      st.gunler[dayMs] = { at: now(), matches: gun };
-      return gun;
+  // ilk(maclar): liste kademeli gelir. Önce (varsa) kayıtlı liste hemen, yoksa ESPN ligleri ve ikinci kaynak geldikçe o ana kadarki birleşik liste
+  // (en sık PARCA_MS'de bir) verilir; ekran her çağrıda listeyi yeniler, dönen son sonuç bunların yerini alır.
+  // Kayıtlı liste gösterildiyse ağdan gelen kısmi listeler onun yerine geçmez (maçlar kaybolup geri gelmesin); yalnız tam sonuç geçer.
+  // Aynı güne sürmekte olan bir yükleme (örn. ana sayfadaki ısıtma) varsa ona katılınır: o ana kadarki liste hemen verilir, sonrası kademeli gelir.
+  // paralel: yalnız ısıtma (arka plan) için ESPN eşzamanlı istek sayısı.
+  const canli = {}; // gün → sürmekte olan yüklemenin durumu
+  function gunYukle(dayMs, zorla, paralel) {
+    const c = st.gunler[dayMs];
+    if (!zorla && c && now() - c.at < TAZE_MS) return Promise.resolve(c.matches);
+    const gunu = dayStart(dayMs);
+    const g = (canli[dayMs] = { ilk: null, e: [], s: null, gosterildi: false, kayitli: false, kayitOkundu: false, bitti: false, zamanlayici: null });
+    g.yap = () => {
+      g.zamanlayici = null;
+      if (g.bitti || g.kayitli || !g.ilk) return;
+      const hepsi = g.s && g.s.length ? d.birlestir(g.e, g.s).matches : g.e;
+      const gun = matchesOnDay(hepsi, gunu);
+      if (!gun.length) return;
+      g.gosterildi = true;
+      g.ilk(gun);
+    };
+    const parca = () => {
+      if (g.bitti || g.kayitli || !g.ilk) return;
+      if (!g.gosterildi) g.yap();
+      else if (!g.zamanlayici) g.zamanlayici = setTimeout(g.yap, PARCA_MS);
+    };
+    // Kayıtlı liste ağı beklemeden gösterilir; ağdan daha önce bir şey geldiyse ya da çok eskiyse kullanılmaz
+    g.kayitOku = () => {
+      if (g.kayitOkundu || !kalici) return;
+      g.kayitOkundu = true;
+      Promise.resolve(kalici.okuYasli(kayitAnahtari(dayMs), now()))
+        .then((k) => {
+          if (!k || g.bitti || g.gosterildi || g.kayitli || !g.ilk || now() - k.at > KAYIT_OMUR_MS) return;
+          const gun = matchesOnDay(k.v, gunu);
+          if (!gun.length) return;
+          g.kayitli = true;
+          g.ilk(gun);
+        })
+        .catch(() => {});
+    };
+    if (zorla) g.kayitOkundu = true; // yenileme: ekranda zaten liste var
+    const pe = espn(zorla, dayMs, (parcaLigler) => {
+      g.e = parcaLigler;
+      parca();
+    }, paralel);
+    pe.then((son) => {
+      g.e = son; // yükleyici parça bildirmese de (ya da önbellekten gelse de) ESPN sonucu gelince liste gösterilir
+      parca();
     });
+    const ps = ikinci(dayMs).then((m) => {
+      g.s = m;
+      parca();
+      return m;
+    });
+    return (async () => {
+      try {
+        const [son, ikincil] = await Promise.all([pe, ps]);
+        if (!son.length && !ikincil) throw new Error(st.espnHata || 'Maç bilgisi alınamadı');
+        const hepsi = ikincil && ikincil.length ? d.birlestir(son, ikincil).matches : son;
+        const gun = matchesOnDay(hepsi, gunu);
+        st.gunler[dayMs] = { at: now(), matches: gun };
+        if (kalici && gun.length) Promise.resolve(kalici.yaz(kayitAnahtari(dayMs), gun, now())).catch(() => {});
+        return gun;
+      } finally {
+        g.bitti = true;
+        clearTimeout(g.zamanlayici);
+        if (canli[dayMs] === g) delete canli[dayMs];
+      }
+    })();
+  }
+
+  function maclar(dayMs, zorla, ilk, paralel) {
+    const sonuc = bir('gun:' + dayMs, () => gunYukle(dayMs, zorla, paralel));
+    const g = canli[dayMs];
+    if (ilk && g && !g.bitti) {
+      g.ilk = ilk;
+      if (g.e.length || g.s) g.yap();
+      else g.kayitOku();
+    }
+    return sonuc;
+  }
+
+  // Ana sayfa boştayken günün maçlarını arka planda hazırlar (liste Spor'a girince hazır olur); hata sessizce yutulur
+  function isit(dayMs) {
+    return maclar(dayMs, false, null, 2).then(() => true, () => false);
   }
 
   // Günün yayın akışı (maç → kanal adları). Önce Spor Ekranı sayfası, olmazsa TheSportsDB. Alınamazsa null.
@@ -105,7 +179,14 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {} } = {}) 
     });
   }
 
-  return { espn, maclar, yayin, durum: () => ({ espnHata: st.espnHata, espnAt: st.espnAt }) };
+  return { espn, maclar, isit, yayin, durum: () => ({ espnHata: st.espnHata, espnAt: st.espnAt }) };
+}
+
+// Tek ortak örnek: Spor ekranı ve ana sayfadaki ısıtma aynı önbelleği ve aynı bekleyen istekleri paylaşır.
+let ortak = null;
+export function sporVeri(net) {
+  if (!ortak) ortak = createSporVeri(net, { kalici: onbellek });
+  return ortak;
 }
 
 // Bir maçın TV kanal adları (yayın akışından). Spor Ekranı satırları Android'dekiyle aynı biçimde, satır başlığında iki takımın adı aranarak eşlenir
