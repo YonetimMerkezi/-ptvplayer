@@ -43,13 +43,14 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .hm-c, .hm-b { position: absolute; left: 0; right: 0; display: -webkit-flex; display: flex; }
 .hm-c { top: 0; height: 30%; }
 .hm-b { top: 33.5%; height: 14%; }
-.tile { position: relative; box-sizing: border-box; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; background: #151b2b; border-radius: 1.2rem; color: #c9d2e6; -webkit-transition: -webkit-transform .14s, background-color .14s; transition: transform .14s, background-color .14s; }
+.tile { position: relative; box-sizing: border-box; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; background: #151b2b; border-radius: 1.2rem; color: #c9d2e6; box-shadow: 0 0 0 rgba(0, 0, 0, 0), 0 0 0 rgba(0, 0, 0, 0); -webkit-transition: -webkit-transform .14s, background-color .14s, color .14s, box-shadow .14s; transition: transform .14s, background-color .14s, color .14s, box-shadow .14s; }
 .tile + .tile { margin-left: 1.4rem; }
 .tile .ic svg { fill: currentColor; }
 .tile span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .tile.on, .tile.hv { background: #2dd4bf; color: #04141a; -webkit-transform: scale(1.06); transform: scale(1.06); z-index: 2; box-shadow: 0 1.2rem 2.8rem rgba(0, 0, 0, .55), 0 0 2.8rem rgba(45, 212, 191, .55); }
 /* Odak: çerçeve yok; kart yükselir, kendi renginde parlar ve üstten ışık alır (transform yığın bağlamı açtığı için ışık yazının altında kalır) */
-.tile.on:before, .tile.hv:before { content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: -1; border-radius: 1.2rem; background: -webkit-linear-gradient(top, rgba(255, 255, 255, .32), rgba(255, 255, 255, 0) 64%); background: linear-gradient(to bottom, rgba(255, 255, 255, .32), rgba(255, 255, 255, 0) 64%); }
+.tile:before { content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: -1; border-radius: 1.2rem; opacity: 0; -webkit-transition: opacity .14s; transition: opacity .14s; background: -webkit-linear-gradient(top, rgba(255, 255, 255, .32), rgba(255, 255, 255, 0) 64%); background: linear-gradient(to bottom, rgba(255, 255, 255, .32), rgba(255, 255, 255, 0) 64%); }
+.tile.on:before, .tile.hv:before { opacity: 1; }
 .hc .ic svg { width: 5.6rem; height: 5.6rem; }
 .hc span { margin-top: 1rem; font-size: 3rem; }
 [data-fs="xl"] .hc .ic svg { width: 4.2rem; height: 4.2rem; }
