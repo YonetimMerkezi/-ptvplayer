@@ -787,7 +787,15 @@ function guncelleDurum() {
   if (guncelle) return guncelleOzet(guncelle);
   try {
     var o = JSON.parse(fs.readFileSync(GUNCELLE_DOSYA, 'utf8'));
-    if (o && o.durum) return o;
+    if (o && o.durum) {
+      // Bu süreçte çalışan güncelleme yok: kayıttaki "sürüyor" durumu eski sürecin kalıntısıdır. Kurulum servisi uygulamayı ve bu servisi de
+      // kapattığından "kuruldu" yanıtı hiç alınamaz; kayıt "Kuruluyor…" diye sonsuza dek kalmasın ve yeni güncellemeyi engellemesin.
+      if (o.durum === 'indiriyor' || o.durum === 'dogruluyor' || o.durum === 'kuruluyor') {
+        o.durum = 'belirsiz';
+        o.mesaj = 'Servis kurulum sırasında kapandı; kurulu sürüm açılışta denetlenir';
+      }
+      return o;
+    }
   } catch (e) {
     /* kayıt yok */
   }

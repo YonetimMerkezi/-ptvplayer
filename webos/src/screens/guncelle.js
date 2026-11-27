@@ -9,6 +9,7 @@ import * as K from '../log.js';
 
 const SORU_MS = 1000;
 const ONAY_MS = 6000;
+const TAZE_MS = 10 * 60000; // denetim sonucu bu süreden eskiyse ekran açılırken yenilenir
 
 export function guncelleScreen() {
   const kok = el('div', 'screen lst');
@@ -156,7 +157,8 @@ export function guncelleScreen() {
     onShow() {
       yenile();
       sorgula(); // önceki denemenin sonucu (kurulum uygulamayı kapattıysa) burada görünür
-      if (!bilgi()) denetle();
+      // Eski bir denetim sonucu (ör. "Güncel") yeni yayını gizlemesin: bilgi yoksa ya da eskiyse ekran açılırken yeniden sorulur
+      if (!bilgi() || Date.now() - Number(ctx.store.setting('guncelleSon', 0)) > TAZE_MS) denetle();
     },
     onKey: (a) => list.key(a),
     destroy() {

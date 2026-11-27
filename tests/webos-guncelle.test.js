@@ -247,6 +247,19 @@ test('servis güncelleme: indirir, özeti doğrular, IPK dosyasını kurulum ser
   assert.equal(svc.guncelleDurum().durum, 'tamam', 'servis yeniden başlasa da son durum dosyadan okunur');
 });
 
+test('servis güncelleme: yeniden başlayan serviste dosyadaki "kuruluyor" kalıntısı sonsuz "Kuruluyor…" olmaz; yeni güncelleme başlatılabilir', async () => {
+  svc._guncelleSifirla();
+  ayarla('/ok.ipk');
+  lunaSahte([{ returnValue: true, statusValue: 13 }]); // kurulum yanıtı hiç "bitti"ye ulaşmaz: kurulum servisi uygulamayı kapatır
+  svc.guncelleBaslat({ sha256: sha(IPK) });
+  for (let i = 0; i < 300 && svc.guncelleDurum().durum !== 'kuruluyor'; i++) await new Promise((c) => setTimeout(c, 10));
+  assert.equal(svc.guncelleDurum().durum, 'kuruluyor');
+  svc._guncelleSifirla(); // servis kapandı, yeniden açıldı (bellekteki durum gitti, dosya kaldı)
+  const d = svc.guncelleDurum();
+  assert.equal(d.durum, 'belirsiz', 'sürüyor görünmez');
+  assert.ok(d.tani.some((t) => /kuruluyor/.test(t)), 'tanı satırları korunur');
+});
+
 test('servis güncelleme: özet tutmuyor, IPK değil, 404, çok yönlendirme, izinsiz konak, aşırı büyük dosya → kurulmaz', async () => {
   const dene = async (yol, ozet) => {
     svc._guncelleSifirla();
