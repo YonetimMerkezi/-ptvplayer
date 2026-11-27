@@ -169,6 +169,14 @@ test('birleştirme: aynı maç tek kalır (ESPN), ESPN\'de olmayanlar eklenir', 
   assert.equal(r.shift, 0);
 });
 
+test('birleştirme: ESPN maçında hafta numarası yoksa ikinci kaynaktaki karşılığından alınır; varsa korunur', () => {
+  const espn = [E('1', 'tur.1', 'Galatasaray', 'Fenerbahçe', T0), E('2', 'tur.1', 'Rize', 'Konya', T0 + H, { round: '12. hafta' })];
+  const ls = [L('a', 'Galatasaray', 'Fenerbahce', T0, { round: '13. hafta' }), L('b', 'Rizespor', 'Konyaspor', T0 + H, { round: '99. hafta' })];
+  const r = mergeSources(espn, ls);
+  assert.equal(r.matches.find((m) => m.id === 'tur.1:1').round, '13. hafta');
+  assert.equal(r.matches.find((m) => m.id === 'tur.1:2').round, '12. hafta');
+});
+
 test('birleştirme: ev sahibi/deplasman ters yazılmış aynı maç tekrarlanmaz; kadın/genç takımı ayrı sayılır', () => {
   const espn = [E('1', 'eng.1', 'Arsenal', 'Chelsea', T0)];
   const r = mergeSources(espn, [L('a', 'Chelsea', 'Arsenal', T0), L('b', 'Arsenal W', 'Chelsea W', T0)]);

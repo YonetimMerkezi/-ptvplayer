@@ -680,6 +680,7 @@ export function mergeSources(espn, ls, { tolerance = 90 * 60000, window = 15 * 3
     const twin = nearby(t, tolerance, (e) => (sameFixture(l, e) ? e : null));
     if (twin) {
       dupes++;
+      if (l.round && !twin.round) twin.round = l.round; // ESPN maçında hafta numarası yok: ikinci kaynaktaki karşılığından alınır (maç haftası hesabı için)
       continue;
     }
     kept.push(shift ? { ...l, t } : l);

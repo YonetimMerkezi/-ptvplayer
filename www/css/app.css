@@ -1511,6 +1511,12 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sp-pg .chips { padding: 8px 8px 7px; margin: -4px -8px 0; } /* üst/alt pay kumanda odak halkası kırpılmasın diye */
 .sp-pg .chip { min-height: 30px; padding: 0 11px; font-size: 0.8125rem; border-radius: 15px; }
 .sp-pg .chip small { margin-left: 5px; }
+/* lig görünümü: ‹ Önceki | 14. Hafta · 21–24 Kas | Sonraki › */
+.sp-pg #sp-days.hf { -webkit-mask-image: none; mask-image: none; align-items: center; }
+.sp-pg .sp-hafta { flex: 1 1 auto; min-width: 0; padding: 0 6px; text-align: center; font-size: 0.9rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-pg .chip:disabled { opacity: 0.45; }
+.sp-dh { margin: 14px 4px 4px; font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.02em; color: var(--muted); }
+.sp-dh:first-child { margin-top: 4px; }
 @media (max-width: 560px) {
   .sp-top { flex-wrap: wrap; row-gap: 0; }
   .sp-top small { order: 1; flex: 1 1 0; max-width: none; }

@@ -9,6 +9,9 @@ import {
   matchesOnDay, sections, chipsFor, capSections, hasLive, noScore, isYouthMatch,
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
+import { HAFTALI_LIGLER, ligMaci, ikinciLigMi } from './sports-lig.js';
+import { turCoz, turEtiketi, turNoKomsu, turNoTablodan, gunEkle } from './sports-tur.js';
+import { TABLE_IDS, loadStandings } from './sports-table.js';
 import { loadMackolikDay } from './sports-mk.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
 import { SCHED_BASES, loadSchedDay, seInfoFor, mergeSe } from './sports-se.js';
@@ -35,6 +38,8 @@ const LIVE_REFRESH_MS = 60e3;
 const EPG_BEFORE = 90 * 60000;
 const EPG_AFTER = 20 * 60000;
 const MAX_ROWS = 500;
+const HAFTALI = new Set(HAFTALI_LIGLER.map((l) => l.id)); // lig düğmesine basılınca maç haftası (14. hafta gibi) görünümü açılan ligler
+const TUR_BEKLE_MS = 350; // art arda hafta değiştirirken her haftaya istek atılmaz
 
 // env: { net, store, toast, liveItems(): görünür canlı kanallar, epgBetween(from, to), play(items, index), reminders?: { list(), set(plan), remove(id) }, sourceId?(), base?, lsHosts?, tvHosts?, schedBases?, now? }
 export function openSports(env) {
@@ -81,6 +86,16 @@ export function openSports(env) {
   let loading = false;
   let day = dayStart(now());
   let lg = '';
+  // Lig görünümü (HAFTALI liglerden biri seçiliyken): gün şeridi yerine ‹ hafta ›; hedef = hangi turun aranacağı, tur = bulunan tur, turRef = numara çıkarmak için komşu tur
+  let hedef = { merkez: dayStart(now()), yon: 0, no: 0, guncel: true };
+  let tur = null;
+  let turRef = null;
+  let turYuk = false;
+  let turHata = '';
+  let turN = 0; // her yeni yükleme/değişiklikte artar: eskiyen yüklemeler sonucu atılır
+  let turT = 0;
+  const turOnb = new Map(); // lig → Map(gün → o günün lig maçları): hafta gezerken günler yeniden indirilmez
+  const tabloOnb = new Map(); // lig → puan durumu grupları (hafta numarası ikinci kaynaktan gelmezse tablodan çıkarılır)
   let favs = cleanFavs(store.pref(FAV_KEY, []));
   let chan = new Map(); // maç kimliği → { item, p }
   let byId = new Map();
@@ -351,7 +366,7 @@ export function openSports(env) {
     const when = m.state === 'in' ? `<span class="sp-live">${esc(m.text)}</span>` : m.state === 'post' || m.off ? `<span class="sp-ft">${esc(m.text)}</span>` : noScore(m, now()) ? `<span class="sp-ft">Skor yok</span>` : `<time>${fmtClock(m.t)}</time>${bellHtml(m)}`;
     const sc = score(m);
     const title = `${teamHtml(m.home, m.away)}<span class="sp-vs">${sc ? ` ${sc} ` : ' - '}</span>${teamHtml(m.away, m.home)}`;
-    const lgl = lgLine(m);
+    const lgl = ligMod() ? (/hafta/i.test(m.round || '') ? '' : m.round || '') : lgLine(m); // lig görünümünde lig adı ve hafta numarası üstte
     return `<div class="sp-m${m.state === 'in' ? ' on' : ''}" role="button" tabindex="0" data-id="${esc(m.id)}">
       <div class="sp-main"><div class="sp-l1"><span class="sp-when">${when}</span><span class="sp-tt">${title}</span></div>${lgl ? `<div class="sp-l2">${esc(lgl)}</div>` : ''}</div>${chBox(m)}</div>`;
   }
@@ -368,22 +383,46 @@ export function openSports(env) {
   const drawChips = () => keepFocus(drawChipsNow);
   const drawList = () => keepFocus(drawListNow);
 
+  const ligMod = () => HAFTALI.has(lg);
+  const ligAdi = (id) => (HAFTALI_LIGLER.find((l) => l.id === id) || {}).name || id;
+  // Numara: kaynak verisinden; yoksa komşu turdan; yoksa önceki çözümden (güncel turda ayrıca puan durumundan: numaraTamamla)
+  const turNumarali = (x, ref, yon) => {
+    if (!x) return null;
+    const c = Object.assign({}, x);
+    if (!c.no) c.no = turNoKomsu(x, ref, yon) || hedef.no || 0;
+    return c;
+  };
+  const turBasligi = () => (tur ? turEtiketi(tur) : turYuk ? 'Hafta aranıyor…' : 'Hafta bulunamadı');
+
   function drawChipsNow() {
     const t = now();
-    const strip = dayStrip(t);
-    put(q('#sp-days'), strip
-      .map((d) => {
-        const n = chipsFor(matchesOnDay(matches, d)).all; // “Tümü” sayısıyla aynı (diğer ülkeler hariç)
-        return `<button class="chip${d === day ? ' on' : ''}" data-day="${d}"${d === day ? ' data-autofocus' : ''}>${esc(dayLabel(d, t))}${n ? `<small>${n}</small>` : ''}</button>`;
-      })
-      .join(''));
-    const { all, chips } = chipsFor(matchesOnDay(matches, day));
-    if (lg === FAV_CHIP ? !favs.length : lg && !chips.some((c) => c.id === lg)) lg = '';
-    const favN = favs.length ? matchesOnDay(matches, day).filter((m) => hasFavMatch(favs, m)).length : 0;
+    const dayMs = matchesOnDay(matches, day);
+    q('#sp-days').classList.toggle('hf', ligMod());
+    if (ligMod()) {
+      put(q('#sp-days'),
+        `<button class="chip sp-st" data-hafta="-1" aria-label="Önceki hafta"${turYuk && !tur && !turRef ? ' disabled' : ''}>‹ Önceki</button><span class="sp-hafta" aria-live="polite">${esc(turBasligi())}</span><button class="chip sp-st" data-hafta="1" aria-label="Sonraki hafta"${turYuk && !tur && !turRef ? ' disabled' : ''}>Sonraki ›</button>`);
+    } else {
+      const strip = dayStrip(t);
+      put(q('#sp-days'), strip
+        .map((d) => {
+          const n = chipsFor(matchesOnDay(matches, d)).all; // “Tümü” sayısıyla aynı (diğer ülkeler hariç)
+          return `<button class="chip${d === day ? ' on' : ''}" data-day="${d}"${d === day ? ' data-autofocus' : ''}>${esc(dayLabel(d, t))}${n ? `<small>${n}</small>` : ''}</button>`;
+        })
+        .join(''));
+    }
+    const { all, chips } = chipsFor(dayMs);
+    if (lg === FAV_CHIP ? !favs.length : lg && !HAFTALI.has(lg) && !chips.some((c) => c.id === lg)) lg = '';
+    const favN = favs.length ? dayMs.filter((m) => hasFavMatch(favs, m)).length : 0;
+    // Ligler (maç haftalı) her zaman görünür; sayı seçili günün maçıdır (lig görünümünde sayı gösterilmez). Sonra ülke/diğer grupları.
+    const sayi = (id) => dayMs.filter((m) => ligMaci(m, id)).length;
     put(q('#sp-lgs'),
       `<button class="chip${lg === '' ? ' on' : ''}" data-lg="">Tümü<small>${all}</small></button>` +
       (favs.length ? `<button class="chip fav${lg === FAV_CHIP ? ' on' : ''}" data-lg="${FAV_CHIP}">★ Takımlarım<small>${favN}</small></button>` : '') +
-      chips.map((c) => `<button class="chip${lg === c.id ? ' on' : ''}" data-lg="${esc(c.id)}">${esc(c.name)}<small>${c.count}</small></button>`).join(''));
+      HAFTALI_LIGLER.map((l) => {
+        const n = ligMod() ? 0 : sayi(l.id);
+        return `<button class="chip${lg === l.id ? ' on' : ''}" data-lg="${esc(l.id)}">${esc(l.name)}${n ? `<small>${n}</small>` : ''}</button>`;
+      }).join('') +
+      chips.filter((c) => !HAFTALI.has(c.id)).map((c) => `<button class="chip${lg === c.id ? ' on' : ''}" data-lg="${esc(c.id)}">${esc(c.name)}<small>${c.count}</small></button>`).join(''));
     const on = q('#sp-days .chip.on');
     if (on && on.scrollIntoView && !on.dataset.seen) {
       on.dataset.seen = '1'; // yalnız seçili gün değişince ortala (her çizimde kaydırma yerini bozmasın)
@@ -397,7 +436,8 @@ export function openSports(env) {
     const have = matches.length > 0;
     const at = lastAt();
     let text;
-    if (loading && !at && !have) text = 'Maçlar yükleniyor…';
+    if (ligMod() && turYuk) text = 'Hafta yükleniyor…';
+    else if (loading && !at && !have) text = 'Maçlar yükleniyor…';
     else if (loading || lsPending.has(day)) text = 'Güncelleniyor…'; // seçili günün LiveScore listesi inerken de belirtilir
     else if (err && !have) text = err;
     else if (err && at) text = `Güncellenemedi · kayıtlı veri (${fmtClock(at)})`;
@@ -418,9 +458,44 @@ export function openSports(env) {
     return bits.length ? `<p class="hint sp-detail sp-src"${showDiag ? '' : ' hidden'}>${bits.map(esc).join(' · ')}</p>` : '';
   }
 
+  // Lig görünümü: seçili haftanın maçları günlere bölünmüş (yeni skorlar için liste her çizimde güncel `matches`'ten süzülür)
+  function drawLigNow() {
+    const list = q('#sp-list');
+    if (!list) return;
+    if (!tur) {
+      put(list, turYuk
+        ? '<div class="empty"><p>Hafta yükleniyor…</p></div>'
+        : turHata
+          ? `<div class="empty"><h3>Hafta alınamadı</h3><p>${esc(turHata)}</p><button class="btn" id="sp-retry">Yeniden dene</button></div>`
+          : `<div class="empty"><h3>Maç yok</h3><p>${esc(ligAdi(lg))} için maç haftası bulunamadı.</p></div>${sourceNote()}`);
+      return;
+    }
+    const rows = matches
+      .filter((m) => ligMaci(m, lg) && dayStart(m.t) >= tur.bas && dayStart(m.t) <= tur.son)
+      .sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
+    if (!rows.length) {
+      put(list, `<div class="empty"><h3>Maç yok</h3><p>${esc(ligAdi(lg))} için bu haftada maç bulunamadı.</p></div>${sourceNote()}`);
+      return;
+    }
+    loadRem();
+    let html = sourceNote();
+    let cur = -1;
+    for (const m of rows) {
+      const d = dayStart(m.t);
+      if (d !== cur) {
+        cur = d;
+        html += `<h4 class="sp-dh">${esc(dayLabel(d, now()))}</h4>`;
+      }
+      html += rowHtml(m);
+    }
+    put(list, html + (favs.length ? '' : '<p class="hint sp-more">Bir maça dokunup takım adının yanındaki ★ ile takımı takip edebilirsiniz; maçları için hatırlatıcı otomatik kurulur.</p>'));
+    queueBadges(rows);
+  }
+
   function drawListNow() {
     const list = q('#sp-list');
     if (!list) return;
+    if (ligMod()) return drawLigNow();
     const dayMs = matchesOnDay(matches, day);
     const { secs, hidden } = capSections(lg === FAV_CHIP ? [{ lg: { id: FAV_CHIP, name: 'Takımlarım' }, matches: dayMs.filter((m) => hasFavMatch(favs, m)) }].filter((x) => x.matches.length) : sections(dayMs, lg), MAX_ROWS);
     if (!secs.length) {
@@ -706,10 +781,10 @@ export function openSports(env) {
   function keepFocus(fn) {
     const a = document.activeElement;
     const had = a && a !== document.body && root.contains(a);
-    const key = had ? { day: a.dataset.day, lg: a.dataset.lg, id: a.dataset.id, ref: a.id } : null;
+    const key = had ? { day: a.dataset.day, hafta: a.dataset.hafta, lg: a.dataset.lg, id: a.dataset.id, ref: a.id } : null;
     fn();
     if (!key || (document.activeElement && document.activeElement !== document.body && root.contains(document.activeElement))) return;
-    const sel = key.day ? `[data-day="${key.day}"]` : key.lg != null ? `[data-lg="${key.lg}"]` : key.id ? `[data-id="${key.id}"]` : key.ref ? `#${key.ref}` : '';
+    const sel = key.day ? `[data-day="${key.day}"]` : key.hafta ? `[data-hafta="${key.hafta}"]` : key.lg != null ? `[data-lg="${key.lg}"]` : key.id ? `[data-id="${key.id}"]` : key.ref ? `#${key.ref}` : '';
     const el = sel && root.querySelector(sel);
     if (el && el.focus) el.focus({ preventScroll: true });
   }
@@ -722,7 +797,7 @@ export function openSports(env) {
     err = '';
     errDetail = '';
     if (!quiet) drawStatus();
-    const d0 = day;
+    const d0 = liveDay(); // lig görünümünde: haftanın bugünü (haftada değilse seçili gün)
     if (!quiet) tvFailAt.clear(); // elle yenilemede yayın listesi de yeniden denenir
     const lsDue = !quiet || (lsLiveDay(d0) && now() - ((dayList(d0) || {}).at || 0) >= LS_LIVE_MS);
     try {
@@ -743,7 +818,7 @@ export function openSports(env) {
     recompute();
     matchChannels();
     pickFirstDay();
-    const tvP = ensureTv(day, !quiet); // elle yenilemede yayın akışı da yeniden indirilir
+    const tvP = ensureTv(d0, !quiet); // elle yenilemede yayın akışı da yeniden indirilir
     if (err && !matches.length) await tvP; // maç yoksa yayın akışı (takvim olarak) gelene kadar hata ekranı gösterilmez
     if (!page.el.isConnected) return;
     if (matches.length) {
@@ -752,7 +827,143 @@ export function openSports(env) {
     }
     keepFocus(draw);
     if (autoRemind()) toast('Takip ettiğiniz takımların maçları için hatırlatıcı kuruldu', 2800);
-    if (day !== d0) ensureLs(day);
+    if (ligMod()) {
+      if (!quiet && tur) turTazele(turN);
+    } else if (day !== d0) ensureLs(day);
+  }
+
+  // ---- lig görünümü: maç haftası ----
+  // Haftanın sınırı gün gün ikinci kaynaktan (LiveScore, olmazsa Mackolik) kurulur; hafta numarası kaynaktan, komşu turdan ya da puan durumundan gelir.
+  const trLig = (id) => id === 'tur.1' || ikinciLigMi(id);
+  const lsDown = () => !!lsDownAt && now() - lsDownAt < LS_DOWN_MS;
+  function liveDay() {
+    const t0 = dayStart(now());
+    return ligMod() && tur && t0 >= tur.bas && t0 <= tur.son ? t0 : day;
+  }
+
+  // turCoz'un günlük yükleyicisi: günün ikinci kaynak listesi inince ESPN'le birleşmiş listeden ligin maçları süzülür; hiç veri yoksa (alınamadı) null
+  async function turGun(id, d, aktif) {
+    if (lsStale(d) && !(lsDown() && !trLig(id))) await loadLs(d); // ikinci kaynak çökmüşken Türkiye dışı ligler için boşuna denenmez
+    if (!aktif()) return null;
+    recompute();
+    const l = matchesOnDay(matches, d).filter((m) => ligMaci(m, id));
+    return !l.length && !dayList(d) ? null : l;
+  }
+
+  async function turYukle() {
+    const id = lg;
+    if (!HAFTALI.has(id)) return;
+    const n = ++turN;
+    clearTimeout(turT);
+    turYuk = true;
+    turHata = '';
+    tur = null;
+    draw();
+    const yon = hedef.yon;
+    const ref = turRef;
+    const guncel = !!hedef.guncel;
+    let onb = turOnb.get(id);
+    if (!onb) turOnb.set(id, (onb = new Map()));
+    const aktif = () => n === turN && lg === id && page.el.isConnected;
+    let sonuc = null;
+    try {
+      sonuc = await turCoz({
+        gunYukle: (d) => turGun(id, d, aktif),
+        onbellek: onb,
+        merkez: hedef.merkez,
+        yon,
+        aktif,
+        onPart: (_turlar, x) => {
+          if (!aktif()) return;
+          tur = turNumarali(x, ref, yon);
+          draw();
+        },
+      });
+    } catch (e) {
+      if (!aktif()) return;
+      turHata = (e && e.message) || 'Maç bilgisi alınamadı';
+    }
+    if (!aktif()) return;
+    if (sonuc && sonuc.tur) {
+      tur = turNumarali(sonuc.tur, ref, yon);
+      hedef = { merkez: sonuc.tur.bas, yon: 0, no: tur.no, guncel }; // bulunan tur artık hedeftir (yeniden çizimde aynı tur kurulur)
+      turRef = null;
+    } else if (sonuc && yon !== 0 && ref) {
+      tur = ref; // o yönde başka tur yok: eski turda kalınır
+      hedef = { merkez: ref.bas, yon: 0, no: ref.no, guncel: false };
+      turRef = null;
+      toast('Bu yönde maç bulunamadı', 2200);
+    } else if (sonuc && sonuc.eksik.length) {
+      turHata = 'Maç bilgisi alınamadı';
+    }
+    turYuk = false;
+    matchChannels();
+    draw();
+    await numaraTamamla(id, n);
+    if (n === turN) turKanallar(n);
+  }
+
+  // Kaynakta hafta numarası yoksa güncel turun numarası puan durumundan çıkarılır (yalnız ESPN tablosu olan ligler)
+  async function numaraTamamla(id, n) {
+    if (!tur || tur.no || !hedef.guncel || TABLE_IDS.indexOf(id) < 0) return;
+    let g = tabloOnb.get(id);
+    if (!g) {
+      try {
+        g = await loadStandings({ net, slug: id, base });
+        tabloOnb.set(id, g);
+      } catch {
+        return;
+      }
+    }
+    if (n !== turN || !tur || tur.no || !page.el.isConnected) return;
+    const no = turNoTablodan(tur, g);
+    if (!no) return;
+    tur.no = no;
+    hedef.no = no;
+    draw();
+  }
+
+  // Haftanın henüz oynanmamış maçı olan günlerin yayın akışı sırayla (her biri tek ağır sayfa) indirilir; kanallar listede görünür
+  async function turKanallar(n) {
+    if (!tur) return;
+    const t0 = dayStart(now());
+    const gunler = [];
+    for (let d = tur.bas; d <= tur.son; d = gunEkle(d, 1)) {
+      if (d >= t0 && matchesOnDay(matches, d).some((m) => ligMaci(m, lg) && m.state !== 'post' && !m.off)) gunler.push(d);
+    }
+    for (const d of gunler) {
+      if (n !== turN || !page.el.isConnected) return;
+      await ensureTv(d);
+    }
+  }
+
+  // Elle yenilemede haftanın öbür günlerinin listesi de (eskimişse) sırayla tazelenir
+  async function turTazele(n) {
+    if (!tur) return;
+    const b = tur.bas;
+    const s = tur.son;
+    for (let d = b; d <= s; d = gunEkle(d, 1)) {
+      if (n !== turN || !page.el.isConnected || !ligMod()) return;
+      if (d !== liveDay() && lsStale(d) && !(lsDown() && !trLig(lg))) await loadLs(d);
+    }
+    if (n !== turN || !page.el.isConnected) return;
+    recompute();
+    matchChannels();
+    draw();
+  }
+
+  function haftaDegis(yon) {
+    const kaynak = tur || turRef;
+    if (!ligMod() || !kaynak) return;
+    turRef = kaynak; // numara komşu turdan çıkarılabilsin; yeni tur bulunamazsa buraya dönülür
+    hedef = { merkez: yon > 0 ? gunEkle(kaynak.son, 1) : gunEkle(kaynak.bas, -1), yon, guncel: false };
+    clearTimeout(turT);
+    ++turN;
+    tur = null;
+    turHata = '';
+    turYuk = true;
+    draw();
+    turT = setTimeout(turYukle, TUR_BEKLE_MS); // art arda basışta her haftaya istek atılmaz
   }
 
   // İlk açılışta bugün maç yoksa maçı olan ilk güne geçilir.
@@ -828,15 +1039,36 @@ export function openSports(env) {
       ensureTv(day);
       return;
     }
+    const hf = e.target.closest('[data-hafta]');
+    if (hf) return haftaDegis(Number(hf.dataset.hafta));
     const l = e.target.closest('[data-lg]');
     if (l) {
       lg = l.dataset.lg;
-      draw();
+      clearTimeout(turT);
+      ++turN; // önceki yüklemeler sonucu atılır
+      if (ligMod()) {
+        // lig seçilince (ya da seçili ligin düğmesine yeniden basılınca) güncel maç haftası açılır
+        hedef = { merkez: dayStart(now()), yon: 0, no: 0, guncel: true };
+        turRef = null;
+        tur = null;
+        turHata = '';
+        turYuk = true;
+        draw();
+      } else {
+        turYuk = false;
+        tur = null;
+        draw();
+      }
       const nl = q(`#sp-lgs [data-lg="${lg}"]`);
       if (nl && nl.focus) nl.focus({ preventScroll: true });
+      if (ligMod()) turYukle();
       return;
     }
     if (e.target.closest('#sp-tab')) return openTable();
+    if (e.target.closest('#sp-retry') && ligMod() && !tur) {
+      lsDownAt = 0; // elle yeniden denemede ikinci kaynak da yeniden denenir
+      return turYukle();
+    }
     if (e.target.closest('#sp-ref') || e.target.closest('#sp-retry')) return refresh();
     if (e.target.closest('#sp-upd')) {
       showDiag = !showDiag;

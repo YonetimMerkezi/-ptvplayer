@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 184,
+    title: 'Spor: ligler maç haftasına göre (14. hafta, 15. hafta)',
+    items: [
+      'Spor sayfasında Süper Lig, 1. Lig, 2. Lig ve diğer büyük liglere dokununca takvim haftası yerine ligin maç haftası açılır: “14. Hafta · 27–30 Kas”; Pazartesi oynanan maçlar da aynı haftada görünür',
+      '‹ Önceki / Sonraki › düğmeleriyle haftalar arasında gezilir; maçlar günlere bölünmüş gelir, milli ara ve ertelenen maçlar haftayı bozmaz',
+    ],
+  },
+  {
     id: 183,
     title: 'Projeksiyon ve eski TV cihazlarında ana ekran ekrana sığıyor',
     items: [

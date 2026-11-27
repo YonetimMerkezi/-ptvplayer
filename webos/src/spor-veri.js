@@ -5,7 +5,7 @@
 //  yayin(gün)             → günün yayın akışı (hangi maç hangi kanalda); ağır sayfa, yalnız istenince
 // Ayrıştırma ve birleştirme Android uygulamasıyla ortaktır (www/js/sports*.js); burada yalnız yükleme sırası ve önbellek vardır.
 // İstekler birbiri ardına atılır (aynı anda tek ağır iş): yavaş TV'de yanıt işlenirken arayüz tuşlara yanıt verebilsin.
-import { loadMatches, DAY, dayStart, leagueOf, norm, LEAGUES } from '../../www/js/sports.js';
+import { loadMatches, DAY, dayStart, leagueOf, norm } from '../../www/js/sports.js';
 import { TABLE_IDS, loadStandings } from '../../www/js/sports-table.js';
 import { LS_HOSTS, loadLiveScoreDay } from '../../www/js/sports-ls.js';
 import { loadMackolikDay } from '../../www/js/sports-mk.js';
@@ -14,6 +14,7 @@ import { loadSummary, eventIdOf } from '../../www/js/sports-detail.js';
 import { loadTvDay, tvChannelsFor, channelsByName } from '../../www/js/sports-tv.js';
 import { hasFavMatch } from '../../www/js/sports-fav.js';
 import { turCoz } from '../../www/js/sports-tur.js';
+import { ligBul, ligEsler, ikinciKaynakVar, LIG_ULKE } from '../../www/js/sports-lig.js';
 import * as K from './log.js';
 
 export const TAZE_MS = 5 * 60000; // lig haftası ve takım maçları bu süre taze sayılır
@@ -28,36 +29,8 @@ export const TABLOLU_LIGLER = TABLE_IDS; // puan durumu olan ligler
 export const TAKIM_GERI_GUN = 7; // takım sayfası: kaç gün öncesinden
 export const TAKIM_ILERI_GUN = 21; // ... kaç gün sonrasına kadar
 
-// Lig katalogu (TV): ESPN ligleri + ESPN'de bulunmayan Türkiye alt ligleri. Alt liglerin haftası yalnız ikinci kaynaktan (LiveScore, olmazsa Mackolik) kurulur.
-export const IKINCI_LIGLER = [
-  { id: 'tff.1', name: 'Türkiye 1. Lig', ikinci: true },
-  { id: 'tff.2', name: 'Türkiye 2. Lig', ikinci: true },
-];
-export const TUM_LIGLER = LEAGUES.slice(0, 1).concat(IKINCI_LIGLER, LEAGUES.slice(1)); // Süper Lig'in hemen ardından alt ligler
-export const ligBul = (id) => TUM_LIGLER.find((l) => l.id === id) || null;
-export const ikinciLigMi = (id) => IKINCI_LIGLER.some((l) => l.id === id);
-
-// İkinci kaynağın (LiveScore/Mackolik) maçı hangi lige ait? Yarışma adı ve grubundan (lg kimlikleri ESPN'inkilerle aynı değildir: "ls:turkey-super-lig").
-const trAd = (re) => (m) => m.grp === 'tr' && re.test(norm(m.lgName || ''));
-const adda = (re) => (m) => re.test(norm(m.lgName || ''));
-const ESLER = {
-  'tur.1': trAd(/(^| )super lig( |$)/),
-  'tff.1': trAd(/(^| )(1 lig|1st lig|first lig)( |$)/),
-  'tff.2': trAd(/(^| )2 lig( |$)/),
-  'eng.1': adda(/(ingiltere|england) premier/),
-  'esp.1': adda(/(ispanya|spain) (la ?liga|primera)/),
-  'ita.1': adda(/(italya|italy) serie a/),
-  'ger.1': adda(/(almanya|germany) bundesliga(?! 2)/),
-  'fra.1': adda(/(fransa|france) ligue 1/),
-  'uefa.champions': adda(/champions league/),
-  'uefa.europa': adda(/(^| )europa league/),
-  'uefa.europa.conf': adda(/conference league/),
-};
-export const ligEsler = (id) => ESLER[id] || (() => false);
-// LiveScore günü servis içinde yalnız bu ülkelerin yarışmalarına süzülür (arayüz günlük ~600 maçı işlerken 5 sn donuyordu)
-const TR_ULKE = 'u=turkey,turkiye';
-const AVRUPA_ULKE = 'u=europe,uefa,international,world';
-export const LIG_ULKE = { 'tur.1': TR_ULKE, 'tff.1': TR_ULKE, 'tff.2': TR_ULKE, 'eng.1': 'u=england', 'esp.1': 'u=spain', 'ita.1': 'u=italy', 'ger.1': 'u=germany', 'fra.1': 'u=france', 'uefa.champions': AVRUPA_ULKE, 'uefa.europa': AVRUPA_ULKE, 'uefa.europa.conf': AVRUPA_ULKE };
+// Lig katalogu ve ikinci kaynak eşlemesi Android'le ortaktır (www/js/sports-lig.js)
+export { IKINCI_LIGLER, TUM_LIGLER, ligBul, ikinciLigMi, ligEsler, LIG_ULKE } from '../../www/js/sports-lig.js';
 export const CANLI_SUZGEC = 'x=1'; // canlı liste: yalnız süren maçlar
 const mkUygun = (filtre) => !/^u=/.test(filtre) || /turkey|turkiye/.test(filtre); // Mackolik yalnız Türkiye maçlarını verir: başka ülke süzgecinde boşuna sorulmaz
 
@@ -142,7 +115,8 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, hatira 
       if (onPart && hedef) onPart(hedef.maclar, hedef);
     };
     const t0 = Date.now();
-    let r = await turCoz({ gunYukle, merkez, yon, aktif, onPart: parca });
+    // eşleme kuralı olmayan yarışmalar (milli maçlar) ikinci kaynaktan seçilemez: doğrudan ESPN penceresi
+    let r = ikinciKaynakVar(lgId) ? await turCoz({ gunYukle, merkez, yon, aktif, onPart: parca }) : { tur: null, turlar: [], yok: true, kismi: false, eksik: [] };
     let kaynak = 'ikinci';
     if (r.yok && !r.iptal && leagueOf(lgId)) {
       try {
