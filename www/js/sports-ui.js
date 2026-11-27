@@ -10,7 +10,7 @@ import {
 } from './sports.js';
 import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
 import { HAFTALI_LIGLER, ligMaci, ikinciLigMi } from './sports-lig.js';
-import { turCoz, turEtiketi, turNoKomsu, turNoTablodan, gunEkle } from './sports-tur.js';
+import { turCoz, turEtiketi, turNoKomsu, turNoTablodan, gunEkle, ayniMac } from './sports-tur.js';
 import { TABLE_IDS, loadStandings } from './sports-table.js';
 import { loadMackolikDay } from './sports-mk.js';
 import { TV_HOSTS, loadTvDay, tvChannelsFor, channelsByName } from './sports-tv.js';
@@ -470,9 +470,15 @@ export function openSports(env) {
           : `<div class="empty"><h3>Maç yok</h3><p>${esc(ligAdi(lg))} için maç haftası bulunamadı.</p></div>${sourceNote()}`);
       return;
     }
-    const rows = matches
-      .filter((m) => ligMaci(m, lg) && dayStart(m.t) >= tur.bas && dayStart(m.t) <= tur.son)
-      .sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id));
+    const rows = [];
+    for (const m of matches
+      .filter((x) => ligMaci(x, lg) && dayStart(x.t) >= tur.bas && dayStart(x.t) <= tur.son)
+      .sort((a, b) => a.t - b.t || matchRank(a) - matchRank(b) || a.id.localeCompare(b.id))) {
+      // aynı maçın iki kaynakta farklı yazılmış kopyası tek satır olur; yayın kanalı bilinen satır kalır
+      const i = rows.findIndex((x) => ayniMac(x, m));
+      if (i < 0) rows.push(m);
+      else if (!(tvFor.get(rows[i].id) || []).length && (tvFor.get(m.id) || []).length) rows[i] = m;
+    }
     if (!rows.length) {
       put(list, `<div class="empty"><h3>Maç yok</h3><p>${esc(ligAdi(lg))} için bu haftada maç bulunamadı.</p></div>${sourceNote()}`);
       return;

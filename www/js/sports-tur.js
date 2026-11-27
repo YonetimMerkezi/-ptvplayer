@@ -19,6 +19,16 @@ export function gunEkle(dayMs, n) {
 
 const takimAdi = (t) => norm((t && (t.name || t.label)) || '');
 
+// Aynı maç iki kaynakta farklı yazılmış olabilir ("Amed Sportif" / "Amedspor"): bir takım iki saat içinde iki maça çıkamaz,
+// yani saati yakın ve takımlardan biri ortaksa bunlar aynı maçtır. Tur kurarken kopya "takım tekrarı" sayılıp haftayı bölmez.
+export const KOPYA_MS = 2 * 3600e3;
+export function ayniMac(a, b) {
+  if (!a || !b || Math.abs(a.t - b.t) > KOPYA_MS) return false;
+  const x = [takimAdi(a.home), takimAdi(a.away)].filter(Boolean);
+  const y = [takimAdi(b.home), takimAdi(b.away)].filter(Boolean);
+  return x.some((k) => y.indexOf(k) >= 0);
+}
+
 // Maçın kaynak verisindeki hafta numarası ("12. hafta", "Grup aşaması · 3. hafta" → 12, 3); yoksa 0
 export function turNoOku(m) {
   const r = /(\d{1,3})\.\s*hafta/i.exec(String((m && m.round) || ''));
@@ -53,7 +63,8 @@ export function turlaraBol(maclar) {
   for (const m of s) {
     const a = takimAdi(m.home);
     const b = takimAdi(m.away);
-    const bol = cur && ((a && cur.takimlar.has(a)) || (b && cur.takimlar.has(b)) || m.t - cur.sonT > TUR_BOSLUK_MS);
+    const kopya = !!cur && cur.maclar.some((x) => ayniMac(x, m));
+    const bol = cur && ((!kopya && ((a && cur.takimlar.has(a)) || (b && cur.takimlar.has(b)))) || m.t - cur.sonT > TUR_BOSLUK_MS);
     if (!cur || bol) {
       cur = { maclar: [], takimlar: new Set(), sonT: m.t };
       gruplar.push(cur);

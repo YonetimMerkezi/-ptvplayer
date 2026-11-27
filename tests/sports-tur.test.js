@@ -1,7 +1,7 @@
 // Maç haftası: lig haftası takvim haftası değil, ardışık maçlar turudur (cuma–pazartesi). Numara kaynaktan ya da komşu turdan.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { turlaraBol, turCoz, turNoOku, turNoTablodan, turNoKomsu, turEtiketi, turAraligi, gunEkle, TUR_AZAMI_GUN } from '../www/js/sports-tur.js';
+import { turlaraBol, ayniMac, turCoz, turNoOku, turNoTablodan, turNoKomsu, turEtiketi, turAraligi, gunEkle, TUR_AZAMI_GUN } from '../www/js/sports-tur.js';
 
 const gun = (a, g) => new Date(2026, a - 1, g).getTime(); // yerel gün başı
 const saat = (a, g, s = 20) => new Date(2026, a - 1, g, s, 0).getTime();
@@ -28,6 +28,23 @@ test('tur: cuma–pazartesi maçları aynı hafta, ertesi cuma yeni hafta', () =
   assert.equal(h14.maclar.length, 3);
   assert.equal(h14.bas, gun(11, 27));
   assert.equal(h14.son, gun(11, 30)); // pazartesi dahil: takvim haftası (pzt–paz) olsaydı 30 Kas ertesi haftaya düşerdi
+});
+
+test('tur: aynı maçın iki kaynakta farklı yazılmış kopyası haftayı bölmez (Amed Sportif / Amedspor)', () => {
+  const kaynak = LIG();
+  const h14 = kaynak.filter((m) => m.id.startsWith('s14'));
+  const kopya = maç('se:1', h14[1].t, h14[1].home.name, 'Başka Yazılış', {}); // aynı saat, aynı ev sahibi, rakip adı farklı
+  const t = turlaraBol([...kaynak, kopya]);
+  assert.equal(t.length, 3, 'kopya yüzünden 14. hafta ikiye bölünmedi');
+  assert.deepEqual(t.map((x) => x.no), [13, 14, 15]);
+  assert.equal(t[1].bas, gun(11, 27));
+  assert.equal(t[1].son, gun(11, 30));
+  assert.equal(t[1].maclar.length, 4);
+  // gerçek tekrar (aynı takım bir hafta içinde başka saatte yine oynuyor) yine yeni tur başlatır
+  const tekrar = turlaraBol([...LIG(false), maç('x', saat(11, 29, 20), 'Aslan', 'Ege')]); // numarasız: numara birleştirmesi karışmaz
+  assert.ok(tekrar.length > 3);
+  assert.equal(ayniMac(h14[1], kopya), true);
+  assert.equal(ayniMac(h14[0], h14[1]), false);
 });
 
 test('tur: numara yoksa komşudan sayılır; yoksa 0 kalır', () => {

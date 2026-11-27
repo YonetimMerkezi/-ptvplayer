@@ -2,6 +2,13 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 185,
+    title: 'Spor: maç haftası artık bölünmüyor',
+    items: [
+      'Aynı maç iki kaynakta farklı yazıldığında (ör. “Amed Sportif” / “Amedspor”) hafta yarım kalıp yalnız bugün ve yarını gösteriyordu; artık haftanın tüm maçları (Cuma–Pazartesi) tek listede, kopya satırlar tek görünüyor',
+    ],
+  },
+  {
     id: 184,
     title: 'Spor: ligler maç haftasına göre (14. hafta, 15. hafta)',
     items: [
