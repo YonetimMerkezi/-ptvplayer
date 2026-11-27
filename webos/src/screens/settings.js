@@ -12,9 +12,10 @@ import * as K from '../log.js';
 import { DIL, dilKur } from '../dil.js';
 
 const FORMAT = [['m3u8', 'HLS (m3u8)'], ['ts', 'MPEG-TS (ts)']];
+const KALITE = [['max', 'En yüksek'], ['auto', 'Otomatik (TV seçer)']];
 const AG = [['auto', 'Otomatik'], ['direct', 'Doğrudan'], ['service', 'TV servisi']];
 const YAZI = [['0.9', 'Küçük'], ['1', 'Normal'], ['1.15', 'Büyük'], ['1.3', 'Çok büyük']];
-const DEGER_SATIRI = /^(lang|liveFmt|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/; // ◀▶ ile değeri değişen ayar satırları
+const DEGER_SATIRI = /^(lang|liveFmt|kalite|netMode|fontScale|aspect|aspectLive|arrowZap|autoNext|autoplay)$/; // ◀▶ ile değeri değişen ayar satırları
 const temaAdi = () => temaBul(ctx.store.setting('theme', VARSAYILAN_TEMA)).ad;
 const ad = (liste, v) => (liste.filter((x) => x[0] === v)[0] || liste[0])[1];
 const sonraki = (liste, v, yon) => {
@@ -48,6 +49,7 @@ export function settingsScreen() {
       { id: 'autoNext', ad: 'Sıradaki bölüm', deger: () => (ctx.store.setting('autoNext', true) ? 'Açık' : 'Kapalı'), yardim: 'Bölüm bitince sıradaki bölüm kendiliğinden açılır' },
       { id: 'autoplay', ad: 'Açılışta son kanal', deger: () => (ctx.store.setting('autoplay', false) ? 'Açık' : 'Kapalı'), yardim: 'Uygulama açılınca en son izlenen canlı kanalı doğrudan oynatır' },
       { id: 'liveFmt', ad: 'Canlı yayın biçimi', deger: () => ad(FORMAT, ctx.store.setting('liveFmt', 'm3u8')), yardim: 'Yayın açılmıyorsa diğer biçimi deneyin (yalnız Xtream)' },
+      { id: 'kalite', ad: 'Yayın kalitesi', deger: () => ad(KALITE, ctx.store.setting('kalite', 'max')), yardim: 'En yüksek: HLS listesinden en iyi sürüm seçilir. Yayın takılıyor ya da ileri geri gidiyorsa “Otomatik”i deneyin: TV, bağlantı hızına göre kendisi seçer' },
       { id: 'netMode', ad: 'Ağ yolu', deger: () => ad(AG, ctx.store.setting('netMode', 'auto')), yardim: 'Otomatik: önce doğrudan, olmazsa TV servisi. Liste yüklenmiyorsa “TV servisi”ni deneyin' },
       { id: 'test', ad: 'Bağlantıyı sına', deger: () => '', yardim: 'Etkin kaynağa bağlanıp sonucu ve kullanılan yolu gösterir' },
       { id: 'recents', ad: 'Geçmişi temizle', deger: () => '', yardim: 'Son izlenenleri ve kaldığı yer bilgisini siler' },
@@ -114,6 +116,7 @@ export function settingsScreen() {
     else if (r.id === 'autoNext') ctx.store.setSetting('autoNext', !ctx.store.setting('autoNext', true));
     else if (r.id === 'autoplay') ctx.store.setSetting('autoplay', !ctx.store.setting('autoplay', false));
     else if (r.id === 'liveFmt') ctx.store.setSetting('liveFmt', sonraki(FORMAT, ctx.store.setting('liveFmt', 'm3u8'), yon));
+    else if (r.id === 'kalite') ctx.store.setSetting('kalite', sonraki(KALITE, ctx.store.setting('kalite', 'max'), yon));
     else if (r.id === 'netMode') ctx.store.setSetting('netMode', sonraki(AG, ctx.store.setting('netMode', 'auto'), yon));
     else if (r.id === 'test') sina();
     else if (r.id === 'recents') {

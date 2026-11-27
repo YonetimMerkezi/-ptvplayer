@@ -193,5 +193,7 @@ export const EN_WEBOS_B = [
   ['Henüz önemli olay yok', 'No key events yet'], ['Bu maç için olay bilgisi bulunamadı', 'No event information found for this match'], ['Olaylar alınamadı', 'Events could not be loaded'],
   ['+{0} önceki olay', '+{0} earlier events'],
   ['Gol', 'Goal'], ['Kendi kalesine', 'Own goal'], ['Penaltı kaçtı', 'Penalty missed'], ['Sarı kart', 'Yellow card'], ['Kırmızı kart', 'Red card'],
+  ['Yayın kalitesi', 'Stream quality'], ['En yüksek', 'Highest'], ['Otomatik (TV seçer)', 'Automatic (TV chooses)'],
+  ['En yüksek: HLS listesinden en iyi sürüm seçilir. Yayın takılıyor ya da ileri geri gidiyorsa “Otomatik”i deneyin: TV, bağlantı hızına göre kendisi seçer', 'Highest: the best version is picked from the HLS list. If the stream stutters or jumps back and forth, try “Automatic”: the TV picks by connection speed'],
   ['Oynanan', 'Played'], ['Galibiyet', 'Wins'], ['Beraberlik', 'Draws'], ['Mağlubiyet', 'Losses'], ['Averaj', 'Goal difference'],
 ];
