@@ -239,24 +239,45 @@ export function parseSporEkrani(html, base = SE_BASE) {
   const seen = new Set();
   const diag = newDiag(src);
   const re = hrefRe(SE_ANCHOR);
+  for (let m = re.exec(src); m; m = re.exec(src)) anchorRow(m, base, diag, seen, rows);
+  return { rows, diag };
+}
+
+// Aynı ayrıştırma, yavaş cihazda (TV) arayüzü dondurmamak için dilimli: her dilimMs'den sonra ara() beklenir (olay döngüsüne dönülür, tuşlar işlenir).
+export async function parseSporEkraniDilimli(html, base = SE_BASE, ara = null, dilimMs = 12) {
+  const src = typeof html === 'string' ? html : '';
+  const rows = [];
+  const seen = new Set();
+  const diag = newDiag(src);
+  const re = hrefRe(SE_ANCHOR);
+  let t0 = Date.now();
   for (let m = re.exec(src); m; m = re.exec(src)) {
-    try {
-      diag.anchors++;
-      const id = m[2] || m[7];
-      const y = m[3] || m[8];
-      const mo = m[4] || m[9];
-      const d = m[5] || m[10];
-      const r = rowOf(m[11], base, diag);
-      if (!r) continue;
-      const t = seTime(y, mo, d, r.hh, r.mm);
-      if (!Number.isFinite(t) || seen.has(id)) continue;
-      seen.add(id);
-      rows.push({ id, t, title: r.title, teams: r.teams, comp: r.comp, channels: r.channels, logos: r.logos });
-    } catch {
-      /* bozuk satır atlanır */
+    anchorRow(m, base, diag, seen, rows);
+    if (ara && Date.now() - t0 >= dilimMs) {
+      await ara();
+      t0 = Date.now();
     }
   }
   return { rows, diag };
+}
+
+// Eşleşen bir maç bağlantısı → rows'a satır ekler (bozuk satır atlanır)
+function anchorRow(m, base, diag, seen, rows) {
+  try {
+    diag.anchors++;
+    const id = m[2] || m[7];
+    const y = m[3] || m[8];
+    const mo = m[4] || m[9];
+    const d = m[5] || m[10];
+    const r = rowOf(m[11], base, diag);
+    if (!r) return;
+    const t = seTime(y, mo, d, r.hh, r.mm);
+    if (!Number.isFinite(t) || seen.has(id)) return;
+    seen.add(id);
+    rows.push({ id, t, title: r.title, teams: r.teams, comp: r.comp, channels: r.channels, logos: r.logos });
+  } catch {
+    /* bozuk satır atlanır */
+  }
 }
 
 const TR_MONTHS = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'];
@@ -344,15 +365,16 @@ export function parseLiveSoccerTv(html, base = 'https://www.livesoccertv.com') {
 // Yayın akışı kaynakları (sırayla denenir: ilk satır veren kullanılır)
 export const SCHED_BASES = { se: SE_BASE, mr: 'https://www.macrehberi.com', sd: 'https://www.sahadan.com', lst: 'https://www.livesoccertv.com' };
 const SCHED = [
-  { key: 'se', label: 'Spor Ekranı', url: (d, b) => seUrl(d, b.se), parse: (h, b) => parseSporEkrani(h, b.se) },
-  { key: 'mr', label: 'Maç Rehberi', url: (d, b) => `${b.mr}/gun/${seDateKey(d)}`, parse: (h, b) => parseSporEkrani(h, b.mr) },
+  { key: 'se', label: 'Spor Ekranı', url: (d, b) => seUrl(d, b.se), parse: (h, b, d, ara) => (ara ? parseSporEkraniDilimli(h, b.se, ara) : parseSporEkrani(h, b.se)) },
+  { key: 'mr', label: 'Maç Rehberi', url: (d, b) => `${b.mr}/gun/${seDateKey(d)}`, parse: (h, b, d, ara) => (ara ? parseSporEkraniDilimli(h, b.mr, ara) : parseSporEkrani(h, b.mr)) },
   { key: 'sd', label: 'Sahadan', todayOnly: true, url: (d, b) => `${b.sd}/tv-programi`, parse: (h, b, d) => parseSahadan(h, b.sd, d) },
   { key: 'lst', label: 'LiveSoccerTV', url: (d, b) => `${b.lst}/tr/schedules/${seDateKey(d)}/`, parse: (h, b) => parseLiveSoccerTv(h, b.lst) },
 ];
 
 // Bir günün yayın akışı: kaynaklar sırayla denenir, ilk satır veren kullanılır. Döner: { rows, diag, url, via, note }; sayfa tanınan ama futbol satırı olmayan
 // bir kaynak varsa boş sonuç döner; hiçbir kaynak alınamazsa hata atar (hata.detail: her kaynağın nedeni).
-export async function loadSchedDay({ net, dayMs, bases = SCHED_BASES, timeoutMs = 20000, nowMs = Date.now() } = {}) {
+// ara: verilirse ayrıştırma dilimlenir (her dilimden sonra ara() beklenir); Android'de verilmez.
+export async function loadSchedDay({ net, dayMs, bases = SCHED_BASES, timeoutMs = 20000, nowMs = Date.now(), ara = null } = {}) {
   const notes = [];
   let empty = null;
   for (const src of SCHED) {
@@ -360,7 +382,7 @@ export async function loadSchedDay({ net, dayMs, bases = SCHED_BASES, timeoutMs 
     const url = src.url(dayMs, bases);
     try {
       const html = await withTimeout(net.text(url, { fast: true }), timeoutMs);
-      const r = src.parse(html, bases, dayMs);
+      const r = await src.parse(html, bases, dayMs, ara);
       if (r.rows.length) return { ...r, url, via: src.key, note: [...notes, `${src.label}: ${seDiagText(r.diag, r.rows.length)}`].join(' · ') };
       notes.push(`${src.label}: ${r.diag.anchors ? seDiagText(r.diag, 0) : `${r.diag.bytes} bayt, maç bağlantısı yok`}`);
       if (r.diag.anchors && !empty) empty = { ...r, url, via: src.key };

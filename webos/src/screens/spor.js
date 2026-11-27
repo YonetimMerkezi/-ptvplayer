@@ -24,6 +24,9 @@ export function sporScreen() {
   let yukleniyor = false; // gün listesi indirilirken true: şerit boş "Maç yok" yerine "Yükleniyor…" gösterir, OK yüklemeyi yeniden başlatmaz
   let yayinV = null; // günün yayın akışı (hangi maç hangi kanalda)
   let kanallar = {}; // maç kimliği → kanal adları
+  let kanalDurum = { y: null, hazir: {} }; // hangi yayın akışı için hangi maçların kanalı hesaplandı
+  let kanalSay = 0; // bir önceki dilimli hesabı bırakmak için
+  let kapali = false;
   let sayac = 0;
   let yenileT = 0;
   let gunT = 0;
@@ -93,6 +96,7 @@ export function sporScreen() {
     const satirlar = [];
     for (let i = 0; i < secs.length; i++) for (let j = 0; j < secs[i].matches.length; j++) satirlar.push(secs[i].matches[j]);
     list.setItems(satirlar, !!koru);
+    kanalIsle(); // liste değişti (gün ya da lig süzgeci): yeni görünen maçların kanalı hesaplanır, hesaplananlar atlanır
   }
 
   function chipleriKur() {
@@ -112,14 +116,38 @@ export function sporScreen() {
     chipCiz();
   }
 
+  // Kanallar listedeki sıraya göre küçük dilimlerle eşlenir; her dilimde yalnız o satırlar yenilenir. Liste yeniden kurulmaz, imleç yerinde kalır ve tuşlar yanıt verir.
+  function kanalIsle() {
+    const y = yayinV;
+    if (!y) return;
+    if (kanalDurum.y !== y) {
+      kanalDurum = { y: y, hazir: {} };
+      kanallar = {};
+    }
+    const bu = ++kanalSay;
+    const sira = list.items.length ? list.items : maclar;
+    kanalHaritasi(sira, y, {
+      hedef: kanallar,
+      hazir: kanalDurum.hazir,
+      aktif: () => bu === kanalSay && yayinV === y && !kapali,
+      parca: (idler) => {
+        const k = {};
+        for (let i = 0; i < idler.length; i++) k[idler[i]] = true;
+        for (const no in list.nodes) {
+          const mc = list.items[Number(no)];
+          if (mc && k[mc.id]) list.redraw(Number(no));
+        }
+      },
+    }).catch((e) => K.uyar('Kanal eşleme: ' + (e && e.message ? e.message : e)));
+  }
+
   // Günün yayın akışı arka planda gelir: liste beklemez, gelince satırlara kanal yazılır
   function yayinYukle(gun, n) {
     veri.yayin(gun).then(
       (y) => {
         if (n !== sayac) return;
         yayinV = y;
-        kanallar = kanalHaritasi(maclar, y);
-        satirlariKur(true);
+        kanalIsle();
       },
       (e) => K.uyar('Yayın akışı: ' + (e && e.message ? e.message : e)),
     );
@@ -137,6 +165,7 @@ export function sporScreen() {
       chipler = [];
       yayinV = null;
       kanallar = {};
+      kanalDurum = { y: null, hazir: {} };
       chipCiz();
     }
     try {
@@ -151,7 +180,6 @@ export function sporScreen() {
       if (n !== sayac) return;
       yukleniyor = false;
       maclar = m;
-      kanallar = kanalHaritasi(maclar, yayinV);
       chipleriKur();
       satirlariKur(zorla || !!list.items.length);
       yayinYukle(gun, n);
@@ -292,6 +320,7 @@ export function sporScreen() {
     },
     destroy() {
       sayac++;
+      kapali = true;
       clearTimeout(yenileT);
       clearTimeout(gunT);
     },

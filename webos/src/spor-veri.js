@@ -15,6 +15,7 @@ export const ESPN_BEKLEME_MS = 10 * 60000; // ESPN hiç yanıt vermediyse bu sü
 export const PARCA_MS = 250; // ligler/kaynaklar geldikçe listeyi en sık bu aralıkla tazele (zayıf TV'de çizim yükü)
 const kayitAnahtari = (dayMs) => 'spor:' + dayMs;
 const sn = (ms) => (ms / 1000).toFixed(1) + ' sn';
+const ara = () => new Promise((c) => setTimeout(c, 0)); // olay döngüsüne dön (tuşlar işlensin)
 export const KULLANILDI_KEY = 'sp.kullanildi'; // Spor ekranı bir kez açıldıysa ana sayfa bugünün maçlarını önceden hazırlar
 export const ISITMA_GECIKME_MS = 7000; // ana sayfa açıldıktan bu kadar sonra (afişler yerleşince) ısıtma başlar
 
@@ -177,11 +178,13 @@ export function createSporVeri(net, { now = () => Date.now(), deps = {}, kalici 
       const c = st.yayin[dayMs];
       if (c && now() - c.at < YAYIN_TAZE_MS) return c.v;
       let v = null;
+      const t0 = Date.now();
       try {
-        const r = await d.loadSched({ net, dayMs, nowMs: now() });
+        const r = await d.loadSched({ net, dayMs, nowMs: now(), ara });
         if (r.rows && r.rows.length) v = { tur: 'se', rows: r.rows };
+        K.bilgi('Spor yayın: ' + ((r.rows && r.rows.length) || 0) + ' satır, ' + sn(Date.now() - t0) + (r.via ? ' (' + r.via + ')' : ''));
       } catch (e) {
-        /* yedek kaynağa geç */
+        K.uyar('Spor yayın alınamadı: ' + ((e && (e.detail || e.message)) || e) + ' · ' + sn(Date.now() - t0));
       }
       if (!v) {
         try {
@@ -215,16 +218,35 @@ export function kanalAdlari(m, y, tolerans = 35 * 60000) {
 }
 
 // Günün maçları → { maç kimliği: kanal adları }. Oynanmış/ertelenmiş maçlara kanal yazılmaz.
-export function kanalHaritasi(maclar, y) {
-  const h = {};
-  if (!y) return h;
+// TV'nin işlemcisi yavaş: iş küçük dilimlerle yapılır, her dilimden sonra olay döngüsüne dönülür (tuşlar işlenir).
+// hedef: doldurulacak harita; hazir: işlenmiş maç kimlikleri (aynı maç yeniden hesaplanmaz); aktif(): false dönerse durur;
+// parca(kimlikler): her dilimde kanalı bulunan maçlar bildirilir (ekran yalnız o satırları yeniler).
+export async function kanalHaritasi(maclar, y, { hedef = {}, hazir = {}, aktif = () => true, parca = null, dilimMs = 10 } = {}) {
+  if (!y) return hedef;
+  await ara(); // çağıran liste çizimini bitirsin
+  if (!aktif()) return hedef;
+  let t0 = Date.now();
+  let bulunan = [];
   for (let i = 0; i < maclar.length; i++) {
     const m = maclar[i];
+    if (hazir[m.id]) continue;
+    hazir[m.id] = true;
     if (m.state === 'post' || m.off) continue;
     const a = kanalAdlari(m, y);
-    if (a.length) h[m.id] = a;
+    if (a.length) {
+      hedef[m.id] = a;
+      bulunan.push(m.id);
+    }
+    if (Date.now() - t0 >= dilimMs) {
+      if (parca && bulunan.length) parca(bulunan);
+      bulunan = [];
+      await ara();
+      if (!aktif()) return hedef;
+      t0 = Date.now();
+    }
   }
-  return h;
+  if (parca && bulunan.length) parca(bulunan);
+  return hedef;
 }
 
 // Kanal adlarına karşılık gelen kullanıcının canlı kanalları

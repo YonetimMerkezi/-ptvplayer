@@ -107,7 +107,7 @@ test('spor: maç → kanal adları (takım ve saat eşleşmesi) → kullanıcın
   assert.ok(!hits.some((h) => h.name.includes('TRT')));
 });
 
-test('spor: başlık "A - B" biçiminde ayrışmasa da (teams yok) kanal bulunur; oynanmış maça kanal yazılmaz', () => {
+test('spor: başlık "A - B" biçiminde ayrışmasa da (teams yok) kanal bulunur; oynanmış maça kanal yazılmaz', async () => {
   const m1 = maç('e1', gun0 + 20 * 3600e3, 'Galatasaray', 'Fenerbahçe');
   const m2 = { ...maç('e2', gun0 + 17 * 3600e3, 'Beşiktaş', 'Trabzonspor'), state: 'post', text: 'MS' };
   const y = {
@@ -117,10 +117,30 @@ test('spor: başlık "A - B" biçiminde ayrışmasa da (teams yok) kanal bulunur
       { t: m2.t, title: 'Beşiktaş - Trabzonspor', teams: ['Beşiktaş', 'Trabzonspor'], channels: ['S Sport'] },
     ],
   };
-  const h = kanalHaritasi([m1, m2], y);
+  const h = await kanalHaritasi([m1, m2], y);
   assert.deepEqual(h.e1, ['beIN Sports 1', 'TRT Spor']);
   assert.equal(h.e2, undefined, 'bitmiş maçın yayını gösterilmez');
-  assert.deepEqual(kanalHaritasi([m1], null), {}, 'yayın bilgisi yoksa boş harita');
+  assert.deepEqual(await kanalHaritasi([m1], null), {}, 'yayın bilgisi yoksa boş harita');
+});
+
+test('spor: kanal eşleme dilimlidir (arada olay döngüsüne döner), hesaplananı atlar ve aktif() false olunca durur', async () => {
+  const y = { tur: 'se', rows: [] };
+  const ms = [];
+  for (let i = 0; i < 400; i++) ms.push(maç('x' + i, gun0 + (10 + (i % 10)) * 3600e3, 'Takım' + i, 'Rakip' + i));
+  let araVerildi = 0;
+  const kalem = setInterval(() => araVerildi++, 0); // olay döngüsü dönerse sayaç artar
+  const hazir = {};
+  await kanalHaritasi(ms, y, { hazir, dilimMs: 0 }); // her maçtan sonra bırakır
+  clearInterval(kalem);
+  assert.ok(araVerildi > 5, 'olay döngüsüne dönüldü: ' + araVerildi);
+  assert.equal(Object.keys(hazir).length, 400);
+  let cagri = 0;
+  await kanalHaritasi(ms, y, { hazir, parca: () => cagri++ });
+  assert.equal(cagri, 0, 'hazır maçlar yeniden hesaplanmaz');
+  const hazir2 = {};
+  let sayi = 0;
+  await kanalHaritasi(ms, y, { hazir: hazir2, dilimMs: 0, aktif: () => ++sayi < 3 });
+  assert.ok(Object.keys(hazir2).length < 400, 'aktif() false olunca kalan işlenmez');
 });
 
 test('spor: ESPN yalnız istenen günün penceresini alır; ilk sonuç ikinci kaynak beklenmeden gelir', async () => {

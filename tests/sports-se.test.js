@@ -342,3 +342,14 @@ test('findLsMatch: yayın sitesi maçının LiveScore karşılığı (saat ±35 
   assert.equal(findLsMatch(se, []), null);
   assert.equal(findLsMatch(null, ls), null);
 });
+
+test('parseSporEkraniDilimli: eşzamanlı ayrıştırmayla aynı satırları verir ve arada ara() bekler', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('./fixtures/se-rows.html', import.meta.url), 'utf8');
+  const { parseSporEkrani, parseSporEkraniDilimli } = await import('../www/js/sports-se.js');
+  let ara = 0;
+  const a = await parseSporEkraniDilimli(html, undefined, async () => { ara++; }, 0);
+  const b = parseSporEkrani(html);
+  assert.deepEqual(a.rows, b.rows);
+  assert.ok(ara > 0, 'dilim sonunda ara() çağrıldı');
+});
