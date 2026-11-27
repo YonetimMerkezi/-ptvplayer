@@ -2,7 +2,7 @@
 // Uygulama (paketlenmiş web uygulaması) başka sunuculara XHR atınca tarayıcı CORS kuralı engelleyebilir;
 // bu servis isteği Node tarafında yapar, yanıtı parça parça luna köprüsünden uygulamaya verir.
 //
-//   fetch {url, headers, timeoutMs, chunk} → {returnValue, status, data, id, done}
+//   fetch {url, headers, timeoutMs, chunk, proje} → {returnValue, status, data, id, done}   (proje: 'espn-skor' | 'espn-tablo' | 'ls-gun' → yanıt JSON'u yalnız okunan alanlara budanır)
 //   read  {id, offset, length}              → {returnValue, data, done}
 //
 // Telefondan kaynak aktarma (yerel ağda küçük HTTP alıcı; ekran açıkken çalışır, kapanınca durur):
@@ -150,6 +150,87 @@ function istek(adres, basliklar, bitis, kalan, cb, sinir) {
   req.end();
 }
 
+// Yanıt budama (proje): bilinen JSON uç noktalarında uygulamanın okumadığı alanlar TV içinde atılır. ESPN maç listesi, LiveScore günü ve ESPN puan durumu
+// yüzlerce KB'dir; arayüze (luna köprüsü) yalnız okunan alanlar geçer, 2016 model TV'de büyük köprü iletisi arayüzü saniyelerce donduruyordu.
+// Maske: 1 = değeri aynen koru; nesne = yalnız o anahtarları koru (dizilerde her öğeye uygulanır; $f: öğe süzgeci, $n: en çok bu kadar öğe). Yapı aynı kalır: uygulamadaki ayrıştırıcılar değişmez.
+// Alan listesi www/js/sports.js (parseScoreboard), sports-table.js (parseStandings) ve sports-ls.js (parseLiveScore) okumalarıyla birebir tutulmalıdır (tests/webos-proje.test.js).
+var ESPN_DURUM = { type: { name: 1, state: 1 }, displayClock: 1 };
+var ESPN_TAKIM = { displayName: 1, shortDisplayName: 1, name: 1, location: 1, abbreviation: 1, logo: 1, logos: { $n: 1, href: 1 } };
+// Puan durumunda yalnız sütunlarda gösterilen istatistikler kalır (sports-table.js STAT_KEYS ile aynı adlar)
+var ISTATISTIK_ADLARI = { rank: 1, gamesplayed: 1, gp: 1, played: 1, wins: 1, w: 1, ties: 1, draws: 1, d: 1, t: 1, losses: 1, l: 1, pointdifferential: 1, goaldifferential: 1, gd: 1, points: 1, pts: 1 };
+function istatistikGerekli(s) {
+  var alanlar = ['name', 'type', 'abbreviation', 'shortDisplayName'];
+  for (var i = 0; i < alanlar.length; i++) {
+    var v = s && s[alanlar[i]] != null ? String(s[alanlar[i]]).toLowerCase() : '';
+    if (v && Object.prototype.hasOwnProperty.call(ISTATISTIK_ADLARI, v)) return true;
+  }
+  return false;
+}
+var ESPN_SATIR = { team: ESPN_TAKIM, stats: { $f: istatistikGerekli, name: 1, type: 1, abbreviation: 1, shortDisplayName: 1, value: 1, displayValue: 1 } };
+function tabloDugumu(derinlik) {
+  var d = { name: 1, standings: { entries: ESPN_SATIR }, entries: ESPN_SATIR };
+  if (derinlik > 0) d.children = tabloDugumu(derinlik - 1);
+  return d;
+}
+var PROJE = {
+  'espn-skor': {
+    events: {
+      id: 1,
+      date: 1,
+      status: ESPN_DURUM,
+      notes: 1,
+      competitions: {
+        date: 1,
+        startDate: 1,
+        status: ESPN_DURUM,
+        venue: { fullName: 1 },
+        notes: 1,
+        broadcasts: 1,
+        geoBroadcasts: 1,
+        competitors: { homeAway: 1, score: 1, shootoutScore: 1, team: ESPN_TAKIM }
+      }
+    }
+  },
+  'espn-tablo': tabloDugumu(4),
+  'ls-gun': { Stages: { Sid: 1, Cnm: 1, Snm: 1, CompN: 1, Events: { Eid: 1, Esd: 1, T1: { Nm: 1 }, T2: { Nm: 1 }, Tr1: 1, Tr2: 1, Trp1: 1, Trp2: 1, Eps: 1, ErnInf: 1 } } }
+};
+
+function kirp(deger, maske) {
+  if (maske === 1) return deger;
+  var i;
+  if (Array.isArray(deger)) {
+    var dizi = [];
+    for (i = 0; i < deger.length; i++) {
+      if (maske.$f && !maske.$f(deger[i])) continue;
+      if (maske.$n > 0 && dizi.length >= maske.$n) break;
+      dizi.push(kirp(deger[i], maske));
+    }
+    return dizi;
+  }
+  if (deger && typeof deger === 'object') {
+    var o = {};
+    for (var k in maske) {
+      if (k.charAt(0) === '$') continue;
+      if (Object.prototype.hasOwnProperty.call(maske, k) && Object.prototype.hasOwnProperty.call(deger, k)) o[k] = kirp(deger[k], maske[k]);
+    }
+    return o;
+  }
+  return deger;
+}
+
+// JSON metnini maskeye göre budar; JSON değilse ya da bir sorun olursa metin aynen döner (uygulama eskisi gibi çalışır).
+function buda(metin, ad) {
+  var maske = Object.prototype.hasOwnProperty.call(PROJE, ad) ? PROJE[ad] : null;
+  if (!maske) return metin;
+  try {
+    var v = JSON.parse(metin);
+    if (!v || typeof v !== 'object') return metin;
+    return JSON.stringify(kirp(v, maske));
+  } catch (e) {
+    return metin;
+  }
+}
+
 function metne(tampon) {
   var m = tampon.toString('utf8');
   return m.charCodeAt(0) === 0xfeff ? m.slice(1) : m;
@@ -165,6 +246,7 @@ function getir(p, cb) {
   istek(adres, basliklariBirlestir(p.headers), Date.now() + sure, MAX_YONLENDIRME, function (e, r) {
     if (e) return cb(e);
     var metin = metne(r.body);
+    if (p.proje && r.status >= 200 && r.status < 300) metin = buda(metin, String(p.proje));
     var yanit = { returnValue: true, status: r.status, total: metin.length };
     if (metin.length <= parca) {
       yanit.data = metin;
@@ -2111,6 +2193,7 @@ function kayitDurdur(p) {
 
 module.exports = {
   getir: getir,
+  buda: buda,
   oku: oku,
   aliciBaslat: aliciBaslat,
   aliciSor: aliciSor,

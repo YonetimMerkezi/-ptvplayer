@@ -19,7 +19,7 @@ const iptalHatasi = () => {
 };
 const aktifXhr = {}; // grup → bekleyen XMLHttpRequest (aynı gruptaki yeni istek öncekini keser)
 
-const CHUNK = 262144; // servis yanıtları bu kadar karakterlik parçalarla okunur
+const CHUNK_VARSAYILAN = 262144; // servis yanıtları bu kadar karakterlik parçalarla okunur
 const PARALEL = 4; // aynı anda istenen parça sayısı
 
 const hostOf = (u) => {
@@ -69,8 +69,13 @@ export function xhrGet(url, { timeoutMs = 30000, headers, onProgress, grup, sonU
 }
 
 // TV içindeki JS servisi (service/service.js): istekleri Node tarafında atar, CORS yoktur.
-export async function servisGet(url, { timeoutMs = 30000, headers, onProgress, iptalMi } = {}) {
-  let r = await luna(SERVIS + 'fetch', { url, headers: headers || null, timeoutMs, chunk: CHUNK }, timeoutMs + 15000);
+// proje: servis yanıt JSON'unu yalnız uygulamanın okuduğu alanlara budar (küçük köprü iletisi: büyük ileti TV'de arayüzü donduruyordu).
+// chunk: parça boyutu (varsayılan CHUNK); nazik: parçalar tek tek ve aralarda kısa bekleyerek okunur (tuşlar işlenebilsin; yalnız ağır, isteğe bağlı sayfalarda).
+const bekle = (ms) => new Promise((c) => setTimeout(c, ms));
+export async function servisGet(url, { timeoutMs = 30000, headers, onProgress, iptalMi, proje, chunk, nazik } = {}) {
+  const CHUNK = chunk > 0 ? chunk : CHUNK_VARSAYILAN;
+  const par = nazik ? 1 : PARALEL;
+  let r = await luna(SERVIS + 'fetch', { url, headers: headers || null, timeoutMs, chunk: CHUNK, proje: proje || null }, timeoutMs + 15000);
   if (iptalMi && iptalMi()) throw iptalHatasi();
   if (!r.returnValue) throw new AgHatasi(r.errorText || 'Servis hatası', 0);
   if (r.status >= 400) throw new AgHatasi('Sunucu ' + r.status + ' döndürdü', r.status);
@@ -94,10 +99,11 @@ export async function servisGet(url, { timeoutMs = 30000, headers, onProgress, i
         parcalar[i] = y.data || '';
         yuklenen += parcalar[i].length;
         if (onProgress) onProgress(yuklenen);
+        if (nazik) await bekle(40);
       }
     };
     const isciler = [];
-    for (let k = 0; k < Math.min(PARALEL, adet); k++) isciler.push(isci());
+    for (let k = 0; k < Math.min(par, adet); k++) isciler.push(isci());
     await Promise.all(isciler);
     metin += parcalar.join('');
     if (metin.length !== toplam) throw new AgHatasi('Servis yanıtı eksik geldi', 0);
@@ -109,6 +115,7 @@ export async function servisGet(url, { timeoutMs = 30000, headers, onProgress, i
     if (!r.returnValue) throw new AgHatasi(r.errorText || 'Servis okuma hatası', 0);
     metin += r.data || '';
     if (onProgress) onProgress(metin.length);
+    if (nazik) await bekle(40);
   }
   return metin;
 }

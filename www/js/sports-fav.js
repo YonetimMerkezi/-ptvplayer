@@ -27,7 +27,9 @@ export function cleanFavs(raw) {
     const k = norm(n);
     if (!k || seen.has(k)) continue;
     seen.add(k);
-    out.push({ n, l: typeof x.l === 'string' && x.l.trim() ? x.l.trim().slice(0, 60) : n });
+    const rec = { n, l: typeof x.l === 'string' && x.l.trim() ? x.l.trim().slice(0, 60) : n };
+    if (typeof x.g === 'string' && /^[a-z0-9.]{2,24}$/.test(x.g)) rec.g = x.g; // takımın ülke ligi (ESPN kimliği): takım sayfası maçlarını hangi ligde arayacağını bilir
+    out.push(rec);
     if (out.length >= FAV_MAX) break;
   }
   return out;
@@ -48,13 +50,15 @@ export function sameTeam(a, b) {
 export const isFavSide = (favs, side) => !!side && favs.some((f) => sameTeam(f.n, side.name) || (side.label && sameTeam(f.n, side.label)));
 export const hasFavMatch = (favs, m) => !!m && favs.length > 0 && (isFavSide(favs, m.home) || isFavSide(favs, m.away));
 
-// Takibi açar/kapatır; yeni listeyi ve durumu döndürür.
-export function toggleFav(favs, side) {
+// Takibi açar/kapatır; yeni listeyi ve durumu döndürür. lg: takımın ülke ligi (biliniyorsa kayda yazılır).
+export function toggleFav(favs, side, lg) {
   const list = cleanFavs(favs);
   const i = list.findIndex((f) => sameTeam(f.n, side.name) || (side.label && sameTeam(f.n, side.label)));
   if (i >= 0) return { favs: list.filter((_, j) => j !== i), on: false };
   if (list.length >= FAV_MAX) return { favs: list, on: false, full: true };
-  return { favs: list.concat({ n: String(side.name || side.label), l: String(side.label || side.name) }), on: true };
+  const rec = { n: String(side.name || side.label), l: String(side.label || side.name) };
+  if (lg) rec.g = String(lg);
+  return { favs: cleanFavs(list.concat(rec)), on: true };
 }
 
 // Takip edilen takımların oynanmamış maçları için otomatik hatırlatıcı: daha önce otomatik kurulmuş (done) ya da zaten kurulu (planned) olanlar atlanır,
@@ -119,4 +123,12 @@ export function applyAutoRemind({ matches, favs, rem, store, now = Date.now(), i
     }
   }
   return ids;
+}
+
+// Takımın ülke ligini kayda yazar (takım sayfasında bulunduktan sonra; sonraki açılışta tarama gerekmez). Kayıt yoksa liste aynen döner.
+export function setFavLeague(favs, name, lg) {
+  const list = cleanFavs(favs);
+  const i = list.findIndex((f) => sameTeam(f.n, name));
+  if (i < 0 || list[i].g === lg) return list;
+  return list.map((f, j) => (j === i ? { ...f, g: lg } : f));
 }

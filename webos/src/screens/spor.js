@@ -1,327 +1,819 @@
-// Spor: günün maçları (ESPN + LiveScore/Mackolik), üstte gün ve lig şeritleri, canlı skor. Bir maça OK basınca maç sayfası (yayın kanalı, takip) açılır.
-import { ctx, provider, open, ustCubuk } from '../ctx.js';
+// Spor: sekmeler — Canlı · Lig (haftalık program + puan durumu) · Takımlarım · Liglerim.
+// Ekran açılınca hiçbir şey indirilmez; veri yalnız kullanıcı bir sekmeyi/ligi/takımı seçip OK basınca yüklenir (yavaş TV'de arayüz donmasın).
+// İstekler tek tek atılır; yanıtlar servisten budanmış gelir; kanal eşleme küçük dilimlerle yapılır.
+import { ctx, open, ustCubuk } from '../ctx.js';
 import { VList } from '../vlist.js';
 import { el, esc, px, saat, toast, enYakin } from '../ui.js';
-import { sporVeri, kanalHaritasi } from '../spor-veri.js';
-import { dayStart, dayStrip, dayLabel, sections, chipsFor, capSections, lgLine, hasLive } from '../../../www/js/sports.js';
-import { cleanFavs, toggleFav, isFavSide, hasFavMatch, FAV_KEY, FAV_CHIP } from '../../../www/js/sports-fav.js';
+import { sporVeri, kanalHaritasi, haftaBasi, haftaKaydir, haftaGunleri, haftaEtiketi, ULKE_LIGLERI, TABLOLU_LIGLER } from '../spor-veri.js';
+import { LEAGUES, leagueOf, dayStart, dayLabel, dayMonth, sections, lgLine } from '../../../www/js/sports.js';
+import { cleanFavs, toggleFav, setFavLeague, isFavSide, FAV_KEY } from '../../../www/js/sports-fav.js';
+import { lang } from '../../../www/js/i18n.js';
 import * as K from '../log.js';
 
-const yenileMs = 60000;
+const TABLAR = ['Canlı', 'Lig', 'Takımlarım', 'Liglerim'];
+const CANLI = 0;
+const LIG = 1;
+const TAKIM = 2;
+const LIGLER = 3;
+const LIG_KEY = 'sp.lig'; // son seçilen lig
+const FAVLIG_KEY = 'sp.favlig'; // favori ligler (kayıt yoksa Süper Lig)
+const SEKME_KEY = 'sp.sekme'; // son açık sekme
+const CANLI_YENILE_MS = 90000;
+const TUS_BEKLE_MS = 4000; // canlı otomatik yenileme: son tuştan bu kadar sonra (gezinirken liste altından çekilmesin)
+
+const HINT = {
+  tab: '◀▶ sekme · OK: aç / yükle · ▼ içeriğe geç · Geri',
+  alt: '◀▶ gezin · OK: seç · Kırmızı/Yeşil: önceki/sonraki hafta · ▼ liste · Geri',
+  mac: '▲▼ gezin · OK: maç sayfası · Sarı: ev sahibini takip et · Mavi: deplasmanı takip et · Geri',
+  lig: '▲▼ gezin · OK: maç sayfası · ▶ puan durumu · Kırmızı/Yeşil: hafta · Sarı/Mavi: takip · Geri',
+  tablo: '▲▼ gezin · OK/Sarı: takımı takip et · ◀ maç listesi · Geri',
+  takim: '▲▼ gezin · OK: takımın maçları · Sarı: takipten çıkar · Geri',
+  ligler: '▲▼ gezin · OK: ligi aç · Sarı: favoriden çıkar · Geri',
+  sec: '▲▼ gezin · OK: seç · Sarı: favori ligi aç/kapat · Geri',
+};
+
+// Listeden başlık satırlarını atlayarak yön yönünde bir adım (kenarda false: üst katman başka alana geçer)
+function adim(l, yon) {
+  let i = l.index + yon;
+  while (i >= 0 && i < l.items.length && l.items[i].baslik) i += yon;
+  if (i < 0 || i >= l.items.length) return false;
+  l.setIndex(i);
+  return true;
+}
+// Listenin ilk başlık-olmayan satırına (ya da verilen indekse) odaklanır
+function ilkSatir(l, tercih) {
+  let i = tercih >= 0 ? tercih : 0;
+  while (i < l.items.length && l.items[i].baslik) i++;
+  if (i >= l.items.length) i = 0;
+  if (l.items.length) l.setIndex(i);
+}
 
 export function sporScreen() {
   const kok = el('div', 'screen k-spor');
   const src = ctx.store.active();
   const veri = sporVeri(ctx.net); // ekran kapanıp açılınca önbellek paylaşılır
-  const gunler = dayStrip(Date.now(), 1, 7);
-  let gunNo = 1; // bugün
-  let chip = '';
-  let chipNo = 0;
-  let chipler = [];
-  let bolge = 'list'; // 'gun' | 'chip' | 'list': ▲▼ bölge değiştirir, ◀▶ şeritte gezer
-  let maclar = [];
-  let yukleniyor = false; // gün listesi indirilirken true: şerit boş "Maç yok" yerine "Yükleniyor…" gösterir, OK yüklemeyi yeniden başlatmaz
-  let yayinV = null; // günün yayın akışı (hangi maç hangi kanalda)
-  let kanallar = {}; // maç kimliği → kanal adları
-  let kanalDurum = { y: null, hazir: {} }; // hangi yayın akışı için hangi maçların kanalı hesaplandı
-  let kanalSay = 0; // bir önceki dilimli hesabı bırakmak için
+  const BUGUN = dayStart(Date.now());
+  const AYAR = (k, v) => ctx.store.setting(k, v);
+
+  let sekme = Math.max(0, Math.min(TABLAR.length - 1, Number(AYAR(SEKME_KEY, CANLI)) || 0));
+  let bolge = 'tab'; // 'tab' | 'alt' | 'liste' | 'tablo'
+  let altNo = 0;
   let kapali = false;
-  let sayac = 0;
-  let yenileT = 0;
-  let gunT = 0;
+  let gorunur = true;
+  let sonTus = 0;
+  let favC = null;
+  let cizildi = false;
+
+  // Canlı
+  let canliM = null; // null: yüklenmedi
+  let canliHata = '';
+  let canliYuk = false;
+  let canliN = 0;
+  let canliT = 0;
+  // Lig
+  let ligId = String(AYAR(LIG_KEY, '') || '');
+  if (!leagueOf(ligId)) ligId = '';
+  let hafta = haftaBasi(Date.now());
+  let progM = null; // null: yüklenmedi
+  let progHata = '';
+  let progYuk = false;
+  let tabloG = null; // null: yüklenmedi; []: tablo yok
+  let tabloHata = '';
+  let tabloYuk = false;
+  let ligN = 0;
+  let haftaT = 0;
+  // Yayın kanalları (isteğe bağlı)
+  let kanallar = {};
+  let kanalHazir = {};
+  let yayinN = 0;
+  let yayinDurum = ''; // '' | 'Yayın 2/5…' | 'Yayın: tamam' …
+  // Takımlarım
+  let takimV = null; // { fav, matches, durum: 'yukleniyor' | '' | 'hata', iletisi }
+  let takimN = 0;
+  // Seçici (açılır liste)
+  let sec = null; // { mod: 'lig' | 'favlig', list }
 
   kok.innerHTML =
     ustCubuk('Spor', src ? esc(src.name) : '') +
-    '<div class="sp-days"><div class="sp-in" id="sp-d"></div></div>' +
-    '<div class="sp-chips"><div class="sp-in" id="sp-c"></div></div>' +
-    '<div class="sp-body"><div class="content"></div></div>' +
-    '<div class="hint">▲▼◀▶ gezin · OK: maç sayfası · Kırmızı/Yeşil: gün · Sarı: ev sahibini takip et · Mavi: deplasmanı takip et · Geri</div>';
-  const gunKap = kok.querySelector('.sp-days');
-  const gunIc = kok.querySelector('#sp-d');
-  const chipKap = kok.querySelector('.sp-chips');
-  const chipIc = kok.querySelector('#sp-c');
-
-  const favler = () => cleanFavs(ctx.store.setting(FAV_KEY, []));
-  const takim = (s) => esc(s.label || s.name) + (isFavSide(favler(), s) ? ' ★' : '');
-
-  // Seçili öğe görünür kalacak şekilde şeridi yatay kaydırır
-  const kaydir = (kap, ic, i) => {
-    const d = ic.children && ic.children[i];
-    if (!d || d.offsetLeft === undefined) return;
-    const gor = kap.clientWidth || 0;
-    const topl = ic.scrollWidth || 0;
-    const x = Math.max(0, Math.min(d.offsetLeft - Math.round(gor * 0.3), Math.max(0, topl - gor)));
-    ic.style.webkitTransform = ic.style.transform = 'translateX(' + -Math.round(x) + 'px)';
+    '<div class="sp-days"><div class="sp-in" id="sp-t"></div></div>' +
+    '<div class="sp-chips"><div class="sp-in" id="sp-a"></div></div>' +
+    '<div class="sp-body"><div class="sp-p1"><div class="content"></div></div><div class="sp-p2"><div class="st-hd" id="st-h"></div><div class="st-lst"></div></div></div>' +
+    '<div class="sp-pick" id="sp-pk" style="display:none"><div class="sp-pk-box"><h3 class="sp-pk-t" id="sp-pkt"></h3><div class="sp-pk-l"></div><div class="sp-pk-h" id="sp-pkh"></div></div></div>' +
+    '<div class="hint" id="sp-hint"></div>';
+  const tabIc = kok.querySelector('#sp-t');
+  const altIc = kok.querySelector('#sp-a');
+  const altKap = kok.querySelector('.sp-chips');
+  const govde = kok.querySelector('.sp-body');
+  const hintEl = kok.querySelector('#sp-hint');
+  const pickEl = kok.querySelector('#sp-pk');
+  // puan tablosu başlığı: sütun kısaltmaları dile göre (tek harflik metinler çeviri sözlüğüne girmez)
+  const tabloBaslikCiz = () => {
+    const en = lang() === 'en';
+    const c = en ? [['P', 'Played'], ['W', 'Wins'], ['D', 'Draws'], ['L', 'Losses'], ['GD', 'Goal difference'], ['Pts']] : [['O', 'Oynanan'], ['G', 'Galibiyet'], ['B', 'Beraberlik'], ['M', 'Mağlubiyet'], ['AV', 'Averaj'], ['P']];
+    kok.querySelector('#st-h').innerHTML = '<span class="st-n">#</span><span class="st-t">' + (en ? 'Team' : 'Takım') + '</span>' + c.map((x, i) => '<span class="' + (i < 5 ? 'st-v' : 'st-p') + '"' + (x[1] ? ' title="' + x[1] + '"' : '') + '>' + x[0] + '</span>').join('');
   };
-  const sinif = (i, secili) => 'sp-d' + (i === secili ? (bolge === 'gun' || bolge === 'chip' ? ' on' : ' sel') : '');
-  const gunCiz = () => {
-    gunIc.innerHTML = gunler.map((g, i) => '<span class="sp-d' + (i === gunNo ? (bolge === 'gun' ? ' on' : ' sel') : '') + '" data-d="' + i + '">' + esc(dayLabel(g)) + '</span>').join('');
-    kaydir(gunKap, gunIc, gunNo);
+  tabloBaslikCiz();
+
+  // ---- ortak yardımcılar ----
+  const favler = () => favC || (favC = cleanFavs(ctx.store.setting(FAV_KEY, [])));
+  const favDegisti = () => {
+    favC = null;
   };
-  const chipCiz = () => {
-    chipIc.innerHTML = chipler.length
-      ? chipler.map((c, i) => '<span class="sp-d' + (i === chipNo ? (bolge === 'chip' ? ' on' : ' sel') : '') + '" data-c="' + i + '">' + esc(c.name) + ' <i>' + c.count + '</i></span>').join('')
-      : '<span class="sp-d dim">' + (yukleniyor ? 'Yükleniyor…' : 'Maç yok') + '</span>';
-    kaydir(chipKap, chipIc, chipNo);
+  const takimAdi = (s) => esc(s.label || s.name) + (isFavSide(favler(), s) ? ' ★' : '');
+  const favLigler = () => {
+    const v = AYAR(FAVLIG_KEY, null);
+    return (Array.isArray(v) ? v : ['tur.1']).filter((id) => !!leagueOf(id));
+  };
+  const ligAdi = (id) => (leagueOf(id) || {}).name || '';
+  const gunBasligi = (g) => {
+    const e = dayLabel(g);
+    return esc(e + (/\d/.test(e) ? '' : ' · ' + dayMonth(g)));
   };
 
-  // Sağ sütun: üstte yayın kanalı (varsa), altta lig
+  // Gün başlıklı maç satırları: [{ baslik }, maç, maç, { baslik }, …]; ilk güncel maçın indeksi de döner
+  function gunlu(maclar) {
+    const out = [];
+    let son = -1;
+    let ilk = -1;
+    const simdi = Date.now();
+    for (let i = 0; i < maclar.length; i++) {
+      const m = maclar[i];
+      const g = dayStart(m.t);
+      if (g !== son) {
+        son = g;
+        out.push({ baslik: gunBasligi(g) });
+      }
+      if (ilk < 0 && (m.state === 'in' || m.t >= simdi - 3 * 3600e3)) ilk = out.length;
+      out.push(m);
+    }
+    return { out, ilk };
+  }
+
+  // ---- listeler ----
   const kanalYazi = (a) => a.slice(0, 2).join(' · ') + (a.length > 2 ? ' +' + (a.length - 2) : '');
-  const satirRender = (m) => {
+  const macSatiri = (m, dar) => {
     const durum = m.state === 'in' ? '<span class="sp-c live">' + esc(m.text || 'Canlı') + '</span>' : m.state === 'post' || m.off ? '<span class="sp-c">' + esc(m.text || 'MS') + '</span>' : '<span class="sp-c">' + saat(m.t) + '</span>';
     const skor = m.home.score != null && m.away.score != null ? m.home.score + ' - ' + m.away.score : 'v';
     const kn = kanallar[m.id];
-    return durum + '<span class="sp-h">' + takim(m.home) + '</span><span class="sp-s">' + skor + '</span><span class="sp-a">' + takim(m.away) + '</span><span class="sp-r">' + (kn ? '<b class="sp-k">' + esc(kanalYazi(kn)) + '</b>' : '') + '<i>' + esc(lgLine(m)) + '</i></span>';
+    const alt = dar ? m.round || '' : lgLine(m);
+    return durum + '<span class="sp-h">' + takimAdi(m.home) + '</span><span class="sp-s">' + skor + '</span><span class="sp-a">' + takimAdi(m.away) + '</span>' + (kn || alt ? '<span class="sp-r">' + (kn ? '<b class="sp-k">' + esc(kanalYazi(kn)) + '</b>' : '') + '<i>' + esc(alt) + '</i></span>' : '');
   };
-
-  const list = new VList(kok.querySelector('.content'), {
+  const satirRender = (it) => {
+    if (it.baslik) return '<span class="sp-hd">' + it.baslik + '</span>';
+    if (it.fav) {
+      const lg = it.fav.g ? ligAdi(it.fav.g) : '';
+      return '<span class="nm">★ ' + esc(it.fav.l || it.fav.n) + '</span>' + (lg ? '<span class="cc">' + esc(lg) + '</span>' : '');
+    }
+    if (it.lgId) return '<span class="nm">★ ' + esc(ligAdi(it.lgId)) + '</span>';
+    if (it.ekle) return '<span class="nm sp-ekle">＋ Lig ekle / çıkar</span>';
+    return macSatiri(it, sekme === LIG);
+  };
+  const liste = new VList(kok.querySelector('.sp-p1 .content'), {
     rowH: Math.round(px() * 4.2),
     render: satirRender,
-    empty: 'Bu gün için maç bulunamadı',
-    onActivate: (m) => macAc(m),
+    empty: '',
+    onActivate: (it) => listeOk(it),
   });
-  list.setActive(true);
+  const tablo = new VList(kok.querySelector('.st-lst'), {
+    rowH: Math.round(px() * 3.4),
+    render: (it) => {
+      if (it.baslik) return '<span class="sp-hd">' + esc(it.baslik) + '</span>';
+      const r = it.r;
+      const f = isFavSide(favler(), { name: r.name, label: r.label });
+      const v = (x) => (x == null ? '' : String(Math.round(x * 100) / 100));
+      return '<span class="st-n">' + v(r.rank) + '</span><span class="st-t">' + esc(r.label || r.name) + (f ? ' ★' : '') + '</span><span class="st-v">' + v(r.p) + '</span><span class="st-v">' + v(r.w) + '</span><span class="st-v">' + v(r.d) + '</span><span class="st-v">' + v(r.l) + '</span><span class="st-v">' + v(r.gd) + '</span><span class="st-p">' + v(r.pts) + '</span>';
+    },
+    empty: '',
+    onActivate: (it) => tabloOk(it),
+  });
 
-  function odak(b) {
-    bolge = b;
-    list.setActive(b === 'list');
-    gunCiz();
-    chipCiz();
+  // ---- çizim ----
+  const sekmeCiz = () => {
+    tabIc.innerHTML = TABLAR.map((t, i) => '<span class="sp-d' + (i === sekme ? (bolge === 'tab' ? ' on' : ' sel') : '') + '" data-t="' + i + '">' + esc(t) + '</span>').join('');
+  };
+  const altChipleri = () => {
+    if (sekme !== LIG) return [];
+    return [
+      { ad: (ligId ? ligAdi(ligId) : 'Lig seçin') + ' ▾' },
+      { ad: '‹ Önceki' },
+      { ad: haftaEtiketi(hafta), dim: true },
+      { ad: 'Sonraki ›' },
+      { ad: yayinDurum || 'Yayın kanalları' },
+    ];
+  };
+  const altCiz = () => {
+    const l = altChipleri();
+    altKap.style.display = l.length ? '' : 'none';
+    if (altNo >= l.length) altNo = 0;
+    altIc.innerHTML = l.map((c, i) => '<span class="sp-d' + (i === altNo ? (bolge === 'alt' ? ' on' : ' sel') : '') + (c.dim ? ' dim' : '') + '" data-a="' + i + '">' + esc(c.ad) + '</span>').join('');
+  };
+  const hintCiz = () => {
+    let h = HINT.tab;
+    if (bolge === 'alt') h = HINT.alt;
+    else if (bolge === 'tablo') h = HINT.tablo;
+    else if (bolge === 'liste') h = sekme === LIG ? HINT.lig : sekme === TAKIM && !takimV ? HINT.takim : sekme === LIGLER ? HINT.ligler : HINT.mac;
+    if (sec) h = HINT.sec;
+    hintEl.textContent = h;
+  };
+  const odakCiz = () => {
+    liste.setActive(bolge === 'liste' && !sec);
+    tablo.setActive(bolge === 'tablo' && !sec);
+    sekmeCiz();
+    altCiz();
+    hintCiz();
+  };
+  const duzen = () => {
+    govde.className = 'sp-body' + (sekme === LIG ? ' lig' : '');
+    odakCiz();
+  };
+
+  // Canlı: lig başlıklı liste
+  function canliCiz() {
+    if (sekme !== CANLI) return;
+    if (canliYuk && !canliM) return liste.setMessage('Canlı maçlar yükleniyor…');
+    if (canliHata && !canliM) return liste.setMessage(canliHata + '. OK ile yeniden dene');
+    if (!canliM) return liste.setMessage("Canlı maçları yüklemek için OK'a basın");
+    if (!canliM.length) return liste.setMessage('Şu an canlı maç yok. OK ile yenile');
+    const secs = sections(canliM, '').concat(sections(canliM, 'g:oth'));
+    const items = [];
+    for (let i = 0; i < secs.length; i++) {
+      items.push({ baslik: esc(secs[i].lg.name) });
+      for (let j = 0; j < secs[i].matches.length; j++) items.push(secs[i].matches[j]);
+    }
+    const onceki = liste.cur && liste.cur.id;
+    let k = -1;
+    for (let i = 0; i < items.length && onceki; i++) if (items[i].id === onceki) k = i;
+    liste.setItems(items, false);
+    ilkSatir(liste, k);
   }
 
-  function satirlariKur(koru) {
-    const secili = chip === FAV_CHIP ? maclar.filter((m) => hasFavMatch(favler(), m)) : maclar;
-    const secs = capSections(sections(secili, chip === FAV_CHIP ? '' : chip), 500).secs;
-    const satirlar = [];
-    for (let i = 0; i < secs.length; i++) for (let j = 0; j < secs[i].matches.length; j++) satirlar.push(secs[i].matches[j]);
-    list.setItems(satirlar, !!koru);
-    kanalIsle(); // liste değişti (gün ya da lig süzgeci): yeni görünen maçların kanalı hesaplanır, hesaplananlar atlanır
+  // Lig haftası: günlere ayrılmış program
+  function progCiz(korumak) {
+    if (sekme !== LIG) return;
+    if (!ligId) return liste.setMessage('Önce bir lig seçin: yukarıdaki Lig düğmesi, OK');
+    if (progYuk && !progM) return liste.setMessage(ligAdi(ligId) + ': hafta yükleniyor…');
+    if (progHata && !progM) return liste.setMessage(progHata + '. OK ile yeniden dene');
+    if (!progM) return liste.setMessage(ligAdi(ligId) + " için haftalık program ve puan durumunu yüklemek için OK'a basın");
+    if (!progM.length) return liste.setMessage('Bu hafta ' + ligAdi(ligId) + ' maçı yok. Kırmızı/Yeşil: başka hafta');
+    const g = gunlu(progM);
+    const onceki = korumak && liste.cur && liste.cur.id;
+    let k = g.ilk;
+    for (let i = 0; i < g.out.length && onceki; i++) if (g.out[i].id === onceki) k = i;
+    liste.setItems(g.out, false);
+    ilkSatir(liste, k);
+    kanalIsle();
+  }
+  function tabloCiz() {
+    if (sekme !== LIG) return;
+    if (!ligId) return tablo.setMessage('');
+    if (tabloYuk && !tabloG) return tablo.setMessage('Puan durumu yükleniyor…');
+    if (tabloHata && !tabloG) return tablo.setMessage('Puan durumu alınamadı');
+    if (!tabloG) return tablo.setMessage(TABLOLU_LIGLER.indexOf(ligId) >= 0 ? 'Puan durumu OK ile yüklenir' : 'Bu lig için puan durumu yok');
+    if (!tabloG.length) return tablo.setMessage('Bu lig için puan durumu yok');
+    const items = [];
+    for (let i = 0; i < tabloG.length; i++) {
+      if (tabloG[i].name) items.push({ baslik: tabloG[i].name });
+      for (let j = 0; j < tabloG[i].rows.length; j++) items.push({ r: tabloG[i].rows[j] });
+    }
+    tablo.setItems(items, false);
+    ilkSatir(tablo, 0);
   }
 
-  function chipleriKur() {
+  // Takımlarım: takım listesi ya da seçilen takımın maçları
+  function takimCiz() {
+    if (sekme !== TAKIM) return;
+    if (takimV) {
+      if (takimV.durum === 'yukleniyor' && !takimV.matches.length) return liste.setMessage(esc(takimV.fav.l || takimV.fav.n) + ': maçlar yükleniyor…');
+      if (takimV.durum === 'hata' && !takimV.matches.length) return liste.setMessage(takimV.mesaj + '. OK ile yeniden dene');
+      if (!takimV.matches.length) return liste.setMessage('Yakın tarihte maç bulunamadı. Geri: takım listesi');
+      const g = gunlu(takimV.matches);
+      liste.setItems(g.out, false);
+      return ilkSatir(liste, g.ilk);
+    }
     const f = favler();
-    const { all, chips } = chipsFor(maclar);
-    const fav = maclar.filter((m) => hasFavMatch(f, m)).length;
-    const l = [{ id: '', name: 'Tümü', count: all }];
-    if (f.length) l.push({ id: FAV_CHIP, name: 'Takip ettiklerim', count: fav });
-    for (let i = 0; i < chips.length; i++) l.push(chips[i]);
-    chipler = l;
-    const k = l.map((c) => c.id).indexOf(chip);
-    if (k >= 0) chipNo = k;
-    else {
-      chip = '';
-      chipNo = 0;
-    }
-    chipCiz();
+    if (!f.length) return liste.setMessage('Henüz takip ettiğiniz takım yok. Lig sayfasında puan durumundan ya da maç listesinde Sarı/Mavi tuşuyla takım ekleyin');
+    liste.setItems(f.map((x) => ({ fav: x })), false);
+  }
+  function liglerCiz() {
+    if (sekme !== LIGLER) return;
+    const items = favLigler().map((id) => ({ lgId: id }));
+    items.push({ ekle: true });
+    liste.setItems(items, false);
+  }
+  function icerikCiz() {
+    tablo.setMessage('');
+    tablo.items = [];
+    if (sekme === CANLI) canliCiz();
+    else if (sekme === LIG) {
+      progCiz();
+      tabloCiz();
+    } else if (sekme === TAKIM) takimCiz();
+    else liglerCiz();
+    duzen();
   }
 
-  // Kanallar listedeki sıraya göre küçük dilimlerle eşlenir; her dilimde yalnız o satırlar yenilenir. Liste yeniden kurulmaz, imleç yerinde kalır ve tuşlar yanıt verir.
-  function kanalIsle() {
-    const y = yayinV;
-    if (!y) return;
-    if (kanalDurum.y !== y) {
-      kanalDurum = { y: y, hazir: {} };
-      kanallar = {};
-    }
-    const bu = ++kanalSay;
-    const sira = list.items.length ? list.items : maclar;
-    kanalHaritasi(sira, y, {
-      hedef: kanallar,
-      hazir: kanalDurum.hazir,
-      aktif: () => bu === kanalSay && yayinV === y && !kapali,
-      parca: (idler) => {
-        const k = {};
-        for (let i = 0; i < idler.length; i++) k[idler[i]] = true;
-        for (const no in list.nodes) {
-          const mc = list.items[Number(no)];
-          if (mc && k[mc.id]) list.redraw(Number(no));
-        }
-      },
-    }).catch((e) => K.uyar('Kanal eşleme: ' + (e && e.message ? e.message : e)));
-  }
-
-  // Günün yayın akışı arka planda gelir: liste beklemez, gelince satırlara kanal yazılır
-  function yayinYukle(gun, n) {
-    veri.yayin(gun).then(
-      (y) => {
-        if (n !== sayac) return;
-        yayinV = y;
-        kanalIsle();
-      },
-      (e) => K.uyar('Yayın akışı: ' + (e && e.message ? e.message : e)),
-    );
-  }
-
-  async function yukle(zorla) {
-    const n = ++sayac;
-    const gun = gunler[gunNo];
-    yukleniyor = true;
-    gunCiz();
-    clearTimeout(yenileT);
-    if (!zorla) {
-      list.setMessage('Maçlar yükleniyor…');
-      maclar = [];
-      chipler = [];
-      yayinV = null;
-      kanallar = {};
-      kanalDurum = { y: null, hazir: {} };
-      chipCiz();
-    }
+  // ---- yükleme ----
+  async function canliYukle(sessiz) {
+    const n = ++canliN;
+    clearTimeout(canliT);
+    canliYuk = true;
+    canliHata = '';
+    if (!sessiz) canliCiz();
     try {
-      // ESPN yanıtı gelir gelmez liste gösterilir; ikinci kaynak (LiveScore/Mackolik) gelince birleşik liste tazelenir
-      const m = await veri.maclar(gun, zorla, (parca) => {
-        if (n !== sayac) return;
-        const ilkMi = !maclar.length;
-        maclar = parca;
-        chipleriKur();
-        satirlariKur(!ilkMi); // ilk liste başa, sonraki kademeler okuyucunun yerini koruyarak gelir
-      });
-      if (n !== sayac) return;
-      yukleniyor = false;
-      maclar = m;
-      chipleriKur();
-      satirlariKur(zorla || !!list.items.length);
-      yayinYukle(gun, n);
-      if (gunNo === 1 && hasLive(maclar)) yenileT = setTimeout(() => yukle(true), yenileMs); // canlı maç varsa skorlar dakikada bir tazelenir
+      const m = await veri.canli(!!canliM);
+      if (n !== canliN || kapali) return;
+      canliM = m;
     } catch (e) {
-      if (n !== sayac) return;
-      yukleniyor = false;
-      K.hata(e);
-      if (maclar.length) {
-        // Kayıtlı ya da kısmi liste ekranda: silinmez, güncellenemediği bildirilir
-        chipCiz();
-        toast('Maçlar güncellenemedi, kayıtlı liste gösteriliyor');
-        return;
+      if (n !== canliN || kapali) return;
+      K.uyar('Canlı maçlar: ' + (e && e.message ? e.message : e));
+      if (!canliM) canliHata = String((e && e.message) || 'Canlı maç bilgisi alınamadı').replace(/\.+$/, '');
+      else toast('Canlı skorlar güncellenemedi');
+    }
+    canliYuk = false;
+    canliCiz();
+    duzen();
+    canliZamanla();
+  }
+  function canliZamanla() {
+    clearTimeout(canliT);
+    if (kapali || !gorunur || sekme !== CANLI || !canliM) return;
+    canliT = setTimeout(canliTazele, CANLI_YENILE_MS);
+  }
+  function canliTazele() {
+    if (kapali || !gorunur || sekme !== CANLI) return;
+    if (Date.now() - sonTus < TUS_BEKLE_MS) {
+      canliT = setTimeout(canliTazele, 5000); // kullanıcı gezerken liste altından çekilmez
+      return;
+    }
+    canliYukle(true);
+  }
+
+  // Lig (ya da hafta) seçildi: hafta + (yüklenmediyse) puan durumu sırayla, tek tek
+  async function ligYukle(zorla) {
+    if (!ligId) return seciciAc('lig');
+    const n = ++ligN;
+    yayinIptal();
+    progYuk = true;
+    progHata = '';
+    progM = null;
+    progCiz();
+    duzen();
+    try {
+      progM = await veri.hafta(ligId, hafta, !!zorla);
+    } catch (e) {
+      if (n !== ligN || kapali) return;
+      progHata = String((e && e.message) || 'Maç bilgisi alınamadı').replace(/\.+$/, '');
+    }
+    if (n !== ligN || kapali) return;
+    progYuk = false;
+    progCiz();
+    duzen();
+    if (!tabloG && TABLOLU_LIGLER.indexOf(ligId) >= 0) {
+      tabloYuk = true;
+      tabloHata = '';
+      tabloCiz();
+      try {
+        const g = await veri.tablo(ligId, !!zorla);
+        if (n !== ligN || kapali) return;
+        tabloG = g || [];
+      } catch (e) {
+        if (n !== ligN || kapali) return;
+        tabloHata = String((e && e.message) || 'Puan durumu alınamadı');
       }
-      maclar = [];
-      chipler = [];
-      chipCiz();
-      const hm = String(e && e.message ? e.message : e).replace(/\.+$/, '');
-      list.setMessage((/^Maç bilgisi/.test(hm) ? hm : 'Maç bilgisi alınamadı: ' + hm) + '. OK ile yeniden dene'); // ileti zaten "Maç bilgisi alınamadı…" ile başlıyorsa tekrarlanmaz
+      tabloYuk = false;
+    } else if (!tabloG && TABLOLU_LIGLER.indexOf(ligId) < 0) tabloG = [];
+    if (n !== ligN || kapali) return;
+    tabloCiz();
+    duzen();
+  }
+  function ligSec(id, yukle) {
+    if (!leagueOf(id)) return;
+    ligId = id;
+    ctx.store.setSetting(LIG_KEY, id);
+    hafta = haftaBasi(Date.now());
+    progM = null;
+    progHata = '';
+    tabloG = null;
+    tabloHata = '';
+    kanallar = {};
+    kanalHazir = {};
+    yayinDurum = '';
+    ++ligN;
+    sekme = LIG;
+    bolge = 'liste';
+    altNo = 0;
+    ctx.store.setSetting(SEKME_KEY, LIG);
+    icerikCiz();
+    if (yukle) ligYukle(false);
+  }
+  function haftaDegis(d) {
+    if (!ligId) return;
+    hafta = haftaKaydir(hafta, d);
+    clearTimeout(haftaT);
+    ++ligN;
+    yayinIptal();
+    progM = null;
+    progHata = '';
+    progYuk = true;
+    progCiz();
+    altCiz();
+    haftaT = setTimeout(() => ligYukle(false), 350); // art arda basışta her haftaya istek atılmaz (puan durumu ligle aynı: yüklüyse yeniden alınmaz)
+  }
+
+  // Yayın kanalları: yalnız istenince; haftanın oynanmamış maçı olan günleri sırayla (yakın gün önce), her gün tek ağır sayfa
+  function yayinIptal() {
+    yayinN++;
+    if (/…$/.test(yayinDurum)) yayinDurum = '';
+  }
+  async function yayinGetir() {
+    if (!progM || !progM.length) return toast('Önce haftalık programı yükleyin');
+    const n = ++yayinN;
+    const simdi = dayStart(Date.now());
+    const gunler = haftaGunleri(hafta).filter((g) => progM.some((m) => dayStart(m.t) === g && m.state !== 'post' && !m.off) && g >= simdi);
+    if (!gunler.length) return toast('Bu haftada yayını aranacak maç yok');
+    let bos = 0;
+    for (let i = 0; i < gunler.length; i++) {
+      if (n !== yayinN || kapali) return;
+      yayinDurum = 'Yayın ' + (i + 1) + '/' + gunler.length + '…';
+      altCiz();
+      let y = null;
+      try {
+        y = await veri.yayin(gunler[i]);
+      } catch (e) {
+        K.uyar('Yayın akışı: ' + (e && e.message ? e.message : e));
+      }
+      if (n !== yayinN || kapali) return;
+      if (!y) bos++;
+      await kanalIsle(gunler[i], y, n);
+    }
+    if (n !== yayinN || kapali) return;
+    yayinDurum = bos === gunler.length ? 'Yayın alınamadı' : 'Yayın kanalları ✓';
+    altCiz();
+  }
+  // Önceden alınmış (taze) yayınlar ağa gitmeden satırlara yazılır; gün verilirse yalnız o günün maçları
+  async function kanalIsle(gun, yayin, n) {
+    if (sekme !== LIG || !progM) return;
+    const gunler = gun != null ? [gun] : haftaGunleri(hafta);
+    for (let i = 0; i < gunler.length; i++) {
+      const y = gun != null ? yayin : veri.yayinVar(gunler[i]);
+      if (!y) continue;
+      const g = gunler[i];
+      const maclar = progM.filter((m) => dayStart(m.t) === g);
+      const kimlik = n != null ? n : yayinN;
+      await kanalHaritasi(maclar, y, {
+        hedef: kanallar,
+        hazir: kanalHazir,
+        aktif: () => kimlik === yayinN && !kapali && sekme === LIG,
+        parca: (idler) => {
+          const k = {};
+          for (let j = 0; j < idler.length; j++) k[idler[j]] = true;
+          for (const no in liste.nodes) {
+            const mc = liste.items[Number(no)];
+            if (mc && k[mc.id]) liste.redraw(Number(no));
+          }
+        },
+      }).catch((e) => K.uyar('Kanal eşleme: ' + (e && e.message ? e.message : e)));
     }
   }
 
-  // Gün şeridinde gezerken her tuşta ağ isteği atılmasın: seçim durunca yüklenir
-  function gunDegis(d) {
-    const y = Math.max(0, Math.min(gunler.length - 1, gunNo + d));
-    if (y === gunNo) return;
-    gunNo = y;
-    gunCiz();
-    clearTimeout(gunT);
-    gunT = setTimeout(() => yukle(false), 320);
+  // Takımın maçları: ülke ligi ve Avrupa kupaları sırayla, geldikçe liste büyür
+  async function takimAc(fav) {
+    const n = ++takimN;
+    takimV = { fav, matches: [], durum: 'yukleniyor', mesaj: '' };
+    takimCiz();
+    duzen();
+    try {
+      const r = await veri.takim(fav, {
+        onPart: (ml) => {
+          if (n !== takimN || kapali || !takimV) return;
+          takimV.matches = ml;
+          takimCiz();
+        },
+      });
+      if (n !== takimN || kapali || !takimV) return;
+      takimV.matches = r.matches;
+      takimV.durum = '';
+      if (r.lg && fav.g !== r.lg) ctx.store.setSetting(FAV_KEY, setFavLeague(favler(), fav.n, r.lg)), favDegisti(); // ülke ligi öğrenildi: sonraki açılışta tarama yok
+    } catch (e) {
+      if (n !== takimN || kapali || !takimV) return;
+      takimV.durum = 'hata';
+      takimV.mesaj = String((e && e.message) || 'Maç bilgisi alınamadı').replace(/\.+$/, '');
+    }
+    takimCiz();
+    duzen();
   }
-  function chipDegis(d) {
-    const y = Math.max(0, Math.min(chipler.length - 1, chipNo + d));
-    if (y === chipNo || !chipler.length) return;
-    chipNo = y;
-    chip = chipler[y].id;
-    chipCiz();
-    satirlariKur(false);
+  function takimKapat() {
+    takimN++;
+    takimV = null;
+    takimCiz();
+    duzen();
   }
 
+  // ---- seçici (açılır liste) ----
+  function seciciAc(mod) {
+    const favs = favLigler();
+    const sira = mod === 'lig' ? LEAGUES.filter((l) => favs.indexOf(l.id) >= 0).concat(LEAGUES.filter((l) => favs.indexOf(l.id) < 0)) : LEAGUES.slice();
+    pickEl.style.display = 'block';
+    kok.querySelector('#sp-pkt').textContent = mod === 'lig' ? 'Lig seçin' : 'Favori ligler';
+    kok.querySelector('#sp-pkh').textContent = mod === 'lig' ? 'OK: aç · Sarı: favori · Geri: kapat' : 'OK: favori yap / çıkar · Geri: kapat';
+    const eski = kok.querySelector('.sp-pk-l');
+    const yeni = el('div', 'sp-pk-l'); // her açılışta yeni kap: VList dinleyicileri birikmez
+    eski.parentNode.replaceChild(yeni, eski);
+    const l = new VList(yeni, {
+      rowH: Math.round(px() * 3.8),
+      render: (x) => '<span class="nm">' + (favLigler().indexOf(x.id) >= 0 ? '★ ' : '☆ ') + esc(x.name) + '</span>',
+      empty: '',
+      onActivate: (x) => seciciOk(x),
+    });
+    sec = { mod, list: l };
+    l.setItems(sira, false);
+    l.setActive(true);
+    const k = ligId ? sira.map((x) => x.id).indexOf(ligId) : -1;
+    if (mod === 'lig' && k > 0) l.setIndex(k);
+    odakCiz();
+  }
+  function seciciKapat() {
+    if (!sec) return;
+    sec = null;
+    pickEl.style.display = 'none';
+    odakCiz();
+  }
+  function favLigDegis(id) {
+    const f = favLigler();
+    const i = f.indexOf(id);
+    ctx.store.setSetting(FAVLIG_KEY, i >= 0 ? f.filter((x) => x !== id) : f.concat(id));
+    toast(ligAdi(id) + (i >= 0 ? ' favorilerden çıkarıldı' : ' favorilere eklendi'));
+    if (sec) sec.list.setItems(sec.list.items, true);
+    if (sekme === LIGLER) liglerCiz();
+  }
+  function seciciOk(x) {
+    if (!x) return;
+    if (sec.mod === 'favlig') return favLigDegis(x.id);
+    seciciKapat();
+    ligSec(x.id, true);
+  }
+
+  // ---- eylemler ----
   function macAc(m) {
-    if (m) open('mac', { m, gun: gunler[gunNo], veri });
+    if (m && m.home) open('mac', { m, gun: dayStart(m.t), veri });
   }
-
-  function takipDegis(taraf) {
-    const m = bolge === 'list' ? list.cur : null;
-    if (!m) return toast('Takip için listeden bir maç seçin');
-    const s = taraf === 'home' ? m.home : m.away;
-    const r = toggleFav(favler(), s);
+  function listeOk(it) {
+    if (!it || it.baslik) return;
+    if (it.fav) return takimAc(it.fav);
+    if (it.lgId) return ligSec(it.lgId, true);
+    if (it.ekle) return seciciAc('favlig');
+    macAc(it);
+  }
+  function tabloOk(it) {
+    if (!it || !it.r) return;
+    const s = { name: it.r.name, label: it.r.label };
+    const r = toggleFav(favler(), s, ULKE_LIGLERI.indexOf(ligId) >= 0 ? ligId : '');
     if (r.full) return toast('En çok 30 takım takip edilebilir');
     ctx.store.setSetting(FAV_KEY, r.favs);
+    favDegisti();
     toast((s.label || s.name) + (r.on ? ' takip ediliyor' : ' takipten çıkarıldı'));
-    chipleriKur();
-    satirlariKur(true);
+    tablo.setItems(tablo.items, true);
+    if (liste.items.length) liste.setItems(liste.items, true);
+  }
+  function takipDegis(taraf) {
+    const m = bolge === 'liste' ? liste.cur : null;
+    if (sekme === TAKIM && !takimV && m && m.fav) {
+      const f = favler().filter((x) => x.n !== m.fav.n);
+      ctx.store.setSetting(FAV_KEY, f);
+      favDegisti();
+      toast((m.fav.l || m.fav.n) + ' takipten çıkarıldı');
+      return takimCiz();
+    }
+    if (sekme === LIGLER && m && m.lgId) return favLigDegis(m.lgId);
+    if (bolge === 'tablo') return tabloOk(tablo.cur);
+    if (!m || !m.home) return toast('Takip için listeden bir maç seçin');
+    const s = taraf === 'home' ? m.home : m.away;
+    const r = toggleFav(favler(), s, ULKE_LIGLERI.indexOf(m.lg) >= 0 ? m.lg : '');
+    if (r.full) return toast('En çok 30 takım takip edilebilir');
+    ctx.store.setSetting(FAV_KEY, r.favs);
+    favDegisti();
+    toast((s.label || s.name) + (r.on ? ' takip ediliyor' : ' takipten çıkarıldı'));
+    liste.setItems(liste.items, true);
   }
 
-  gunIc.addEventListener('click', (e) => {
-    const n = enYakin(e.target, '[data-d]', gunIc);
+  function sekmeSec(i) {
+    if (i === sekme) return;
+    clearTimeout(haftaT);
+    clearTimeout(canliT);
+    sekme = i;
+    ctx.store.setSetting(SEKME_KEY, i);
+    if (i !== TAKIM && takimV) {
+      takimN++;
+      takimV = null;
+    }
+    icerikCiz();
+    if (i === CANLI) canliZamanla();
+  }
+  // Sekmede OK: sekmenin verisi yüklenmediyse yükler, yüklüyse içeriğe iner
+  function sekmeOk() {
+    if (sekme === CANLI) {
+      if (!canliM && !canliYuk) return void canliYukle(false);
+      if (canliM && canliM.length) bolge = 'liste';
+      else return void canliYukle(false);
+    } else if (sekme === LIG) {
+      if (!ligId) return seciciAc('lig');
+      if ((!progM && !progYuk) || (tabloHata && !tabloG && !tabloYuk)) return void ligYukle(false);
+      bolge = 'liste';
+    } else bolge = 'liste';
+    odakCiz();
+  }
+  function altOk(i) {
+    if (i === 0) return seciciAc('lig');
+    if (i === 1) return haftaDegis(-1);
+    if (i === 2) {
+      if (hafta !== haftaBasi(Date.now())) {
+        hafta = haftaBasi(Date.now());
+        clearTimeout(haftaT);
+        if (ligId) ligYukle(false);
+        altCiz();
+      } else if (!progM && !progYuk) ligYukle(false);
+      return;
+    }
+    if (i === 3) return haftaDegis(1);
+    if (!yayinDurum || !/…$/.test(yayinDurum)) yayinGetir();
+  }
+
+  // ---- olaylar ----
+  tabIc.addEventListener('click', (e) => {
+    const n = enYakin(e.target, '[data-t]', tabIc);
     if (!n) return;
-    gunNo = Number(n.getAttribute('data-d'));
-    odak('gun');
-    yukle(false);
+    bolge = 'tab';
+    sekmeSec(Number(n.getAttribute('data-t')));
+    sekmeOk();
   });
-  chipIc.addEventListener('click', (e) => {
-    const n = enYakin(e.target, '[data-c]', chipIc);
+  altIc.addEventListener('click', (e) => {
+    const n = enYakin(e.target, '[data-a]', altIc);
     if (!n) return;
-    chipNo = Number(n.getAttribute('data-c'));
-    chip = chipler[chipNo] ? chipler[chipNo].id : '';
-    odak('chip');
-    satirlariKur(false);
+    altNo = Number(n.getAttribute('data-a'));
+    bolge = 'alt';
+    odakCiz();
+    altOk(altNo);
   });
+
+  function seciciTus(a) {
+    const l = sec.list;
+    if (a === 'back') return seciciKapat(), true;
+    if (a === 'yellow') {
+      if (l.cur) favLigDegis(l.cur.id);
+      return true;
+    }
+    if (a === 'ok') {
+      seciciOk(l.cur);
+      return true;
+    }
+    l.key(a);
+    return true; // seçici açıkken tuşlar altındaki ekrana geçmez
+  }
 
   return {
     el: kok,
     name: 'spor',
-    // Maç listesinde ◀ soldaki menüye geçer (gün ve lig şeritlerinde ◀▶ gün/lig değiştirir)
-    solKenar: () => bolge === 'list',
+    // ◀ en soldayken soldaki menüye geçer
+    solKenar: () => !sec && ((bolge === 'tab' && sekme === 0) || (bolge === 'alt' && altNo === 0) || bolge === 'liste'),
     onShow() {
-      gunCiz();
-      chipCiz();
-      yukle(!!maclar.length);
+      gorunur = true;
+      tabloBaslikCiz();
+      favDegisti();
+      if (!cizildi) {
+        cizildi = true;
+        icerikCiz(); // ağ yok: ekran yalnız bellekteki veriyi çizer
+      } else {
+        // maç sayfasından dönüş: imleç yerinde kalır, yalnız satırlar (takip yıldızları) tazelenir
+        if (liste.items.length) liste.setItems(liste.items, true);
+        if (tablo.items.length) tablo.setItems(tablo.items, true);
+        duzen();
+      }
+      canliZamanla();
     },
     onKey(a) {
+      sonTus = Date.now();
+      if (sec) return seciciTus(a);
       if (a === 'red' || a === 'green') {
-        gunDegis(a === 'red' ? -1 : 1);
+        if (sekme === LIG && ligId) haftaDegis(a === 'red' ? -1 : 1);
+        else if (sekme === CANLI && a === 'green') canliYukle(false);
         return true;
       }
       if (a === 'yellow' || a === 'blue') {
         takipDegis(a === 'yellow' ? 'home' : 'away');
         return true;
       }
-      // Hiçbir bölge odağı tutmaz: yüklenirken de ▲▼◀▶ ile şeritlere ve listeye geçilir, ▲ en üstte Geri düğmesine çıkar
-      if (bolge === 'gun') {
+      if (bolge === 'tab') {
         if (a === 'left' || a === 'right') {
-          gunDegis(a === 'right' ? 1 : -1);
+          const i = Math.max(0, Math.min(TABLAR.length - 1, sekme + (a === 'right' ? 1 : -1)));
+          if (i !== sekme) sekmeSec(i);
           return true;
         }
         if (a === 'down') {
-          odak(chipler.length ? 'chip' : 'list');
+          bolge = sekme === LIG ? 'alt' : 'liste';
+          odakCiz();
           return true;
         }
         if (a === 'ok') {
-          clearTimeout(gunT);
-          if (!yukleniyor) yukle(false);
+          sekmeOk();
           return true;
         }
-        return false;
+        return false; // ▲ ve Geri: üst çubuk / çıkış
       }
-      if (bolge === 'chip') {
+      if (bolge === 'alt') {
+        const n = altChipleri().length;
         if (a === 'left' || a === 'right') {
-          chipDegis(a === 'right' ? 1 : -1);
+          altNo = Math.max(0, Math.min(n - 1, altNo + (a === 'right' ? 1 : -1)));
+          altCiz();
           return true;
         }
-        if (a === 'down' || a === 'ok') {
-          odak('list');
+        if (a === 'ok') {
+          altOk(altNo);
+          return true;
+        }
+        if (a === 'down') {
+          bolge = 'liste';
+          odakCiz();
           return true;
         }
         if (a === 'up') {
-          odak('gun');
+          bolge = 'tab';
+          odakCiz();
           return true;
         }
         return false;
       }
-      if (a === 'ok' && !maclar.length && !list.items.length) {
-        if (!yukleniyor) yukle(false);
+      if (bolge === 'tablo') {
+        if (a === 'left') {
+          bolge = 'liste';
+          odakCiz();
+          return true;
+        }
+        if (a === 'up') {
+          if (!adim(tablo, -1)) {
+            bolge = 'alt';
+            odakCiz();
+          }
+          return true;
+        }
+        if (a === 'down') {
+          adim(tablo, 1);
+          return true;
+        }
+        if (a === 'ok') {
+          tabloOk(tablo.cur);
+          return true;
+        }
+        return a === 'right';
+      }
+      // bolge === 'liste'
+      if (a === 'back' && takimV) {
+        takimKapat();
         return true;
       }
-      if (a === 'up' && list.index === 0) {
-        odak(chipler.length ? 'chip' : 'gun');
+      if (a === 'ok' && !liste.items.length) {
+        if (sekme === CANLI && !canliYuk) canliYukle(false);
+        else if (sekme === LIG && !progYuk) ligYukle(false);
+        else if (sekme === TAKIM && takimV && takimV.durum !== 'yukleniyor') takimAc(takimV.fav);
         return true;
       }
-      if (list.key(a)) return true;
-      return a === 'left' || a === 'right';
+      if (a === 'up') {
+        if (!adim(liste, -1)) {
+          bolge = sekme === LIG ? 'alt' : 'tab';
+          odakCiz();
+        }
+        return true;
+      }
+      if (a === 'down') {
+        adim(liste, 1);
+        return true;
+      }
+      if (a === 'right') {
+        if (sekme === LIG && tablo.items.length) {
+          bolge = 'tablo';
+          odakCiz();
+        }
+        return true;
+      }
+      if (a === 'left') return true;
+      if (a === 'ok') {
+        listeOk(liste.cur);
+        return true;
+      }
+      return liste.key(a);
     },
     onHide() {
-      clearTimeout(yenileT);
-      clearTimeout(gunT);
+      gorunur = false;
+      clearTimeout(canliT);
+      clearTimeout(haftaT);
     },
     destroy() {
-      sayac++;
       kapali = true;
-      clearTimeout(yenileT);
-      clearTimeout(gunT);
+      canliN++;
+      ligN++;
+      takimN++;
+      yayinN++;
+      clearTimeout(canliT);
+      clearTimeout(haftaT);
     },
   };
 }

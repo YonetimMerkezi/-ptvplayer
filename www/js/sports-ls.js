@@ -206,7 +206,7 @@ export async function loadLiveScoreDay({ net, dayMs, now = Date.now(), hosts = L
   const errs = [];
   for (const url of urls) {
     try {
-      const json = await withTimeout(net.json(url, { fast: true }), timeoutMs);
+      const json = await withTimeout(net.json(url, { fast: true, proje: 'ls-gun' }), timeoutMs);
       if (!json || typeof json !== 'object') throw new Error('Boş yanıt');
       if (!Array.isArray(json.Stages)) throw new Error('Beklenmeyen yanıt biçimi');
       return { matches: parseLiveScore(json, { now }), url };

@@ -369,7 +369,7 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
   let okCount = 0;
   const anahtar = [].concat(base).join('|');
   let level = hatira[anahtar] || 0; // çalışan en yalın basamak (sonraki ligler buradan başlar)
-  const votes = [0, 0, 0];
+  const votes = hatira[anahtar + '#oy'] || (hatira[anahtar + '#oy'] = [0, 0, 0]); // oylar da çağrılar arasında kalır: tek ligli çağrılar (lig sayfası) da basamağı öğrenir
   let ardisik = 0; // hiç başarı yokken art arda alınamayan lig sayısı
   // Bağlantı kurulamadı ya da süre doldu: aynı sunucudaki daha yalın adresler de aynı sonucu verir, basamaklara inilmez
   const ulasilamaz = (e) => !!e && (e.status === 0 || /zamanında yanıt/i.test(String(e.message || '')));
@@ -403,7 +403,7 @@ export async function loadMatches({ net, now = Date.now(), back = 1, ahead = 7, 
         let engel = false; // bu sunucu bu ağda kapalı mı
         for (let k = Math.min(level, urls.length - 1); k < urls.length && json === null; k++) {
           try {
-            json = await withTimeout(net.json(urls[k], { fast: true }), timeoutMs);
+            json = await withTimeout(net.json(urls[k], { fast: true, proje: 'espn-skor' }), timeoutMs);
             if (json === null || typeof json !== 'object') throw new Error('Boş yanıt');
             if (k > level && ++votes[k] >= 2) hatira[anahtar] = level = k; // iki ayrı ligde aynı basamağa düşülürse sonrakiler (ve sonraki yüklemeler) oradan başlar (tek seferlik ağ hatası yalınlaştırmaz)
             if (h > sunucu) sunucu = h; // ilk sunucu kapalı, ikincisi açık: sonraki ligler doğrudan ikinciden başlar
@@ -463,6 +463,12 @@ export function dayLabel(dayMs, now = Date.now()) {
   if (diff === -1) return 'Dün';
   const d = new Date(dayMs);
   return lang() === 'en' ? `${DAYS_EN[d.getDay()]} ${d.getDate()} ${MONTHS_EN[d.getMonth()]}` : `${DAYS_TR[d.getDay()]} ${d.getDate()} ${MONTHS_TR[d.getMonth()]}`;
+}
+
+// "27 Kas" / "27 Nov": hafta başlığı vb. için kısa tarih
+export function dayMonth(dayMs) {
+  const d = new Date(dayMs);
+  return `${d.getDate()} ${lang() === 'en' ? MONTHS_EN[d.getMonth()] : MONTHS_TR[d.getMonth()]}`;
 }
 
 // Gün şeridi: dünden başlayıp ahead gün sonrasına kadar gün başlangıçları

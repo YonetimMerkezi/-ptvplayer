@@ -103,7 +103,7 @@ export async function loadStandings({ net, slug, base = ESPN_BASE, timeoutMs = 1
   let first = '';
   for (const url of standingsUrls(slug, base)) {
     try {
-      const groups = parseStandings(await withTimeout(net.json(url, { fast: true }), timeoutMs));
+      const groups = parseStandings(await withTimeout(net.json(url, { fast: true, proje: 'espn-tablo' }), timeoutMs));
       if (groups.length) return groups;
       first = first || 'tablo verisi boş';
     } catch (e) {
