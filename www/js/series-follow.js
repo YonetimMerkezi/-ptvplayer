@@ -3,6 +3,21 @@ import { fold } from './util.js';
 export const FOLLOW_STORAGE_KEY = 'series.followed.v1';
 export const followKey = (title) => fold(String(title || '')).replace(/[^a-z0-9]+/g, ' ').trim();
 
+// EPG program adından bölüm/sezon ekini ayırır: "Kızılcık Şerbeti 120. Bölüm" → "Kızılcık Şerbeti". Takip dizi adına bağlanır; bölüm adıyla kaydedilseydi
+// ertesi haftaki bölüm (başka ad) hiç eşleşmez, hatırlatıcı kurulmazdı.
+export function seriesTitle(t) {
+  const raw = String(t == null ? '' : t).trim();
+  let s = raw;
+  const cut = s.search(/[\s\-–:(\[]*(?:\d{1,3}\s*\.?\s*(?:b[oö]l[uü]m|sezon)|(?:b[oö]l[uü]m|sezon|episode|ep\.?)\s*\d{1,3}|s\d{1,2}\s*[. ]?\s*e\d{1,3})(?![a-z0-9])/i);
+  if (cut > 0) s = s.slice(0, cut);
+  s = s.replace(/\s*\((?:yeni|tekrar|canl[ıi]|ilk yay[ıi]n)[^)]*\)\s*$/i, '').replace(/[\s\-–:,.]+$/, '').trim();
+  return s || raw;
+}
+
+// Program bir dizi mi? Kategori "dizi" diyorsa ya da adı bölüm/sezon numarası taşıyorsa (Türkçe ö/ü harfleriyle de: "120. Bölüm").
+export const isSeriesProgram = (p) =>
+  /\b(dizi|series|serial|soap|sitcom|telenovela|tv show)\b/i.test(String((p && p.c) || '')) || /(\d{1,3}\s*\.?\s*b[oö]l[uü]m|b[oö]l[uü]m\s*\d|sezon|\bs\d{1,2}\s*[. ]?\s*e\d{1,3}\b)/i.test(String((p && p.t) || ''));
+
 export function normalizeFollowed(list) {
   const out = [];
   const seen = new Set();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeFollowed, toggleFollowed, isFollowed, buildNewEpisodePlans } from '../www/js/series-follow.js';
+import { normalizeFollowed, toggleFollowed, isFollowed, buildNewEpisodePlans, seriesTitle, isSeriesProgram } from '../www/js/series-follow.js';
 
 const NOW = new Date('2026-11-13T10:00:00+03:00').getTime();
 const future = NOW + 4 * 3600000;
@@ -39,4 +39,25 @@ test('başlamış veya başlangıç zamanı bilinmeyen bölüm için bildirim ku
     { title: 'Dizi', status: 'Yeni Bölüm' },
   ]];
   assert.deepEqual(buildNewEpisodePlans(rows, followed, [], [], NOW), []);
+});
+test('seriesTitle: EPG adından bölüm/sezon eki ayrılır; takip diziye bağlanır', () => {
+  assert.equal(seriesTitle('Kızılcık Şerbeti 120. Bölüm'), 'Kızılcık Şerbeti');
+  assert.equal(seriesTitle('Yalı Çapkını S02E10'), 'Yalı Çapkını');
+  assert.equal(seriesTitle('Yalı Çapkını - 15. Bölüm (Yeni)'), 'Yalı Çapkını');
+  assert.equal(seriesTitle('Masterchef Türkiye 3. Sezon 12. Bölüm'), 'Masterchef Türkiye');
+  assert.equal(seriesTitle('Arka Sokaklar 700. bolum'), 'Arka Sokaklar');
+  assert.equal(seriesTitle('Survivor'), 'Survivor');
+  assert.equal(seriesTitle('Bölüm 5'), 'Bölüm 5', 'ad yalnız ekten oluşuyorsa olduğu gibi kalır');
+  // ertesi hafta başka bölüm: aynı dizi olarak eşleşir
+  const list = toggleFollowed([], { title: seriesTitle('Kızılcık Şerbeti 120. Bölüm') });
+  assert.ok(isFollowed(list, seriesTitle('Kızılcık Şerbeti 121. Bölüm')));
+});
+
+test('isSeriesProgram: kategori "dizi" ya da adda Türkçe harfli bölüm/sezon numarası', () => {
+  assert.equal(isSeriesProgram({ c: 'Dizi / Drama', t: 'Bir Dizi' }), true);
+  assert.equal(isSeriesProgram({ c: '', t: 'Kızılcık Şerbeti 120. Bölüm' }), true, 'ö harfli "Bölüm" de dizi sayılır');
+  assert.equal(isSeriesProgram({ t: 'Arka Sokaklar 700. bolum' }), true);
+  assert.equal(isSeriesProgram({ t: 'Yalı Çapkını S02E10' }), true);
+  assert.equal(isSeriesProgram({ c: 'Haber', t: 'Ana Haber' }), false);
+  assert.equal(isSeriesProgram(null), false);
 });

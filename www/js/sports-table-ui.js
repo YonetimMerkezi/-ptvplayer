@@ -1,4 +1,6 @@
 // Puan durumu sayfası: lig seçimi + tablo. Sporlar ekranından ilk dokunuşta yüklenir. Takip edilen takımların satırı ★ ile öne çıkar.
+// Her takım satırı odak alır (kumandada aşağı/yukarı satır satır gezer, sayfa kayar); Tamam (OK) / dokunuş takımı takip eder ya da bırakır.
+// ★ Takip ettiklerim: takip edilen takımların tüm liglerdeki satırlarını tek listede toplar.
 import { esc, fmtClock } from './util.js';
 import { $, openPage } from './ui.js';
 import { ESPN_BASE } from './sports.js';
@@ -9,7 +11,7 @@ const CACHE_KEY = 'sports-table:v1';
 const FRESH_MS = 20 * 60e3;
 const MAX_AGE = 12 * 3600e3;
 
-// env: { net, store, toast, base?, now?, favs(): takip listesi, leagueId?: açılışta seçili lig }
+// env: { net, store, toast, base?, now?, favs(): takip listesi, toggleTeam(side, lg): takibi aç/kapat (Spor ekranının işlevi), leagueId?: açılışta seçili lig }
 export function openStandings(env) {
   const { net, store } = env;
   const base = env.base || ESPN_BASE;
@@ -18,11 +20,12 @@ export function openStandings(env) {
   const pending = new Map();
   const errs = new Map();
   let cur = TABLE_LEAGUES.some((l) => l.id === env.leagueId) ? env.leagueId : TABLE_LEAGUES[0].id;
+  let onlyFav = false; // ★ Takip ettiklerim görünümü
 
   const page = openPage({
     title: 'Puan durumu',
     cls: 'sp-pg st-pg',
-    html: `<div class="chips" id="st-lgs" role="group" aria-label="Lig"></div><small class="st-upd" id="st-upd" aria-live="polite"></small><div id="st-body" class="st-body"><div class="empty"><p>Puan durumu yükleniyor…</p></div></div>`,
+    html: `<div class="chips" id="st-lgs" role="group" aria-label="Lig"></div><small class="st-upd" id="st-hint">Takımı takip etmek ya da bırakmak için satırına dokun / Tamam (OK)</small><small class="st-upd" id="st-upd" aria-live="polite"></small><div id="st-body" class="st-body"><div class="empty"><p>Puan durumu yükleniyor…</p></div></div>`,
     mount: () => {},
   });
   const root = page.el;
@@ -34,7 +37,7 @@ export function openStandings(env) {
   function rowHtml(r, favs) {
     const fav = favs.length && isFavSide(favs, { name: r.name, label: r.label });
     const logo = r.logo ? `<img src="${esc(r.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
-    return `<tr class="${fav ? 'fav' : ''}"><td class="st-n">${num(r.rank)}</td><td class="st-t"><div class="st-c">${logo}${fav ? '<i class="st-star" aria-label="Takip ediliyor">★</i>' : ''}<span>${esc(r.label)}</span></div></td><td>${num(r.p)}</td><td>${num(r.w)}</td><td>${num(r.d)}</td><td>${num(r.l)}</td><td>${gd(r.gd)}</td><td class="st-p"><b>${num(r.pts)}</b></td></tr>`;
+    return `<tr class="st-r${fav ? ' fav' : ''}" tabindex="0" role="button" aria-pressed="${fav ? 'true' : 'false'}" data-n="${esc(r.name)}" data-l="${esc(r.label)}" data-g="${esc(r.lg || '')}"><td class="st-n">${num(r.rank)}</td><td class="st-t"><div class="st-c">${logo}${fav ? '<i class="st-star" aria-label="Takip ediliyor">★</i>' : ''}<span>${esc(r.label)}</span></div></td><td>${num(r.p)}</td><td>${num(r.w)}</td><td>${num(r.d)}</td><td>${num(r.l)}</td><td>${gd(r.gd)}</td><td class="st-p"><b>${num(r.pts)}</b></td></tr>`;
   }
 
   function tableHtml(groups, favs) {
@@ -45,15 +48,62 @@ export function openStandings(env) {
       .join('');
   }
 
+  // Yeniden çizimde odak aynı öğede (çip ya da takım satırı) kalır, kaydırma konumu korunur: kumanda sayfanın başına atmaz
+  function focusKey() {
+    const a = document.activeElement;
+    if (!a || !root.contains(a)) return null;
+    if (a.classList.contains('st-r')) return { row: a.dataset.n, i: [...root.querySelectorAll('.st-r')].indexOf(a) };
+    if (a.hasAttribute('data-fav')) return { chip: '[data-fav]' };
+    if (a.dataset.lg) return { chip: `[data-lg="${a.dataset.lg}"]` };
+    return null;
+  }
+  function restoreFocus(k) {
+    if (!k) return;
+    let t = null;
+    if (k.chip) t = q(`#st-lgs ${k.chip}`);
+    else {
+      const rows = [...root.querySelectorAll('.st-r')];
+      t = rows.find((r) => r.dataset.n === k.row) || rows[Math.min(Math.max(k.i, 0), rows.length - 1)] || q('#st-lgs .chip.on');
+    }
+    if (t && t.focus) t.focus({ preventScroll: true });
+  }
+
+  // ★ Takip ettiklerim: şu ana dek yüklenmiş tüm liglerdeki takip edilen takımların satırları, lig adıyla gruplanır
+  function favGroups(favs) {
+    const out = [];
+    for (const l of TABLE_LEAGUES) {
+      const v = store$.get(l.id);
+      if (!v) continue;
+      const rows = v.groups.flatMap((g) => g.rows).filter((r) => isFavSide(favs, { name: r.name, label: r.label }));
+      if (rows.length) out.push({ name: l.name, rows: rows.map((r) => ({ ...r, lg: /^[a-z]{3}\.1$/.test(l.id) ? l.id : '' })) });
+    }
+    return out;
+  }
+
   function draw() {
     if (!page.el.isConnected) return;
-    const favs = (env.favs && env.favs()) || [];
-    q('#st-lgs').innerHTML = TABLE_LEAGUES.map((l) => `<button class="chip${l.id === cur ? ' on' : ''}" data-lg="${esc(l.id)}"${l.id === cur ? ' data-autofocus' : ''}>${esc(l.name)}</button>`).join('');
-    const v = store$.get(cur);
+    const keep = focusKey();
     const body = q('#st-body');
+    const top = body.scrollTop;
+    const favs = (env.favs && env.favs()) || [];
+    q('#st-lgs').innerHTML =
+      `<button class="chip${onlyFav ? ' on' : ''}" data-fav aria-pressed="${onlyFav}">★ Takip ettiklerim</button>` +
+      TABLE_LEAGUES.map((l) => `<button class="chip${!onlyFav && l.id === cur ? ' on' : ''}" data-lg="${esc(l.id)}"${!onlyFav && l.id === cur ? ' data-autofocus' : ''}>${esc(l.name)}</button>`).join('');
     const upd = q('#st-upd');
+    if (onlyFav) {
+      const gs = favGroups(favs);
+      const loading = TABLE_LEAGUES.some((l) => pending.has(l.id) && !store$.has(l.id));
+      if (gs.length) body.innerHTML = tableHtml(gs, favs);
+      else if (loading) body.innerHTML = '<div class="empty"><p>Puan durumu yükleniyor…</p></div>';
+      else body.innerHTML = `<div class="empty"><h3>${favs.length ? 'Takip ettiğin takım bu liglerde yok' : 'Henüz takım takip etmiyorsun'}</h3><p>Bir lig seç, takımın satırında Tamam (OK) tuşuna bas ya da dokun: takip edilir.</p></div>`;
+      upd.textContent = loading ? 'Ligler yükleniyor…' : '';
+      body.scrollTop = top;
+      restoreFocus(keep);
+      return;
+    }
+    const v = store$.get(cur);
     if (v) {
-      body.innerHTML = tableHtml(v.groups, favs);
+      body.innerHTML = tableHtml(v.groups.map((g) => ({ ...g, rows: g.rows.map((r) => ({ ...r, lg: /^[a-z]{3}\.1$/.test(cur) ? cur : '' })) })), favs);
       upd.textContent = errs.has(cur) ? `Güncellenemedi · kayıtlı veri (${fmtClock(v.at)})` : `Son güncelleme ${fmtClock(v.at)}`;
     } else if (pending.has(cur)) {
       body.innerHTML = '<div class="empty"><p>Puan durumu yükleniyor…</p></div>';
@@ -63,6 +113,8 @@ export function openStandings(env) {
       body.innerHTML = `<div class="empty"><h3>Puan durumu alınamadı</h3><p>${esc((e && e.message) || 'Bu lig için tablo bulunamadı.')}</p>${e && e.detail ? `<p class="hint sp-detail">${esc(e.detail)}</p>` : ''}<button class="btn" id="st-retry">Yeniden dene</button></div>`;
       upd.textContent = '';
     }
+    body.scrollTop = top;
+    restoreFocus(keep);
   }
 
   async function persist() {
@@ -89,17 +141,30 @@ export function openStandings(env) {
       } finally {
         pending.delete(id);
       }
-      if (id === cur) draw();
+      if (id === cur || onlyFav) draw();
     })();
     pending.set(id, p);
-    if (id === cur) draw();
+    if (id === cur || onlyFav) draw();
     return p;
   }
 
   root.addEventListener('click', (e) => {
+    const r = e.target.closest('.st-r');
+    if (r) {
+      if (env.toggleTeam) env.toggleTeam({ name: r.dataset.n, label: r.dataset.l }, r.dataset.g || undefined);
+      draw(); // ★ ve takip edilenler görünümü güncellenir; odak aynı satırda kalır
+      return;
+    }
+    if (e.target.closest('[data-fav]')) {
+      onlyFav = !onlyFav;
+      draw();
+      if (onlyFav) for (const l of TABLE_LEAGUES) ensure(l.id); // takip edilen takım hangi ligdeyse bulunsun
+      return;
+    }
     const l = e.target.closest('[data-lg]');
     if (l) {
       cur = l.dataset.lg;
+      onlyFav = false;
       draw();
       const n = q(`#st-lgs [data-lg="${cur}"]`);
       if (n && n.focus) n.focus({ preventScroll: true });

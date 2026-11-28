@@ -327,9 +327,9 @@ export function openSports(env) {
   }
 
   // Takımı takip eder / bırakır; döner: takip ediliyor mu
-  function toggleTeam(side) {
+  function toggleTeam(side, lg) {
     if (!isFavSide(favs, side) && !needPro('teamfollow')) return false; // takibi bırakmak her zaman serbest
-    const r = toggleFav(favs, side);
+    const r = toggleFav(favs, side, lg);
     if (r.full) {
       toast('En fazla 30 takım takip edilebilir', 2600);
       return false;
@@ -1026,7 +1026,7 @@ export function openSports(env) {
   async function openTable() {
     try {
       const mod = await import('./sports-table-ui.js');
-      mod.openStandings({ net, store, toast, base, now, favs: () => favs, leagueId: lg });
+      mod.openStandings({ net, store, toast, base, now, favs: () => favs, toggleTeam, leagueId: lg });
     } catch (e) {
       toast('Puan durumu açılamadı: ' + ((e && e.message) || e), 3000);
     }

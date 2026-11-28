@@ -380,15 +380,19 @@ export function openToday(env) {
     render();
   }
 
-  // ⋮ düğmesi: programın seçenekleri (ayrıntı, hatırlatıcı, kanal süzgeci)
+  // ⋮ düğmesi: programın seçenekleri (ayrıntı, hatırlatıcı, dizi takibi, kanal süzgeci)
   function moreSheet(it, p) {
     const upcoming = !!env.reminders && Number.isFinite(p.s) && p.s > now();
     const remId = upcoming ? planId('rem', it.id, p.s, env.sourceId ? env.sourceId() : 'today') : '';
     const has = upcoming && reminderIds().has(remId);
     const real = !String(it.id).startsWith('film-source:');
+    const sf = env.seriesFollow;
+    const series = real && !!sf && sf.is(p);
+    const following = series && sf.on(p);
     const rows = [
       real ? ['detail', 'info', 'Program ayrıntıları'] : null,
       upcoming ? ['remind', 'bell', has ? 'Hatırlatıcıyı kaldır' : 'Hatırlatıcı kur'] : null,
+      series ? ['follow', following ? 'star-on' : 'star', following ? 'Dizi takibini bırak' : 'Diziyi takip et'] : null,
       real ? ['only', 'tv', 'Yalnız bu kanalı göster'] : null,
       sel.length ? ['all', 'check', 'Tüm kanalları göster'] : null,
     ].filter(Boolean);
@@ -404,6 +408,7 @@ export function openToday(env) {
       const act = b.dataset.act;
       if (act === 'detail') env.programSheet(it, p);
       else if (act === 'remind') toggleReminder(it, p);
+      else if (act === 'follow') sf.toggle(it, p);
       else if (act === 'only') {
         sel = [String(it.id)];
         env.setChannels(sel);

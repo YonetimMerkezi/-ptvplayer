@@ -98,7 +98,7 @@ import { PRODUCT_IDS, PLAY_PRODUCTS, nextEnt, offerText } from './billing.js';
 import { loadMovieAdvisories, translateScreenwiseText, advisoryKey } from './movie-advisories.js';
 import { createWarm, uniqueEntries } from './warm.js';
 import { estimateAdvisories, ESTIMATE_LABEL, ESTIMATE_ICON } from './advisory-estimate.js';
-import { normalizeFollowed, toggleFollowed, isFollowed } from './series-follow.js';
+import { normalizeFollowed, toggleFollowed, isFollowed, followKey, seriesTitle, isSeriesProgram } from './series-follow.js';
 
 const Cap = window.Capacitor;
 const nativePlugin = getNativePlugin('IptvPlayer');
@@ -3218,6 +3218,7 @@ async function openToday() {
       listFor: (it) => S.epg.listFor(it),
       epgBetween: (from, to) => S.epg.between(from, to),
       programSheet: (it, p) => guideProgramSheet(it, p, [it], 0),
+      seriesFollow: { is: isSeriesProgram, on: isSeriesFollowed, toggle: toggleSeriesFollow },
       channels: () => store.pref('today.ch.' + sid(), []),
       setChannels: (ids) => store.setPref('today.ch.' + sid(), ids),
       filmChannels: () => store.pref('today.film.ch.' + sid(), null),
@@ -4593,6 +4594,34 @@ function guideAxisHtml(ws) {
   return out;
 }
 
+// Dizi takibi: programın EPG adından dizi adı çıkarılır ("… 120. Bölüm" → dizi adı), takip bölüme değil diziye bağlanır. Takibi başlatmak Pro ister,
+// bırakmak serbest. Takibe alınınca yeni bölüm hatırlatıcıları hemen kurulur (günlük eşitlemeyi beklemez); bırakılınca o diziye ait planlar kalkar.
+const SERIES_FOLLOW_KEY = 'series.followed.v1';
+const isSeriesFollowed = (p) => isSeriesProgram(p) && isFollowed(store.pref(SERIES_FOLLOW_KEY, []), seriesTitle(p.t));
+async function toggleSeriesFollow(it, p) {
+  const title = seriesTitle(p.t) || 'Dizi';
+  let list = normalizeFollowed(store.pref(SERIES_FOLLOW_KEY, []));
+  const was = isFollowed(list, title);
+  if (!was && !needPro('seriesfollow')) return was; // kilitli: Pro sayfası açıldı, takip değişmedi
+  list = toggleFollowed(list, { title, channel: it.name });
+  store.setPref(SERIES_FOLLOW_KEY, list);
+  if (was) {
+    const key = followKey(title);
+    for (const pl of planApi.list() || []) if (pl && pl.followKey === key) planApi.remove(pl.id);
+    toast('Dizi takibi bırakıldı', 2200);
+    return false;
+  }
+  toast('Dizi takibe alındı · yeni bölümler aranıyor', 2200);
+  try {
+    const m = await import('./follow-sync.js');
+    const n = await m.syncSeries({ net, store, rem: planApi, liveItems: () => visibleAll('live') });
+    toast(n ? `${title} takipte · ${n} yeni bölüm için hatırlatıcı kuruldu` : `${title} takipte · yeni bölüm yayınlanınca bildirim gelir`, 3000);
+  } catch {
+    toast(`${title} takipte · yeni bölümler sonra eşitlenecek`, 2600);
+  }
+  return true;
+}
+
 function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null } = {}) {
   const now = Date.now();
   const state = p.s <= now && p.e > now ? 'Şimdi yayında' : p.e <= now ? 'Yayınlandı' : 'Henüz başlamadı';
@@ -4601,10 +4630,8 @@ function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null
   const canArchive = live && it.archive && S.source.type === 'xtream' && p.s < now && p.archive !== false;
   const canRemind = live && p.s > now;
   const canRecord = live && !!engine.rec && p.e > now;
-  const isSeries = /\b(dizi|series|serial|soap|sitcom|telenovela|tv show)\b/i.test(String(p.c || '')) || /\b(\d{1,3}\s*\.?\s*bolum|sezon|s\d{1,2}\s*e\d{1,3})\b/i.test(String(p.t || ''));
-  const followKey = 'series.followed.v1';
-  let followed = normalizeFollowed(store.pref(followKey, []));
-  const following = isSeries && isFollowed(followed, p.t);
+  const isSeries = isSeriesProgram(p);
+  const following = isSeriesFollowed(p);
   const has = (kind) => hasPlan(readPlans(), planIdOf(kind, it, p));
   const label = (kind) => (kind === 'rem' ? (has('rem') ? 'Hatırlatıcıyı kaldır' : 'Hatırlat') : has('rec') ? 'Kaydı kaldır' : p.s < now ? 'Şimdi kaydet' : 'Kaydet');
   const btn = (a, ic, kind, cls = 'ghost') => `<button class="btn ${cls}" data-a="${a}">${icon(ic)}<span>${label(kind)}</span></button>`;
@@ -4623,12 +4650,10 @@ function guideProgramSheet(it, p, items, index, { noDay = false, onChange = null
       return;
     }
     if (a === 'follow') {
-      followed = toggleFollowed(followed, { title: p.t || 'Dizi', channel: it.name });
-      store.setPref(followKey, followed);
-      const on = isFollowed(followed, p.t);
-      b.setAttribute('aria-pressed', String(on));
-      b.innerHTML = icon(on ? 'star-on' : 'star') + '<span>' + (on ? 'Dizi takibini bırak' : 'Diziyi takip et') + '</span>';
-      toast(on ? 'Dizi takibe alındı · yeni bölüm bildirimi açık' : 'Dizi takibi bırakıldı', 2200);
+      toggleSeriesFollow(it, p).then((on) => {
+        b.setAttribute('aria-pressed', String(on));
+        b.innerHTML = icon(on ? 'star-on' : 'star') + '<span>' + (on ? 'Dizi takibini bırak' : 'Diziyi takip et') + '</span>';
+      });
       return;
     }
     closeThen(sh, () => (a === 'day' ? epgSheet(it) : a === 'arc' ? playArchive(it, p) : playLive(items, index)));

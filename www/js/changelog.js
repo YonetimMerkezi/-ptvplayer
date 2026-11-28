@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 194,
+    title: 'Puan durumunda takım takibi, dizi takibi düzeldi',
+    items: [
+      'Puan durumu: takım satırları kumandayla seçilebiliyor; aşağı/yukarı satır satır geziliyor ve tablo kayıyor',
+      'Takımın satırında Tamam (OK) / dokunuşla takip edebilir ya da bırakabilirsin; takip edilenler ★ ile görünür. Yeni “★ Takip ettiklerim” çipi takip ettiğin takımları tüm liglerden tek listede gösterir',
+      'Dizi takibi artık bölüme değil diziye bağlanıyor (“… 120. Bölüm” → dizi adı): ertesi haftaki bölüm de eşleşiyor ve yeni bölüm hatırlatıcıları takibe alınca hemen kuruluyor',
+      'Türkçe “Bölüm” yazan programlar da dizi olarak tanınıyor; Bugün TV’de ⋮ seçeneklerine “Diziyi takip et” eklendi',
+    ],
+  },
+  {
     id: 193,
     title: 'Ne izleyeceğine karar veremedin mi? yenilendi',
     items: [
