@@ -508,4 +508,9 @@ export const EN_D = [
   ["Hatırlatıcı kur", "Set a reminder"],
   ["Yalnız bu kanalı göster", "Show only this channel"],
   ["Tüm kanalları göster", "Show all channels"],
+  ["Oyuncu", "Actor"],
+  ["Oyuncu veya yönetmen ara…", "Search actors or directors…"],
+  ["Oyuncu veya yönetmen adı yazın", "Type an actor or director name"],
+  ["Oyuncular aranıyor…", "Searching actors…"],
+  ["Oyuncu araması yapılamadı. İnternet bağlantınızı kontrol edin.", "Actor search failed. Check your internet connection."],
 ];

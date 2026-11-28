@@ -86,7 +86,8 @@ import { loadTrNames } from './tr-names.js';
 import { loadPersonPhotos, nameKey } from './people-photos.js';
 import { createHeroTrailer } from './hero-trailer.js';
 import { createHeroStage } from './hero-stage.js';
-import { trailerHtml, trailerLockedHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
+import { trailerHtml, trailerLockedHtml, wireTrailer, peopleHtml, actorHtml, actorLoadingHtml, avatarHtml, titleInfoHtml, releasesRowHtml, releasesPageHtml } from './title-ui.js';
+import { searchActors } from './people-search.js';
 import { LOCAL_SRC, buildPlaylist } from './local-media.js';
 import { createLibrary } from './library-ui.js';
 import { homeContinue, homeRecent, statusText, RECENT_TABS, recentLatest, recentTabPick } from './home-extras.js';
@@ -3778,7 +3779,7 @@ function renderHome(v) {
     radio: `<div id="home-radio">${kidActive() ? '' : radioRowHtml(radioFavs(store), homeRadioItems())}</div>`,
   };
   v.innerHTML = `<div class="home">
-    <div class="home-top"><div class="home-id"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button><button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}${nativePlugin && !kidActive() ? `<button class="icon-btn" id="h-remote" aria-label="TV kumandası">${icon('remote')}</button>` : ''}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
+    <div class="home-top"><div class="home-id"><div class="brand">${icon('tv')}${memOn() && memState().tier === 'pro' ? '<div class="brand-col"><b>Iptv</b><i class="brand-pro">★ PRO</i></div>' : '<b>Iptv</b>'}<span>Player${memOn() ? '' : ' <em>Pro</em>'}</span></div><div class="home-clock"><b id="h-clock"></b><small id="h-date"></small></div></div><div class="home-pill ls-only" id="h-pill" role="button" tabindex="0" aria-label="Kaynak değiştir"><i class="hp-dot"></i><b class="hp-name">${esc(src.name)}</b><em class="hp-state">${linkState().text}</em><i class="hp-sep"></i>${icon('cal')}<span class="hp-date"></span><i class="hp-sep"></i>${icon('clock')}<span class="hp-time"></span></div><button class="icon-btn ls-only" data-refresh aria-label="Listeyi yenile">${icon('refresh')}</button>${nativePlugin && nativePlugin.voiceSearch ? `<button class="icon-btn" id="h-mic" aria-label="Sesle ara">${icon('mic')}</button>` : ''}<button class="icon-btn" id="h-search" aria-label="Ara">${icon('search')}</button>${kidActive() ? '' : `<button class="icon-btn" id="h-bell" aria-label="Planlananlar">${icon('bell')}${readPlans().length ? '<i class="bell-dot"></i>' : ''}</button>`}${nativePlugin && !kidActive() ? `<button class="icon-btn" id="h-remote" aria-label="TV kumandası">${icon('remote')}</button>` : ''}<button class="icon-btn" id="h-set" aria-label="Ayarlar">${icon('gear')}</button></div>
     <div class="home-sourcebar"><span class="home-source-indicator"></span><span class="home-source-name">${esc(src.name)}</span><span class="home-source-state">${linkState().text}</span>${kidActive() ? '' : `<button class="icon-btn ps-only" id="h-add" aria-label="Kaynak ekle">${icon('plus')}</button><button class="icon-btn ps-only" id="h-swap" aria-label="Kaynak değiştir">${icon('swap')}</button>`}<button data-refresh aria-label="Listeyi yenile">${icon('refresh')} Yenile</button></div>
     ${normalizeOrder(store.pref('set.homeOrder', [])).map((id) => sections[id] || '').join('')}
     <div class="home-status">${icon('check')}<span><b>Bağlantı ve liste durumu</b><small>${esc(src.name)} · ${esc(status)}</small></span></div>
@@ -3791,6 +3792,7 @@ function renderHome(v) {
       e.stopPropagation();
       return refreshCatalog();
     }
+    if (e.target.closest('#h-mic')) return globalSearch({ voice: true });
     if (e.target.closest('#h-search')) return globalSearch();
     if (e.target.closest('#h-remote')) return needPro('cast') ? castUi.remoteEntry() : undefined; // telefonda TV kumandası, TV'de eşleştirme kodu
     const rc = e.target.closest('[data-rid]');
@@ -5143,7 +5145,7 @@ function guidePage() {
 
 // ------------------------------------------------------------------ genel arama (ana ekran)
 
-function globalSearch() {
+function globalSearch({ voice = false } = {}) {
   const KINDS = [['live', 'Canlı TV'], ['movie', 'Filmler'], ['series', 'Diziler']];
   const SHOW_ALL = 40; // “Tümü” görünümünde her türden en çok bu kadar sonuç
   const SHOW_ONE = 300; // tek tür seçilince
@@ -5152,7 +5154,7 @@ function globalSearch() {
   openPage({
     title: 'Ara',
     cls: 'gs-pg',
-    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search">' + (nativePlugin && nativePlugin.voiceSearch ? `<button class="icon-btn" id="gs-mic" aria-label="Sesle ara">${icon('mic')}</button>` : '') + '</div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button></div>' + (store.sources().length > 1 ? '<div class="seg" id="gs-scope"><button data-s="one" class="on">Bu kaynak</button><button data-s="all">Tüm kaynaklar</button></div>' : '') + '<div id="gs-res"></div>',
+    html: '<div class="gs-q"><input id="gs-q" type="search" placeholder="Kanal, film veya dizi ara…" autocomplete="off" enterkeyhint="search">' + (nativePlugin && nativePlugin.voiceSearch ? `<button class="icon-btn" id="gs-mic" aria-label="Sesle ara">${icon('mic')}</button>` : '') + '</div><div class="seg" id="gs-kind"><button data-k="all" class="on">Tümü</button><button data-k="live">Canlı</button><button data-k="movie">Film</button><button data-k="series">Dizi</button><button data-k="person">Oyuncu' + (actorsLocked() ? '<em class="set-pro">PRO</em>' : '') + '</button></div>' + (store.sources().length > 1 ? '<div class="seg" id="gs-scope"><button data-s="one" class="on">Bu kaynak</button><button data-s="all">Tüm kaynaklar</button></div>' : '') + '<div id="gs-res"></div>',
     mount: (body) => {
       const q = $('#gs-q', body);
       const res = $('#gs-res', body);
@@ -5201,7 +5203,55 @@ function globalSearch() {
         if (scope === 'all') for (const src of store.sources()) if (src.id !== sid() && cats.has(src.id)) list.push({ src, cat: cats.get(src.id), visible: visibleIn(src) });
         return list;
       };
+      // Oyuncu sekmesi: adı yazılan oyuncu/yönetmenler (Wikidata) fotoğraflarıyla listelenir; seçilince oyuncu sayfası (yapımları) açılır.
+      const ppl = { q: '', list: [], photos: new Map(), busy: false, err: false, seq: 0, timer: 0 };
+      const pplRows = () => ppl.list.map((p) => `<button class="list-item gs-ppl" data-person="${esc(p.name)}">${avatarHtml(p.name, ppl.photos.get(nameKey(p.name)) || '')}<span class="t">${esc(p.name)}<small>${esc(p.desc)}</small></span></button>`).join('');
+      const pplPhotos = () => {
+        for (const b of $$('[data-person]', res)) {
+          const u = ppl.photos.get(nameKey(b.dataset.person));
+          const av = $('.pp-av', b);
+          if (u && av && !$('img', av)) av.outerHTML = avatarHtml(b.dataset.person, u); // yerinde: odak satırda kalır
+        }
+      };
+      const drawPeople = () => {
+        const t = q.value.trim();
+        if (t.length < 2) {
+          res.innerHTML = '<div class="empty">Oyuncu veya yönetmen adı yazın</div>';
+          return;
+        }
+        if (ppl.q === t && !ppl.busy) {
+          res.innerHTML = ppl.err ? '<div class="empty">Oyuncu araması yapılamadı. İnternet bağlantınızı kontrol edin.</div>' : ppl.list.length ? pplRows() : '<div class="empty">Sonuç yok</div>';
+          return;
+        }
+        res.innerHTML = '<div class="empty">Oyuncular aranıyor…</div>';
+        clearTimeout(ppl.timer);
+        const my = ++ppl.seq;
+        ppl.timer = setTimeout(async () => {
+          ppl.busy = true;
+          try {
+            ppl.list = await searchActors({ net, cache: store.cache, query: t });
+            ppl.err = false;
+          } catch {
+            ppl.list = [];
+            ppl.err = true;
+          }
+          if (my !== ppl.seq || !body.isConnected) return;
+          ppl.q = t;
+          ppl.busy = false;
+          if (kind === 'person') drawPeople();
+          if (!ppl.err && ppl.list.length) {
+            loadPersonPhotos({ net, cache: store.cache, names: ppl.list.map((p) => p.name) })
+              .then((m) => {
+                if (my !== ppl.seq) return;
+                for (const [k, u] of m) ppl.photos.set(k, u);
+                if (kind === 'person' && ppl.q === t) pplPhotos();
+              })
+              .catch(() => {});
+          }
+        }, 350);
+      };
       const draw = () => {
+        if (kind === 'person') return drawPeople();
         const t = q.value.trim();
         if (!t) {
           res.innerHTML = `<div class="empty">${scope === 'all' ? 'Kayıtlı tüm kaynaklarda' : 'Tüm canlı kanallar, filmler ve dizilerde'} aramak için yazın</div>`;
@@ -5229,6 +5279,7 @@ function globalSearch() {
         if (!b) return;
         kind = b.dataset.k;
         $$('#gs-kind button', body).forEach((x) => x.classList.toggle('on', x === b));
+        q.placeholder = kind === 'person' ? 'Oyuncu veya yönetmen ara…' : 'Kanal, film veya dizi ara…';
         draw();
       });
       const sc = $('#gs-scope', body);
@@ -5265,6 +5316,8 @@ function globalSearch() {
         return openSeries(it);
       };
       res.addEventListener('click', (e) => {
+        const pb = e.target.closest('[data-person]');
+        if (pb) return openActor(pb.dataset.person, '', ppl.photos.get(nameKey(pb.dataset.person)) || '');
         const more = e.target.closest('[data-more]');
         if (more) {
           kind = more.dataset.more;
@@ -5275,7 +5328,7 @@ function globalSearch() {
         if (b) open(b.dataset.k, Number(b.dataset.i));
       });
       draw();
-      setTimeout(() => q.focus(), 60);
+      setTimeout(() => (voice && gmic ? voiceInto(q) : q.focus()), 60); // ana ekrandaki mikrofon düğmesi: konuşma tanıyıcı hemen açılır
     },
   });
 }

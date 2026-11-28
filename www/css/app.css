@@ -96,7 +96,7 @@ html[data-multi] #tabs [data-tab=sources] { --tc: var(--p0); }
 html[data-multi] #tabs button .ic { color: var(--tc, var(--accent)); opacity: 0.8; }
 html[data-multi] #tabs button.on .ic { opacity: 1; }
 html[data-multi] #tabs button.on { color: var(--tc, var(--accent)); }
-html[data-multi] #btn-search, html[data-multi] #h-search { color: var(--p5); }
+html[data-multi] #btn-search, html[data-multi] #h-search, html[data-multi] #h-mic { color: var(--p5); }
 html[data-multi] #btn-refresh { color: var(--p1); }
 html[data-multi] #crumb-sort { color: var(--p7); }
 html[data-multi] #q-mic { color: var(--p6); }
@@ -1109,6 +1109,8 @@ html.tv .pg { padding-top: calc(var(--safe-t) + 14px); padding-bottom: calc(var(
 .pp-card:focus-visible, .ac-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pp-av { flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; font-size: 1.125rem; font-weight: 800; background: hsl(var(--h) 38% 22%); color: hsl(var(--h) 85% 84%); border: 2px solid hsl(var(--h) 55% 46%); }
 .pp-av.lg { width: 72px; height: 72px; font-size: 1.5rem; }
+.gs-ppl .pp-av { width: 52px; height: 52px; } /* Arama > Oyuncu: satırda yuvarlak oyuncu fotoğrafı */
+.seg button .set-pro { margin-left: 6px; }
 .pp-av { position: relative; overflow: hidden; }
 .pp-av i { font-style: normal; }
 .pp-av img { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; background: hsl(var(--h) 38% 22%); }
@@ -2558,7 +2560,7 @@ html.tv [data-scroll] {
   .home-pill span { font-size: 1.05rem; }
   .home-top .icon-btn { width: 52px; height: 52px; border-radius: 26px; }
   .home-top .icon-btn .ic { width: 30px; height: 30px; }
-  .home-top #h-search { color: #22d3ee; }
+  .home-top #h-search, .home-top #h-mic { color: #22d3ee; }
   .home-top #h-set { color: var(--muted); }
 
   .home .home-primary { gap: clamp(12px, 2vw, 22px); }
@@ -2619,7 +2621,7 @@ html.tv [data-scroll] {
   .home-id .home-clock small { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; }
   .home-top .icon-btn { width: 40px; height: 40px; }
   .home-top .icon-btn .ic { width: 25px; height: 25px; }
-  .home-top #h-search { color: #22d3ee; }
+  .home-top #h-search, .home-top #h-mic { color: #22d3ee; }
   .home-top #h-bell { color: var(--gold, #fbbf24); }
   .home-top #h-remote { color: var(--accent); }
   .home-top #h-set { color: var(--muted); }

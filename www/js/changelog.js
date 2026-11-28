@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 195,
+    title: 'Oyuncu araması ve ana ekranda sesle arama',
+    items: [
+      'Arama sayfasında yeni Oyuncu sekmesi: oyuncu ya da yönetmen adını yaz, fotoğraflı liste gelir; birini seçince oynadığı yapımlar açılır (listende olanlar Oynat ile)',
+      'Ana ekranın üstünde Sesle ara düğmesi: dokununca arama sayfası açılır ve konuşma tanıyıcı hemen başlar',
+    ],
+  },
+  {
     id: 194,
     title: 'Puan durumunda takım takibi, dizi takibi düzeldi',
     items: [
