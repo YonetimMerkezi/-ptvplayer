@@ -20,7 +20,9 @@ function yapCollator() {
   }
   return { compare: dogal };
 }
-const collator = yapCollator();
+// Intl.Collator kurmak ICU verisini yükler (zayıf cihazda onlarca ms): açılışta değil, ilk sıralamada kurulur.
+let kurulu = null;
+const collator = { compare: (a, b) => (kurulu || (kurulu = yapCollator())).compare(a, b) };
 
 export const yedekKarsilastir = dogal;
 

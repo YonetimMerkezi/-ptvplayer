@@ -2996,7 +2996,7 @@ async function epgSheet(it) {
     const dayList = list.filter((p) => dayKey(p.s) === selected).sort((a, b) => a.s - b.s);
     const tabs = days.map((d) => {
       const date = new Date(d + 'T12:00:00');
-      const label = dayKey(now) === d ? 'Bugün' : date.toLocaleDateString(loc(), { weekday: 'short', day: 'numeric', month: 'short' });
+      const label = dayKey(now) === d ? 'Bugün' : fmtDate(date, { weekday: 'short', day: 'numeric', month: 'short' });
       return `<button class="chip ${selected === d ? 'on' : ''}" data-day="${d}">${esc(label)}</button>`;
     }).join('');
     const plans = readPlans();
@@ -3489,7 +3489,23 @@ function sourceSwitcher() {
 
 // ------------------------------------------------------------------ ana ekran
 
-const fmtDate = (d, o) => d.toLocaleDateString(loc(), o);
+// Tarih biçimleyicisi (Intl.DateTimeFormat) kurması pahalıdır: toLocaleDateString her çağrıda yenisini kurar. Zayıf TV kutusunda saat 20 sn'de bir
+// tazelenirken (ve rehber gün başlıkları çizilirken) takılma yapıyordu; (dil, seçenekler) başına bir kez kurulur.
+const dateFmts = new Map();
+const fmtDate = (d, o) => {
+  const l = loc();
+  const k = l + JSON.stringify(o || {});
+  let f = dateFmts.get(k);
+  if (f === undefined) {
+    try {
+      f = new Intl.DateTimeFormat(l, o);
+    } catch {
+      f = null;
+    }
+    dateFmts.set(k, f);
+  }
+  return f ? f.format(d) : d.toLocaleDateString(l, o);
+};
 
 // Ana ekrandaki bağlantı durumu: sabit "Bağlı" yerine gerçek durum (çevrimdışı, son yenileme hatası, boş liste).
 function linkState() {
@@ -4468,7 +4484,7 @@ function guideAxisHtml(ws) {
   for (let k = 0; k * GUIDE_STEP < GUIDE_SPAN; k++) {
     const t = ws + k * GUIDE_STEP * 60000;
     const hour = new Date(t).getMinutes() === 0;
-    const day = hour && new Date(t).getHours() === 0 ? new Date(t).toLocaleDateString(loc(), { weekday: 'short' }) + ' ' : '';
+    const day = hour && new Date(t).getHours() === 0 ? fmtDate(new Date(t), { weekday: 'short' }) + ' ' : '';
     out += `<span class="tl-tick${hour ? '' : ' half'}" style="--m:${k * GUIDE_STEP}">${hour ? esc(day + fmtClock(t)) : ''}</span>`;
   }
   return out;
@@ -4596,8 +4612,8 @@ function guidePage() {
         for (let d = dayBase; d < Math.min(GUIDE_DAYS, dayBase + GUIDE_DAY_SHOW); d++) {
           const t = new Date(base);
           t.setDate(t.getDate() + d);
-          const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString(loc(), { weekday: 'short' });
-          const date = t.toLocaleDateString(loc(), { day: 'numeric', month: 'long' }) + (d === 0 ? ' ' + t.toLocaleDateString(loc(), { weekday: 'short' }) : '');
+          const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : fmtDate(t, { weekday: 'short' });
+          const date = fmtDate(t, { day: 'numeric', month: 'long' }) + (d === 0 ? ' ' + fmtDate(t, { weekday: 'short' }) : '');
           cells.push(`<button class="gd-day${d === dayOff ? ' on' : ''}" data-day="${d}"><b>${esc(name)}</b><small>${esc(date)}</small></button>`);
         }
         $('#guide-days', body).innerHTML = `<button class="gd-arr" data-days="-1" aria-label="Önceki günler"${dayBase <= 0 ? ' disabled' : ''}>${icon('chev-l')}</button>${cells.join('')}<button class="gd-arr" data-days="1" aria-label="Sonraki günler"${dayBase + GUIDE_DAY_SHOW >= GUIDE_DAYS ? ' disabled' : ''}>${icon('chev-r')}</button>`;
@@ -4689,7 +4705,7 @@ function guidePage() {
       const dayWord = (ts) => {
         const d0 = new Date().setHours(0, 0, 0, 0);
         const diff = Math.round((new Date(ts).setHours(0, 0, 0, 0) - d0) / 86400000);
-        return diff === 0 ? 'Bugün' : diff === 1 ? 'Yarın' : diff === -1 ? 'Dün' : new Date(ts).toLocaleDateString(loc(), { weekday: 'short', day: 'numeric', month: 'short' });
+        return diff === 0 ? 'Bugün' : diff === 1 ? 'Yarın' : diff === -1 ? 'Dün' : fmtDate(new Date(ts), { weekday: 'short', day: 'numeric', month: 'short' });
       };
       const drawPrograms = (term) => {
         progHits = [];
@@ -4913,8 +4929,8 @@ function guidePage() {
           html: Array.from({ length: GUIDE_DAYS }, (_, d) => {
             const t = new Date(base);
             t.setDate(t.getDate() + d);
-            const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : t.toLocaleDateString(loc(), { weekday: 'long' });
-            return `<button class="list-item" data-pickday="${d}"><span class="t">${esc(name)}<small>${esc(t.toLocaleDateString(loc(), { day: 'numeric', month: 'long', weekday: 'long' }))}</small></span>${d === dayOff ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`;
+            const name = d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : fmtDate(t, { weekday: 'long' });
+            return `<button class="list-item" data-pickday="${d}"><span class="t">${esc(name)}<small>${esc(fmtDate(t, { day: 'numeric', month: 'long', weekday: 'long' }))}</small></span>${d === dayOff ? icon('check').replace('class="ic"', 'class="ic ok"') : ''}</button>`;
           }).join(''),
         });
         sh.el.addEventListener('click', (e) => {
