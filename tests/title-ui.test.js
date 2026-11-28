@@ -332,7 +332,8 @@ test('vizyondaki filmler: satır 12 kartla sınırlı, listedekilere "Listende" 
   assert.equal((h.match(/class="card nw"/g) || []).length, 12);
   assert.equal((h.match(/nw-tag/g) || []).length, 1);
   assert.match(h, /data-nid="tt2"[^>]*>.*?Listende<\/span>/);
-  assert.match(h, /data-go="new">Tümünü gör/);
+  assert.match(h, /class="sh-more"[^>]*data-go="new"[\s\S]*Tümünü gör<\/b><\/div><\/div><\/section>$/, '“Tümünü gör” kartı satırın SONUNDA (başlıkta değil)');
+  assert.doesNotMatch(h.slice(0, h.indexOf('data-hrow')), /Tümünü gör/, 'başlıkta düğme yok');
   assert.match(h, /Film &lt;0&gt;/, 'ad kaçışlı');
   assert.equal(releasesRowHtml([]), '');
   assert.equal(releasesRowHtml(null), '');

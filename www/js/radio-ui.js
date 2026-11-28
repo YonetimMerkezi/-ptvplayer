@@ -33,7 +33,8 @@ export function radioRowHtml(favs, items) {
   const list = homeRadio(favs, items);
   if (!list.length) return '';
   const cards = list.map((st) => `<div class="card rd-card" role="button" tabindex="0" data-rid="${esc(st.id)}"><div class="poster">${stationLogo(st)}</div><div class="cap">${esc(st.name)}</div></div>`).join('');
-  return `<section class="home-row"><div class="home-row-h"><b>📻 Radyo &amp; Müzik</b><button data-go="radio">Tümünü gör</button></div><div class="home-row-s">${cards}</div></section>`;
+  const more = `<div class="sh-more" role="button" tabindex="0" data-go="radio"><span class="sh-more-i">${icon('chev-r')}</span><b>Tümünü gör</b></div>`;
+  return `<section class="home-row" data-reveal><div class="home-row-h"><b>📻 Radyo &amp; Müzik</b></div><div class="home-row-s rd-s" data-hrow>${cards}${more}</div></section>`;
 }
 
 // env: { store, country(), setCountry(cc), load(cc, force) → { items, at, stale }, play(station, list), toast(msg), playingId?(), listStations() → listedeki radyolar }

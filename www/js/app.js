@@ -1230,6 +1230,8 @@ function paintHero(it, info, final) {
   heroTrailer.focus(it); // TV: odakta bir süre bekleyince fragman başlar
   const m = heroModel(it, info);
   box.innerHTML =
+    // TV: fragman oynarken en üstte görünen bilgi satırı (CSS yalnız html.hero-live iken gösterir)
+    `<div class="hero-note"><i class="hero-dot" aria-hidden="true"></i><b>Fragman oynuyor</b><span class="hero-note-s">${heroStage.muted ? 'ses kapalı' : 'ses açık'}</span></div>` +
     `<h2 class="hero-t">${esc(m.title)}</h2>` +
     `<div class="hero-m">${m.rating ? `<b class="hero-r">★ ${esc(m.rating)}</b>` : ''}${m.meta.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` +
     (m.cast ? `<p class="hero-c"><b>Oyuncular</b> ${esc(m.cast)}</p>` : '') +
@@ -1429,6 +1431,8 @@ function toggleHeroSound() {
     b.setAttribute('aria-label', muted ? 'Sesi aç' : 'Sesi kapat');
     b.innerHTML = icon(muted ? 'mute' : 'audio') + `<span>${muted ? 'Sesi aç' : 'Sesi kapat'}</span>`;
   }
+  const ns = $('#hero .hero-note-s');
+  if (ns) ns.textContent = muted ? 'ses kapalı' : 'ses açık';
 }
 const heroTrailer = createHeroTrailer({
   enabled: () => heroTrailerOn(),
@@ -3604,7 +3608,43 @@ function homePicksHtml() {
       return card(it, i, `data-hk="movie" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub: ['Film', ct.year].filter(Boolean).join(' · ') });
     })
     .join('');
-  return `<section class="home-row hp-picks"><div class="home-row-h"><b>🤔 Ne izleyeceğine karar veremedin mi?</b><button data-pick-again aria-label="Başka filmler öner">Başka öner</button></div><div class="chips hp-chips" role="group" aria-label="Tür">${chip(SURPRISE_ID, 'Şaşırt beni', '🎲')}${chips.map((c) => chip(c.id, c.label, c.icon)).join('')}</div>${cards ? `<div class="home-row-s">${cards}</div>` : `<p class="hint">Bu türde film yok.</p>`}</section>`;
+  // "Şaşırt beni" tek film seçer: solda afiş, sağda film bilgisi (özet, puan, içerik uyarıları) yan yana, yatay ekrana tam sığar; diğer türlerde üç afişlik sıra.
+  const one = homePick.genre === SURPRISE_ID && list.length === 1 ? list[0] : null;
+  const body = one ? surpriseHtml(one) : cards ? `<div class="home-row-s" data-hrow>${cards}</div>` : `<p class="hint">Bu türde film yok.</p>`;
+  return `<section class="home-row hp-picks" data-reveal><div class="home-row-h"><b>🤔 Ne izleyeceğine karar veremedin mi?</b><button data-pick-again aria-label="Başka filmler öner">Başka öner</button></div><div class="chips hp-chips" role="group" aria-label="Tür" data-hrow>${chip(SURPRISE_ID, 'Şaşırt beni', '🎲')}${chips.map((c) => chip(c.id, c.label, c.icon)).join('')}</div>${body}</section>`;
+}
+function surpriseHtml(it) {
+  const ct = cleanTitle(it.name, it.year);
+  const poster = card(it, 0, `data-hk="movie" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub: ['Film', ct.year].filter(Boolean).join(' · ') });
+  return `<div class="hp-sur" data-sur="${esc(it.id)}"><div class="home-row-s hp-sur-p" data-hrow>${poster}</div><div class="hp-sur-d"><b class="hp-sur-t">${esc(ct.title || it.name)}</b><div class="hp-sur-m" data-sur-meta>${chipsOf([ct.year, it.group, starsOf(it.rating)])}</div><p class="hp-sur-plot" data-sur-plot>${esc(it.plot || 'Film özeti yükleniyor…')}</p><div class="mv-advisories hp-sur-adv" id="mv-advisories" hidden></div><div class="hp-sur-b" data-hrow><button class="btn sm" data-sur-play="${esc(it.id)}">${icon('play')}Oynat</button><button class="btn sm ghost" data-hk="movie" data-hid="${esc(it.id)}">Ayrıntılar</button></div></div></div>`;
+}
+// Seçilen filmin özeti, puanı ve içerik uyarıları sağlayıcıdan / katalogdan gelir (film ayrıntı sayfasıyla aynı yol); bölüm yeniden çizilirse eski yanıt yok sayılır.
+function fillSurprise() {
+  const host = $('#home-picks .hp-sur');
+  if (!host || !S.source) return;
+  const it = S.idx.movies.get(host.dataset.sur);
+  if (!it) return;
+  const live = () => host.isConnected && host.dataset.sur === it.id;
+  loadVodInfo(S.source, net, it)
+    .then((info) => {
+      if (!live()) return;
+      const plot = $('[data-sur-plot]', host);
+      if (plot) plot.textContent = (info && info.plot) || it.plot || 'Bu kaynak film özeti sağlamıyor.';
+      const ct = cleanTitle(it.name, it.year);
+      const meta = $('[data-sur-meta]', host);
+      if (meta && info) meta.innerHTML = chipsOf([yearOf(info.year) || ct.year, info.genre || it.group, info.durationSec && `${Math.round(info.durationSec / 60)} dk`, starsOf(info.rating || it.rating)]);
+      return resolveAdvisoryMeta(it, info).then(({ meta: m, advisoryMeta }) => {
+        if (!live()) return;
+        const advCtx = { genres: (info && info.genre) || it.genre || '', plot: (info && info.plot) || it.plot || '' };
+        const paint = (failure) => paintMovieAdvisories(host, advisoryMeta, failure, 'movie', advCtx);
+        return loadMovieAdvisories(net, store, advisoryMeta, it).then(() => paint(m ? '' : 'Katalog eşleşmesi bulunamadı; başlık üzerinden içerik uyarıları arandı.'), () => paint('İçerik uyarıları alınamadı.'));
+      });
+    })
+    .catch(() => {
+      if (!live()) return;
+      const plot = $('[data-sur-plot]', host);
+      if (plot && !it.plot) plot.textContent = 'Özet alınamadı.';
+    });
 }
 function fillHomePicks() {
   const el = $('#home-picks');
@@ -3625,6 +3665,7 @@ function fillHomePicks() {
     if (t) t.focus({ preventScroll: true });
   }
   if (page) page.scrollTop = top;
+  fillSurprise();
 }
 
 // Ana ekran satırları: kaldığın yerden devam (film + dizi), son izlenenler (sekmeli) ve en son eklenen filmler; boşsa satır çıkmaz.
@@ -3637,7 +3678,9 @@ const rowCards = (list) =>
       return card(it, i, `data-hk="${kind}" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub });
     })
     .join('');
-const homeRow = (title, list, all) => (list.length ? `<section class="home-row"><div class="home-row-h"><b>${title}</b>${all ? `<button data-go="${all}">Tümünü gör</button>` : ''}</div><div class="home-row-s">${rowCards(list)}</div></section>` : '');
+// Satırın sonundaki "Tümünü gör" kartı: üstte bağlantı yok; sağ/sol yalnız satırda gezer (data-hrow), odak satıra gelince başlığı da görünür (data-reveal)
+const moreCard = (go) => `<div class="sh-more" role="button" tabindex="0" data-go="${go}"><span class="sh-more-i">${icon('chev-r')}</span><b>Tümünü gör</b></div>`;
+const homeRow = (title, list, all) => (list.length ? `<section class="home-row" data-reveal><div class="home-row-h"><b>${title}</b></div><div class="home-row-s" data-hrow>${rowCards(list)}${all ? moreCard(all) : ''}</div></section>` : '');
 // Son izlenenler: canlı kanal, film ve dizi tek bölümde sekmeli (her sekmede en yeni önce); boş sekme çıkmaz
 const lastSeen = (kind) => recentItems(kind).slice(0, 12).map((it) => ({ kind, it }));
 const homeRecentState = { tab: '' }; // kullanıcının seçtiği sekme; seçmediyse en son izlemenin olduğu sekme açılır
@@ -3649,7 +3692,7 @@ function homeRecentHtml() {
   if (!on) return '';
   const cur = tabs.find((t) => t.kind === on);
   const chips = tabs.map((t) => `<button class="chip${t.kind === on ? ' on' : ''}" role="tab" aria-selected="${t.kind === on}" data-rtab="${t.kind}"><span aria-hidden="true">${t.icon}</span> ${t.label}</button>`).join('');
-  return `<section class="home-row hp-recent"><div class="home-row-h"><b>🕘 Son izlenenler</b><button data-go="${cur.go}">Tümünü gör</button></div><div class="chips hp-chips" role="tablist" aria-label="Son izlenenler">${chips}</div><div class="home-row-s" role="tabpanel">${rowCards(lists[on])}</div></section>`;
+  return `<section class="home-row hp-recent" data-reveal><div class="home-row-h"><b>🕘 Son izlenenler</b></div><div class="chips hp-chips" role="tablist" aria-label="Son izlenenler" data-hrow>${chips}</div><div class="home-row-s" role="tabpanel" data-hrow>${rowCards(lists[on])}${moreCard(cur.go)}</div></section>`;
 }
 function fillHomeRecent() {
   const el = $('#home-recent');
@@ -3751,6 +3794,11 @@ function renderHome(v) {
       const film = newHome && newHome.films.find((f) => (f.id || f.imdbId) === nc.dataset.nid);
       if (film) return openTitleInfo(film);
     }
+    const sp = e.target.closest('[data-sur-play]');
+    if (sp) {
+      const it = S.idx.movies.get(sp.dataset.surPlay);
+      if (it) return startPlay(it, { ctx: movieCtx(it) });
+    }
     const hc = e.target.closest('[data-hid]');
     if (hc) {
       const it = S.idx[CAT_KEY[hc.dataset.hk]].get(hc.dataset.hid);
@@ -3763,6 +3811,7 @@ function renderHome(v) {
     if (t) goTo(t.dataset.go);
   };
   tickClock();
+  fillSurprise();
 }
 
 // Ana ekran kutuları ve kumanda renkli tuşları aynı yoldan açar.
@@ -3962,7 +4011,7 @@ function renderSplit(v) {
   S.catFilter = '';
   S.catEdit = false;
   // Canlı TV her açılışta kategorilerle başlar (S.group.live null); kategoriye girince kanallar sol bölmede listelenir.
-  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button><button class="icon-btn" id="sp-sort" aria-label="Sırala" hidden>${icon('sort')}</button></div><div class="sp-search"><input id="sp-q" type="search" placeholder="Kanal ara…" aria-label="Kanal ara" autocomplete="off" enterkeyhint="search"></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
+  v.innerHTML = `<div class="split" id="split"><section class="sp-left"><div class="sp-cat"><button class="icon-btn" id="sp-prev" aria-label="Önceki kategori">${icon('chev-l')}</button><button class="sp-name" id="sp-name"><span id="sp-name-t"></span><small id="sp-name-n"></small></button><button class="icon-btn" id="sp-next" aria-label="Sonraki kategori">${icon('chev-r')}</button><button class="icon-btn" id="sp-sort" aria-label="Sırala" hidden>${icon('sort')}</button></div><div class="sp-search"><input id="sp-q" type="search" placeholder="Kanal ara…" aria-label="Kanal ara" autocomplete="off" enterkeyhint="search"></div>${catbarHtml()}<div id="list"></div><div id="empty" hidden></div></section><section class="sp-right"><div class="sp-fs" id="sp-fs" aria-live="polite"></div><div class="sp-slot" id="sp-slot" role="button" tabindex="0" aria-label="Tam ekran"><div class="sp-status" id="sp-status"></div></div><div class="sp-info" id="sp-info"></div><div class="sp-epg" id="sp-epg"></div></section></div>`;
   $('#sp-prev').addEventListener('click', () => cycleCat(-1));
   $('#sp-next').addEventListener('click', () => cycleCat(1));
   $('#sp-sort').addEventListener('click', () => sortSheet('live'));
@@ -4081,9 +4130,24 @@ function setPv(it) {
   renderSpInfo();
 }
 
+// Önizleme penceresinin üstündeki bilgi satırı: kumandada tam ekran için Tamam (OK), dokunmatikte pencereye dokunma
+function renderSpFs() {
+  const el = $('#sp-fs');
+  if (!el) return;
+  const on = pui.isPreviewing();
+  const k = on ? 'Tam ekran için seçili kanalda Tamam (OK) tuşuna bas' : 'Önizleme için bir kanalda Tamam (OK) tuşuna bas';
+  const t = on ? 'Tam ekran için pencereye dokunun' : 'Önizleme için bir kanala dokunun';
+  const html = `<span class="k">${icon('expand')}${k}</span><span class="t">${t}</span>`;
+  if (el.dataset.on !== String(on)) {
+    el.dataset.on = String(on);
+    el.innerHTML = html;
+  }
+}
+
 function setSpStatus(st) {
   const el = $('#sp-status');
   if (!el) return;
+  renderSpFs();
   if (!pui.isPreviewing()) el.innerHTML = S.pv ? '' : '<span class="sp-hint">Önizleme için bir kanala dokunun</span>';
   else if (st.status === 'loading' || st.status === 'buffering') el.innerHTML = '<div><div class="spinner"></div>' + (st.reconnect ? `<div class="rc">Yeniden bağlanılıyor… (${st.reconnect})</div>` : '') + '</div>';
   else if (st.status === 'error') el.innerHTML = `<span>${esc(st.error)}<br><small>Tam ekran için dokunun</small></span>`;
@@ -4094,6 +4158,7 @@ function renderSpInfo() {
   const info = $('#sp-info');
   const epgEl = $('#sp-epg');
   if (!info || !epgEl) return;
+  renderSpFs();
   const it = S.pv;
   if (!it) {
     info.innerHTML = '<span class="sp-badge">CANLI TV</span><span class="sp-hint">Bir kanala dokunun</span>';

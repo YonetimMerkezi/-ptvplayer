@@ -90,7 +90,8 @@ test('bağlantı: ana ekranda kanal/film/dizi son izlenenleri tek sekmeli bölü
   assert.doesNotMatch(app, /Son izlenen (kanallar|filmler|diziler)/, 'ayrı satırlar kalmadı');
   assert.match(app, /<div id="home-recent">\$\{homeRecentHtml\(\)\}<\/div>/);
   assert.match(app, /role="tab" aria-selected="\$\{t\.kind === on\}" data-rtab="\$\{t\.kind\}"/);
-  assert.match(app, /<button data-go="\$\{cur\.go\}">Tümünü gör<\/button>/, '“Tümünü gör” açık sekmeyi izler');
+  assert.match(app, /\$\{rowCards\(lists\[on\]\)\}\$\{moreCard\(cur\.go\)\}/, '“Tümünü gör” kartı açık sekmeyi izler ve satırın sonundadır');
+  assert.match(app, /const moreCard = \(go\) => `<div class="sh-more" role="button" tabindex="0" data-go="\$\{go\}">/);
   assert.match(app, /const rt = e\.target\.closest\('\[data-rtab\]'\);\s*if \(rt\) \{\s*homeRecentState\.tab = rt\.dataset\.rtab;\s*return fillHomeRecent\(\);/);
   assert.match(app, /recentTabPick\(counts, recentLatest\(store\.recents\(sid\(\)\), store\.progressAll\(sid\(\)\)\), homeRecentState\.tab\)/);
 });

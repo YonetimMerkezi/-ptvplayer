@@ -243,10 +243,28 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     }
   }
 
+  // Odak [data-reveal] bölümünün (başlık + kartlar) içindeyse, bölüm tam görünmüyorsa üst kenarı kaydırma alanının başına hizalanır:
+  // başlık hep görünür, altındaki bölümün başı da ekranda kalır. Bölüm tam görünüyorsa sayfa kıpırdamaz.
+  function revealSection(el, scope) {
+    const sec = el.closest('[data-reveal]');
+    if (!sec || !scope.contains(sec)) return;
+    const sc = scrollerOf(sec, scope);
+    if (!sc) return;
+    const c = sc.getBoundingClientRect();
+    const s = sec.getBoundingClientRect();
+    const pad = 8;
+    const b = el.getBoundingClientRect();
+    const whole = s.top >= c.top + pad - 1 && s.bottom <= c.bottom - pad + 1;
+    const cardIn = b.top >= c.top + pad && b.bottom <= c.bottom - pad;
+    if (whole && cardIn) return;
+    sc.scrollTop += s.top - (c.top + pad);
+  }
+
   function focusEl(el, scope) {
     el.focus({ preventScroll: true });
     if (scope) {
       revealInScrollParents(el, scope);
+      revealSection(el, scope);
       memory.set(scope, el);
     }
   }
@@ -278,6 +296,15 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
       const i = pickNext(curRect, rects, dir);
       return i < 0 ? null : arr[i];
     };
+    // [data-hrow] (ana ekran şeritleri, çip sıraları): sağ/sol yalnız o satırda gezer; satırın sonunda alt/üst satıra geçmez, odak yerinde kalır.
+    if (dir === 'left' || dir === 'right') {
+      const hrow = cur.closest('[data-hrow]');
+      if (hrow && scope.contains(hrow)) {
+        const next = pass(list.filter((e) => e !== cur && !e.contains(cur) && hrow.contains(e)));
+        if (next) focusEl(next, scope);
+        return true;
+      }
+    }
     let target = null;
     if (dir === 'up' || dir === 'down') {
       // Odak bir kaydırma alanının içindeyse ve alan o yöne hâlâ kayabiliyorsa, alanın kendi (şimdilik görünmeyen) öğeleri alan dışındaki
@@ -311,6 +338,9 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     // odak aynı kalır. Böylece film konusu gibi uzun metin kumandayla aşağı okunabilir ve yukarı basınca en üste dönülür.
     if (dir === 'up' || dir === 'down') {
       const sc = scrollerOf(cur, scope);
+      // Alanın dışındaki hedefe (vitrindeki "Fragmanı oynat" düğmesi, başlık) giderken alan yalnızca birkaç piksel kaymışsa (odak halkasını göstermek
+      // için payı kadar), o kayma bir basış harcamasın: alan başa alınır ve odak aynı basışta hedefe geçer.
+      if (sc && dir === 'up' && target && !sc.contains(target) && sc.scrollTop > 0 && sc.scrollTop <= 48) sc.scrollTop = 0;
       if (sc && (!target || !sc.contains(target) || !beyond(rectOf(target), curRect, dir)) && scrollStep(sc, dir)) return true;
     }
     if (!target) return false;

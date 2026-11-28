@@ -13,16 +13,17 @@ export const normalizeRowCap = (v) => {
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // Ekran ölçüsüne göre kutu ve satır ölçüleri. capPx: kutudaki ad alanı yüksekliği.
-// Satır, görünümün ~%80'i kadardır: bir satır tam görünür, altındaki satırın başlığı görünür kalır.
-// Alçak görünümde (960×540 TV'de vitrinin altı) satır alanın tamamını kullanır: kutular okunaklı kalır, alttaki başlık için yer ayrılmaz.
+// Satır, görünümün ~%80'i kadardır: bir satır tam görünür, altındaki satırın başlığı ve afişinin üst ucu görünür kalır (sıranın ne olduğu belli olur).
+// Alçak görünümde (960×540 TV'de vitrinin altı) başlık/boşluk biraz daralır, en küçük kutu 72 px'e iner: satır yine görünümün %80'ini geçmez.
 export const SHELF_LOW_H = 420;
 export function shelfSizes({ viewW, viewH, scale = 1, capPx = 46 }) {
-  const title = Math.round(34 * scale);
-  const pad = Math.round(28 * scale); // şeridin üst+alt iç boşluğu: odak halkası ve büyüme kırpılmasın
+  const low = viewH < SHELF_LOW_H;
+  const title = Math.round((low ? 30 : 34) * scale);
+  const pad = Math.round((low ? 22 : 28) * scale); // şeridin üst+alt iç boşluğu: odak halkası ve büyüme kırpılmasın
   const narrow = viewW < 700; // telefon: ekranda ~3,3 kutu (dördüncüsü yarım görünür, kayacağı belli olur)
   const byWidth = viewW / (narrow ? 3.75 : 8.6);
-  const byHeight = ((viewH < SHELF_LOW_H ? viewH - 2 : viewH * 0.8) - title - pad - capPx) / 1.5;
-  const cw = Math.round(clamp(narrow ? byWidth : Math.min(byWidth, byHeight), 84, 210));
+  const byHeight = (viewH * 0.8 - title - pad - capPx) / 1.5;
+  const cw = Math.round(clamp(narrow ? byWidth : Math.min(byWidth, byHeight), low ? 72 : 84, 210));
   const ch = Math.round(cw * 1.5 + capPx);
   return { cw, ch, title, pad, rowH: title + pad + ch };
 }

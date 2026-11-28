@@ -2,6 +2,18 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 191,
+    title: 'Ana ekran satırları düzenlendi',
+    items: [
+      'Ana ekranda Kaldığın yerden devam et, Son izlenenler, Son eklenen filmler ve diziler de Vizyondakiler gibi aynı boyutta dikey afişlerle; radyo kartları da aynı genişlikte',
+      'Satırın sonunda “Tümünü gör” kartı var; kumandada sağ-sol ok satırdan çıkmıyor, sonda yukarı/aşağı geçmiyor. Bir karta odaklanınca kategori başlığı görünecek şekilde sayfa kayıyor',
+      'Satırlar daha alçak: alttaki satırın ne olduğu görünüyor (kategori rafları dahil)',
+      'Şaşırt beni: seçilen filmin afişi solda, konusu, puanı ve içerik uyarıları sağda; Oynat ve Ayrıntılar düğmeleri',
+      'Canlı TV önizlemesinin üstünde “tam ekran için Tamam (OK)” bilgi satırı',
+      'Vitrinde Fragmanı oynat / Sesi aç düğmeleri artık kesilmiyor ve kumandayla seçilebiliyor; fragman oynarken üstte “Fragman oynuyor” bilgisi',
+    ],
+  },
+  {
     id: 190,
     title: 'Dizi sayfası derlendi, gece modu sesi temizlendi',
     items: [

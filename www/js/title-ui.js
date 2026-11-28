@@ -243,7 +243,8 @@ export const actorLoadingHtml = (name, photo = '') => `<div class="ac"><div clas
 export function releasesRowHtml(films, inLibOf = () => false) {
   if (!films || !films.length) return '';
   const cards = films.slice(0, 12).map((f) => `<div class="card nw" role="button" tabindex="0" data-nid="${esc(f.id || f.imdbId)}" aria-label="${esc(f.name)}"><div class="poster"><div class="ph">${esc(initialsOf(f.name))}</div>${f.poster ? `<img src="${esc(f.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ok')" onerror="this.remove()">` : ''}${inLibOf(f) ? '<span class="nw-tag">Listende</span>' : ''}</div><div class="cap">${esc(f.name)}</div></div>`).join('');
-  return `<section class="home-row nw-row"><div class="home-row-h"><b>🎬 Vizyondaki filmler</b><button data-go="new">Tümünü gör</button></div><div class="home-row-s">${cards}</div></section>`;
+  const more = `<div class="sh-more" role="button" tabindex="0" data-go="new"><span class="sh-more-i">${ic('chev-r')}</span><b>Tümünü gör</b></div>`;
+  return `<section class="home-row nw-row" data-reveal><div class="home-row-h"><b>🎬 Vizyondaki filmler</b></div><div class="home-row-s" data-hrow>${cards}${more}</div></section>`;
 }
 
 // films: [{ ..., inLib }]; info: { sources: "Beyazperde 62 · …" (kaynak özeti), stale, fallback }

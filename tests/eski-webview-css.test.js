@@ -12,13 +12,16 @@ test('eski WebView: `inset` kısayolu yok; tam ekran kapsayıcı dört kenarla s
   assert.match(css, /#hero-tr \{ position: fixed; top: 0; right: 0; bottom: 0; left: 0;/);
 });
 
-test('eski WebView: ana sayfa satır afişleri aspect-ratio yerine kart genişliğinden türeyen yükseklikle çizilir', () => {
+test('eski WebView: ana sayfa satır afişleri aspect-ratio yerine kart genişliğinden türeyen yükseklikle çizilir; tüm kartlar aynı genişlikte', () => {
   const satirAfis = css.split('\n').filter((l) => /\.home-row-s \.card[^{]*\.poster\s*\{/.test(l));
-  assert.ok(satirAfis.length >= 5, 'satır afişi kuralları bulundu: ' + satirAfis.length);
+  assert.ok(satirAfis.length >= 2, 'satır afişi kuralları bulundu: ' + satirAfis.length);
   for (const l of satirAfis) {
     assert.equal(/aspect-ratio/.test(l.replace(/\/\*.*?\*\//g, '')), false, 'aspect-ratio yok: ' + l.trim().slice(0, 70));
   }
-  assert.match(css, /\.home-row-s \.card \.poster \{ flex: none; height: clamp\(129px, 10\.69vw, 180px\);/, 'geniş ekranda 16:9 (kart 230–320px)');
-  assert.match(css, /\.home-row-s \.card\.nw \.poster \{ height: clamp\(195px, 16\.5vw, 285px\); \}/, '2:3 afiş (kart 130–190px)');
-  assert.match(css, /\.home-row-s \.card\.is-live \.poster \{ flex: none; height: 112px; \}/, 'telefonda canlı kart kare');
+  // tüm satırlarda (kaldığın yer, son izlenenler, filmler, diziler, vizyondakiler, radyo) kart genişliği afiş yüksekliğinin 2/3'ü: hepsi aynı
+  assert.match(css, /\.home-row-s \.card \.poster \{ flex: none; height: var\(--hp-h\); \}/, 'afiş yüksekliği tek değişkenden');
+  assert.match(css, /\.home-row-s \.card \{ flex: 0 0 calc\(var\(--hp-h\) \* 2 \/ 3\); width: calc\(var\(--hp-h\) \* 2 \/ 3\);/, '2:3 kart genişliği');
+  assert.match(css, /\.home-row-s \.sh-more \{ flex: 0 0 calc\(var\(--hp-h\) \* 2 \/ 3\);/, '“Tümünü gör” kartı da aynı genişlikte');
+  assert.match(css, /\.home-row-s\.rd-s \{ --rd-w: calc\(var\(--hp-h\) \* 2 \/ 3\); \}/, 'radyo kartı da aynı genişlikte');
+  assert.equal(/\.home-row-s \.card\.nw\b/.test(css), false, 'vizyondaki kartı ayrı boyutlanmaz');
 });

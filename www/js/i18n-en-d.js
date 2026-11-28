@@ -489,4 +489,13 @@ export const EN_D = [
   ["Bu yönde maç bulunamadı", "No matches found in that direction"],
   ["{0} için maç haftası bulunamadı.", "No match week found for {0}."],
   ["{0} için bu haftada maç bulunamadı.", "No matches found for {0} this week."],
+  ["Tam ekran için seçili kanalda Tamam (OK) tuşuna bas", "Press OK on the selected channel for fullscreen"],
+  ["Önizleme için bir kanalda Tamam (OK) tuşuna bas", "Press OK on a channel to preview it"],
+  ["Tam ekran için pencereye dokunun", "Tap the window for fullscreen"],
+  ["Fragman oynuyor", "Trailer playing"],
+  ["ses kapalı", "sound off"],
+  ["ses açık", "sound on"],
+  ["Ayrıntılar", "Details"],
+  ["Film özeti yükleniyor…", "Loading plot…"],
+  ["İçerik uyarıları alınamadı.", "Content warnings could not be loaded."],
 ];
