@@ -38,11 +38,9 @@ function sunucu({ gecikme = 30, hata = {} } = {}) {
 
 test('Xtream: altı liste aynı anda istenir (süre en yavaş istek kadar), sonuçlar doğru eşlenir', async () => {
   const { net, durum } = sunucu({ gecikme: 60 });
-  const t0 = Date.now();
   const cat = await loadCatalog(XT, net);
-  const sure = Date.now() - t0;
+  // Eşzamanlılık duvar saatiyle değil uçuştaki istek sayısıyla sınanır: yüklü CI makinesinde süre ölçümü kararsızdır
   assert.equal(durum.enFazla, 6, 'altı istek birlikte uçuşta');
-  assert.ok(sure < 60 * 4, `art arda olsaydı ≥ 7×60 ms; ölçülen ${sure} ms`);
   assert.equal(cat.live[0].group, 'Haber');
   assert.equal(cat.movies[0].group, 'Aksiyon');
   assert.equal(cat.series[0].group, 'Dizi');
