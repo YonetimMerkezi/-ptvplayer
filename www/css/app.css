@@ -2648,3 +2648,65 @@ html.tv [data-scroll] {
 /* Bağlantı durumu: sorun varsa (çevrimdışı, liste hatası/boş) nokta ve yazı kırmızıya döner */
 .home-source-indicator.bad, .home-pill .hp-dot.bad { background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16); }
 .home-source-state.bad, .home-pill .hp-state.bad { color: #f87171; }
+
+/* Oynatıcı ayarları: küçük, kompakt, hafif saydam; odak halkaları kesilmez */
+.sheet-back.player-sheet:not(.sync-player-sheet) { background:rgba(3,7,18,.34); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+.player-sheet:not(.sync-player-sheet) .sheet { max-width:min(540px,100%); height:auto; min-height:0; max-height:min(76dvh,520px); border-radius:20px; background:color-mix(in srgb,var(--surface) 80%,transparent); -webkit-backdrop-filter:blur(18px) saturate(1.2); backdrop-filter:blur(18px) saturate(1.2); box-shadow:0 16px 48px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.05); }
+.player-sheet:not(.sync-player-sheet) .sheet-h { min-height:0; padding:10px 10px 8px 16px; }
+.player-sheet:not(.sync-player-sheet) .sheet-h h3 { font-size:1rem; }
+.player-sheet:not(.sync-player-sheet) .sheet-h .icon-btn { width:36px; height:36px; }
+.player-sheet:not(.sync-player-sheet) .sheet-b { padding:8px 12px 12px; }
+.player-sheet:not(.sync-player-sheet) .ps { gap:8px; }
+.player-sheet:not(.sync-player-sheet) .ps-tabs { gap:4px; padding:4px 4px 3px; margin:0 -4px; }
+.player-sheet:not(.sync-player-sheet) .ps-tab { min-width:0; min-height:36px; padding:0 10px; font-size:.84rem; border-radius:10px 10px 0 0; }
+.player-sheet:not(.sync-player-sheet) .ps-tab:focus-visible { outline-offset:-3px; }
+.player-sheet:not(.sync-player-sheet) .ps-body { padding:6px 6px 8px; }
+.player-sheet:not(.sync-player-sheet) .ps-h { margin:8px 0 6px; font-size:.84rem; }
+.player-sheet:not(.sync-player-sheet) .ps-chips { gap:6px; }
+.player-sheet:not(.sync-player-sheet) .ps-chip { min-height:36px; padding:0 12px; border-radius:11px; font-size:.86rem; background:color-mix(in srgb,var(--raised) 70%,transparent); }
+.player-sheet:not(.sync-player-sheet) .ps-chip .ic { width:16px; height:16px; }
+.player-sheet:not(.sync-player-sheet) .ps-chip.on { background:var(--accent); }
+.player-sheet:not(.sync-player-sheet) .ps-row { min-height:44px; padding:0 12px; margin-bottom:6px; border-radius:12px; font-size:.9rem; background:color-mix(in srgb,var(--raised) 70%,transparent); }
+.player-sheet:not(.sync-player-sheet) .ps-row.on { background:var(--accent-soft); }
+.player-sheet:not(.sync-player-sheet) .ps-sw { min-height:54px; padding:8px 12px; margin-bottom:6px; border-radius:12px; background:color-mix(in srgb,var(--raised) 70%,transparent); }
+.player-sheet:not(.sync-player-sheet) .ps-sw b { font-size:.9rem; }
+.player-sheet:not(.sync-player-sheet) .ps-sw small { font-size:.74rem; }
+.player-sheet:not(.sync-player-sheet) .ps-switch { width:46px; height:26px; border-radius:14px; }
+.player-sheet:not(.sync-player-sheet) .ps-switch i { top:2px; left:2px; width:18px; height:18px; }
+.player-sheet:not(.sync-player-sheet) .ps-switch.on i { transform:translateX(20px); }
+.player-sheet:not(.sync-player-sheet) .ps-note { margin:10px 0 2px; padding:9px 12px; font-size:.78rem; }
+.player-sheet:not(.sync-player-sheet) .ps-ok { min-height:42px; font-size:.95rem; border-radius:12px; }
+.player-sheet .ps-chip:focus-visible, .player-sheet .ps-row:focus-visible { outline-offset:-3px; }
+@media (max-width:520px) {
+  .player-sheet:not(.sync-player-sheet) .sheet { height:auto; max-height:min(78dvh,520px); border-radius:18px; }
+  .player-sheet:not(.sync-player-sheet) .ps-tabs { justify-content:space-between; }
+  .player-sheet:not(.sync-player-sheet) .ps-tab { flex:1 1 0; padding:0 4px; font-size:.78rem; }
+}
+@media (max-height:520px) {
+  .player-sheet:not(.sync-player-sheet) .sheet { max-height:92dvh; }
+}
+
+/* TV dizi ayrıntısı: afiş sağ tarafı arka plan olarak kaplar (kenarları yumuşakça erir), bölümler sağda cam panelde, oyuncular sarmalanan ızgarada.
+   Yalnız html.tv; telefon/tablet düzeni değişmez. */
+html.tv .dt-sp .pg-body { position: relative; }
+html.tv .dt-sp .dt { position: relative; max-width: none; grid-template-columns: minmax(0, 1fr) minmax(340px, 40%); grid-template-areas: "head eps" "plot eps" "facts eps" "rest eps"; grid-template-rows: auto auto auto 1fr; gap: 12px 28px; }
+html.tv .dt-sp .dt[data-tr] { grid-template-areas: "trl eps" "head eps" "trx eps" "plot eps" "facts eps" "rest eps"; grid-template-rows: auto auto auto auto auto 1fr; }
+html.tv .dt-sp .dt > :not(.dt-pos) { position: relative; z-index: 1; }
+html.tv .dt-sp .dt-body { display: contents; }
+html.tv .dt-sp .dt-pos { position: fixed; z-index: 0; top: calc(var(--safe-t) + var(--bar-h)); right: var(--safe-r); bottom: var(--safe-b); width: 66vw; height: auto; aspect-ratio: auto; border-radius: 0; background: none; box-shadow: none; overflow: hidden; display: block; font-size: 0; color: transparent; pointer-events: none; }
+html.tv .dt-sp .dt-pos img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 22%; opacity: 0.8; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 40%, #000 100%), linear-gradient(180deg, transparent 0, #000 16%, #000 72%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 40%, #000 100%), linear-gradient(180deg, transparent 0, #000 16%, #000 72%, transparent 100%); -webkit-mask-composite: source-in; mask-composite: intersect; }
+/* yalnız dikey afiş varsa: görsel yüksekliğe sığar, sağda durur; sol kenarı kendi kutusunda erir */
+html.tv .dt-sp .dt-pos:not(.bd) img { width: auto; max-width: 100%; margin-left: auto; object-fit: contain; object-position: right center; opacity: 0.85; }
+/* bölümler: afişin üstünde, yumuşak köşeli yarı saydam panel; kenarlarda pay odak halkasının kesilmemesi için */
+html.tv .dt-sp .dt-eps { margin: 0; padding: 14px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, 0.08); background: color-mix(in srgb, var(--bg) 70%, transparent); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); max-height: calc(100vh - var(--bar-h) - var(--safe-t) - var(--safe-b) - 36px); }
+html.tv .dt-sp .dt-eps .chips { padding: 8px; margin: -4px -8px 0; }
+html.tv .dt-sp .epi, html.tv .dt-sp .epi-w { background: color-mix(in srgb, var(--surface) 55%, transparent); border-color: rgba(255, 255, 255, 0.07); border-radius: 14px; }
+html.tv .dt-sp .epi-w .epi { background: none; }
+/* oyuncular: taşmayan, sarmalanan ızgara; ad en çok iki satır */
+html.tv .dt-sp .pp { margin: 6px 0 8px; }
+html.tv .dt-sp .pp-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; overflow: visible; padding: 6px; margin: 0 -6px; scroll-snap-type: none; max-width: 760px; }
+html.tv .dt-sp .pp-card { flex: none; min-width: 0; width: auto; padding: 12px 6px 10px; border-radius: 16px; background: color-mix(in srgb, var(--raised) 60%, transparent); border-color: rgba(255, 255, 255, 0.07); }
+html.tv .dt-sp .pp-card b { font-size: 0.8125rem; }
+html.tv .dt-sp .pp-card small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.tv .dt-sp .pp-av { width: 64px; height: 64px; }
+html.tv .dt-sp .pp-card:focus-visible { outline-offset: -3px; }
