@@ -88,7 +88,7 @@ test('çoklu ekran: her kutu ayrı oynatıcı, yalnız seçili kutu sesli, sesli
   assert.match(kaynak, /availableRamMb\(\)[\s\S]*?available < 350[\s\S]*?available < 550[\s\S]*?available < 850[\s\S]*?available < 1200/, 'anlık RAM baskısına göre ekran sınırı uygulanmıyor');
   assert.match(kaynak, /slots\.size\(\) >= maxMultiScreens\(\)/, 'sınır aşılınca yeni oynatıcı açılmamalı');
   assert.match(kaynak, /loadControlFor\(slotBuffer, true\)/, 'çoklu ekran tamponu performans profiline uymalı');
-  assert.match(kaynak, /applyVideoLimits\(s\.player\)/, 'çoklu ekran çözünürlüğü performans profiline uymalı');
+  assert.match(kaynak, /applyVideoLimits\(s\.player, true\)/, 'çoklu ekran çözünürlüğü performans profiline (RAM sınıfı) uymalı');
   assert.match(kaynak, /result\.put\("maxMultiScreens", maxMultiScreens\(\)\)/, 'tanılamada desteklenen ekran sayısı gösterilmeli');
   assert.match(kaynak, /setEnableDecoderFallback\(true\)/, 'yedek çözücü kapalı');
   // eklenti kapanınca tüm kutu oynatıcıları bırakılmalı (sızıntı olmasın)
@@ -563,7 +563,7 @@ test('Android performans tanılaması RAM, CPU, Android sürümü ve donanım vi
   assert.match(kaynak, /new android\.media\.MediaCodecList\(\s*android\.media\.MediaCodecList\.REGULAR_CODECS\)/);
   assert.match(kaynak, /result\.put\("videoDecoders", videoDecoders\)/);
   assert.match(kaynak, /result\.put\("maxMultiScreens", maxMultiScreens\(\)\)/, "tanılama ekran sınırını da göstermeli");
-  assert.match(kaynak, /for \(Slot slot : slots\.values\(\)\) if \(slot\.player != null\) applyVideoLimits\(slot\.player\)/, "profil değişikliği açık çoklu ekranlara uygulanmalı");
+  assert.match(kaynak, /for \(Slot slot : slots\.values\(\)\) if \(slot\.player != null\) applyVideoLimits\(slot\.player, true\)/, "profil değişikliği açık çoklu ekranlara uygulanmalı");
   assert.match(kaynak, /private long availableRamMb\(\)[\s\S]*?am\.getMemoryInfo\(info\)[\s\S]*?info\.availMem/ , "anlık boş RAM ölçülmeli");
   assert.match(kaynak, /if \(available < 350\) return 1;[\s\S]*?if \(available < 1200\) return Math\.min\(profileLimit, 4\)/, "bellek baskısında eşzamanlı ekran sayısı azaltılmalı");
   assert.match(kaynak, /result\.put\("availableRamMb", availableRamMb\(\)\)/, "anlık boş RAM tanılamada gösterilmeli");
@@ -685,4 +685,23 @@ test('müzik etiketleri: köprü, eklenti ve yerel sınıf birlikte; oynatma lis
   assert.match(lib, /static JSONObject tags\(Context c, Uri uri\)/, 'etiket okuyucu');
   assert.match(lib, /getEmbeddedPicture\(\)/, 'gömülü kapak');
   assert.match(lib, /m3u8\?\|pls/, 'yerel taramada oynatma listeleri elenir');
+});
+
+test('kalite tavanı: otomatik modda donanım çözücüye göre (RAM değil), takılınca kademe iner; elle profil ve çoklu ekran RAM sınıfında kalır', () => {
+  assert.match(kaynak, /private int capHeight\(boolean multi\) \{[\s\S]*?if \(multi \|\| !"auto"\.equals\(performanceMode\)\) return ram;[\s\S]*?int dec = decoderCapHeight\(\);[\s\S]*?Math\.min\(1080, dec\)[\s\S]*?adaptStep/, 'otomatik tavan çözücü sınırından gelmeli');
+  assert.match(kaynak, /int ram = "low"\.equals\(activePerformance\) \? 480 : "balanced"\.equals\(activePerformance\) \? 720 : 1080;/, 'RAM sınıfı tavanı korunmalı');
+  assert.match(kaynak, /private static boolean softwareDecoder[\s\S]*?isSoftwareOnly\(\)/, 'yazılım çözücüler sayılmamalı');
+  assert.match(kaynak, /vc\.areSizeAndRateSupported\(1920, 1080, 30\)[\s\S]*?areSizeAndRateSupported\(1280, 720, 30\)[\s\S]*?areSizeAndRateSupported\(854, 480, 30\)/, 'tavan çözücünün gerçek yeteneğinden okunmalı');
+  assert.match(kaynak, /\.setMaxVideoSize\(widthForHeight\(height\), height\)/);
+  assert.match(kaynak, /result\.put\("maxVideo", capHeight\(false\) \+ "p"\)/, 'ayar ekranı gerçek tavanı göstermeli');
+  assert.match(kaynak, /result\.put\("decoderCap", decoderCapHeight\(\)\)[\s\S]*?result\.put\("adaptStep", adaptStep\)/, 'tanılama çözücü sınırını ve basamağı göstermeli');
+});
+
+test('otomatik kalite basamağı: düşen kare ölçülür, yalnız çok sürümlü yayında ve açılıştan sonra tavan iner; sorunsuzca geri açılır; elle profil seçilince sıfırlanır', () => {
+  assert.match(kaynak, /public void onDroppedVideoFrames\(AnalyticsListener\.EventTime eventTime, int droppedFrames, long elapsedMs\) \{\s*noteDroppedFrames\(droppedFrames, elapsedMs\);/);
+  assert.match(kaynak, /private void noteDroppedFrames[\s\S]*?!"auto"\.equals\(performanceMode\)[\s\S]*?now - playStartedAt < 8000[\s\S]*?dropMs < 4000[\s\S]*?fps < 5\.0 \|\| videoVariants\(player\) < 2 \|\| capHeight\(false\) <= 480[\s\S]*?adaptStep\+\+[\s\S]*?applyVideoLimits\(player\)[\s\S]*?"qualityNotice"/);
+  assert.match(kaynak, /if \(adaptStep > 0 && nowMs - adaptStepAt > 20 \* 60 \* 1000L\) \{ adaptStep--;[\s\S]*?playStartedAt = nowMs;/, 'sorunsuz 20 dk sonra tavan geri açılmalı');
+  assert.match(kaynak, /performanceMode = mode;\s*adaptStep = 0;/, 'elle profil seçilince basamak sıfırlanmalı');
+  assert.match(kaynak, /private void checkDecoderLimit\(VideoSize size\)[\s\S]*?hardwareDecodes\(f != null \? f\.sampleMimeType : null[\s\S]*?limitUrl = curUrl;[\s\S]*?o\.put\("kind", "limit"\)/);
+  assert.match(kaynak, /applyAutoFrameRate\(\);\s*emitVideoSize\(\);\s*checkDecoderLimit\(size\);/, 'çözücü sınırı video boyutu bilinince denetlenmeli');
 });

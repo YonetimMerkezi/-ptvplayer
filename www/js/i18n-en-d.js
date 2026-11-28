@@ -1,6 +1,13 @@
 // Türkçe → İngilizce sözlük, bölüm 4/4 (i18n.js). Çift: [Türkçe, İngilizce]; {0}, {1} değişen kısım.
 export const EN_D = [
   ["Üyelik: {0}{1}", "Membership: {0}{1}"],
+  ["Görüntü takıldığı için kalite {0}p'ye düşürüldü", "Playback was stuttering, so quality was lowered to {0}p"],
+  ["Bu yayın ({0}) cihazın çözücü sınırını aşıyor; takılabilir", "This stream ({0}) exceeds the device decoder limit; it may stutter"],
+  ["Kalite sınırı", "Quality limit"],
+  ["{0} · çözücü sınırı {1}", "{0} · decoder limit {1}"],
+  ["{0} · çözücü sınırı bilinmiyor", "{0} · decoder limit unknown"],
+  ["{0} · çözücü sınırı {1} · takılma nedeniyle {2} kademe indirildi", "{0} · decoder limit {1} · lowered {2} step(s) because of stuttering"],
+  ["{0} · çözücü sınırı bilinmiyor · takılma nedeniyle {1} kademe indirildi", "{0} · decoder limit unknown · lowered {1} step(s) because of stuttering"],
   ["Liste: {0}", "List: {0}"],
   ["Kanal {0} · Film {1} · Dizi {2}", "Channels {0} · Movies {1} · Series {2}"],
   ["Yayın denetimi: {0} çalışıyor, {1} çalışmıyor, {2} doğrulanamadı", "Stream check: {0} working, {1} not working, {2} unverified"],

@@ -380,14 +380,144 @@ public class IptvPlayerPlugin extends Plugin {
         return "high";
     }
 
+    // Kalite tavanı (yükseklik, piksel). Otomatik modda tavanı RAM değil, cihazın donanım video çözücüsünün gerçekten çözebildiği en büyük boyut belirler
+    // (2 GB'lık bir TV çubuğunun çözücüsü 1080p'yi rahat çözer); RAM yalnız tampon boyutunu ve çoklu ekran sayısını sınırlar. Düşen kare görülürse
+    // tavan kendiliğinden bir kademe iner (adaptStep). Elle seçilen profil ve çoklu ekran kutuları RAM sınıfına göre kalır.
+    private int capHeight(boolean multi) {
+        int ram = "low".equals(activePerformance) ? 480 : "balanced".equals(activePerformance) ? 720 : 1080;
+        if (multi || !"auto".equals(performanceMode)) return ram;
+        int dec = decoderCapHeight();
+        int cap = dec > 0 ? Math.min(1080, dec) : ram;
+        for (int i = 0; i < adaptStep && cap > 480; i++) cap = cap > 720 ? 720 : 480;
+        return cap;
+    }
+
+    private static int widthForHeight(int height) {
+        return height >= 1080 ? 1920 : height >= 720 ? 1280 : 854;
+    }
+
     private void applyVideoLimits(ExoPlayer target) {
+        applyVideoLimits(target, false);
+    }
+
+    private void applyVideoLimits(ExoPlayer target, boolean multi) {
         if (target == null) return;
-        int width = 1920, height = 1080;
-        if ("low".equals(activePerformance)) { width = 854; height = 480; }
-        else if ("balanced".equals(activePerformance)) { width = 1280; height = 720; }
+        int height = capHeight(multi);
         target.setTrackSelectionParameters(target.getTrackSelectionParameters().buildUpon()
-                .setMaxVideoSize(width, height)
+                .setMaxVideoSize(widthForHeight(height), height)
                 .build());
+    }
+
+    // Yazılım video çözücüler (Google'ın referans çözücüleri) sayılmaz: akıcılığı donanım çözücü belirler.
+    private static boolean softwareDecoder(android.media.MediaCodecInfo info) {
+        if (Build.VERSION.SDK_INT >= 29) return info.isSoftwareOnly();
+        String n = info.getName() == null ? "" : info.getName().toLowerCase(Locale.US);
+        return n.startsWith("omx.google.") || n.startsWith("c2.android.");
+    }
+
+    private static volatile int decoderCap = -1;
+
+    // H.264/HEVC donanım çözücülerinin 30 kare/sn'de çözebildiği en büyük standart yükseklik (480/720/1080); donanım çözücü bulunamazsa 0.
+    private static int decoderCapHeight() {
+        if (decoderCap >= 0) return decoderCap;
+        int best = 0;
+        try {
+            for (android.media.MediaCodecInfo info : new android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+                if (info.isEncoder() || softwareDecoder(info)) continue;
+                for (String type : info.getSupportedTypes()) {
+                    if (!"video/avc".equalsIgnoreCase(type) && !"video/hevc".equalsIgnoreCase(type)) continue;
+                    try {
+                        android.media.MediaCodecInfo.VideoCapabilities vc = info.getCapabilitiesForType(type).getVideoCapabilities();
+                        if (vc == null) continue;
+                        if (vc.areSizeAndRateSupported(1920, 1080, 30)) best = Math.max(best, 1080);
+                        else if (vc.areSizeAndRateSupported(1280, 720, 30)) best = Math.max(best, 720);
+                        else if (vc.areSizeAndRateSupported(854, 480, 30)) best = Math.max(best, 480);
+                    } catch (Exception ignored) { }
+                }
+            }
+        } catch (Exception ignored) { }
+        decoderCap = best;
+        return best;
+    }
+
+    // Hiçbir donanım çözücü bu biçimi (boyut ve kare hızı) çözemiyorsa false. O türde donanım çözücü hiç yoksa ya da sorgu başarısızsa karar verilemez: true.
+    private static boolean hardwareDecodes(String mime, int w, int h, double fps) {
+        if (mime == null || w <= 0 || h <= 0) return true;
+        boolean any = false;
+        try {
+            for (android.media.MediaCodecInfo info : new android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+                if (info.isEncoder() || softwareDecoder(info)) continue;
+                for (String type : info.getSupportedTypes()) {
+                    if (!mime.equalsIgnoreCase(type)) continue;
+                    any = true;
+                    try {
+                        android.media.MediaCodecInfo.VideoCapabilities vc = info.getCapabilitiesForType(type).getVideoCapabilities();
+                        if (vc != null && vc.areSizeAndRateSupported(w, h, fps > 0 ? fps : 30)) return true;
+                    } catch (Exception ignored) { }
+                }
+            }
+        } catch (Exception ignored) {
+            return true;
+        }
+        return !any;
+    }
+
+    // ---- Otomatik kalite basamağı (yalnız "otomatik" profilde) ----
+    private int adaptStep = 0;          // 0 = çözücü sınırı; her basamak tavanı bir kademe indirir (1080 → 720 → 480)
+    private long adaptStepAt = 0;       // basamağın son değiştiği an (elapsedRealtime)
+    private long playStartedAt = 0;     // yayının açıldığı an: açılıştaki kare kaybı sayılmaz
+    private long dropWinAt = 0;         // son kare kaybı bildiriminin anı
+    private long dropFrames = 0;        // pencerede biriken düşen kare
+    private long dropMs = 0;            // bu karelerin düştüğü süre
+    private String limitUrl = "";       // çözücü sınırı uyarısı bu yayın için verildi
+
+    private int videoVariants(Player p) {
+        int n = 0;
+        try {
+            for (Tracks.Group g : p.getCurrentTracks().getGroups()) if (g.getType() == C.TRACK_TYPE_VIDEO) n += g.length;
+        } catch (Exception ignored) { }
+        return n;
+    }
+
+    // ExoPlayer düşen kareleri en geç saniyede bir bildirir. Açılıştan 8 sn sonra, biriken ≥4 sn'lik kayıp süresinde saniyede 5 kareden
+    // fazla düşüyorsa (≈ %20) tavan indirilir. Tek sürümlü yayında (ör. çıplak TS) tavanın etkisi yoktur: o durumda basamak değişmez.
+    private void noteDroppedFrames(int dropped, long elapsedMs) {
+        if (!"auto".equals(performanceMode) || player == null || dropped <= 0 || elapsedMs <= 0) return;
+        long now = SystemClock.elapsedRealtime();
+        if (now - playStartedAt < 8000 || now - adaptStepAt < 8000) return;
+        if (now - dropWinAt > 20000) { dropFrames = 0; dropMs = 0; }
+        dropWinAt = now;
+        dropFrames += dropped;
+        dropMs += elapsedMs;
+        if (dropMs < 4000) return;
+        double fps = dropFrames * 1000.0 / dropMs;
+        dropFrames = 0;
+        dropMs = 0;
+        if (fps < 5.0 || videoVariants(player) < 2 || capHeight(false) <= 480) return;
+        int curH = player.getVideoSize().height;
+        int target = curH > 0 ? curH : capHeight(false);
+        do { adaptStep++; } while (capHeight(false) > 480 && capHeight(false) >= target);
+        adaptStepAt = now;
+        applyVideoLimits(player);
+        JSObject o = new JSObject();
+        o.put("kind", "step");
+        o.put("height", capHeight(false));
+        notifyListeners("qualityNotice", o);
+    }
+
+    // Yayının biçimini hiçbir donanım çözücü kaldırmıyorsa (ör. 4K 60 kare) bir kez bildirilir: takılma buradan gelir, ayardan değil.
+    private void checkDecoderLimit(VideoSize size) {
+        if (player == null || size == null || size.width <= 0 || size.height <= 0 || curUrl.equals(limitUrl)) return;
+        Format f = player.getVideoFormat();
+        double fps = f != null && f.frameRate > 0 ? f.frameRate : 0;
+        if (hardwareDecodes(f != null ? f.sampleMimeType : null, size.width, size.height, fps)) return;
+        limitUrl = curUrl;
+        JSObject o = new JSObject();
+        o.put("kind", "limit");
+        o.put("width", size.width);
+        o.put("height", size.height);
+        o.put("fps", Math.round(fps));
+        notifyListeners("qualityNotice", o);
     }
 
     @PluginMethod
@@ -397,6 +527,7 @@ public class IptvPlayerPlugin extends Plugin {
         final String mode = requested;
         main.post(() -> {
             performanceMode = mode;
+            adaptStep = 0; // profil elle değişti: otomatik basamak sıfırlanır
             getContext().getSharedPreferences("iptv_performance", Context.MODE_PRIVATE)
                     .edit().putString("mode", mode).apply();
             activePerformance = resolvePerformanceProfile(mode);
@@ -409,11 +540,11 @@ public class IptvPlayerPlugin extends Plugin {
                 }
             }
             // Profil değişikliği açık çoklu ekran kutularına da hemen uygulanır.
-            for (Slot slot : slots.values()) if (slot.player != null) applyVideoLimits(slot.player);
+            for (Slot slot : slots.values()) if (slot.player != null) applyVideoLimits(slot.player, true);
             JSObject result = new JSObject();
             result.put("mode", performanceMode);
             result.put("active", activePerformance);
-            result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+            result.put("maxVideo", capHeight(false) + "p");
             result.put("maxMultiScreens", maxMultiScreens());
             call.resolve(result);
             notifyListeners("performanceProfile", result);
@@ -426,7 +557,9 @@ public class IptvPlayerPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("mode", performanceMode);
         result.put("active", activePerformance);
-        result.put("maxVideo", "low".equals(activePerformance) ? "480p" : "balanced".equals(activePerformance) ? "720p" : "1080p");
+        result.put("maxVideo", capHeight(false) + "p");
+        result.put("decoderCap", decoderCapHeight()); // donanım çözücünün çözebildiği en büyük yükseklik (0 = bulunamadı)
+        result.put("adaptStep", adaptStep);
         result.put("maxMultiScreens", maxMultiScreens());
         result.put("availableRamMb", availableRamMb());
 
@@ -539,6 +672,11 @@ public class IptvPlayerPlugin extends Plugin {
         activePerformance = resolvePerformanceProfile(performanceMode);
         String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;
         lastBuffer = effectiveBuffer;
+        long nowMs = SystemClock.elapsedRealtime();
+        if (adaptStep > 0 && nowMs - adaptStepAt > 20 * 60 * 1000L) { adaptStep--; adaptStepAt = nowMs; } // 20 dk sorunsuzsa tavan bir kademe geri açılır
+        playStartedAt = nowMs;
+        dropFrames = 0;
+        dropMs = 0;
         final boolean softExt = softAudio;
         if (softExt) softAudioTrying(true); // çözücü yüklenirken uygulama kapanırsa bir sonraki açılışta kapatılır
         player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);
@@ -547,6 +685,11 @@ public class IptvPlayerPlugin extends Plugin {
             @Override
             public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
                 videoDecoder = decoderName == null ? "" : decoderName;
+            }
+
+            @Override
+            public void onDroppedVideoFrames(AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
+                noteDroppedFrames(droppedFrames, elapsedMs);
             }
         });
         player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
@@ -582,6 +725,7 @@ public class IptvPlayerPlugin extends Plugin {
                 updatePipParams(); // PiP penceresi yayının en-boy oranına uysun
                 applyAutoFrameRate();
                 emitVideoSize();
+                checkDecoderLimit(size);
             }
 
             // Ses/altyazı parçaları yayın çözüldükçe sonradan da ortaya çıkabilir (özellikle TS yayınlarda).
@@ -1418,7 +1562,7 @@ public class IptvPlayerPlugin extends Plugin {
         placeView(s.view, r);
         String slotBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : "high";
         s.player = buildExo(headers, false, loadControlFor(slotBuffer, true), false, false, false);
-        applyVideoLimits(s.player);
+        applyVideoLimits(s.player, true);
         s.player.setVolume(muted ? 0f : 1f);
         s.player.setWakeMode(C.WAKE_MODE_NETWORK);
         // Çoklu video yüzeylerinde hazırlık sırasında son kareyi koru ve boşta kalan shutter'ı saydam tut.

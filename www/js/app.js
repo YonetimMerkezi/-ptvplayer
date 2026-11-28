@@ -5274,6 +5274,7 @@ function playerSheet() {
               <div class="sel-row"><span>RAM<small>${Number(d.totalRamMb) || 0} MB toplam · ${Number(d.availableRamMb) || 0} MB kullanılabilir</small></span></div>
               <div class="sel-row"><span>Uygulama belleği<small>${Number(d.memoryClassMb) || 0} MB sınıf · ${Number(d.maxHeapMb) || 0} MB heap</small></span></div>
               <div class="sel-row"><span>İşlemci<small>${Number(d.cores) || 0} çekirdek · ${d.lowRamDevice ? 'Düşük RAM cihazı' : 'Standart RAM sınıfı'}</small></span></div>
+              <div class="sel-row"><span>Kalite sınırı<small>${esc(d.maxVideo || '-')} · çözücü sınırı ${Number(d.decoderCap) ? Number(d.decoderCap) + 'p' : 'bilinmiyor'}${Number(d.adaptStep) > 0 ? ' · takılma nedeniyle ' + Number(d.adaptStep) + ' kademe indirildi' : ''}</small></span></div>
               <div class="sect">Video çözücüleri (${decoders.length})</div>${decoderRows || '<p class="hint">Video çözücü bilgisi alınamadı.</p>'}`,
           });
         } catch {
@@ -7431,6 +7432,12 @@ if (nativePlugin) {
     castUi.startReceiver(); // TV'de varsayılan açık: telefondan gelen oynatma isteklerini karşılar
   }).catch(() => {});
   nativePlugin.addListener('remote', (e) => e && e.key && dpad.sendKey(e.key)).catch(() => {}); // kanal +/-, medya, menü tuşları
+  // Oynatıcının kalite bildirimleri: görüntü takılınca tavan indirildi (step) ya da yayın cihazın çözücü sınırını aşıyor (limit)
+  nativePlugin.addListener('qualityNotice', (e) => {
+    if (!e) return;
+    if (e.kind === 'step' && Number(e.height) > 0) toast(`Görüntü takıldığı için kalite ${Number(e.height)}p'ye düşürüldü`, 3500);
+    else if (e.kind === 'limit' && Number(e.width) > 0) toast(`Bu yayın (${Number(e.width)}×${Number(e.height)}${Number(e.fps) > 0 ? ', ' + Number(e.fps) + ' fps' : ''}) cihazın çözücü sınırını aşıyor; takılabilir`, 5000);
+  }).catch(() => {});
   // Sistem PiP penceresinden uygulamaya dönünce küçük pencere ve video deliği yeniden ölçülür
   nativePlugin.addListener('pip', (e) => {
     if (e && !e.active) setTimeout(() => { layoutPreview(); syncHole(); }, 150);

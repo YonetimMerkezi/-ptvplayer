@@ -2,6 +2,15 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 187,
+    title: 'Daha net görüntü: kalite sınırı artık cihazın çözücüsüne göre',
+    items: [
+      'Az RAM’li TV çubuklarında (ör. Mi Stick) görüntü 480p’de kalıyordu; artık otomatik modda sınırı cihazın donanım video çözücüsü belirliyor, 1080p çözebilen cihazlar 1080p’ye çıkıyor',
+      'Görüntü takılırsa (düşen kare) kalite kendiliğinden bir kademe iniyor, 20 dakika sorunsuz geçince geri açılıyor; kalite düşünce kısa bir bildirim görünüyor',
+      'Cihazın çözücüsünün kaldıramayacağı yayınlar (ör. 4K 60 kare) açılınca nedeni bildiriliyor; Ayarlar › Cihaz performans bilgisi’nde kalite ve çözücü sınırı görünüyor',
+    ],
+  },
+  {
     id: 186,
     title: 'Spor: haftanın maçları tek seferde geliyor',
     items: [
