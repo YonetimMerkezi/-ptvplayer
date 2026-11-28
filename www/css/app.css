@@ -558,6 +558,13 @@ html.tv.hero-on .hero-t { -webkit-line-clamp: 1; }
 /* TV: fragman oynarken ekranın üstünde ortada duran bilgi; #app'in dışında olduğundan sinema kipinde (arayüz solarken) de görünür kalır */
 #hero-live { display: none; }
 html.tv.hero-live #hero-live { display: flex; align-items: center; gap: 0.6em; position: fixed; top: calc(var(--safe-t, 0px) + 10px); left: 50%; z-index: 5; padding: 0.3em 1em; font-size: clamp(14px, 2.1vh, 22px); line-height: 1.6; color: var(--accent); white-space: nowrap; border-radius: 999px; background: rgba(0, 0, 0, 0.55); -webkit-transform: translateX(-50%); transform: translateX(-50%); pointer-events: none; }
+/* Telefon: fragman tam sayfa olunca (sinema kipi, arayüz gizli) üstte "Fragman oynuyor" notu ve sağ altta ses düğmesi kalır; ikisi de #app'in dışındadır */
+#hero-snd-float { display: none; }
+html:not(.tv).hero-live.hero-cine #hero-live { display: flex; align-items: center; gap: 0.6em; position: fixed; top: calc(var(--safe-t, 0px) + 10px); left: 50%; z-index: 5; padding: 0.3em 1em; font-size: 14px; line-height: 1.6; color: var(--accent); white-space: nowrap; border-radius: 999px; background: rgba(0, 0, 0, 0.55); -webkit-transform: translateX(-50%); transform: translateX(-50%); pointer-events: none; }
+html:not(.tv).hero-live.hero-cine #hero-live b { font-weight: 800; letter-spacing: 0.02em; }
+html:not(.tv).hero-live.hero-cine #hero-live .hero-note-s { color: var(--muted); font-weight: 600; }
+html:not(.tv).hero-live.hero-cine #hero-snd-float { display: grid; place-items: center; position: fixed; right: 14px; bottom: calc(var(--safe-b, 0px) + 22px); z-index: 6; width: 46px; height: 46px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; color: #fff; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); pointer-events: auto; }
+html:not(.tv).hero-live.hero-cine #hero-snd-float .ic { width: 22px; height: 22px; }
 html.tv.hero-live #hero-live b { font-weight: 800; letter-spacing: 0.02em; }
 html.tv.hero-live #hero-live .hero-note-s { color: var(--muted); font-weight: 600; }
 .hero-dot { flex: none; width: 0.65em; height: 0.65em; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 0.25em rgba(239, 68, 68, 0.25); }
