@@ -463,6 +463,8 @@ public class IptvPlayerPlugin extends Plugin {
     }
 
     // ---- Otomatik kalite basamağı (yalnız "otomatik" profilde) ----
+    private String playerSig = "";        // ana oynatıcının kurulum özeti (playerSignature)
+    private int reuseCount = 0;            // oynatıcı art arda kaç kanal geçişinde yeniden kullanıldı
     private int adaptStep = 0;          // 0 = çözücü sınırı; her basamak tavanı bir kademe indirir (1080 → 720 → 480)
     private long adaptStepAt = 0;       // basamağın son değiştiği an (elapsedRealtime)
     private long playStartedAt = 0;     // yayının açıldığı an: açılıştaki kare kaybı sayılmaz
@@ -654,10 +656,33 @@ public class IptvPlayerPlugin extends Plugin {
             StreamRecorder.stop(null);
             StreamSniff.reset(); // önceki yayının biçim bilgisi yeni yayına karışmasın
         }
-        releasePlayer();
-        ensureView();
         if (!keepRec) compat = false; // başka yayına geçildi: uyumlu mod bu yayın içindi
         if (compatReq) compat = true;
+        activePerformance = resolvePerformanceProfile(performanceMode);
+        String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;
+        // Başka bir kanala/içeriğe geçişte (aynı yayına yeniden bağlanma değil) oynatıcı kurulum ayarları aynıysa oynatıcı yeniden kullanılır:
+        // eskisini bırakmak ana iş parçacığını bekletir ve çözücü baştan açılır. Hata aldıysa, ayar değiştiyse ya da her 30 geçişte bir baştan kurulur.
+        final String sig = playerSignature(headers, effectiveBuffer, live);
+        final boolean reuse = player != null && !keepRec && !url.equals(curUrl) && sig.equals(playerSig) && reuseCount < 30 && player.getPlayerError() == null;
+        if (reuse) {
+            reuseCount++;
+            castPos = 0;
+            castDur = -1;
+            main.removeCallbacks(softAudioOk);
+            softAudioTrying(false);
+            player.stop();
+            // Ses işlemcileri oynatıcıyla kalır; yeni içeriğin ayarları (gecikme, gece modu, diyalog) yeniden okunur
+            if (delayProc != null) delayProc.setDelayMs(audioDelayMs);
+            if (nightProc != null) nightProc.setLevel(nightLevel);
+            if (dialogProc != null) dialogProc.setOn(dialogOn);
+            player.setVolume(1f);
+            player.setRepeatMode(Player.REPEAT_MODE_OFF);
+            player.setTrackSelectionParameters(new TrackSelectionParameters.Builder(getContext()).build()); // önceki yayında seçilen ses/altyazı yenisine taşınmaz
+        } else {
+            reuseCount = 0;
+            releasePlayer();
+        }
+        ensureView();
         vwAt = -1;
         vwRendered = -1;
         curUrl = url;
@@ -668,9 +693,7 @@ public class IptvPlayerPlugin extends Plugin {
         castActive = true;
         castState = "buffering";
 
-        videoDecoder = "";
-        activePerformance = resolvePerformanceProfile(performanceMode);
-        String effectiveBuffer = "low".equals(activePerformance) ? "fast" : "balanced".equals(activePerformance) ? "normal" : buffer;
+        if (!reuse) videoDecoder = ""; // yeniden kullanılan oynatıcıda çözücü açık kalabilir: adı korunur
         lastBuffer = effectiveBuffer;
         long nowMs = SystemClock.elapsedRealtime();
         if (adaptStep > 0 && nowMs - adaptStepAt > 20 * 60 * 1000L) { adaptStep--; adaptStepAt = nowMs; } // 20 dk sorunsuzsa tavan bir kademe geri açılır
@@ -679,8 +702,32 @@ public class IptvPlayerPlugin extends Plugin {
         dropMs = 0;
         final boolean softExt = softAudio;
         if (softExt) softAudioTrying(true); // çözücü yüklenirken uygulama kapanırsa bir sonraki açılışta kapatılır
-        player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);
+        if (!reuse) {
+            player = buildExo(headers, true, loadControlFor(effectiveBuffer, live), true, true, compat);
+            playerSig = sig;
+            attachPlayerListeners();
+        }
         applyVideoLimits(player);
+        playerView.setPlayer(player);
+        playerView.setVisibility(View.VISIBLE);
+        applySubStyle();
+
+        player.setMediaItem(mediaItemOf(url, mime, subUri));
+        if (reuse || speedReq != 1f) player.setPlaybackSpeed(speedReq);
+        if (startMs > 0) player.seekTo(startMs);
+        player.setPlayWhenReady(true);
+        player.prepare();
+
+        getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (!ticking) {
+            ticking = true;
+            main.postDelayed(tick, 1000);
+        }
+        emitState();
+    }
+
+    // Ana oynatıcıya olay dinleyicilerini bağlar; oynatıcı her kurulduğunda bir kez (yeniden kullanımda tekrar bağlanmaz).
+    private void attachPlayerListeners() {
         player.addAnalyticsListener(new AnalyticsListener() {
             @Override
             public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
@@ -746,22 +793,13 @@ public class IptvPlayerPlugin extends Plugin {
                 notifyListeners("error", o);
             }
         });
-        playerView.setPlayer(player);
-        playerView.setVisibility(View.VISIBLE);
-        applySubStyle();
+    }
 
-        player.setMediaItem(mediaItemOf(url, mime, subUri));
-        if (speedReq != 1f) player.setPlaybackSpeed(speedReq);
-        if (startMs > 0) player.seekTo(startMs);
-        player.setPlayWhenReady(true);
-        player.prepare();
-
-        getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        if (!ticking) {
-            ticking = true;
-            main.postDelayed(tick, 1000);
-        }
-        emitState();
+    // Oynatıcının kurulumda sabitlenen ayarlarının özeti: aynıysa oynatıcı kanaldan kanala yeniden kullanılabilir.
+    // Ses işlemcileri, tampon (canlı/film), istek başlıkları, uyumlu mod, çözücü tercihi, FFmpeg ses çözücüsü ve müzik/film ses türü kurulumda belirlenir.
+    private String playerSignature(JSObject headers, String effectiveBuffer, boolean live) {
+        boolean procs = audioDelayMs != 0 || NightCompressor.isActive(nightLevel) || dialogOn;
+        return effectiveBuffer + "|" + live + "|" + (headers == null ? "" : headers.toString()) + "|" + procs + "|" + compat + "|" + decoderMode + "|" + softAudio + "|" + audioOnly;
     }
 
     // Ortak oynatıcı kurulumu: başlıklar (User-Agent dahil), arabellek ayarı, ses odağı.

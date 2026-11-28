@@ -19,7 +19,7 @@ test('diyalog vurgulama ve oynatma hızı: yöntemler Java\'da ve köprüde', ()
   assert.match(plugin, /dialogProc\.setOn\(on\);\s*player\.seekTo\(player\.getCurrentPosition\(\)\)/, 'takılı işlemciye durum anında uygulanır (sarma ile)');
   assert.match(plugin, /Math\.max\(0\.25, Math\.min\(3\.0,/, 'hız sınırlanmalı');
   assert.match(plugin, /if \(!keepRec\) speedReq = 1f;/, 'yeni içerik normal hızda başlamalı, yeniden bağlanmada hız korunmalı');
-  assert.match(plugin, /if \(speedReq != 1f\) player\.setPlaybackSpeed\(speedReq\);/, 'yeniden kurulan oynatıcı hızı korumalı');
+  assert.match(plugin, /if \(reuse \|\| speedReq != 1f\) player\.setPlaybackSpeed\(speedReq\);/, 'yeniden kurulan ya da yeniden kullanılan oynatıcı hızı korumalı');
 });
 
 test('diyalog işlemcisi: yalnız PCM 16 bit, durum her sarmada okunur, 3+ kanalda orta kanal öne çıkar', () => {

@@ -541,7 +541,8 @@ test('canlı yayın: tampon eşikleri canlıda sınırlı, görüntü donma bek�
 test('canlı yayın teşhisi: çözücü adı, hata zinciri ve çizilen kare Yayın bilgisine ve hata olaylarına konur', () => {
   // çözücü adı Media3'ten (ana oynatıcıya da çoklu ekrandaki gibi dinleyici takılır) ve her oynatıcı kurulumunda sıfırlanır
   assert.match(kaynak, /private volatile String videoDecoder = "";/);
-  assert.match(kaynak, /videoDecoder = "";[\s\S]*?player = buildExo\(headers, true, loadControlFor\((?:buffer|effectiveBuffer), live\), true, true, compat\);\s*(?:applyVideoLimits\(player\);\s*)?player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
+  assert.match(kaynak, /if \(!reuse\) videoDecoder = "";[\s\S]*?if \(!reuse\) \{\s*player = buildExo\(headers, true, loadControlFor\(effectiveBuffer, live\), true, true, compat\);\s*playerSig = sig;\s*attachPlayerListeners\(\);\s*\}/, 'çözücü adı yalnız yeni kurulan oynatıcıda sıfırlanır ve dinleyiciler o zaman bağlanır');
+  assert.match(kaynak, /private void attachPlayerListeners\(\) \{\s*player\.addAnalyticsListener\(new AnalyticsListener\(\) \{[\s\S]*?onVideoDecoderInitialized\(AnalyticsListener\.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs\) \{\s*videoDecoder = decoderName == null \? "" : decoderName;/);
   // hata olayı: HTTP kodu + neden zinciri + çözücü; donma olayı: çizilen kare sayısı + çözücü; getStats: çözücü
   assert.match(kaynak, /o\.put\("cause", causeOf\(error\)\);\s*if \(!videoDecoder\.isEmpty\(\)\) o\.put\("decoder", videoDecoder\);/);
   assert.match(kaynak, /o\.put\("message", "VIDEO_FROZEN"\);[\s\S]*?o\.put\("rendered", r\);[\s\S]*?o\.put\("decoder", videoDecoder\);/);
@@ -704,4 +705,11 @@ test('otomatik kalite basamağı: düşen kare ölçülür, yalnız çok sürüm
   assert.match(kaynak, /performanceMode = mode;\s*adaptStep = 0;/, 'elle profil seçilince basamak sıfırlanmalı');
   assert.match(kaynak, /private void checkDecoderLimit\(VideoSize size\)[\s\S]*?hardwareDecodes\(f != null \? f\.sampleMimeType : null[\s\S]*?limitUrl = curUrl;[\s\S]*?o\.put\("kind", "limit"\)/);
   assert.match(kaynak, /applyAutoFrameRate\(\);\s*emitVideoSize\(\);\s*checkDecoderLimit\(size\);/, 'çözücü sınırı video boyutu bilinince denetlenmeli');
+});
+
+test('oynatıcı yeniden kullanımı: yalnız başka içeriğe geçişte ve kurulum özeti aynıysa; yeniden bağlanma, hata ve 30 geçiş sonrası baştan kurulur', () => {
+  assert.match(kaynak, /final boolean reuse = player != null && !keepRec && !url\.equals\(curUrl\) && sig\.equals\(playerSig\) && reuseCount < 30 && player\.getPlayerError\(\) == null;/);
+  assert.match(kaynak, /private String playerSignature\(JSObject headers, String effectiveBuffer, boolean live\) \{[\s\S]*?effectiveBuffer \+ "\|" \+ live[\s\S]*?headers\.toString\(\)[\s\S]*?procs[\s\S]*?compat[\s\S]*?decoderMode[\s\S]*?softAudio[\s\S]*?audioOnly/, 'özet, kurulumda sabitlenen her ayarı içermeli');
+  assert.match(kaynak, /if \(reuse\) \{\s*reuseCount\+\+;[\s\S]*?player\.stop\(\);[\s\S]*?delayProc\.setDelayMs\(audioDelayMs\)[\s\S]*?nightProc\.setLevel\(nightLevel\)[\s\S]*?dialogProc\.setOn\(dialogOn\)[\s\S]*?player\.setVolume\(1f\);[\s\S]*?player\.setRepeatMode\(Player\.REPEAT_MODE_OFF\);[\s\S]*?setTrackSelectionParameters\(new TrackSelectionParameters\.Builder\(getContext\(\)\)\.build\(\)\)[\s\S]*?\} else \{\s*reuseCount = 0;\s*releasePlayer\(\);\s*\}/, 'yeniden kullanımda durum sıfırlanmalı, aksi halde eski oynatıcı bırakılmalı');
+  assert.match(kaynak, /if \(reuse \|\| speedReq != 1f\) player\.setPlaybackSpeed\(speedReq\);/, 'yeniden kullanılan oynatıcıda önceki hız taşınmamalı');
 });

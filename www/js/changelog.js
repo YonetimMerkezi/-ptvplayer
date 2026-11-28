@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 188,
+    title: 'Kanal geçişi hızlandı',
+    items: [
+      'Kanaldan kanala geçerken oynatıcı her seferinde baştan kurulmuyor; ayarlar aynıysa aynı oynatıcı ve çözücü yeniden kullanılıyor, geçiş daha çabuk ve arayüz takılmadan oluyor',
+      'Aynı yayına yeniden bağlanma, hata sonrası ve ayar değişince oynatıcı eskisi gibi baştan kuruluyor',
+    ],
+  },
+  {
     id: 187,
     title: 'Daha net görüntü: kalite sınırı artık cihazın çözücüsüne göre',
     items: [
