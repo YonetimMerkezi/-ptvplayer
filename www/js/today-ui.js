@@ -4,7 +4,7 @@ import { needPro } from './membership.js';
 import { loc } from './i18n.js';
 import { esc, fmtClock, fold } from './util.js';
 import { $, icon, logo, openPage, openSheet } from './ui.js';
-import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf } from './today.js';
+import { KINDS, todayRows, dayStart, normalizeChannels, channelKind, kindOf, seriesTitleKey } from './today.js';
 import { keyOf } from './film-lookup.js';
 import { loadSeriesWeek, dayIndex, isSportsChannel } from './series-flow.js';
 import { istDayStart, IST_MS } from './epg-free.js';
@@ -113,6 +113,13 @@ export function openToday(env) {
       out.push({ id: it.id, channel: it.name, p: { s: start, e: end, t: r.title, d: [r.ep, r.status].filter(Boolean).join(' · '), c: 'Dizi' } });
     }
     return out;
+  }
+
+  // Haftalık dizi akışındaki tüm dizi adları: rehber bir diziyi türsüz ya da "Drama" diye verse de (ör. TRT 1 20.00 Gönül Dağı) dizi sayılır
+  function knownSeriesTitles() {
+    const set = new Set();
+    if (seriesData && Array.isArray(seriesData.days)) for (const d of seriesData.days) for (const r of d || []) { const k = seriesTitleKey(r && r.title); if (k.length >= 4) set.add(k); }
+    return set;
   }
 
   function entries() {
@@ -228,6 +235,7 @@ export function openToday(env) {
     const needle = fold(term.trim());
     const match = (x) => !needle || fold(`${(x.p && x.p.t) || ''} ${x.channel || ''}`).includes(needle);
     const allEntries = entries().filter(match);
+    const seriesTitles = knownSeriesTitles();
     const externalFilmDay = day === 0 && filmSource.loaded && filmSource.entries.length > 0;
     const sourceFilmEntries = externalFilmDay ? filmSource.entries.filter((x) => x.sourceOnly || !sel.length || sel.includes(String(x.id))) : [];
     // Tüm EPG kanallarını tara: ulusal kanalların yanında Sinema TV, beIN Movies,
@@ -249,8 +257,8 @@ export function openToday(env) {
       : [];
     const filmKey = (x) => `${String(x.id)}|${Number(x.p && x.p.s)}|${fold(String(x.p && x.p.t || ''))}`;
     const filmEntries = [...new Map([...selectedEpgFilms, ...selectedExternalFilms].filter(match).map((x) => [filmKey(x), x])).values()];
-    const resAll = ready ? todayRows({ entries: allEntries, kind, now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
-    const resFilm = ready ? todayRows({ entries: filmEntries, kind: 'film', now: t, day, includePast: past && day === 0 }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
+    const resAll = ready ? todayRows({ entries: allEntries, kind, now: t, day, includePast: past && day === 0, seriesTitles }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
+    const resFilm = ready ? todayRows({ entries: filmEntries, kind: 'film', now: t, day, includePast: past && day === 0, seriesTitles }) : { rows: [], counts: { spor: 0, film: 0, dizi: 0 }, truncated: false };
     const res = {
       rows: kind === 'film' ? resFilm.rows : resAll.rows,
       counts: { ...resAll.counts, film: resFilm.counts.film },

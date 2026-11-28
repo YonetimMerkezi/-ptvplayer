@@ -16,6 +16,7 @@ const RE_SPORT_CAT = /\b(spor|sport|sports|futbol|football|soccer|basket|basketb
 const RE_NEWS = /\b(haber|haberleri|bulten|magazin|news)\b/;
 const RE_SPORT_TITLE = /\b(maci|macin|maclar|maclari|canli mac|mac ozeti|super lig|premier lig|sampiyonlar ligi|uefa|euroleague|nba|formula 1|f1|la liga|bundesliga|serie a|tff|1\. lig|avrupa ligi|konferans ligi|dunya kupasi|avrupa sampiyonasi)\b/;
 const RE_SERIES_TITLE = /(\b\d{1,3}\s*\.?\s*bolum\b|\bsezon\b|\bs\d{1,2}\s*e\d{1,3}\b)/;
+const RE_SERIES_DESC = /\b(dizisi|dizisinin|dizinin|yerli dizi|dizi bolumu|yeni bolum)\b/;
 const RE_FILM_TITLE = /^(film|sinema)\s*[:\-–]/;
 const RE_EPISODE = /\b(\d{1,3}\s*\.?\s*bolum|sezon|s\d{1,2}\s*e\d{1,3})\b/;
 const RE_NON_FILM = /\b(haber|haberleri|bulten|news|talk show|sohbet|magazin|magazine|reality|yarismasi|yarisma|cocuk|cocuklar|cizgi film|muzik|music|konser|hava durumu|weather|vaaz|ibadet|egitim|education|game show)\b/;
@@ -46,6 +47,8 @@ export function kindOf(p) {
   if (RE_SPORT_TITLE.test(t) && !RE_NEWS.test(t)) return 'spor';
   if (RE_NEWS.test(c) || RE_NEWS.test(t)) return '';
   if (['film', 'filmi', 'movie', 'movies', 'sinema', 'cinema'].some((word) => c.includes(word)) || RE_FILM_TITLE.test(t) || /\b(film|filmi|movie|movies|sinema|cinema)\b/.test(t)) return 'film';
+  // Açıklamada "… dizisinin yeni bölümü" gibi açık dizi ifadesi (rehber tür yazmamış ya da "Drama" yazmış olabilir)
+  if (RE_SERIES_DESC.test(d) && !RE_NON_FILM.test(c)) return 'dizi';
   const sharedFilmGenre = RE_FILM_CAT.test(c) || RE_FILM_CAT.test(d);
   if (sharedFilmGenre && RE_EPISODE.test(t)) return 'dizi';
   if (RE_NON_FILM.test(c) || RE_NON_FILM.test(t)) return '';
@@ -64,7 +67,18 @@ export function dayStart(now, offset = 0) {
 
 // Seçili kanallar boşsa bütün rehber kanalları. entries: [{ id: kanal öğesi no, p: program }] (aynı program+kanal tekrar etmez).
 // Döner: { rows: [{ id, p, kind, state: 'past'|'now'|'next' }] başlangıç sırasıyla, counts: { spor, film, dizi }, truncated }
-export function todayRows({ entries, kind, now, day = 0, includePast = false, maxRows = MAX_ROWS }) {
+// Dizi akışı kaynağında (haftalık dizi programı) adı geçen dizilerin sadeleşmiş başlıkları → rehber tür yazmasa da dizi sayılır
+export const seriesTitleKey = (t) => fold(String(t || '')).replace(/[^a-z0-9]+/g, '');
+const isKnownSeries = (p, titles) => {
+  if (!titles || !titles.size) return false;
+  const t = seriesTitleKey(p.t);
+  if (!t) return false;
+  if (titles.has(t)) return true;
+  for (const k of titles) if (k.length >= 6 && t.startsWith(k) && /^\d{1,3}(bolum)?/.test(t.slice(k.length))) return true; // "Gönül Dağı 45. Bölüm"
+  return false;
+};
+
+export function todayRows({ entries, kind, now, day = 0, includePast = false, maxRows = MAX_ROWS, seriesTitles = null }) {
   const from = dayStart(now, day);
   const to = from + DAY_MS;
   const seen = new Set();
@@ -81,7 +95,7 @@ export function todayRows({ entries, kind, now, day = 0, includePast = false, ma
       'gullervegunahlar', 'daha17', 'uzaksehir', 'esrefruya', 'haysiyet',
       'uckizkardes', 'kucukaga', 'yaprakdokumu', 'siyahbeyazask', 'ikizlermemocan',
     ].some((name) => title === name || title.startsWith(name));
-    const k = byChannel || (kanalDSeries ? 'dizi' : kindOf(p) || (!p.c && KINDS.some(([id]) => id === hint) ? hint : ''));
+    const k = byChannel || (kanalDSeries ? 'dizi' : kindOf(p) || (isKnownSeries(p, seriesTitles) && !RE_NEWS.test(fold(String(p.c || ''))) ? 'dizi' : '') || (!p.c && KINDS.some(([id]) => id === hint) ? hint : ''));
     if (!k) continue;
     const key = `${id}|${p.s}`;
     if (seen.has(key)) continue;

@@ -48,7 +48,7 @@ export function trailerHtml(ids, { auto = false, origin = '', query = '', search
   }
   const watch = esc(trailerWatchUrl(id));
   const media = auto ? frameHtml(id, { muted: true, origin, bg }) : thumbHtml(id, bg);
-  const unmute = auto ? `<button class="tr-unmute" data-tr="unmute" aria-label="Sesi aç" hidden>${ic('audio')}</button>` : '';
+  const unmute = auto ? `<button class="tr-unmute" data-tr="unmute" aria-label="Sesi aç" hidden>${ic('mute')}</button>` : '';
   const notes = found && found.length ? list.map((x) => foundNote(found.find((f) => f.id === x))) : [];
   const note = notes[0] ? `<p class="tr-note">${esc(notes[0])}</p>` : '';
   const strip = found && found.length > 1 ? stripHtml(found, id) : '';
@@ -81,9 +81,20 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
   };
   let at = 0; // oynayan fragmanın sırası
   let muted = !!frame(); // sessiz otomatik başladıysa sıradaki de sessiz başlar; dokunarak başlatılan sesli devam eder
+  // Ses düğmesi aç/kapa: sessizken "Sesi aç" (üstü çizili hoparlör), sesliyken "Sesi kapat" (hoparlör); ses durumu değişince simge ve etiket yenilenir
+  const paintSnd = (b) => {
+    if (!b) return;
+    const st = muted ? '0' : '1';
+    if (b.dataset.snd === st) return;
+    b.dataset.snd = st;
+    b.innerHTML = muted ? ic('mute') : ic('audio');
+    if (b.setAttribute) b.setAttribute('aria-label', muted ? 'Sesi aç' : 'Sesi kapat');
+  };
   const showUnmute = () => {
     const u = host.querySelector('.tr-unmute');
-    if (u && u.dataset.done !== '1') u.hidden = false;
+    if (!u) return;
+    paintSnd(u);
+    u.hidden = false;
   };
   const setNote = () => {
     const n = host.querySelector('.tr-note');
@@ -163,10 +174,14 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
     const b = e.target.closest('[data-tr]');
     if (!b) return;
     if (b.dataset.tr === 'unmute') {
-      post('unMute');
-      muted = false;
-      b.dataset.done = '1';
-      b.hidden = true;
+      if (muted) {
+        post('unMute');
+        muted = false;
+      } else {
+        post('mute');
+        muted = true;
+      }
+      paintSnd(b);
     } else if (b.dataset.tr === 'pick') {
       const i = ids().indexOf(b.dataset.id);
       if (i < 0) return;
@@ -174,10 +189,7 @@ export function wireTrailer(host, { win = typeof window !== 'undefined' ? window
       muted = false; // dokunarak seçildi: sesli başlar
       host.dataset.id = b.dataset.id;
       const u = host.querySelector('.tr-unmute');
-      if (u) {
-        u.hidden = true;
-        u.dataset.done = '1'; // video sesli açılıyor; yükleme bitince “Sesi aç” yeniden çıkmasın
-      }
+      if (u) u.hidden = true; // yeni video yüklenince düğme "Sesi kapat" olarak yeniden görünür (video sesli açılıyor)
       setNote();
       mark();
       setOn(false);

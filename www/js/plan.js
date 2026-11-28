@@ -3,6 +3,7 @@
 //   at: tetiklenme zamanı (ms). rem → program başlamadan LEAD dk önce; rec → başlamadan 1 dk önce kayıt açılır.
 import { fold, isYouthText } from './util.js';
 import { loc } from './i18n.js';
+import { sameMatch } from './sports-ls.js';
 
 export const REMIND_LEAD_MIN = 5;
 export const REC_PRE_MS = 60000;
@@ -44,9 +45,26 @@ export const isYouthPlan = (x) => !!x && !!x.match && isYouthText(x.title);
 
 // Süresi dolmamış planlar, zamana göre sıralı (rec bitişine, rem başlangıcına kadar geçerli)
 export function activePlans(list, now = Date.now()) {
-  return (Array.isArray(list) ? list : [])
+  const live = (Array.isArray(list) ? list : [])
     .filter((x) => x && x.id && Number.isFinite(x.at) && (x.kind === 'rec' ? (x.until || x.e) : x.e) > now)
     .sort((a, b) => a.at - b.at);
+  return dropTwinMatchPlans(live);
+}
+
+// Aynı maça iki ayrı yazımla (Çaykur Rizespor / Rize) kurulmuş maç hatırlatıcıları tek görünür; kanalı bilinen kalır.
+const planSides = (x) => {
+  const parts = String(x.title || '').split(/\s+[–-]\s+/);
+  return parts.length === 2 && parts[0] && parts[1] ? { t: x.s, home: { name: parts[0] }, away: { name: parts[1] } } : null;
+};
+export function dropTwinMatchPlans(list) {
+  const out = [];
+  for (const x of list) {
+    const a = x.match && x.kind === 'rem' ? planSides(x) : null;
+    const i = a ? out.findIndex((y) => y.match && y.kind === 'rem' && y.id !== x.id && Math.abs(y.s - x.s) <= 30 * 60000 && sameMatch(a, planSides(y) || {})) : -1;
+    if (i < 0) out.push(x);
+    else if (x.chId && !out[i].chId) out[i] = x;
+  }
+  return out;
 }
 
 export function addPlan(list, plan) {

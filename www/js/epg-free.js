@@ -250,10 +250,12 @@ async function fetchHtml(src, net, now) {
         const key = chanKey(row.ch) || row.ch;
         const ch = byName.get(key);
         if (!ch) continue;
+        // Başlık uyuyorsa 10 dk'ya kadar kayma kabul edilir (kanal 20:00, site 20:05 yazabilir); uymuyorsa yalnız aynı dakika
         const near = ch.list
-          .filter((p) => Math.abs(p.s - row.s) <= 2 * 60e3 && (titlesCompatible(p.t, row.t) || Math.abs(p.s - row.s) <= 60e3))
+          .filter((p) => (titlesCompatible(p.t, row.t) ? Math.abs(p.s - row.s) <= 10 * 60e3 : Math.abs(p.s - row.s) <= 60e3))
           .sort((a, b) => Math.abs(a.s - row.s) - Math.abs(b.s - row.s))[0];
-        if (near && !near.c) {
+        // Kaynak "Drama/Aile" gibi genel bir tür yazmışsa ve site bunu dizi diye duyuruyorsa dizi sayılır (yoksa dizi "Bugün TV'de"de görünmezdi)
+        if (near && (!near.c || (lst.kind === 'Dizi' && GENERIC_CATEGORY.test(fold(near.c).trim())))) {
           near.c = lst.kind;
           typed++;
         }
@@ -326,6 +328,8 @@ const tkey = (t) =>
     .replace(/\bs\d{1,2}\s*e\d{1,3}\b/g, ' ')
     .replace(/[^a-z0-9]+/g, '');
 
+// Tek başına dizi/film ayrımı yapmayan genel türler (site listesi dizi diyorsa dizi olarak yeniden etiketlenir)
+const GENERIC_CATEGORY = /^(drama|dram|aile|romantik|komedi|macera|aksiyon|gerilim|genel|diger|other|eglence|entertainment|family|romance|comedy)$/;
 function titlesCompatible(a, b) {
   const x = tkey(a);
   const y = tkey(b);

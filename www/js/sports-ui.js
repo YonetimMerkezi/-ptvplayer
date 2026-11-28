@@ -8,7 +8,7 @@ import {
   ESPN_BASE, ESPN_BASES, lgLine, loadMatches, matchRank, findProgram, slicePrograms, dayStrip, dayStart, dayLabel,
   matchesOnDay, sections, chipsFor, capSections, hasLive, noScore, isYouthMatch,
 } from './sports.js';
-import { LS_HOSTS, loadLiveScoreDay, mergeSources } from './sports-ls.js';
+import { LS_HOSTS, loadLiveScoreDay, mergeSources, collapseDuplicates } from './sports-ls.js';
 import { HAFTALI_LIGLER, ligMaci, ikinciLigMi } from './sports-lig.js';
 import { turCoz, turEtiketi, turNoKomsu, turNoTablodan, gunEkle, ayniMac } from './sports-tur.js';
 import { haftaCoz, eslestir } from './sports-hafta.js';
@@ -599,7 +599,7 @@ export function openSports(env) {
     const base = ls.length ? mergeSources(espn, ls).matches : espn;
     const rows = [];
     for (const v of tvDays.values()) if (v.src === 'se') rows.push(...v.rows);
-    matches = (rows.length ? mergeSe(base, rows) : base).filter((m) => !isYouthMatch(m)); // genç takım (U19…) maçları gösterilmez
+    matches = collapseDuplicates(rows.length ? mergeSe(base, rows) : base).filter((m) => !isYouthMatch(m)); // genç takım (U19…) maçları gösterilmez; kaynaklar arası yazım farkıyla çift kalan maçlar tek olur
   }
 
   // Yayın akışındaki kanal adlarını maçlara eşler (yalnız oynanmamış maçlar). Yayın akışından gelen maçların kanalı kendi üzerindedir.

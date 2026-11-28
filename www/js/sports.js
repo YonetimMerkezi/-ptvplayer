@@ -107,6 +107,24 @@ const NATIONS = [
 export const isYouthMatch = (m) => !!m && [m.home && m.home.name, m.home && m.home.label, m.away && m.away.name, m.away && m.away.label, m.lgName, m.round].some((x) => !!x && isYouthText(x));
 
 export const norm = (s) => fold(s).replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Sponsor önekleri: aynı kulüp bir kaynakta "Çaykur Rizespor", ötekinde "Rizespor" / "Rize" diye yazılabilir.
+const SPONSOR = new Set(['caykur', 'cay', 'medipol', 'corendon', 'atakas', 'bellona', 'sipay', 'yukatel', 'ikas', 'rams', 'trendyol', 'tumosan', 'global', 'net', 'zecorner']);
+// Birden çok kulübün adında geçen şehir adları: tek başına kök sayılmaz (İstanbulspor ≠ İstanbul Başakşehir)
+const NO_STEM = new Set(['istanbul', 'ankara', 'izmir']);
+const TEAM_MARK = /(?:^| )(w|women|womens|ladies|u ?\d{2}|youth|ii|b|reserves|res)(?= |$)/;
+// Takımın "şehir kökü": sponsor, "FK/SK/spor" gibi ekler atılınca kalan tek ayırt edici sözcük ("caykur rizespor" / "rizespor" / "rize spor" / "caykur rize" → "rize").
+// Kadın/genç/ikinci takım işaretli adlarda ve birden çok sözcük kalıyorsa boş döner.
+export function teamStem(name) {
+  const core = norm(name).replace(/(?:^| )a s(?= |$)/g, ' ').trim(); // "A.Ş."
+  if (!core || TEAM_MARK.test(core)) return '';
+  let toks = core.split(' ').filter((w) => w && !GENERIC.has(w) && !SPONSOR.has(w) && w !== 'spor' && w !== 'kulubu');
+  if (toks.length === 2 && toks[0].length === 1 && toks[1].endsWith('spor')) toks = [toks[1]]; // "Ç. Rizespor"
+  if (toks.length !== 1) return '';
+  let w = toks[0];
+  if (w.endsWith('spor') && w.length - 4 >= 4) w = w.slice(0, -4);
+  return w.length >= 4 && !NO_STEM.has(w) ? w : '';
+}
 const GENERIC = new Set(['fc', 'cf', 'sc', 'afc', 'ac', 'as', 'ssc', 'fk', 'sk', 'bk', 'sv', 'vfb', 'vfl', 'tsg', 'ud', 'cd', 'rcd', 'ca', 'us', 'og', 'club', 'de', 'the', 'calcio', 'bsc', 'cfc', 'kv', 'sl', 'if', 'ik']);
 // Tek başına bir takımı ayırt etmeyen sözcükler (tek sözcükle eşleştirmede kullanılmaz)
 const AMBIG = new Set(['manchester', 'borussia', 'olympique', 'sporting', 'racing', 'united', 'albion', 'rovers', 'wanderers', 'athletic', 'atletico', 'saint', 'dynamo', 'spartak', 'lokomotiv', 'internacional', 'national', 'republic', 'district', 'herzegovina']);
@@ -134,6 +152,8 @@ export function teamPhrases(name) {
   const stripped = words.join(' ');
   if (stripped) set.add(stripped);
   for (const w of words) if (w.length >= 6 && !AMBIG.has(w)) set.add(w);
+  const stem = teamStem(name);
+  if (stem) set.add(stem);
   out = [...set].filter((p) => p.length >= 3);
   phraseCache.set(core, out);
   return out;
@@ -148,6 +168,8 @@ export function teamKeys(name) {
   for (const a of NATION_ALIAS.get(core) || []) strong.add(a);
   const words = core.split(' ').filter((w) => w && !GENERIC.has(w));
   if (words.length) strong.add(words.join(' '));
+  const stem = teamStem(name);
+  if (stem) strong.add(stem);
   return {
     strong: new Set([...strong].filter((p) => p.length >= 3)),
     words: new Set(words.filter((w) => w.length >= 7 && !AMBIG.has(w))),
@@ -156,6 +178,16 @@ export function teamKeys(name) {
 }
 
 export const hasAny = (paddedText, phrases) => phrases.some((p) => paddedText.includes(' ' + p + ' '));
+
+// Gevşek takım eşitliği (yalnız "aynı saatte, öteki takım zaten eşleşiyor" durumunda kullanılır): ortak kök, ya da bir adın sözcüğü ötekinin başı (≥5 harf; "Menemen FK" ↔ "Menemenspor").
+export function looseTeam(a, b) {
+  const sa = teamStem(a);
+  const sb = teamStem(b);
+  if (sa && sa === sb) return true;
+  const ta = norm(a).split(' ').filter((w) => w.length >= 4 && !GENERIC.has(w) && !SPONSOR.has(w));
+  const tb = norm(b).split(' ').filter((w) => w.length >= 4 && !GENERIC.has(w) && !SPONSOR.has(w));
+  return ta.some((x) => tb.some((y) => x === y || (Math.min(x.length, y.length) >= 5 && (x.startsWith(y) || y.startsWith(x)))));
+}
 
 // Program başlığı (+ açıklaması) iki takımı da içeriyorsa ve yayın başlangıcı maça yakınsa o program bu maçındır.
 // hits: [{ id, p: { s, e, t, d } }] (TV rehberi). findPrograms: eşleşenlerin hepsi (maça en yakın başlangıçtan uzağa);

@@ -1453,7 +1453,17 @@ function toggleHeroSound() {
 function syncHeroNote() {
   const ns = $('#hero-live .hero-note-s');
   if (ns) ns.textContent = heroStage.muted ? 'ses kapalı' : 'ses açık';
+  // Telefonda sinema kipinde (arayüz gizli) vitrindeki düğme görünmez: ses düğmesi #app'in dışında da durur
+  const fb = $('#hero-snd-float');
+  if (fb) {
+    fb.setAttribute('aria-label', heroStage.muted ? 'Sesi aç' : 'Sesi kapat');
+    fb.innerHTML = icon(heroStage.muted ? 'mute' : 'audio');
+  }
 }
+$('#hero-snd-float')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  toggleHeroSound();
+});
 const heroTrailer = createHeroTrailer({
   enabled: () => heroTrailerOn(),
   allowed: () => heroTrailerCan() && proOk('trailer'),
@@ -1475,7 +1485,8 @@ document.addEventListener('keydown', (e) => {
     e.stopPropagation();
   }
 }, { capture: true });
-for (const ev of ['pointerdown', 'touchstart', 'touchmove', 'wheel']) document.addEventListener(ev, () => heroTrailer.activity(), { capture: true, passive: true });
+// Ses düğmesine dokunmak arayüzü geri getirmez (yalnız sesi açar/kapatır)
+for (const ev of ['pointerdown', 'touchstart', 'touchmove', 'wheel']) document.addEventListener(ev, (e) => { if (e.target && e.target.closest && e.target.closest('#hero-snd-float')) return; heroTrailer.activity(); }, { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') heroTrailer.cancel(); });
 if (window.matchMedia) {
   // Telefon yatay çevrilince vitrin kapanır: fragman da kesilir; dikeye dönünce vitrin yine odaktaki yapımı gösteriyorsa bekleme yeniden başlar

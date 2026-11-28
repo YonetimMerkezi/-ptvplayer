@@ -1,7 +1,7 @@
 // İkinci veri kaynağı: LiveScore gün listesi. ESPN'de olmayan lig, kupa, alt lig ve milli maçları tamamlar.
 // Resmî olmayan, belgesiz bir API'dir: her alan eksik/değişmiş olabilir kabul edilir, bozuk kayıt atlanır, hiçbir okuma hata atmaz.
 // Saf mantık (ağ dışarıdan verilir). Ekran sports-ui.js'te.
-import { teamLabel, teamKeys, norm, withTimeout, trRound } from './sports.js';
+import { teamLabel, teamKeys, norm, withTimeout, trRound, looseTeam } from './sports.js';
 import { isYouthText } from './util.js';
 
 export const LS_HOSTS = ['https://prod-public-api.livescore.com', 'https://prod-cdn-public-api.livescore.com'];
@@ -634,6 +634,42 @@ export function sameTeam(a, b) {
 }
 const sameFixture = (l, e) => (sameTeam(l.home.name, e.home.name) && sameTeam(l.away.name, e.away.name)) || (sameTeam(l.home.name, e.away.name) && sameTeam(l.away.name, e.home.name));
 
+// Aynı başlama saatinde (bir takım aynı anda iki maç oynayamaz) bir takım kesin, öteki gevşek (kök / ortak sözcük) eşleşiyorsa aynı maçtır:
+// "Çaykur Rizespor – X" ile "Rize – X" iki ayrı kayıt olarak görünmesin.
+const looseSame = (a, b) => infoOf(a).mark === infoOf(b).mark && looseTeam(a, b);
+const SLOT_MS = 25 * 60000;
+export function sameMatch(a, b, tolerance = 90 * 60000) {
+  if (!a || !b || !a.home || !a.away || !b.home || !b.away) return false;
+  const dt = Math.abs(a.t - b.t);
+  if (dt > tolerance) return false;
+  if (sameFixture(a, b)) return true;
+  if (dt > SLOT_MS) return false;
+  const [ah, aa, bh, ba] = [a.home.name, a.away.name, b.home.name, b.away.name];
+  return (sameTeam(ah, bh) && looseSame(aa, ba)) || (sameTeam(aa, ba) && looseSame(ah, bh)) || (sameTeam(ah, ba) && looseSame(aa, bh)) || (sameTeam(aa, bh) && looseSame(ah, ba));
+}
+
+// Kaynaklar birleştikten sonra kalan yinelenen kayıtları tek maça indirir (ESPN > LiveScore > Mackolik > yayın akışı); kaybedenin kanal/tur bilgisi kazanana eklenir.
+const SRC_RANK = { ls: 1, mk: 2, se: 3 };
+const rankOf = (m) => SRC_RANK[m.src] || 0;
+export function collapseDuplicates(list, tolerance = 90 * 60000) {
+  const sorted = [...(list || [])].sort((a, b) => a.t - b.t || String(a.id).localeCompare(String(b.id)));
+  const out = [];
+  for (const m of sorted) {
+    let at = -1;
+    for (let j = out.length - 1; j >= 0 && m.t - out[j].t <= tolerance; j--) {
+      if (sameMatch(out[j], m, tolerance)) { at = j; break; }
+    }
+    if (at < 0) { out.push(m); continue; }
+    const cur = out[at];
+    const [win, lose] = rankOf(m) < rankOf(cur) ? [m, cur] : [cur, m];
+    let merged = win;
+    if (lose.channels && lose.channels.length && !(win.channels && win.channels.length)) merged = { ...merged, channels: lose.channels, logos: lose.logos || merged.logos };
+    if (lose.round && !win.round) merged = merged === win ? { ...win, round: lose.round } : { ...merged, round: lose.round };
+    out[at] = merged;
+  }
+  return out.sort((a, b) => a.t - b.t || String(a.id).localeCompare(String(b.id)));
+}
+
 // ESPN maçları + LiveScore maçları → tek liste. Aynı maç iki kaynakta varsa ESPN'inki kalır (logo, ayrıntı, yayıncı bilgisi onda).
 // LiveScore saatleri ESPN'dekilerden saat dilimi kadar kaymışsa (aynı maçların ortanca farkı) LiveScore saatleri düzeltilir.
 // Döner: { matches, shift (ms, LiveScore'a eklenen), dupes }
@@ -686,7 +722,6 @@ export function mergeSources(espn, ls, { tolerance = 90 * 60000, window = 15 * 3
     kept.push(shift ? { ...l, t } : l);
   }
   const seen = new Set();
-  const all = [...base, ...kept].filter((m) => !seen.has(m.id) && seen.add(m.id));
-  all.sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
+  const all = collapseDuplicates([...base, ...kept].filter((m) => !seen.has(m.id) && seen.add(m.id)));
   return { matches: all, shift, dupes };
 }
