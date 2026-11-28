@@ -125,12 +125,12 @@ test('oynatıcı: kanal listesi açılır, seçilen kanal oynar, Geri listeyi ka
   o.bitir();
 });
 
-test('oynatıcı: P+/P− kanal değiştirir, ▲▼ varsayılanda değiştirmez; ayar açılırsa eski davranış', () => {
+test('oynatıcı: P+ sonraki, P− önceki kanalı açar; ▲▼ varsayılanda değiştirmez; ayar açılırsa ▼ sonraki, ▲ önceki', () => {
   const o = kur();
-  o.tus('chdown');
-  assert.equal(o.baslik(), '2  Kanal 2');
   o.tus('chup');
-  assert.equal(o.baslik(), '1  Kanal 1');
+  assert.equal(o.baslik(), '2  Kanal 2', 'P+ sonraki kanal');
+  o.tus('chdown');
+  assert.equal(o.baslik(), '1  Kanal 1', 'P− önceki kanal');
   o.bitir();
   const z = kur({ arrowZap: true });
   z.tus('down');
@@ -736,7 +736,7 @@ test('geri sarma: panel 5-90 dk ve "Programın başına" sunar; seçilince arşi
     mock.timers.tick(800);
     await sonraki();
     assert.match(vid.src, /timeshift/);
-    o.tus('chdown');
+    o.tus('chup');
     assert.match(vid.src, /\/live\/u\/p\/202\./, 'yeni kanal canlı');
     assert.equal(o.q('.p-geri').className === 'p-geri' || o.q('.p-geri').textContent === '', true);
     o.bitir();
@@ -922,7 +922,7 @@ test('altyazı: Yeni yapım başlayınca eski harici altyazı kalkar', async () 
   await bekle(300);
   assert.equal(altMetin(o), 'Merhaba dünya');
   o.tus('back');
-  o.scr.onKey('chdown'); // sonraki bölüm
+  o.scr.onKey('chup'); // sonraki bölüm (P+)
   assert.equal(altMetin(o), '', 'bölüm değişince altyazı kalkar');
   o.bitir();
 });
@@ -1012,7 +1012,7 @@ test('kalite: kanal hızla değişince eski kanalın çözümü yenisini ezmez',
     { id: 'q7', kind: 'live', name: 'Hızlı', num: 7, streamId: 907 },
   ];
   const o = kur({ kalite: 'max' }, liste, ag);
-  o.tus('chdown'); // ikinci kanala geç
+  o.tus('chup'); // ikinci kanala geç (P+)
   const vid = o.q('#vid');
   await bekleKadar(() => /907|v3/.test(vid.src), 'ikinci kanal');
   const sonuc = vid.src;

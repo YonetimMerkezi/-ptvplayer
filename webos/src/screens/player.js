@@ -1476,15 +1476,19 @@ export function playerScreen({ list, index, fresh }) {
         odakAyarla('ust');
         return true;
       }
-      if (a === 'down' || a === 'chdown') {
-        if (canli()) kanal(1);
-        else if (a === 'chdown' && it.kind === 'episode') kanal(1);
+      // Kumandada P+ sonraki, P− önceki kanaldır (kanal numarası P+ ile artar); bölümde de sonraki/önceki bölüm. Yön tuşları liste gibidir: ▼ sonraki, ▲ önceki.
+      if (a === 'chup' || a === 'chdown') {
+        if (canli() || it.kind === 'episode') kanal(a === 'chup' ? 1 : -1);
         else goster();
         return true;
       }
-      if (a === 'up' || a === 'chup') {
+      if (a === 'down') {
+        if (canli()) kanal(1);
+        else goster();
+        return true;
+      }
+      if (a === 'up') {
         if (canli()) kanal(-1);
-        else if (a === 'chup' && it.kind === 'episode') kanal(-1);
         else goster();
         return true;
       }

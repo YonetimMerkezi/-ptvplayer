@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 189,
+    title: 'Kumandada P+ / P− yönü düzeldi',
+    items: [
+      'Canlı yayında P+ artık sonraki, P− önceki kanalı açıyor (LG webOS ve Android TV); daha önce ters çalışıyordu',
+      'Kanal tuşları PageUp/PageDown olarak gelen Android TV kumandalarında da aynı yön geçerli',
+    ],
+  },
+  {
     id: 188,
     title: 'Kanal geçişi hızlandı',
     items: [

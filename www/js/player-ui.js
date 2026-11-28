@@ -2044,6 +2044,8 @@ export function createPlayerUI({ engine, player, env }) {
     else if (seekKey && (!live || shiftCh(st))) keySeek(seekKey);
     else if (seekKey) hud('info', 'Canlı yayında sarma yok');
     else if (k === 'ChannelUp' || k === 'ChannelDown') go(k === 'ChannelUp' ? 1 : -1);
+    // Birçok TV kutusunun kumandasında kanal +/- tuşları PageUp/PageDown olarak gelir: canlıda P+ (PageUp) sonraki, P− (PageDown) önceki kanaldır
+    else if (live && (k === 'PageUp' || k === 'PageDown')) go(k === 'PageUp' ? 1 : -1);
     else if (k === 'PageUp' || k === 'MediaTrackPrevious') go(-1);
     else if (k === 'PageDown' || k === 'MediaTrackNext') go(1);
     else if (k === ' ' || k === 'MediaPlayPause') player.toggle();
