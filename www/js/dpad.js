@@ -168,6 +168,8 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     if (playing) {
       const chp = doc.querySelector('#pl-chpanel:not([hidden])'); // iki seviyeli kanal paneli açıkken odak yalnız onun içinde gezer
       if (chp) return chp;
+      const stats = doc.getElementById('pl-stats-box'); // yayın bilgisi penceresi denetimlerin dışındadır: odak içindeyse oklar yalnız onun içinde gezer
+      if (stats && !stats.hidden && stats.contains(doc.activeElement)) return stats;
       return doc.querySelector('#pl-ui.show');
     }
     return doc.getElementById('app');

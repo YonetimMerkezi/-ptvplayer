@@ -2,6 +2,16 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 190,
+    title: 'Dizi sayfası derlendi, gece modu sesi temizlendi',
+    items: [
+      'Dizi detayında düğmeler (Devam et, Favori, Klasör…) düzenli bir ızgarada; bölüm ve sezon odağı artık kesilmiyor, künye ve konu ekrana sığıyor (konuya basınca tamamı açılır)',
+      'Yayın bilgisi kutusuna kumandayla geçilebiliyor; Geri önce kutuyu kapatıyor',
+      'Gece modu daha hafif ve temiz: ani yüksek seslerde cızırtı yapan kırpılma giderildi, işlemci yükü azaldı',
+      'Yayın bilgisine Ses biçimi, Ses çözücü ve Ses kesintisi satırları eklendi; ses cızırtısının nedeni buradan okunabilir',
+    ],
+  },
+  {
     id: 189,
     title: 'Kumandada P+ / P− yönü düzeldi',
     items: [

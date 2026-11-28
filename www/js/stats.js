@@ -1,5 +1,6 @@
 // Oynatıcı "Yayın bilgisi": motordan gelen ham ölçümleri okunur satırlara çevirir (saf mantık).
-// Ham ölçüm (hepsi isteğe bağlı): { bufferMs, width, height, fps, videoBps, audioBps, bandwidthBps, videoCodec, audioCodec, videoMime, audioMime, dropped, rendered }
+// Ham ölçüm (hepsi isteğe bağlı): { bufferMs, width, height, fps, videoBps, audioBps, bandwidthBps, videoCodec, audioCodec, videoMime, audioMime, dropped, rendered,
+//   audioRate, audioChannels, audioDecoder, audioUnderruns, audioGapMs }
 
 // 4_500_000 → "4,5 Mb/sn"; 640_000 → "640 kb/sn"
 export function fmtBps(bps) {
@@ -66,6 +67,20 @@ export const isSoftwareDecoder = (name) => /^(omx\.google\.|c2\.android\.|c2\.go
 // 3200 → "3,2 sn"
 const fmtSec = (ms) => (Math.max(0, ms) / 1000).toFixed(1).replace('.', ',') + ' sn';
 
+// 48000 → "48 kHz"; 44100 → "44,1 kHz"
+export function fmtRate(hz) {
+  const n = Number(hz);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return String(Math.round(n / 100) / 10).replace('.', ',') + ' kHz';
+}
+
+// 2 → "stereo", 6 → "5.1"
+export function channelLabel(n) {
+  const c = Number(n);
+  if (!Number.isFinite(c) || c <= 0) return '';
+  return { 1: 'mono', 2: 'stereo', 6: '5.1', 8: '7.1' }[c] || c + ' ch';
+}
+
 // st: player.state(); raw: motor ölçümü (null olabilir). Dönen: [{ k, v, level? }]
 export function statsRows(st, raw) {
   const rows = [];
@@ -84,7 +99,9 @@ export function statsRows(st, raw) {
   const vb = fmtBps(r.videoBps);
   const ab = fmtBps(r.audioBps);
   const acodec = codecName(r.audioCodec, r.audioMime);
-  if (vb || ab || acodec) rows.push({ k: 'Bit hızı', v: [vb && 'görüntü ' + vb, ab && 'ses ' + ab, acodec].filter(Boolean).join(' · ') });
+  if (vb || ab) rows.push({ k: 'Bit hızı', v: [vb && 'görüntü ' + vb, ab && 'ses ' + ab].filter(Boolean).join(' · ') });
+  const audio = [acodec, fmtRate(r.audioRate), channelLabel(r.audioChannels)].filter(Boolean).join(' · ');
+  if (audio) rows.push({ k: 'Ses', v: audio });
   const bw = fmtBps(r.bandwidthBps);
   if (bw) rows.push({ k: 'Bağlantı hızı', v: bw + ' (tahmini)' });
   const buf = fmtBuffer(r.bufferMs);
@@ -94,6 +111,12 @@ export function statsRows(st, raw) {
     rows.push({ k: 'Düşen kare', v: r.dropped + (total > 0 ? ` (%${((r.dropped / total) * 100).toFixed(1).replace('.', ',')})` : ''), level: r.dropped > 30 ? 'low' : '' });
   }
   if (r.decoder) rows.push({ k: 'Çözücü', v: `${r.decoder} · ${isSoftwareDecoder(r.decoder) ? 'yazılım' : 'donanım'}` });
+  if (r.audioDecoder) rows.push({ k: 'Ses çözücü', v: `${r.audioDecoder} · ${isSoftwareDecoder(r.audioDecoder) ? 'yazılım' : 'donanım'}` });
+  // Ses hattı boşalma sayısı: sıfır dışında bir değer cızırtı/kesilmenin nedenidir (çözücü ya da işlemci yetişemiyor, ağ besleyemiyor)
+  if (Number.isFinite(r.audioUnderruns) && r.audioUnderruns >= 0) {
+    const gap = Math.round(Number(r.audioGapMs) || 0);
+    rows.push({ k: 'Ses kesintisi', v: r.audioUnderruns === 0 ? 'Yok' : `${r.audioUnderruns} kez · en uzun boşluk ${gap} ms`, level: r.audioUnderruns === 0 ? 'good' : 'low' });
+  }
   if (r.compat) rows.push({ k: 'Mod', v: 'Uyumlu (geniş TS ayrıştırma, yazılım çözücü öncelikli)' });
   // Olay kaydı: her adres denemesi, hata (HTTP kodu, çözücü, neden), yeniden bağlanma — sorun olunca neden buradan okunur
   const log = (st && st.log) || [];

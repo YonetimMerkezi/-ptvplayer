@@ -2848,6 +2848,7 @@ function openSeries(it) {
       }
       const all = episodesOf(info);
       let season = info.seasons[0].season;
+      let plotOpen = false; // geniş ekranda uzun konu 5 satırda kesilir; Tamam ile açılıp kapanır
       const last = progressOf(it);
       if (last) {
         const e = all.find((x) => x.id === last.id);
@@ -2899,6 +2900,16 @@ function openSeries(it) {
         const scroll = body.scrollTop;
         body.innerHTML = `<div class="dt"><div class="dt-tr" id="sr-trailer"></div><div class="dt-pos">${posterOf(it)}</div><div class="dt-head"><h1 class="dt-t">${esc(it.name)}</h1><div class="dt-m">${chipsOf([it.group, info.genre, yearOf(info.year), starsOf(info.rating || it.rating), `${info.seasons.length} sezon`])}</div><div class="mv-advisories" id="mv-advisories" hidden></div><div class="dt-btns">${cont ? `<button class="btn lg" id="sr-cont">${icon('play')}Devam et · ${esc(cont.label.split(' · ')[0])}</button>` : `<button class="btn lg" id="sr-first">${icon('play')}İlk bölümü oynat</button>`}<button class="btn ghost" id="sr-fav">${icon(isFav(it) ? 'star-on' : 'star')}Favori</button><button class="btn ghost" id="sr-fold">${icon('folder')}Klasör</button></div></div><div class="dt-body"><h2>Dizi hakkında</h2><p class="dt-plot">${esc(plotText || 'Bu dizi için özet bulunamadı.')}</p><dl class="dt-facts">${factsOf([['Yönetmen', info.director], ['Oyuncular', info.cast]])}</dl><div class="dt-pp" id="sr-people"></div><div class="dt-eps"><h3 class="dt-eps-h">${season}. SEZON <small>· ${eps.length} BÖLÜM</small></h3><div class="chips">${seasons}</div>${dlUi ? '<div class="dt-dlrow"><button class="btn sm ghost" id="sr-dls"></button></div>' : ''}${rows}</div></div></div>`;
         body.scrollTop = scroll;
+        // Kesilen konu kumandayla odaklanır ve Tamam ile açılır; kesilmiyorsa (dikey ekran, kısa konu) odak durağı eklenmez
+        const plotEl = $('.dt-plot', body);
+        if (plotEl) {
+          plotEl.classList.toggle('open', plotOpen);
+          if (plotOpen || plotEl.scrollHeight > plotEl.clientHeight + 1) {
+            plotEl.tabIndex = 0;
+            plotEl.setAttribute('role', 'button');
+            plotEl.setAttribute('aria-expanded', String(plotOpen));
+          }
+        }
         paintAdv();
         paintExtras();
         if (dlUi) paintDl();
@@ -2919,6 +2930,12 @@ function openSeries(it) {
         if (s) {
           season = Number(s.dataset.s);
           return draw();
+        }
+        const pl = e.target.closest('.dt-plot[role="button"]');
+        if (pl) {
+          plotOpen = !plotOpen;
+          pl.classList.toggle('open', plotOpen);
+          return pl.setAttribute('aria-expanded', String(plotOpen));
         }
         const d = e.target.closest('[data-dl]');
         if (d) return dlToggle(it, byId.get(d.dataset.dl));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtBps, fmtBuffer, codecName, bufferLevel, statsRows, targetKind, isSoftwareDecoder } from '../www/js/stats.js';
+import { fmtBps, fmtBuffer, codecName, bufferLevel, statsRows, targetKind, isSoftwareDecoder, fmtRate, channelLabel } from '../www/js/stats.js';
 
 test('bit hızı: Mb/sn ve kb/sn, geçersizde boş', () => {
   assert.equal(fmtBps(4_500_000), '4,5 Mb/sn');
@@ -43,7 +43,8 @@ test('satırlar: durum, yayın türü, görüntü, bit hızı, bağlantı, tampo
   assert.equal(get('Durum').v, 'Oynuyor · yeniden bağlanma 2');
   assert.equal(get('Yayın').v, 'MPEG-TS · h.tv:8080 · adres 2/2');
   assert.equal(get('Görüntü').v, '1920×1080 · 25 k/sn · H.264');
-  assert.equal(get('Bit hızı').v, 'görüntü 4,2 Mb/sn · ses 128 kb/sn · AAC');
+  assert.equal(get('Bit hızı').v, 'görüntü 4,2 Mb/sn · ses 128 kb/sn');
+  assert.equal(get('Ses').v, 'AAC');
   assert.equal(get('Bağlantı hızı').v, '18 Mb/sn (tahmini)');
   assert.deepEqual([get('Tampon').v, get('Tampon').level], ['8,2 sn', 'ok']);
   assert.equal(get('Düşen kare').v, '12 (%1,2)');
@@ -83,4 +84,26 @@ test('satırlar: çözücü, uyumlu mod ve olay kaydı (ilk olaya göre saniye, 
   assert.equal(ev[6].v, '+12,0 sn · olay 8');
   const none = statsRows({ status: 'playing', targets: [], idx: 0 }, {});
   assert.ok(!none.some((r) => ['Çözücü', 'Mod', 'Olaylar'].includes(r.k)), 'veri yokken bu satırlar çıkmaz');
+});
+
+test('ses: biçim satırı (kodek · örnekleme · kanal), ses çözücüsü ve kesinti sayacı; bit hızı yoksa "Bit hızı" satırı çıkmaz', () => {
+  const st = { status: 'playing', live: false };
+  const get = (rows, k) => rows.find((r) => r.k === k);
+  // bit hızı bildirilmeyen kapsayıcı (ör. MKV): satır etiketi yalnızca kodeği "bit hızı" diye göstermemeli
+  const a = statsRows(st, { audioCodec: 'mp4a.40.2', audioRate: 48000, audioChannels: 2, audioDecoder: 'c2.android.aac.decoder', audioUnderruns: 0, audioGapMs: 0 });
+  assert.equal(get(a, 'Bit hızı'), undefined);
+  assert.equal(get(a, 'Ses').v, 'AAC · 48 kHz · stereo');
+  assert.equal(get(a, 'Ses çözücü').v, 'c2.android.aac.decoder · yazılım');
+  assert.deepEqual([get(a, 'Ses kesintisi').v, get(a, 'Ses kesintisi').level], ['Yok', 'good']);
+  const b = statsRows(st, { audioCodec: 'ac-3', audioRate: 44100, audioChannels: 6, audioDecoder: 'OMX.MTK.AUDIO.DECODER.AC3', audioUnderruns: 7, audioGapMs: 183.6 });
+  assert.equal(get(b, 'Ses').v, 'AC3 · 44,1 kHz · 5.1');
+  assert.equal(get(b, 'Ses çözücü').v, 'OMX.MTK.AUDIO.DECODER.AC3 · donanım');
+  assert.deepEqual([get(b, 'Ses kesintisi').v, get(b, 'Ses kesintisi').level], ['7 kez · en uzun boşluk 184 ms', 'low']);
+  // eski sürümden/web motorundan gelen ölçümde ses alanları yoksa bu satırlar hiç eklenmez
+  const c = statsRows(st, { width: 1280, height: 720 });
+  assert.deepEqual(['Ses', 'Ses çözücü', 'Ses kesintisi'].map((k) => get(c, k)), [undefined, undefined, undefined]);
+  assert.equal(fmtRate(48000), '48 kHz');
+  assert.equal(fmtRate(22050), '22,1 kHz');
+  assert.equal(fmtRate(0), '');
+  assert.deepEqual([1, 2, 6, 8, 4, 0].map(channelLabel), ['mono', 'stereo', '5.1', '7.1', '4 ch', '']);
 });

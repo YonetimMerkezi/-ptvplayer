@@ -174,6 +174,9 @@ public class IptvPlayerPlugin extends Plugin {
     // geniş tutulur. Aynı yayına yeniden bağlanmada sürer, başka yayına geçilince kapanır.
     private volatile boolean compat = false;
     private volatile String videoDecoder = ""; // açık yayının video çözücüsü (Yayın bilgisi ve donma raporu için)
+    private volatile String audioDecoder = ""; // açık yayının ses çözücüsü (Yayın bilgisi)
+    private volatile int audioUnderruns = 0;   // yayın açılalı beri ses hattının boşalma sayısı: cızırtı/kesilmenin doğrudan belirtisi (Yayın bilgisi)
+    private volatile long audioGapMs = 0;      // en uzun boşalma: ses hattı son beslemeden bu kadar sonra boşaldı
     // Görüntü donma bekçisi: oynuyor görünürken çizilen kare sayısı ilerlemiyorsa (karar vermesi için ticker'da bakılır)
     private long vwAt = -1;
     private long vwRendered = -1;
@@ -694,6 +697,9 @@ public class IptvPlayerPlugin extends Plugin {
         castState = "buffering";
 
         if (!reuse) videoDecoder = ""; // yeniden kullanılan oynatıcıda çözücü açık kalabilir: adı korunur
+        if (!reuse) audioDecoder = "";
+        audioUnderruns = 0;
+        audioGapMs = 0;
         lastBuffer = effectiveBuffer;
         long nowMs = SystemClock.elapsedRealtime();
         if (adaptStep > 0 && nowMs - adaptStepAt > 20 * 60 * 1000L) { adaptStep--; adaptStepAt = nowMs; } // 20 dk sorunsuzsa tavan bir kademe geri açılır
@@ -737,6 +743,18 @@ public class IptvPlayerPlugin extends Plugin {
             @Override
             public void onDroppedVideoFrames(AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
                 noteDroppedFrames(droppedFrames, elapsedMs);
+            }
+
+            @Override
+            public void onAudioDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
+                audioDecoder = decoderName == null ? "" : decoderName;
+            }
+
+            // Ses hattı (AudioTrack) boşaldı: çözülen ses yetişmedi. Sayı arttıkça cızırtı/kesilme duyulur; Yayın bilgisi'nde görünür.
+            @Override
+            public void onAudioUnderrun(AnalyticsListener.EventTime eventTime, int bufferSize, long bufferSizeMs, long elapsedSinceLastFeedMs) {
+                audioUnderruns++;
+                if (elapsedSinceLastFeedMs > audioGapMs) audioGapMs = elapsedSinceLastFeedMs;
             }
         });
         player.setWakeMode(C.WAKE_MODE_NETWORK); // uygulama arka plandayken de (kayıt) ağ ve işlemci uyumasın
@@ -1797,7 +1815,12 @@ public class IptvPlayerPlugin extends Plugin {
                         if (a.bitrate > 0) o.put("audioBps", a.bitrate);
                         if (a.sampleMimeType != null) o.put("audioMime", a.sampleMimeType);
                         if (a.codecs != null) o.put("audioCodec", a.codecs);
+                        if (a.sampleRate > 0) o.put("audioRate", a.sampleRate);
+                        if (a.channelCount > 0) o.put("audioChannels", a.channelCount);
                     }
+                    if (!audioDecoder.isEmpty()) o.put("audioDecoder", audioDecoder);
+                    o.put("audioUnderruns", audioUnderruns);
+                    o.put("audioGapMs", audioGapMs);
                     DecoderCounters dc = player.getVideoDecoderCounters();
                     if (dc != null) {
                         dc.ensureUpdated();

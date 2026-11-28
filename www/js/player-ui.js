@@ -1477,6 +1477,7 @@ export function createPlayerUI({ engine, player, env }) {
   // ---- yayın bilgisi: saniyede bir ölçüm (tampon, çözünürlük, bit hızı, bağlantı hızı, düşen kare) ----
   let statsOn = false;
   let statsTimer = 0;
+  let statsLayer = false; // pencere açıkken Geri tuşu önce yalnız pencereyi kapatır
   async function drawStats() {
     if (!statsOn || !open) return;
     let raw = null;
@@ -1488,16 +1489,38 @@ export function createPlayerUI({ engine, player, env }) {
     if (!statsOn || !open) return;
     q('#pl-stats-rows').innerHTML = statsRows(player.state(), raw).map((r) => `<div${r.level ? ` class="lv-${r.level}"` : ''}><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('');
   }
-  function setStats(on) {
-    statsOn = on;
+  const statsFocused = () => statsOn && q('#pl-stats-box').contains(document.activeElement);
+  // Pencereyi kapatır (Geri tuşu katmanı da buraya gelir); odak pencerenin içindeyse "Bilgi" düğmesine döner
+  function statsHide() {
+    const had = statsFocused();
+    statsOn = false;
+    statsLayer = false;
     clearInterval(statsTimer);
-    q('#pl-stats').classList.toggle('on', on);
-    q('#pl-stats').setAttribute('aria-pressed', String(on));
-    q('#pl-stats-box').hidden = !on;
-    if (on) {
-      drawStats();
-      statsTimer = setInterval(drawStats, 1000);
+    q('#pl-stats').classList.remove('on');
+    q('#pl-stats').setAttribute('aria-pressed', 'false');
+    q('#pl-stats-box').hidden = true;
+    if (had && open) {
+      showUi(false);
+      if (kbdMode()) q('#pl-stats').focus({ preventScroll: true });
     }
+  }
+  function setStats(on) {
+    if (!on) {
+      if (statsLayer) popLayer('pl-stats');
+      else statsHide();
+      return;
+    }
+    statsOn = true;
+    clearInterval(statsTimer);
+    q('#pl-stats').classList.add('on');
+    q('#pl-stats').setAttribute('aria-pressed', 'true');
+    q('#pl-stats-box').hidden = false;
+    if (!statsLayer) {
+      statsLayer = true;
+      pushLayer('pl-stats', statsHide);
+    }
+    drawStats();
+    statsTimer = setInterval(drawStats, 1000);
   }
 
   // Geri tuşu yayını mini oynatıcıya küçültür; kilit, uyku zamanlayıcısı, TV'ye gönderme ve TV'de durdurma ise yayını tamamen kapatır.
@@ -1872,6 +1895,7 @@ export function createPlayerUI({ engine, player, env }) {
   q('#pl-stats').addEventListener('click', () => {
     setStats(!statsOn);
     showUi(false);
+    if (statsOn && kbdMode()) q('#pl-stats-x').focus({ preventScroll: true }); // kumandayla açıldıysa odak pencereye geçer (kapat düğmesi; aşağı: satırlar kayar)
   });
   // Görüntü bozuk/donuk: aynı yayın uyumlu modda (yazılım çözücü, geniş TS ayrıştırma) yeniden açılır. Yalnız Android'de (Media3) anlamlı.
   q('#pl-fix').hidden = engine.kind !== 'native';
@@ -1996,7 +2020,8 @@ export function createPlayerUI({ engine, player, env }) {
     const live = st.live;
     const k = e.key;
     // Oynatıcının üstünde (over-player) alt sayfa/sayfa/şifre ekranı açıkken oklar, Tamam, boşluk ve rakamlar onlarındır (odak içinde gezer); oynatıcı yayına dokunmaz
-    if (open && (k.startsWith('Arrow') || k === 'Enter' || k === ' ' || /^[0-9]$/.test(k)) && (document.getElementById('lock') || document.querySelector('#sheets > .over-player') || chp.open)) return;
+    // Yayın bilgisi penceresine odak geçtiyse oklar ve Tamam onundur (dpad.js içinde gezer); denetimleri açıp odağı çalma düğmesine çekmez
+    if (open && (k.startsWith('Arrow') || k === 'Enter' || k === ' ' || /^[0-9]$/.test(k)) && (document.getElementById('lock') || document.querySelector('#sheets > .over-player') || chp.open || statsFocused())) return;
     if (!open) {
       // önizleme: kanal tuşları listedeki bir sonraki/önceki kanalı önizler (tam ekranı açmaz)
       const step = k === 'ChannelUp' || k === 'MediaTrackNext' ? 1 : k === 'ChannelDown' || k === 'MediaTrackPrevious' ? -1 : 0;
