@@ -257,8 +257,10 @@ test('fragman bloğu: 2+ YouTube sonucu yatay şeritte; dokunulan kart oynatıc�
   assert.match(box.innerHTML, /embed\/bbbbbbbbbbb\?.*mute=0/, 'dokunarak seçilen video sesli açılır');
   assert.deepEqual(cards.map((c) => c.on), [false, true, false], 'vurgu seçilen karta geçer');
   assert.equal(open.href, 'https://www.youtube.com/watch?v=bbbbbbbbbbb');
-  assert.equal(unmute.dataset.done, '1', 'sesli açılan videoda “Sesi aç” yeniden çıkmaz');
-  assert.equal(unmute.hidden, true);
+  assert.equal(unmute.hidden, true, 'yeni video yüklenene kadar ses düğmesi gizli');
+  host.handlers['frame:load']();
+  assert.equal(unmute.hidden, false, 'yüklenince ses düğmesi yeniden görünür');
+  assert.equal(unmute.dataset.snd, '1', 'sesli açılan videoda düğme “Sesi kapat” durumundadır');
   assert.equal(note.textContent, 'not-1');
   // seçilen video gömülemezse sıradaki sonuca geçilir
   win.emit({ source: frameWin, data: JSON.stringify({ event: 'onError', info: 101 }) });
@@ -452,4 +454,22 @@ test('bağlantı: vizyondaki filmler — tüm kart tıklamaları f.id ile eşle�
   assert.match(app, /fillVizyonPosters\(fillHomeNew\)/);
   assert.match(app, /fillVizyonPosters\(\(\) => \{ if \(body\.isConnected\) paint\(\); \}\)/);
   assert.match(app, /resolve: \(f\) => resolveTitleOrigin\(net, f\.name, f\.year, store\)/);
+});
+
+test('denetleyici: ses düğmesi aç/kapa yapar (sessiz başlayan fragman sesi açılır, tekrar dokununca kapanır)', () => {
+  const { host, unmute, posted, frame } = fakeHost();
+  const win = fakeWin();
+  wireTrailer(host, { win, doc: null });
+  frame.contentWindow.postMessage = (m) => posted.push(JSON.parse(m));
+  host.handlers['frame:load']();
+  assert.equal(unmute.dataset.snd, '0', 'sessiz başladı: düğme “Sesi aç”');
+  const btn = unmute;
+  btn.dataset.tr = 'unmute';
+  host.handlers.click({ target: { closest: () => btn } });
+  assert.deepEqual(posted.at(-1), { event: 'command', func: 'unMute', args: [] });
+  assert.equal(unmute.hidden, false, 'ses açılınca düğme kaybolmaz');
+  assert.equal(unmute.dataset.snd, '1');
+  host.handlers.click({ target: { closest: () => btn } });
+  assert.deepEqual(posted.at(-1), { event: 'command', func: 'mute', args: [] });
+  assert.equal(unmute.dataset.snd, '0');
 });
