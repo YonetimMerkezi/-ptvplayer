@@ -936,9 +936,20 @@ export function createPlayerUI({ engine, player, env }) {
         const draw = () => {
           const scroll = root.querySelector('.ps-body');
           const keep = scroll ? scroll.scrollTop : 0;
+          // Yeniden çizim odağı sıfırlıyordu: odaktaki öğenin data-* özniteliklerinden seçici üretip çizimden sonra geri veriyoruz.
+          const ae = document.activeElement;
+          let focusSel = '';
+          if (ae && ae !== document.body && root.contains(ae)) {
+            const parts = [...ae.attributes].filter((a) => a.name.startsWith('data-')).map((a) => `[${a.name}="${String(a.value).replace(/["\\]/g, '\\$&')}"]`);
+            focusSel = parts.length ? ae.tagName.toLowerCase() + parts.join('') : '';
+          }
           const tabs = [['audio', 'Ses', (t.audio || []).length], ['text', 'Altyazı', (t.text || []).length], ['display', 'Görüntü & Hız', null], ['behavior', 'Davranış', null]];
           root.innerHTML = `<div class="ps-tabs" role="tablist">${tabs.map(([id, label, n]) => `<button class="ps-tab${id === tab ? ' on' : ''}" role="tab" aria-selected="${id === tab}" data-tab="${id}">${label}${n == null ? '' : ` (${n})`}</button>`).join('')}</div><div class="ps-body">${tab === 'audio' ? audioHtml() : tab === 'text' ? textHtml() : tab === 'display' ? displayHtml() : behaviorHtml()}</div><button class="btn ps-ok" data-ok>TAMAM</button>`;
           root.querySelector('.ps-body').scrollTop = keep;
+          if (focusSel) {
+            const again = root.querySelector(focusSel);
+            if (again) again.focus({ preventScroll: true });
+          }
         };
         root.addEventListener('click', async (e) => {
           const b = e.target.closest('button');
