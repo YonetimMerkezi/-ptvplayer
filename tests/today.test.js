@@ -152,7 +152,7 @@ test('Bugün TV\'de: türü boş, film uzunluğundaki program adı kaynaklarda f
   assert.match(ui, /const filmLike = \(x\) => !x\.p\.c && x\.p\.e - x\.p\.s >= FILM_MIN_MS && x\.p\.e - x\.p\.s <= FILM_MAX_MS && !channelKind\(x\.channel\) && !kindOf\(x\.p\);/);
   assert.match(ui, /const isFilmByLookup = \(x\) => filmLike\(x\) && !!env\.films && env\.films\.verdict\(x\.p\.t\) === 'film';/);
   assert.match(ui, /\|\| isFilmByLookup\(x\)\)\s*\.map\(\(x\) => \(isFilmByLookup\(x\) \? \{ \.\.\.x, hint: 'film' \} : x\)\);/);
-  assert.match(ui, /env\.films\.request\(list\.map\(\(x\) => x\.p\.t\), \(\) => \{ if \(root\.isConnected\) draw\(\); \}\);/, 'sonuç gelince ekran yeniden çizilir');
+  assert.match(ui, /env\.films\.request\(list\.map\(\(x\) => x\.p\.t\), \(\) => \{ if \(root\.isConnected\) drawLater\(\); \}\);/, 'sonuç gelince ekran (tuşa basılmıyorken, birleştirilerek) yeniden çizilir');
   const app = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8');
   assert.match(app, /createFilmResolver\(\{ net, cache: store\.cache, local: libraryFilm \}\)/);
   assert.match(app, /hasExactTitle\(k, ix\.movie\) && !hasExactTitle\(k, ix\.series\)/, 'kütüphane kanıtı: dizi kütüphanesinde de varsa film sayılmaz');

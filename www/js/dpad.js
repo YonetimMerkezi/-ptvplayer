@@ -305,6 +305,14 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
         return true;
       }
     }
+    // Odaklanabilir bir satırın içinde odaklanabilir öğe varsa (program satırındaki ⋮ düğmesi gibi) sağ ok içeri girer; yoksa sağ ok alttaki satıra inerdi.
+    if (dir === 'right') {
+      const inner = list.find((e) => e !== cur && cur.contains(e) && reachable(e, scope));
+      if (inner) {
+        focusEl(inner, scope);
+        return true;
+      }
+    }
     let target = null;
     if (dir === 'up' || dir === 'down') {
       // Odak bir kaydırma alanının içindeyse ve alan o yöne hâlâ kayabiliyorsa, alanın kendi (şimdilik görünmeyen) öğeleri alan dışındaki
@@ -323,6 +331,18 @@ export function initDpad({ doc = document, win = window, topLayer = () => null, 
     // arasında satır sonunda bir sonraki (sol okta bir önceki) satıra sarılır; böylece alt satırdaki temalara da kumandayla ulaşılır.
     if (dir === 'left' || dir === 'right') {
       const sameRow = (e) => e !== cur && Math.min(rectOf(e).b, curRect.b) - Math.max(rectOf(e).t, curRect.t) > 2;
+      if (!target || !sameRow(target)) {
+        // İçteki öğeden (⋮ düğmesi) sol ok, onu içeren satıra döner.
+        const outer = dir === 'left' ? list.filter((e) => e !== cur && e.contains(cur)).pop() : null;
+        if (outer) {
+          focusEl(outer, scope);
+          return true;
+        }
+        // Satır ekranın büyük bölümünü kaplıyorsa (tam genişlikte liste satırı) yanında başka öğe olamaz: sağ/sol ok yerinde kalır,
+        // alttaki/üstteki satıra atlamaz ve sarma kuralı da çalışmaz (o kural alt satıra kırılan dar düğme sıraları içindir).
+        const sr = rectOf(scope);
+        if (curRect.r - curRect.l >= 0.6 * (sr.r - sr.l)) return true;
+      }
       if (!target || !sameRow(target)) {
         const sibs = list.filter((e) => e.parentElement === cur.parentElement);
         const at = sibs.indexOf(cur);

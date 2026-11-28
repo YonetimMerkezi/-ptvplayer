@@ -57,7 +57,37 @@ test('canlı TV önizleme: pencerenin üstünde "Tamam (OK)" bilgi satırı (tek
 test('vitrin: TV\'de fragman düğmeleri sığar; fragman oynarken üstte bilgi satırı ve ses durumu', () => {
   assert.match(css, /html\.tv\.hero-on \.hero-c \{ display: none; \}/);
   assert.match(css, /html\.tv\.hero-on #hero \{ height: max\(34vh, 176px\); \}/);
-  assert.match(css, /html\.tv\.hero-live \.hero-note \{ display: flex;/);
-  assert.match(app, /<b>Fragman oynuyor<\/b><span class="hero-note-s">\$\{heroStage\.muted \? 'ses kapalı' : 'ses açık'\}<\/span>/);
-  assert.match(app, /\$\('#hero \.hero-note-s'\)/);
+  assert.match(css, /html\.tv\.hero-live #hero-live \{ display: flex;/);
+  const html = kaynak('www/index.html');
+  assert.match(html, /<div id="hero-live"[^>]*><i class="hero-dot"><\/i><b>Fragman oynuyor<\/b><span class="hero-note-s">/); // #app dışında: sinema kipinde de görünür
+  assert.match(app, /\$\('#hero-live \.hero-note-s'\)/);
+  assert.doesNotMatch(app.slice(app.indexOf('function paintHero'), app.indexOf('function paintHero') + 900), /hero-note/);
+  assert.match(app, /heldBtn = act && box\.contains\(act\)/); // yeniden çizimde vitrin düğmesinin odağı korunur
+  assert.match(app, /restoreHeroBtn\(box, heldBtn\)/);
+});
+
+test('Bugün TV\'de: ⋮ gerçek düğme; sağ ok satıra içeri girer, tam genişlik satırda yatay ok yerinde kalır; tik yerinde işaretlenir', () => {
+  const ui = kaynak('www/js/today-ui.js');
+  assert.match(ui, /<button class="td-dots" type="button" data-more aria-label="Seçenekler">/);
+  assert.match(ui, /if \(it && e\.target\.closest\('\[data-more\]'\)\) return moreSheet\(it, row\.p\);/);
+  // dpad: içeri girme / dışarı dönme / tam genişlikte yerinde kalma
+  assert.match(dpad, /const inner = list\.find\(\(e\) => e !== cur && cur\.contains\(e\) && reachable\(e, scope\)\);/);
+  assert.match(dpad, /list\.filter\(\(e\) => e !== cur && e\.contains\(cur\)\)\.pop\(\)/);
+  assert.match(dpad, /curRect\.r - curRect\.l >= 0\.6 \* \(sr\.r - sr\.l\)\) return true;/);
+  // kanal seçme: liste yeniden kurulmaz (odak ve sıra korunur), arka plan çizimi ertelenir
+  const pick = ui.slice(ui.indexOf('function pick('), ui.indexOf('function moreSheet('));
+  assert.match(pick, /c\.classList\.toggle\('on', on\);/);
+  assert.match(pick, /drawLater\(\);/);
+  const tik = pick.slice(pick.indexOf("const c = e.target.closest('.td-c')"), pick.indexOf("pg.el.addEventListener('keydown'"));
+  assert.doesNotMatch(tik, /\brender\(\);/, 'tikte liste yeniden çizilmez');
+  // çizim: odak aynı öğeye geri verilir; arka plan tetikleri tuşa basılırken çizmez
+  assert.match(ui, /function restoreFocus\(key\)/);
+  assert.match(ui, /if \(Date\.now\(\) - lastKeyAt < 800\) return drawLater\(250\);/);
+});
+
+test('odak kenarlığı ince; yuvarlak kartlarda (set-card) dışa taşıp kırpılmaz', () => {
+  assert.match(css, /html\.kbd :focus \{ outline: 2px solid var\(--ring\); outline-offset: 1px; box-shadow: 0 0 0 1px var\(--ring-edge\);/);
+  assert.doesNotMatch(css, /0 0 0 5px var\(--ring\)/, 'kalın 5px halka kalmadı');
+  assert.doesNotMatch(css, /inset 0 0 0 5px var\(--ring-edge\)/, 'kalın iç halka kalmadı');
+  assert.match(css, /html\.kbd \.set-card :focus:not\(\.btn\)[^{]*\{ outline: none; box-shadow: inset 0 0 0 2px var\(--ring\), inset 0 0 0 3px var\(--ring-edge\);/);
 });

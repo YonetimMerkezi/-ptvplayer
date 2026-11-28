@@ -12,6 +12,7 @@ import { channelsByName } from './sports-tv.js';
 import { makePlan, planId } from './plan.js';
 import { loadFilmSchedule } from './today-film-source.js';
 
+const HINT_NONE = 'Hiçbiri seçili değil: bütün rehber kanalları gösterilir. Rehberi olan kanallar listelenir.';
 const KIND_EMPTY = { spor: 'spor', film: 'film', dizi: 'dizi' };
 const KIND_ICON = { spor: 'ball', film: 'movie', dizi: 'tv' };
 const DAYS = 3; // rehber en çok bugünden başlayarak üç gün (entries) gösterilir
@@ -40,7 +41,7 @@ export function openToday(env) {
     if (!env.net || filmSource.loading) return;
     const token = ++filmLoadToken;
     filmSource = { ...filmSource, loading: true, error: '' };
-    if (root.isConnected) draw();
+    if (root.isConnected) drawLater(0);
     try {
       const result = await loadFilmSchedule({ net: env.net });
       const live = env.liveItems() || [];
@@ -66,7 +67,7 @@ export function openToday(env) {
       if (token !== filmLoadToken) return;
       filmSource = { ...filmSource, loading: false, error: String((e && e.message) || e || 'Kaynak alınamadı') };
     }
-    if (root.isConnected) draw();
+    if (root.isConnected) drawLater(0);
   }
 
   const dayLabel = (d) => (d === 0 ? 'Bugün' : d === 1 ? 'Yarın' : new Date(dayStart(now(), d)).toLocaleDateString(loc(), { weekday: 'long' }));
@@ -119,12 +120,13 @@ export function openToday(env) {
     if (sel.length) {
       const map = byId();
       const out = [];
+      const series = seriesEntries();
       for (const id of sel) {
         const it = map.get(id);
         if (it) for (const p of env.listFor(it)) out.push({ id: it.id, channel: it.name, p });
-        out.push(...seriesEntries().filter((x) => x.id === id));
+        out.push(...series.filter((x) => x.id === id));
       }
-      return seriesEntries().concat(out);
+      return series.concat(out);
     }
     const from = dayStart(t, 0);
     const map = byId();
@@ -165,10 +167,62 @@ export function openToday(env) {
     const list = cands
       .filter((x) => x.p.s >= from && x.p.s < to && x.p.e > t && repeats.get(`${x.id}|${keyOf(x.p.t)}`) === 1)
       .sort((a, b) => (hour(a.p.s) >= 19 ? 0 : 1) - (hour(b.p.s) >= 19 ? 0 : 1) || a.p.s - b.p.s);
-    env.films.request(list.map((x) => x.p.t), () => { if (root.isConnected) draw(); });
+    env.films.request(list.map((x) => x.p.t), () => { if (root.isConnected) drawLater(); });
   }
 
-  function draw() {
+  // Çizim her seferinde listeyi baştan kurar; odaktaki öğe silinince kumanda imleci kaybolup başa atlıyordu. Odak aynı öğeye (satır, sekme, süzgeç) geri verilir.
+  const ROW_SEL = '.td-r[data-k]';
+  function focusKey() {
+    const a = document.activeElement;
+    if (!a || !root.contains(a) || a === document.body) return null;
+    const row = a.closest(ROW_SEL);
+    if (row) return { row: row.dataset.k, i: Number(row.dataset.i), more: !!a.closest('[data-more]') };
+    for (const sel of ['[data-kind]', '[data-day]', '[data-past]', '[data-pick]', '[data-film-pick]', '[data-film-refresh]']) {
+      const n = a.closest(sel);
+      if (n) {
+        const attr = sel.slice(1, -1);
+        return { sel: n.hasAttribute(attr) && n.getAttribute(attr) !== '' ? `[${attr}="${n.getAttribute(attr)}"]` : sel };
+      }
+    }
+    return null;
+  }
+  function restoreFocus(key) {
+    if (!key) return;
+    let n = null;
+    if (key.row) {
+      const rows = [...root.querySelectorAll(ROW_SEL)];
+      n = rows.find((r) => r.dataset.k === key.row) || rows[Math.min(key.i, rows.length - 1)] || null;
+      if (n && key.more) n = n.querySelector('[data-more]') || n;
+    } else if (key.sel) n = root.querySelector(key.sel);
+    if (n) n.focus({ preventScroll: true });
+  }
+  const scrollers = () => {
+    const out = [];
+    for (let n = q('#td-list'); n && n !== root.parentElement; n = n.parentElement) if (n.scrollHeight > n.clientHeight + 1) out.push([n, n.scrollTop]);
+    return out;
+  };
+  function draw(keepScroll = false) {
+    const key = focusKey();
+    const sc = keepScroll ? scrollers() : null;
+    paint();
+    if (sc) for (const [n, top] of sc) n.scrollTop = top;
+    restoreFocus(key);
+  }
+  // Arka plandaki tetikler (film çözümleri, kaynak yüklemeleri) tuşa basılırken çizmez: son tuştan 0,8 sn sonra tek çizim yapılır.
+  let drawTimer = null;
+  let lastKeyAt = 0;
+  root.addEventListener('keydown', () => { lastKeyAt = Date.now(); }, true);
+  function drawLater(ms = 350) {
+    if (drawTimer) return;
+    drawTimer = setTimeout(() => {
+      drawTimer = null;
+      if (!root.isConnected) return;
+      if (Date.now() - lastKeyAt < 800) return drawLater(250);
+      draw(true);
+    }, ms);
+  }
+
+  function paint() {
     const t = now();
     const ready = env.epgReady() || !!seriesData || (kind === 'film' && day === 0 && filmSource.loaded);
     const needle = fold(term.trim());
@@ -242,9 +296,9 @@ export function openToday(env) {
         if (!it) return '';
         const mins = Math.max(1, Math.round((p.e - p.s) / 60000));
         const pct = Math.min(100, Math.max(0, Math.round(((t - p.s) / Math.max(1, p.e - p.s)) * 100)));
-        return `<div class="td-r ${state}" role="button" tabindex="0" data-i="${i}">
+        return `<div class="td-r ${state}" role="button" tabindex="0" data-i="${i}" data-k="${esc(`${id}|${p.s}`)}">
           <div class="td-t"><time>${fmtClock(p.s)}</time>${state === 'now' ? `<b class="td-now">${icon('play')}ŞİMDİ</b>` : `<small>${p.u ? '' : `${mins} dk`}</small>`}</div>
-          <div class="td-m"><b>${esc(p.t || 'Program')}</b><span>${esc(it.name)}${p.c ? ` · ${esc(p.c.split(' / ')[0])}` : ''}</span>${state === 'now' ? `<i class="td-pr" style="--p:${pct}%" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><u></u></i>` : ''}</div>${logo(it.logo, it.name)}<span class="td-dots" aria-hidden="true">${icon('dots')}</span></div>`;
+          <div class="td-m"><b>${esc(p.t || 'Program')}</b><span>${esc(it.name)}${p.c ? ` · ${esc(p.c.split(' / ')[0])}` : ''}</span>${state === 'now' ? `<i class="td-pr" style="--p:${pct}%" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><u></u></i>` : ''}</div>${logo(it.logo, it.name)}<button class="td-dots" type="button" data-more aria-label="Seçenekler">${icon('dots')}</button></div>`;
       })
       .join('');
     el.innerHTML = sourceNote + html + (res.truncated ? '<p class="hint td-more">Çok program var; ilk 400 gösteriliyor. Kanalları seçerek daraltın.</p>' : '');
@@ -254,7 +308,8 @@ export function openToday(env) {
   function pick(filmOnly = false) {
     let term = '';
     if (filmOnly && filmSel == null) filmSel = normalizeChannels(filmSource.loaded && filmSource.channels.length ? filmSource.channels : env.liveItems().filter((it) => channelKind(it.name) === 'film').map((it) => it.id));
-    const all = () => env.liveItems().filter((it) => env.listFor(it).length > 0);
+    let allCache = null;
+    const all = () => allCache || (allCache = env.liveItems().filter((it) => env.listFor(it).length > 0));
     const pg = openPage({
       title: filmOnly ? 'Film kanallarını seç' : 'Kanalları seç',
       cls: 'td-pg td-pick',
@@ -270,10 +325,15 @@ export function openToday(env) {
         : items;
       const chosen = new Set(filmOnly ? (filmSel || []) : sel);
       const shown = pickItems.filter((it) => !t || fold(it.name).includes(t)).sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id))).slice(0, 150);
-      pq('#td-ph').textContent = filmOnly ? 'Yalnız seçtiğiniz kanallardaki EPG tarafından açıkça Film/Sinema olarak tanımlanan programlar gösterilir. Tür bilgisi olmayan yayınlar tahminle eklenmez.' : (sel.length ? `${sel.length} kanal seçili. Yalnız bu kanalların programları gösterilir.` : 'Hiçbiri seçili değil: bütün rehber kanalları gösterilir. Rehberi olan kanallar listelenir.');
+      pq('#td-ph').textContent = filmOnly ? 'Yalnız seçtiğiniz kanallardaki EPG tarafından açıkça Film/Sinema olarak tanımlanan programlar gösterilir. Tür bilgisi olmayan yayınlar tahminle eklenmez.' : (sel.length ? `${sel.length} kanal seçili. Yalnız bu kanalların programları gösterilir.` : HINT_NONE);
       pq('#td-pl').innerHTML = shown.length
         ? shown.map((it) => `<div class="td-c${chosen.has(it.id) ? ' on' : ''}" role="button" tabindex="0" data-id="${esc(it.id)}" aria-pressed="${chosen.has(it.id)}">${logo(it.logo, it.name)}<div class="td-m"><b>${esc(it.name)}</b><span>${esc(it.group || '')}</span></div><i class="td-ck">${chosen.has(it.id) ? icon('check') : ''}</i></div>`).join('')
         : '<div class="empty"><p>Kanal bulunamadı. Yalnız TV rehberi bilgisi olan kanallar listelenir.</p></div>';
+    };
+    // Tik koyunca liste yeniden kurulmaz (odak o satırda kalır, tik anında görünür, sıra oynamaz); arka plandaki liste kullanıcı durunca güncellenir.
+    const chosenNow = () => new Set(filmOnly ? (filmSel || []) : sel);
+    const paintHint = () => {
+      if (!filmOnly) pq('#td-ph').textContent = sel.length ? `${sel.length} kanal seçili. Yalnız bu kanalların programları gösterilir.` : HINT_NONE;
     };
     pg.el.addEventListener('click', (e) => {
       if (e.target.closest('#td-clear')) {
@@ -285,7 +345,7 @@ export function openToday(env) {
           env.setChannels(sel);
         }
         render();
-        draw();
+        drawLater();
         return;
       }
       const c = e.target.closest('.td-c');
@@ -299,8 +359,13 @@ export function openToday(env) {
         sel = sel.includes(id) ? sel.filter((x) => x !== id) : normalizeChannels([...sel, id]);
         env.setChannels(sel);
       }
-      render();
-      draw(); // arkadaki liste hemen yeni seçimle çizilir
+      const on = chosenNow().has(id);
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-pressed', String(on));
+      const ck = c.querySelector('.td-ck');
+      if (ck) ck.innerHTML = on ? icon('check') : '';
+      paintHint();
+      drawLater();
     });
     pg.el.addEventListener('keydown', (e) => {
       if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('td-c')) {
@@ -313,6 +378,42 @@ export function openToday(env) {
       render();
     });
     render();
+  }
+
+  // ⋮ düğmesi: programın seçenekleri (ayrıntı, hatırlatıcı, kanal süzgeci)
+  function moreSheet(it, p) {
+    const upcoming = !!env.reminders && Number.isFinite(p.s) && p.s > now();
+    const remId = upcoming ? planId('rem', it.id, p.s, env.sourceId ? env.sourceId() : 'today') : '';
+    const has = upcoming && reminderIds().has(remId);
+    const real = !String(it.id).startsWith('film-source:');
+    const rows = [
+      real ? ['detail', 'info', 'Program ayrıntıları'] : null,
+      upcoming ? ['remind', 'bell', has ? 'Hatırlatıcıyı kaldır' : 'Hatırlatıcı kur'] : null,
+      real ? ['only', 'tv', 'Yalnız bu kanalı göster'] : null,
+      sel.length ? ['all', 'check', 'Tüm kanalları göster'] : null,
+    ].filter(Boolean);
+    if (!rows.length) return env.toast && env.toast('Bu yayın akışındaki kanal canlı listenizde bulunmuyor.', 2500);
+    const sh = openSheet({
+      title: (p.t || 'Program').slice(0, 60),
+      html: rows.map(([act, ic, label]) => `<button class="list-item" data-act="${act}">${icon(ic)}<span class="t">${esc(label)}</span></button>`).join(''),
+    });
+    sh.el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      sh.close();
+      const act = b.dataset.act;
+      if (act === 'detail') env.programSheet(it, p);
+      else if (act === 'remind') toggleReminder(it, p);
+      else if (act === 'only') {
+        sel = [String(it.id)];
+        env.setChannels(sel);
+        draw();
+      } else if (act === 'all') {
+        sel = [];
+        env.setChannels(sel);
+        draw();
+      }
+    });
   }
 
   function pickDay() {
@@ -373,6 +474,7 @@ export function openToday(env) {
     if (r) {
       const row = (q('#td-list')._rows || [])[Number(r.dataset.i)];
       const it = row && byId().get(row.id);
+      if (it && e.target.closest('[data-more]')) return moreSheet(it, row.p);
       if (it && e.target.closest('[data-bell]')) return toggleReminder(it, row.p);
       if (it && !String(it.id).startsWith('film-source:')) env.programSheet(it, row.p);
       else if (it && env.toast) env.toast('Bu yayın akışındaki kanal canlı listenizde bulunmuyor.', 2500);
@@ -396,19 +498,19 @@ export function openToday(env) {
       epgError = String((e && e.message) || e || 'TV rehberi alınamadı');
     }).finally(() => {
       epgLoading = false;
-      if (root.isConnected) draw();
+      if (root.isConnected) drawLater(0);
     }));
   }
   if (env.net) startupTasks.push(refreshFilmSource());
   if (env.net) startupTasks.push(loadSeriesWeek({ net: env.net, nowMs: now() }).then((r) => {
     seriesData = r;
-    if (root.isConnected) draw();
+    if (root.isConnected) drawLater(0);
   }).catch(() => {}));
   Promise.allSettled(startupTasks);
   // şimdi/biten durumu dakikada bir yenilenir
   const timer = setInterval(() => {
     if (!root.isConnected) return clearInterval(timer);
-    draw();
+    drawLater(0);
   }, 60e3);
   return page;
 }

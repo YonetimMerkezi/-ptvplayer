@@ -2,6 +2,17 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 192,
+    title: 'Bugün TV\'de ve kumanda odağı düzeltmeleri',
+    items: [
+      'Bugün TV\'de: program satırında sağ ok artık alttaki satıra inmiyor; logonun yanındaki ⋮ düğmesine geçiliyor (Program ayrıntıları, Hatırlatıcı, Yalnız bu kanalı göster)',
+      'Kanalları seç: tik anında işaretleniyor, odak aynı kanalda kalıyor (her seferinde en üstteki düğmeye atlamıyor), liste sırası oynamıyor',
+      'Bugün TV\'de arka plan yüklemeleri artık tuşa basarken sayfayı yeniden çizmiyor; imleç takılması azaldı',
+      'Odak kenarlığı uygulama genelinde incelti; Planlananlar gibi yuvarlak kartlarda kırpılma giderildi',
+      'Vitrin: Fragmanı oynat / Sesi aç düğmelerine geçince odak artık geri atmıyor (vitrin yenilenirken düğme odağı korunuyor); “Fragman oynuyor” bilgisi tam ekran sinema kipinde de üstte kalıyor',
+    ],
+  },
+  {
     id: 191,
     title: 'Ana ekran satırları düzenlendi',
     items: [

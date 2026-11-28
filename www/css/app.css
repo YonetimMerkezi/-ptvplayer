@@ -170,7 +170,7 @@ html[data-multi][data-sec], html[data-multi] :is(.td-pg, .lb-pg, .guide-pg, .pk-
 html[data-multi] .row.cat.vis:is(.k0, .k1, .k2, .k3, .k4, .k5) { box-shadow: none; }
 /* Görselli kategori kartında kumanda odağı: halka resmin ve perdenin ÜSTÜNE (::after) çizilir (kartın kendi gölgesi resmin altında kalırdı);
    görsel canlanır, sol çubuk beyazlaşıp uzar, ok belirginleşir. Böylece karanlık odada ve projeksiyonda da seçili kart bir bakışta anlaşılır. */
-html.kbd .row.cat.vis:focus::after, html.kbd .cat-tile.vis:focus::after { box-shadow: inset 0 0 0 4px var(--ring), inset 0 0 0 7px var(--ring-edge); border-radius: inherit; }
+html.kbd .row.cat.vis:focus::after, html.kbd .cat-tile.vis:focus::after { box-shadow: inset 0 0 0 3px var(--ring), inset 0 0 0 4px var(--ring-edge); border-radius: inherit; }
 html.kbd .row.cat.vis:focus .cat-art, html.kbd .cat-tile.vis:focus .cat-art { filter: brightness(1.28) saturate(1.15); }
 html.kbd .row.cat.vis:focus::before { top: 14%; bottom: 14%; width: 6px; background: var(--ring); }
 html.kbd .row.cat.vis:focus .chev { opacity: 1; color: var(--ring); }
@@ -283,23 +283,25 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 input, select, textarea { font: inherit; color: var(--text); }
 .ic { width: 24px; height: 24px; fill: currentColor; flex: none; }
 [hidden] { display: none !important; }
-:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-radius: 8px; }
 /* kumanda kipi (html.kbd: yön tuşlarına basılınca ya da Android TV'de): odaktaki öğe uzaktan da seçilir.
    Halka tüm temalarda beyaz + koyu kenar (vurgu rengi zeminle karışabildiği için tek başına yetmez); seçili (.on) durumdan da ayrışır. */
-html.kbd :focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ring-edge); scroll-margin: 16px; }
+html.kbd :focus { outline: 2px solid var(--ring); outline-offset: 1px; box-shadow: 0 0 0 1px var(--ring-edge); scroll-margin: 16px; }
 /* Arama/yazı kutuları: kutuya özgü kurallar (.field input:focus …) halkayı siliyordu; kumandada beyaz halka her zaman görünür */
-html.kbd input:focus, html.kbd select:focus, html.kbd textarea:focus { outline: 3px solid var(--ring); outline-offset: 0; box-shadow: none; }
-html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus, html.kbd .sh-more:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
-html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus, html.kbd .sp-m:focus, html.kbd .td-r:focus, html.kbd .td-c:focus { outline: none; background: var(--ring-bg); box-shadow: inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); }
-html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus, html.kbd .act:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
+html.kbd input:focus, html.kbd select:focus, html.kbd textarea:focus { outline: 2px solid var(--ring); outline-offset: 0; box-shadow: none; }
+html.kbd .tile:focus, html.kbd .set-tile:focus, html.kbd .card:focus, html.kbd .sh-more:focus { outline: none; transform: scale(1.04); box-shadow: 0 0 0 1px var(--ring-edge), 0 0 0 3px var(--ring), 0 0 26px 4px var(--accent-soft); z-index: 2; }
+html.kbd .row:focus, html.kbd .list-item:focus, html.kbd .chk:focus, html.kbd .sp-m:focus, html.kbd .td-r:focus, html.kbd .td-c:focus { outline: none; background: var(--ring-bg); box-shadow: inset 0 0 0 2px var(--ring), inset 0 0 0 3px var(--ring-edge); }
+html.kbd .icon-btn:focus, html.kbd .sp-act:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .mp-chip:focus, html.kbd .swatch:focus, html.kbd .act:focus { box-shadow: 0 0 0 1px var(--ring-edge), 0 0 0 3px var(--ring); outline: none; }
 /* Odaktaki düğme uzaktan da seçilir: halkaya ek olarak dolgu tersine döner (beyaz dolgu, koyu simge) ve biraz büyür. Seçili (.on) düğme kendi dolgusunu korur, yalnız halka + büyüme alır */
 html.kbd .icon-btn:not(.on):focus, html.kbd .big-btn:focus, html.kbd .tool:not(.on):not(.rec-on):focus, html.kbd .chip:not(.on):focus, html.kbd .btn:not(.on):focus,
 html.kbd .sp-act:not(.on):focus, html.kbd .mp-chip:focus, html.kbd .act:not(.on):focus, html.kbd .swatch:not(.on):focus { background: #fff; color: #0b1020; }
-html.kbd .icon-btn:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .chip:focus, html.kbd .btn:focus, html.kbd .sp-act:focus, html.kbd .mp-chip:focus, html.kbd .act:focus, html.kbd .swatch:focus { position: relative; z-index: 3; transform: scale(1.08); box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); outline: none; }
+html.kbd .icon-btn:focus, html.kbd .big-btn:focus, html.kbd .tool:focus, html.kbd .chip:focus, html.kbd .btn:focus, html.kbd .sp-act:focus, html.kbd .mp-chip:focus, html.kbd .act:focus, html.kbd .swatch:focus { position: relative; z-index: 3; transform: scale(1.05); box-shadow: 0 0 0 1px var(--ring-edge), 0 0 0 3px var(--ring); outline: none; }
 html.kbd .big-btn.lg:focus { transform: scale(1.12); }
+/* .set-card köşeleri yuvarlak ve taşanı keser (Planlananlar, Ayarlar…): kart içinde odak halkası dışa çizilince kırpılıyordu; içeri çizilir */
+html.kbd .set-card :focus:not(.btn):not(.icon-btn):not(.chip):not(select):not(input):not(textarea) { outline: none; box-shadow: inset 0 0 0 2px var(--ring), inset 0 0 0 3px var(--ring-edge); border-radius: 12px; }
 html.kbd .chip:focus, html.kbd .btn:focus, html.kbd .swatch:focus { border-color: var(--ring); }
 html.kbd .sp-act:not(.on):focus .ic, html.kbd .tool:not(.on):focus .ic { color: #0b1020; }
-html.kbd .pl-prog input:focus { outline: 3px solid var(--ring); outline-offset: 2px; box-shadow: 0 0 0 5px var(--ring-edge); border-radius: 14px; }
+html.kbd .pl-prog input:focus { outline: 2px solid var(--ring); outline-offset: 1px; box-shadow: 0 0 0 3px var(--ring-edge); border-radius: 14px; }
 /* Android TV: ekran kenarındaki taşma payı (overscan) ve uzaktan okunur büyük yazı */
 html.tv { font-size: calc(18px * var(--fs)); }
 html.tv #app { padding: 14px calc(var(--safe-r) + 26px) 10px calc(var(--safe-l) + 26px); }
@@ -543,10 +545,11 @@ html.tv.hero-on .hero-p { -webkit-line-clamp: 2; }
 html.tv.hero-on #hero { height: max(34vh, 176px); }
 html.tv.hero-on .hero-t { -webkit-line-clamp: 1; }
 /* Fragman oynarken vitrinin en üstünde bilgi satırı */
-.hero-note { display: none; }
-html.tv.hero-live .hero-note { display: flex; align-items: center; gap: 0.6em; margin: 0 0 0.45em; font-size: 0.9em; line-height: 1.6; color: var(--accent); white-space: nowrap; }
-html.tv.hero-live .hero-note b { font-weight: 800; letter-spacing: 0.02em; }
-html.tv.hero-live .hero-note-s { color: var(--muted); font-weight: 600; }
+/* TV: fragman oynarken ekranın üstünde ortada duran bilgi; #app'in dışında olduğundan sinema kipinde (arayüz solarken) de görünür kalır */
+#hero-live { display: none; }
+html.tv.hero-live #hero-live { display: flex; align-items: center; gap: 0.6em; position: fixed; top: calc(var(--safe-t, 0px) + 10px); left: 50%; z-index: 5; padding: 0.3em 1em; font-size: clamp(14px, 2.1vh, 22px); line-height: 1.6; color: var(--accent); white-space: nowrap; border-radius: 999px; background: rgba(0, 0, 0, 0.55); -webkit-transform: translateX(-50%); transform: translateX(-50%); pointer-events: none; }
+html.tv.hero-live #hero-live b { font-weight: 800; letter-spacing: 0.02em; }
+html.tv.hero-live #hero-live .hero-note-s { color: var(--muted); font-weight: 600; }
 .hero-dot { flex: none; width: 0.65em; height: 0.65em; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 0.25em rgba(239, 68, 68, 0.25); }
 html.tv.hero-on .hero-trb:focus { color: var(--accent-ink, #0a1118); background: var(--accent); border-color: var(--accent); }
 html.tv.hero-live .hero-snd { display: inline-flex; align-items: center; gap: 0.5em; min-height: 2.4em; margin-top: 0.7em; padding: 0 1em; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; font: inherit; font-size: 0.95em; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.5); }
@@ -1294,7 +1297,7 @@ html.native-preview.native-multi #bgfill { display: none !important; }
 @keyframes lk-shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 html.tv .lk-box { width: min(60vh, 420px); }
 html.tv .lk-k { height: 56px; }
-html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring), 0 0 20px var(--accent-soft); }
+html.kbd .lk-k:focus, html.kbd .lk-x:focus { outline: none; box-shadow: 0 0 0 1px var(--ring-edge), 0 0 0 3px var(--ring), 0 0 20px var(--accent-soft); }
 @media (orientation: landscape) and (max-height: 520px) { .lk-box { gap: 6px; } .lk-k { height: 44px; font-size: 1.25rem; } .lk-pad { gap: 6px; } }
 
 /* Telefondan TV'ye oynatma */
@@ -1437,8 +1440,8 @@ html.tv .tl-prog small { font-size:.76rem; }
 .tl.no-now .tl-tag, .tl.no-now .tl-nowline { display:none; }
 .tl-prog.past { opacity:.55; }
 .tl-prog.none { cursor:default; background:transparent; border-style:dashed; opacity:.7; }
-html.kbd .tl-prog:focus, html.kbd .tl-ch:focus { outline:3px solid var(--ring); outline-offset:-3px; box-shadow:inset 0 0 0 5px var(--ring-edge); }
-html.kbd .tl-prog:focus { background:var(--ring-bg); box-shadow:inset 0 0 0 5px var(--ring-edge), 0 0 18px var(--accent-soft); z-index:1; }
+html.kbd .tl-prog:focus, html.kbd .tl-ch:focus { outline:2px solid var(--ring); outline-offset:-2px; box-shadow:inset 0 0 0 3px var(--ring-edge); }
+html.kbd .tl-prog:focus { background:var(--ring-bg); box-shadow:inset 0 0 0 3px var(--ring-edge), 0 0 18px var(--accent-soft); z-index:1; }
 .tl-nowline { position:absolute; top:0; bottom:0; left:calc(var(--tl-ch) + var(--now, 0) * var(--tl-ppm) * 1px); width:2px; background:var(--accent); z-index:2; pointer-events:none; }
 .tl-more { position:sticky; left:8px; margin:10px 8px; }
 .gp { display:flex; flex-direction:column; gap:10px; }
@@ -1448,7 +1451,7 @@ html.kbd .tl-prog:focus { background:var(--ring-bg); box-shadow:inset 0 0 0 5px 
 .gp-desc.muted { color:var(--muted); }
 .gp-btns { display:flex; gap:8px; flex-wrap:wrap; }
 html.tv .guide-category-head { min-height:68px; }
-html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 3px var(--ring), inset 0 0 0 5px var(--ring-edge); background:var(--ring-bg); }
+html.kbd .guide-category-head:focus { outline:none; box-shadow:inset 0 0 0 2px var(--ring), inset 0 0 0 3px var(--ring-edge); background:var(--ring-bg); }
 /* Yayın kalitesi: kanal seçici düzeni (.pk-pg) üstüne sonuç şeridi; liste tek kaydırma alanı */
 .health-pg .hint { margin:0 0 8px; }
 .health-pg .pg-body { padding-bottom:8px; }
@@ -1558,9 +1561,9 @@ html[data-lite] *:not(.spinner):not(.spin):not(.hs-dot), html[data-lite] *::befo
 /* Gölge yalnız odaktaki öğede kalır: kumanda halkası gölgeyle çizildiği için hafif modda (TV kutularında otomatik açılır) imleç yoksa kaybolurdu */
 html[data-lite] *:not(:focus), html[data-lite] *::before, html[data-lite] *::after { box-shadow: none !important; }
 /* hafif modda tek tek odak halkası: ışıma (bulanık gölge) yok, yalnız düz halka */
-html[data-lite].kbd .tile:focus, html[data-lite].kbd .set-tile:focus, html[data-lite].kbd .card:focus, html[data-lite].kbd .sh-more:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); }
-html[data-lite].kbd .tl-prog:focus { box-shadow: inset 0 0 0 5px var(--ring-edge); }
-html[data-lite].kbd .lk-k:focus, html[data-lite].kbd .lk-x:focus { box-shadow: 0 0 0 2px var(--ring-edge), 0 0 0 5px var(--ring); }
+html[data-lite].kbd .tile:focus, html[data-lite].kbd .set-tile:focus, html[data-lite].kbd .card:focus, html[data-lite].kbd .sh-more:focus { box-shadow: 0 0 0 1px var(--ring-edge), 0 0 0 3px var(--ring); }
+html[data-lite].kbd .tl-prog:focus { box-shadow: inset 0 0 0 3px var(--ring-edge); }
+html[data-lite].kbd .lk-k:focus, html[data-lite].kbd .lk-x:focus { box-shadow: 0 0 0 1px var(--ring-edge), 0 0 0 3px var(--ring); }
 html[data-lite] .mq { text-overflow: ellipsis; }
 
 /* spor (futbol) ekranı */
@@ -1631,7 +1634,7 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .td-r .logo { position: relative; flex: none; width: 60px; height: 42px; border-radius: 12px; background: #fff; color: #475569; }
 .td-r .logo img { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); height: calc(100% - 8px); object-fit: contain; }
 .td-r .logo:not(.ok) { background: var(--raised); color: var(--muted); }
-.td-dots { flex: none; width: 22px; display: grid; place-items: center; color: var(--muted); margin-right: -2px; }
+.td-dots { flex: none; width: 40px; height: 40px; border: 0; border-radius: 20px; padding: 0; background: transparent; display: grid; place-items: center; color: var(--muted); margin-right: -4px; cursor: pointer; }
 .td-dots .ic { width: 22px; height: 22px; }
 .td-ck { flex: none; width: 26px; height: 26px; border-radius: 13px; border: 2px solid var(--line); display: inline-flex; align-items: center; justify-content: center; }
 .td-c.on .td-ck { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -1695,7 +1698,7 @@ html[data-lite] .mq { text-overflow: ellipsis; }
 .sd-fol { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin-top: 2px; padding: 0 10px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: 0.75rem; font-weight: 600; }
 .sd-fol svg { width: 14px; height: 14px; }
 .sd-fol.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 3px var(--ring, #fff); }
+html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 2px var(--ring, #fff); }
 .sp-fv { font-style: normal; color: var(--accent); margin-right: 2px; }
 .chip.fav { font-weight: 600; }
 /* Puan durumu */
@@ -1810,7 +1813,7 @@ html.kbd .sd-fol:focus { outline: none; box-shadow: 0 0 0 3px var(--ring, #fff);
 .sp-top .sp-table-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:22px;background:var(--surface,rgba(20,24,45,.72));color:var(--text);font:inherit;font-size:.88rem;font-weight:600;white-space:nowrap}
 .sp-top .sp-table-btn svg{width:19px;height:19px;flex:none}
 .sp-top .sp-table-btn:active{background:var(--raised)}
-html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale(1.05);box-shadow:0 0 0 2px var(--ring-edge),0 0 0 5px var(--ring);outline:none}
+html.kbd .sp-top .sp-table-btn:focus{position:relative;z-index:3;transform:scale(1.05);box-shadow:0 0 0 1px var(--ring-edge),0 0 0 3px var(--ring);outline:none}
 
 
 /* Film içerik uyarıları */

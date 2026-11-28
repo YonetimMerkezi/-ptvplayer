@@ -1229,9 +1229,11 @@ function paintHero(it, info, final) {
   if (!box || box.hidden) return;
   heroTrailer.focus(it); // TV: odakta bir süre bekleyince fragman başlar
   const m = heroModel(it, info);
+  // Odak vitrindeki bir düğmedeyken (kumandayla Fragmanı oynat / Sesi aç) yeniden çizim düğmeyi yok eder: odak kaybolur, ensure() seçimi kutulara geri çekerdi.
+  // Çizimden sonra aynı düğme odaklanır (ayrıntı gelince, liste yenilenince ya da ses durumu değişince de kumanda düğmede kalır).
+  const act = document.activeElement;
+  const heldBtn = act && box.contains(act) ? ['.hero-trb', '.hero-snd'].find((q) => act.matches(q)) : '';
   box.innerHTML =
-    // TV: fragman oynarken en üstte görünen bilgi satırı (CSS yalnız html.hero-live iken gösterir)
-    `<div class="hero-note"><i class="hero-dot" aria-hidden="true"></i><b>Fragman oynuyor</b><span class="hero-note-s">${heroStage.muted ? 'ses kapalı' : 'ses açık'}</span></div>` +
     `<h2 class="hero-t">${esc(m.title)}</h2>` +
     `<div class="hero-m">${m.rating ? `<b class="hero-r">★ ${esc(m.rating)}</b>` : ''}${m.meta.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` +
     (m.cast ? `<p class="hero-c"><b>Oyuncular</b> ${esc(m.cast)}</p>` : '') +
@@ -1245,7 +1247,16 @@ function paintHero(it, info, final) {
     `<div class="hero-btns"><button class="hero-b hero-b-play" data-hero="play">${icon('play')}<span>${it.kind === 'series' ? 'İzle' : 'Oynat'}</span></button><button class="hero-b" data-hero="info">${icon('info')}<span>Bilgi</span></button>${kidActive() ? '' : `<button class="hero-b" data-hero="trailer">${icon('play')}<span>${heroTrailerLabel(true)}</span></button>`}</div>`;
   // Ayrıntı yoldayken yalnız dikey afiş varsa çizilmez: geniş ekranda kırpık görünüp sonra geniş görsele dönüşüyordu.
   // Geniş görsel gelene (ya da ayrıntı gelmeyeceği anlaşılana) dek önceki arka plan kalır.
+  if (heldBtn) restoreHeroBtn(box, heldBtn);
   if (final || m.wide) paintHeroBg(m.bg, m.backs);
+}
+function restoreHeroBtn(box, sel) {
+  const b = box.querySelector(sel);
+  if (b && b.offsetParent) b.focus({ preventScroll: true });
+  else {
+    const t = box.querySelector('.hero-trb'); // ses düğmesi fragman bitince gizlenir: odak yanındaki düğmeye geçer
+    if (t && t.offsetParent) t.focus({ preventScroll: true });
+  }
 }
 
 // Arka plan: iki katman çapraz geçer; yeni görsel yüklenene dek eskisi durur (boş/yanıp sönme olmaz). Önce geniş görsel, olmazsa afiş.
@@ -1401,8 +1412,12 @@ async function heroTrailerIds(it) {
   return [];
 }
 const heroLive = (on) => {
-  document.documentElement.classList.toggle('hero-live', on); // fragman oynuyor: vitrinde ses düğmesi görünür
+  const btn = document.activeElement;
+  const sndHeld = !on && btn && btn.classList && btn.classList.contains('hero-snd'); // ses düğmesi gizlenecek: odak "Fragmanı oynat"a geçsin
+  document.documentElement.classList.toggle('hero-live', on); // fragman oynuyor: vitrinde ses düğmesi, üstte "Fragman oynuyor" bilgisi görünür
+  if (on) syncHeroNote();
   syncHeroTrailerBtn();
+  if (sndHeld) restoreHeroBtn($('#hero'), '.hero-trb');
 };
 // Vitrindeki "Fragmanı oynat" düğmeleri (TV: yuvarlak hap, telefon: Oynat/Bilgi yanında): fragman yolda ya da oynarken "durdur" olur.
 const heroTrailerBusy = () => ['resolving', 'loading', 'playing'].includes(heroTrailer.state);
@@ -1431,8 +1446,12 @@ function toggleHeroSound() {
     b.setAttribute('aria-label', muted ? 'Sesi aç' : 'Sesi kapat');
     b.innerHTML = icon(muted ? 'mute' : 'audio') + `<span>${muted ? 'Sesi aç' : 'Sesi kapat'}</span>`;
   }
-  const ns = $('#hero .hero-note-s');
-  if (ns) ns.textContent = muted ? 'ses kapalı' : 'ses açık';
+  syncHeroNote();
+}
+// "Fragman oynuyor" bilgisi #app'in dışında (#hero-live): sinema kipinde arayüz solsa da ekranın üstünde kalır
+function syncHeroNote() {
+  const ns = $('#hero-live .hero-note-s');
+  if (ns) ns.textContent = heroStage.muted ? 'ses kapalı' : 'ses açık';
 }
 const heroTrailer = createHeroTrailer({
   enabled: () => heroTrailerOn(),
