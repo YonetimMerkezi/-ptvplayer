@@ -3621,15 +3621,17 @@ function homePicksHtml() {
   if (!pickedList().length) repickHome(homePick.genre); // liste yenilenmiş/boşalmışsa yeniden seç
   const list = pickedList();
   const chip = (id, label, icon) => `<button class="chip${homePick.genre === id ? ' on' : ''}" data-pick="${id}"><span aria-hidden="true">${icon}</span> ${esc(label)}</button>`;
+  // Üç öneri yatayda sayfayı doldurur: her önerinin önünde büyük sıra sayısı (odak almaz), yanında afiş (odak burada) ve film adı + künye.
   const cards = list
     .map((it, i) => {
       const ct = cleanTitle(it.name, it.year);
-      return card(it, i, `data-hk="movie" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub: ['Film', ct.year].filter(Boolean).join(' · ') });
+      const poster = card(it, i, `data-hk="movie" data-hid="${esc(it.id)}"`, { title: ct.title || it.name, sub: ['Film', ct.year].filter(Boolean).join(' · ') });
+      return `<div class="hp-rk"><span class="hp-no" aria-hidden="true">${i + 1}</span>${poster}<div class="hp-rk-d"><b class="hp-rk-t">${esc(ct.title || it.name)}</b><div class="hp-rk-m">${chipsOf([ct.year, it.group, starsOf(it.rating)])}</div></div></div>`;
     })
     .join('');
-  // "Şaşırt beni" tek film seçer: solda afiş, sağda film bilgisi (özet, puan, içerik uyarıları) yan yana, yatay ekrana tam sığar; diğer türlerde üç afişlik sıra.
+  // "Şaşırt beni" tek film seçer: solda büyük afiş, sağda film bilgisi (özet, puan, içerik uyarıları) yan yana, yatay ekranı doldurur; diğer türlerde sıra numaralı üç öneri.
   const one = homePick.genre === SURPRISE_ID && list.length === 1 ? list[0] : null;
-  const body = one ? surpriseHtml(one) : cards ? `<div class="home-row-s" data-hrow>${cards}</div>` : `<p class="hint">Bu türde film yok.</p>`;
+  const body = one ? surpriseHtml(one) : cards ? `<div class="home-row-s hp-rk-s" data-hrow>${cards}</div>` : `<p class="hint">Bu türde film yok.</p>`;
   return `<section class="home-row hp-picks" data-reveal><div class="home-row-h"><b>🤔 Ne izleyeceğine karar veremedin mi?</b><button data-pick-again aria-label="Başka filmler öner">Başka öner</button></div><div class="chips hp-chips" role="group" aria-label="Tür" data-hrow>${chip(SURPRISE_ID, 'Şaşırt beni', '🎲')}${chips.map((c) => chip(c.id, c.label, c.icon)).join('')}</div>${body}</section>`;
 }
 function surpriseHtml(it) {

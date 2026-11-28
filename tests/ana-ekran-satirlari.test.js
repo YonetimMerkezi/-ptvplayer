@@ -34,7 +34,7 @@ test('CSS: tüm kartlar aynı genişlikte; radyo da; "Şaşırt beni" sonucu afi
   assert.match(css, /\.home-row-s\.rd-s \{ --rd-w: calc\(var\(--hp-h\) \* 2 \/ 3\); \}/);
   assert.match(css, /\.hp-sur \{ display: flex; align-items: flex-start;/);
   assert.match(css, /\.hp-sur-d \{ flex: 1 1 0; min-width: 0;/);
-  assert.match(css, /\.hp-sur-plot \{[^}]*-webkit-line-clamp: 4;/);
+  assert.match(css, /\.hp-sur-plot \{[^}]*-webkit-line-clamp: 6;/);
 });
 
 test('Şaşırt beni: tek film, afiş + özet/puan/içerik uyarıları; mevcut film bilgisi ve uyarı yolları yeniden kullanılır', () => {
@@ -90,4 +90,13 @@ test('odak kenarlığı ince; yuvarlak kartlarda (set-card) dışa taşıp kırp
   assert.doesNotMatch(css, /0 0 0 5px var\(--ring\)/, 'kalın 5px halka kalmadı');
   assert.doesNotMatch(css, /inset 0 0 0 5px var\(--ring-edge\)/, 'kalın iç halka kalmadı');
   assert.match(css, /html\.kbd \.set-card :focus:not\(\.btn\)[^{]*\{ outline: none; box-shadow: inset 0 0 0 2px var\(--ring\), inset 0 0 0 3px var\(--ring-edge\);/);
+});
+
+test('3 öneri: yatayı doldurur; her önerinin önünde büyük sıra sayısı (odak almaz), afiş odaklanır, yanında ad ve künye', () => {
+  assert.match(app, /<div class="hp-rk"><span class="hp-no" aria-hidden="true">\$\{i \+ 1\}<\/span>\$\{poster\}<div class="hp-rk-d"><b class="hp-rk-t">/);
+  assert.match(app, /<div class="home-row-s hp-rk-s" data-hrow>\$\{cards\}<\/div>/);
+  assert.match(css, /\.hp-rk \{ flex: 1 1 0;/); // üç sütun eşit pay alır
+  assert.match(css, /\.hp-no \{[^}]*color: var\(--accent\);[^}]*pointer-events: none;/); // tema renginde, odak/dokunuş almaz
+  assert.match(css, /\.hp-rk \{ min-width: 0; gap: 8px; \}/); // yatay ekranda üçü de sığar
+  assert.match(css, /\.home-row-s\.hp-sur-p \{ --hp-h: clamp\(170px, 36vh, 340px\); \}/); // Şaşırt beni afişi büyük
 });

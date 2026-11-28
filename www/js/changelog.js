@@ -2,6 +2,14 @@
 // CI, en yeni kaydı güncelleme penceresinde göstermek üzere notes.txt'ye yazar (scripts/build-www.mjs).
 export const CHANGELOG = [
   {
+    id: 193,
+    title: 'Ne izleyeceğine karar veremedin mi? yenilendi',
+    items: [
+      '3 öneri yatayda sayfayı dolduruyor: her önerinin önünde temaya uygun büyük sıra sayısı (1, 2, 3), yanında afiş ve film adı; kumanda odağı sayılara değil afişlere geçiyor',
+      'Şaşırt beni: afiş büyüdü, film adı, künye, özet ve içerik uyarıları ekran yüksekliğine göre büyük yazıyla sağ tarafı dolduruyor',
+    ],
+  },
+  {
     id: 192,
     title: 'Bugün TV\'de ve kumanda odağı düzeltmeleri',
     items: [
